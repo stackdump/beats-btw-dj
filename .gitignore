@@ -1,0 +1,5 @@
+/dj-vevr-se
+# raw hardware captures stay local until deliberately promoted to web/jog/fixtures/
+/jog-capture-*.json
+/captures/
+.DS_Store
