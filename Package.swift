@@ -20,6 +20,8 @@ let package = Package(
     .executableTarget(name: "djctl", dependencies: ["DJCore"]),
     // SwiftUI app. `make app` wraps it in a .app bundle.
     .executableTarget(name: "DJApp", dependencies: ["DJCore"]),
-    .testTarget(name: "DJCoreTests", dependencies: ["DJCore"]),
+    .testTarget(
+      name: "DJCoreTests", dependencies: ["DJCore"],
+      resources: [.copy("Fixtures")]),
   ]
 )

@@ -8,6 +8,7 @@
 import DJCore
 import Foundation
 
+setvbuf(stdout, nil, _IOLBF, 0)  // line-buffered, so redirected monitor logs fill live
 let args = Array(CommandLine.arguments.dropFirst())
 let jog = JogProfile.inpulse200MK3
 let surfaces = SurfaceProfile.all
@@ -19,14 +20,27 @@ func profileName(_ port: String) -> String? {
   jog.matches(portName: port) ? jog.name : surfaces.first { $0.matches(portName: port) }?.name
 }
 
-func decode(_ m: MIDIMessage) -> String {
-  if jog.matches(portName: m.port) { return jog.parse(m.bytes).map { "\($0)" } ?? "" }
-  if let s = surfaces.first(where: { $0.matches(portName: m.port) }), let e = s.parse(m.bytes) {
-    let b = s.layout.first { $0.group == e.group && $0.index == e.index }
-    return "\(e.group)[\(e.index)]=\(String(format: "%.2f", e.value))"
-      + (b.map { " → \($0.action.rawValue) \($0.deck ?? "")" } ?? "")
+/// Monitor decoding: the same decoder + layout lookup the hub uses, against
+/// a silent offline engine (nothing is played).
+var monitorSurfaces: [String: SurfaceController] = [:]
+let monitorEngine = try! DJEngine(offline: true)
+
+@MainActor func decode(_ m: MIDIMessage) -> String {
+  if jog.matches(portName: m.port), let e = jog.parse(m.bytes) { return "\(e)" }
+  guard let p = surfaces.first(where: { $0.matches(portName: m.port) }) else { return "" }
+  let s = monitorSurfaces[m.port] ?? SurfaceController(profile: p, engine: monitorEngine)
+  monitorSurfaces[m.port] = s
+  guard let e = s.decode(m.bytes) else { return "(undecoded)" }
+  let control =
+    "\(e.group)[\(e.index)]" + (e.name.map { " \($0)" } ?? "")
+    + (e.delta != 0 ? " Δ\(e.delta)" : String(format: "=%.3f", e.value))
+  // Track shift so layered bindings show correctly.
+  if e.group == "shift" || s.binding(for: e)?.action == .shift { s.handle(e) }
+  switch s.outcome(for: e) {
+  case .bound(let b), .pickup(let b): return "\(control) → \(b.action.rawValue) \(b.deck ?? "")"
+  case .unbound(let reason): return "\(control) (unbound: \(reason))"
+  case .unmapped: return "\(control) (UNMAPPED)"
   }
-  return ""
 }
 
 /// Handle Ctrl-C on the main queue, not in a raw signal handler.
@@ -61,11 +75,15 @@ case "monitor":
   let match = positional.joined(separator: " ").lowercased()
   let t0 = ProcessInfo.processInfo.systemUptime
   let midi = try MIDIIn { m in
-    let port = m.port.padding(toLength: 28, withPad: " ", startingAt: 0)
-    let d = decode(m)
-    print(
-      String(format: "%10.3f", (m.time - t0) * 1000) + "  \(port)  \(hex(m.bytes))"
-        + (d.isEmpty ? "" : "  \(d)"))
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated {
+        let port = m.port.padding(toLength: 28, withPad: " ", startingAt: 0)
+        let d = decode(m)
+        print(
+          String(format: "%10.3f", (m.time - t0) * 1000) + "  \(port)  \(hex(m.bytes))"
+            + (d.isEmpty ? "" : "  \(d)"))
+      }
+    }
   }
   let ports = try midi.connect { match.isEmpty || $0.name.lowercased().contains(match) }
   if ports.isEmpty {

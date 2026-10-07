@@ -1,0 +1,1156 @@
+{
+ "name": "DJControl Inpulse 200 Mk3",
+ "manufacturer": "Hercules",
+ "match": "inpulse\\s*200",
+ "source": "Capture 2026-10-07 (captures/inpulse.log) + Mixxx Hercules_DJControl_Inpulse_200.midi.xml for names; [MIXXX] = not yet seen on this unit",
+ "jog": "inpulse-200-mk3",
+ "groups": [
+  {
+   "id": "deckA.buttons",
+   "type": "note",
+   "channel": 1,
+   "numbers": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    9,
+    10,
+    12,
+    13,
+    15,
+    16
+   ],
+   "names": [
+    "vinyl",
+    "shift",
+    "sync",
+    "cue",
+    "play",
+    "loopIn",
+    "loopOut",
+    "pfl",
+    "load",
+    "modeHotCue",
+    "modeRoll"
+   ],
+   "comment": "measured 2026-10-07 except pfl, load [MIXXX]; 0x08 is jog touch (jog profile)"
+  },
+  {
+   "id": "deckA.shiftButtons",
+   "type": "note",
+   "channel": 4,
+   "numbers": [
+    5,
+    6,
+    7,
+    9,
+    10
+   ],
+   "names": [
+    "sync",
+    "cue",
+    "play",
+    "loopIn",
+    "loopOut"
+   ],
+   "comment": "[MIXXX] SHIFT held; 0x08 is shifted jog touch (jog profile)"
+  },
+  {
+   "id": "deckA.hotcuePads",
+   "type": "note",
+   "channel": 6,
+   "numbers": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "pad1",
+    "pad2",
+    "pad3",
+    "pad4"
+   ],
+   "comment": "hot-cue mode; pads 1 and 3 measured, 2 and 4 [MIXXX]"
+  },
+  {
+   "id": "deckA.hotcueClearPads",
+   "type": "note",
+   "channel": 6,
+   "numbers": [
+    8,
+    9,
+    10,
+    11
+   ],
+   "names": [
+    "pad1",
+    "pad2",
+    "pad3",
+    "pad4"
+   ],
+   "comment": "[MIXXX] SHIFT + pad in hot-cue mode"
+  },
+  {
+   "id": "deckA.rollPads",
+   "type": "note",
+   "channel": 6,
+   "numbers": [
+    16,
+    17,
+    18,
+    19
+   ],
+   "names": [
+    "roll1",
+    "roll2",
+    "roll4",
+    "roll8"
+   ],
+   "comment": "roll mode, measured"
+  },
+  {
+   "id": "deckA.fxPads",
+   "type": "note",
+   "channel": 6,
+   "numbers": [
+    32,
+    33,
+    34,
+    35,
+    40,
+    41,
+    42,
+    43
+   ],
+   "names": [
+    "fx1",
+    "fx2",
+    "fx3",
+    "fxOn",
+    "shiftFx1",
+    "shiftFx2",
+    "shiftFx3",
+    "shiftFxOn"
+   ],
+   "comment": "[MIXXX]"
+  },
+  {
+   "id": "deckA.samplerPads",
+   "type": "note",
+   "channel": 6,
+   "numbers": [
+    48,
+    49,
+    50,
+    51
+   ],
+   "names": [
+    "sample1",
+    "sample2",
+    "sample3",
+    "sample4"
+   ],
+   "comment": "[MIXXX]"
+  },
+  {
+   "id": "deckA.faders",
+   "type": "cc14",
+   "channel": 1,
+   "numbers": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    8
+   ],
+   "names": [
+    "volume",
+    "filter",
+    "eqLow",
+    "eqHigh",
+    "gain",
+    "pitch"
+   ],
+   "comment": "14-bit (LSB on +32), measured"
+  },
+  {
+   "id": "deckA.padBend",
+   "type": "relative",
+   "channel": 1,
+   "numbers": [
+    12
+   ],
+   "names": [
+    "padBend"
+   ],
+   "comment": "[MIXXX] FX pads 7/8 pitch bend"
+  },
+  {
+   "id": "deckB.buttons",
+   "type": "note",
+   "channel": 2,
+   "numbers": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    9,
+    10,
+    12,
+    13,
+    15,
+    16
+   ],
+   "names": [
+    "vinyl",
+    "shift",
+    "sync",
+    "cue",
+    "play",
+    "loopIn",
+    "loopOut",
+    "pfl",
+    "load",
+    "modeHotCue",
+    "modeRoll"
+   ],
+   "comment": "measured 2026-10-07 except pfl, load [MIXXX]; 0x08 is jog touch (jog profile)"
+  },
+  {
+   "id": "deckB.shiftButtons",
+   "type": "note",
+   "channel": 5,
+   "numbers": [
+    5,
+    6,
+    7,
+    9,
+    10
+   ],
+   "names": [
+    "sync",
+    "cue",
+    "play",
+    "loopIn",
+    "loopOut"
+   ],
+   "comment": "[MIXXX] SHIFT held; 0x08 is shifted jog touch (jog profile)"
+  },
+  {
+   "id": "deckB.hotcuePads",
+   "type": "note",
+   "channel": 7,
+   "numbers": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "pad1",
+    "pad2",
+    "pad3",
+    "pad4"
+   ],
+   "comment": "hot-cue mode; pads 1 and 3 measured, 2 and 4 [MIXXX]"
+  },
+  {
+   "id": "deckB.hotcueClearPads",
+   "type": "note",
+   "channel": 7,
+   "numbers": [
+    8,
+    9,
+    10,
+    11
+   ],
+   "names": [
+    "pad1",
+    "pad2",
+    "pad3",
+    "pad4"
+   ],
+   "comment": "[MIXXX] SHIFT + pad in hot-cue mode"
+  },
+  {
+   "id": "deckB.rollPads",
+   "type": "note",
+   "channel": 7,
+   "numbers": [
+    16,
+    17,
+    18,
+    19
+   ],
+   "names": [
+    "roll1",
+    "roll2",
+    "roll4",
+    "roll8"
+   ],
+   "comment": "roll mode, measured"
+  },
+  {
+   "id": "deckB.fxPads",
+   "type": "note",
+   "channel": 7,
+   "numbers": [
+    32,
+    33,
+    34,
+    35,
+    40,
+    41,
+    42,
+    43
+   ],
+   "names": [
+    "fx1",
+    "fx2",
+    "fx3",
+    "fxOn",
+    "shiftFx1",
+    "shiftFx2",
+    "shiftFx3",
+    "shiftFxOn"
+   ],
+   "comment": "[MIXXX]"
+  },
+  {
+   "id": "deckB.samplerPads",
+   "type": "note",
+   "channel": 7,
+   "numbers": [
+    48,
+    49,
+    50,
+    51
+   ],
+   "names": [
+    "sample1",
+    "sample2",
+    "sample3",
+    "sample4"
+   ],
+   "comment": "[MIXXX]"
+  },
+  {
+   "id": "deckB.faders",
+   "type": "cc14",
+   "channel": 2,
+   "numbers": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    8
+   ],
+   "names": [
+    "volume",
+    "filter",
+    "eqLow",
+    "eqHigh",
+    "gain",
+    "pitch"
+   ],
+   "comment": "14-bit (LSB on +32), measured"
+  },
+  {
+   "id": "deckB.padBend",
+   "type": "relative",
+   "channel": 2,
+   "numbers": [
+    12
+   ],
+   "names": [
+    "padBend"
+   ],
+   "comment": "[MIXXX] FX pads 7/8 pitch bend"
+  },
+  {
+   "id": "mixer.faders",
+   "type": "cc14",
+   "channel": 0,
+   "numbers": [
+    0,
+    3,
+    4
+   ],
+   "names": [
+    "crossfader",
+    "centreKnob3",
+    "centreKnob4"
+   ],
+   "comment": "crossfader measured; 0x03/0x04 measured but not yet identified"
+  },
+  {
+   "id": "mixer.buttons",
+   "type": "note",
+   "channel": 0,
+   "numbers": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "browserPush",
+    "centre1",
+    "centre2",
+    "autoDJ"
+   ],
+   "comment": "0x01-0x03 measured; names [MIXXX]/unidentified"
+  },
+  {
+   "id": "mixer.browser",
+   "type": "relative",
+   "channel": 0,
+   "numbers": [
+    1
+   ],
+   "names": [
+    "browser"
+   ],
+   "comment": "[MIXXX] browser encoder"
+  },
+  {
+   "id": "mixer.shiftBrowser",
+   "type": "relative",
+   "channel": 3,
+   "numbers": [
+    1
+   ],
+   "names": [
+    "browser"
+   ],
+   "comment": "[MIXXX] SHIFT + browser encoder"
+  },
+  {
+   "id": "mixer.shiftButtons",
+   "type": "note",
+   "channel": 3,
+   "numbers": [
+    0
+   ],
+   "names": [
+    "browserPush"
+   ],
+   "comment": "[MIXXX] SHIFT + browser push"
+  }
+ ],
+ "leds": {
+  "rgbGroups": [],
+  "singleGroups": [
+   "deckA.buttons",
+   "deckB.buttons",
+   "deckA.hotcuePads",
+   "deckB.hotcuePads"
+  ],
+  "rgbDimStatus": 0,
+  "rgbFullStatus": 0,
+  "singleOff": 0,
+  "singleOn": 127,
+  "singleBlink": 127
+ },
+ "layout": [
+  {
+   "group": "deckA.buttons",
+   "index": 0,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "jog always scratches when touched; vinyl toggle not needed yet"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 1,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "hardware layer: shifted controls arrive on their own channel"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 2,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 3,
+   "action": "cue",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 4,
+   "action": "play",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 5,
+   "action": "loopIn",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 6,
+   "action": "loopOut",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 7,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "headphone cue \u2014 Phase 4 (Inpulse audio interface)"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 8,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "no track library yet \u2014 Phase 3 (generate on deck)"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 9,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "pad mode is selected in hardware; pads arrive with mode-specific notes"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 10,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "pad mode is selected in hardware; pads arrive with mode-specific notes"
+  },
+  {
+   "group": "deckA.shiftButtons",
+   "index": 0,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.shiftButtons",
+   "index": 1,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "rewind-to-start \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.shiftButtons",
+   "index": 2,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "play stutter \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.shiftButtons",
+   "index": 3,
+   "action": "loopHalve",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.shiftButtons",
+   "index": 4,
+   "action": "loopDouble",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.hotcuePads",
+   "index": 0,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 0
+  },
+  {
+   "group": "deckA.hotcuePads",
+   "index": 1,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 1
+  },
+  {
+   "group": "deckA.hotcuePads",
+   "index": 2,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 2
+  },
+  {
+   "group": "deckA.hotcuePads",
+   "index": 3,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 3
+  },
+  {
+   "group": "deckA.hotcueClearPads",
+   "index": 0,
+   "action": "clearcue",
+   "deck": "A",
+   "slot": 0
+  },
+  {
+   "group": "deckA.hotcueClearPads",
+   "index": 1,
+   "action": "clearcue",
+   "deck": "A",
+   "slot": 1
+  },
+  {
+   "group": "deckA.hotcueClearPads",
+   "index": 2,
+   "action": "clearcue",
+   "deck": "A",
+   "slot": 2
+  },
+  {
+   "group": "deckA.hotcueClearPads",
+   "index": 3,
+   "action": "clearcue",
+   "deck": "A",
+   "slot": 3
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 0,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 1,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 2,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 3,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 0,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 1,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 2,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 3,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 4,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 5,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 6,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 7,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 0,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 1,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 2,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 3,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.faders",
+   "index": 0,
+   "action": "volume",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.faders",
+   "index": 1,
+   "action": "filter",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.faders",
+   "index": 2,
+   "action": "eqLow",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.faders",
+   "index": 3,
+   "action": "eqHigh",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.faders",
+   "index": 4,
+   "action": "gain",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.faders",
+   "index": 5,
+   "action": "pitch",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.padBend",
+   "index": 0,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "nudge from pads \u2014 later"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 0,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "jog always scratches when touched; vinyl toggle not needed yet"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 1,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "hardware layer: shifted controls arrive on their own channel"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 2,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 3,
+   "action": "cue",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 4,
+   "action": "play",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 5,
+   "action": "loopIn",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 6,
+   "action": "loopOut",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 7,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "headphone cue \u2014 Phase 4 (Inpulse audio interface)"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 8,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "no track library yet \u2014 Phase 3 (generate on deck)"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 9,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "pad mode is selected in hardware; pads arrive with mode-specific notes"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 10,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "pad mode is selected in hardware; pads arrive with mode-specific notes"
+  },
+  {
+   "group": "deckB.shiftButtons",
+   "index": 0,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.shiftButtons",
+   "index": 1,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "rewind-to-start \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.shiftButtons",
+   "index": 2,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "play stutter \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.shiftButtons",
+   "index": 3,
+   "action": "loopHalve",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.shiftButtons",
+   "index": 4,
+   "action": "loopDouble",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.hotcuePads",
+   "index": 0,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 0
+  },
+  {
+   "group": "deckB.hotcuePads",
+   "index": 1,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 1
+  },
+  {
+   "group": "deckB.hotcuePads",
+   "index": 2,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 2
+  },
+  {
+   "group": "deckB.hotcuePads",
+   "index": 3,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 3
+  },
+  {
+   "group": "deckB.hotcueClearPads",
+   "index": 0,
+   "action": "clearcue",
+   "deck": "B",
+   "slot": 0
+  },
+  {
+   "group": "deckB.hotcueClearPads",
+   "index": 1,
+   "action": "clearcue",
+   "deck": "B",
+   "slot": 1
+  },
+  {
+   "group": "deckB.hotcueClearPads",
+   "index": 2,
+   "action": "clearcue",
+   "deck": "B",
+   "slot": 2
+  },
+  {
+   "group": "deckB.hotcueClearPads",
+   "index": 3,
+   "action": "clearcue",
+   "deck": "B",
+   "slot": 3
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 0,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 1,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 2,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 3,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "needs BPM / beat grid \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 0,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 1,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 2,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 3,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 4,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 5,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 6,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 7,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "deck FX \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 0,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 1,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 2,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 3,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  },
+  {
+   "group": "deckB.faders",
+   "index": 0,
+   "action": "volume",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.faders",
+   "index": 1,
+   "action": "filter",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.faders",
+   "index": 2,
+   "action": "eqLow",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.faders",
+   "index": 3,
+   "action": "eqHigh",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.faders",
+   "index": 4,
+   "action": "gain",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.faders",
+   "index": 5,
+   "action": "pitch",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.padBend",
+   "index": 0,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "nudge from pads \u2014 later"
+  },
+  {
+   "group": "mixer.faders",
+   "index": 0,
+   "action": "crossfader"
+  },
+  {
+   "group": "mixer.faders",
+   "index": 1,
+   "action": "unbound",
+   "reason": "unidentified centre knob \u2014 identify then bind"
+  },
+  {
+   "group": "mixer.faders",
+   "index": 2,
+   "action": "unbound",
+   "reason": "unidentified centre knob \u2014 identify then bind"
+  },
+  {
+   "group": "mixer.buttons",
+   "index": 0,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "mixer.buttons",
+   "index": 1,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "mixer.buttons",
+   "index": 2,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "mixer.buttons",
+   "index": 3,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "mixer.browser",
+   "index": 0,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "mixer.shiftBrowser",
+   "index": 0,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "mixer.shiftButtons",
+   "index": 0,
+   "action": "unbound",
+   "reason": "browser / library \u2014 Phase 3"
+  }
+ ]
+}

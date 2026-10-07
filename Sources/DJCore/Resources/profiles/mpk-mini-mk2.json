@@ -1,29 +1,206 @@
 {
-  "name": "MPK Mini Mk II",
-  "manufacturer": "Akai",
-  "match": "mpk.*mini",
-  "source": "factory defaults as documented in beats-bitwrap-io public/lib/ui/device-map.js. UNVERIFIED: the MPK Editor, bank B and firmware revisions all change these; beats ships no MPK preset for that reason. Check with `djctl monitor mpk`.",
-  "groups": [
-    { "id": "knobs", "type": "cc",   "first": 70, "count": 8,  "comment": "K1-K8" },
-    { "id": "pads",  "type": "note", "first": 36, "count": 8,  "comment": "bank A, pads 1-8" },
-    { "id": "keys",  "type": "note", "first": 48, "count": 25, "comment": "C3-C5 at default octave" }
-  ],
-  "layout": [
-    { "group": "knobs", "index": 0, "action": "volume", "deck": "A" },
-    { "group": "knobs", "index": 1, "action": "volume", "deck": "B" },
-    { "group": "knobs", "index": 2, "action": "crossfader" },
-    { "group": "knobs", "index": 3, "action": "master" },
-    { "group": "knobs", "index": 4, "action": "filter", "deck": "A" },
-    { "group": "knobs", "index": 5, "action": "filter", "deck": "B" },
-    { "group": "knobs", "index": 6, "action": "pitch",  "deck": "A" },
-    { "group": "knobs", "index": 7, "action": "pitch",  "deck": "B" },
-    { "group": "pads", "index": 0, "action": "hotcue", "deck": "A", "slot": 0 },
-    { "group": "pads", "index": 1, "action": "hotcue", "deck": "A", "slot": 1 },
-    { "group": "pads", "index": 2, "action": "hotcue", "deck": "A", "slot": 2 },
-    { "group": "pads", "index": 3, "action": "hotcue", "deck": "A", "slot": 3 },
-    { "group": "pads", "index": 4, "action": "hotcue", "deck": "B", "slot": 0 },
-    { "group": "pads", "index": 5, "action": "hotcue", "deck": "B", "slot": 1 },
-    { "group": "pads", "index": 6, "action": "hotcue", "deck": "B", "slot": 2 },
-    { "group": "pads", "index": 7, "action": "hotcue", "deck": "B", "slot": 3 }
-  ]
+ "name": "MPK Mini Mk II",
+ "manufacturer": "Akai",
+ "match": "mpk.*mini",
+ "source": "Measured 2026-10-07 on this unit's current preset (captures/mpk.log). Differs from the factory map beats documents (knobs CC 70-77, pads notes 36-43): this preset sends knobs on CC 1-8 and pads as Program Change. Octave/ARP/tap/note-repeat/full-level send no MIDI. Re-capture if the preset changes in the MPK Editor.",
+ "groups": [
+  {
+   "id": "keys",
+   "type": "note",
+   "channel": 0,
+   "first": 0,
+   "count": 128,
+   "comment": "25 keys, 48-72 at default octave (measured); octave shift moves the range, so the whole note space is claimed"
+  },
+  {
+   "id": "knobs",
+   "type": "cc",
+   "channel": 0,
+   "numbers": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "names": [
+    "knob1",
+    "knob2",
+    "knob3",
+    "knob4",
+    "knob5",
+    "knob6",
+    "knob7",
+    "knob8"
+   ],
+   "comment": "CC n = knob n in this preset. CC 1 is ALSO the joystick's Y axis (mod) \u2014 the two cannot be told apart"
+  },
+  {
+   "id": "joystickX",
+   "type": "pitchbend",
+   "channel": 0,
+   "names": [
+    "joystickX"
+   ],
+   "comment": "14-bit pitch bend, centre 8192 (measured)"
+  },
+  {
+   "id": "pads",
+   "type": "program",
+   "channel": 0,
+   "numbers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "names": [
+    "pad1",
+    "pad2",
+    "pad3",
+    "pad4",
+    "pad5",
+    "pad6",
+    "pad7",
+    "pad8"
+   ],
+   "comment": "PROG CHANGE mode: pad n sends PC n-1 (measured; bank B sent the same values)"
+  },
+  {
+   "id": "padNotes",
+   "type": "note",
+   "channel": 9,
+   "first": 36,
+   "count": 16,
+   "comment": "[UNVERIFIED] pads in NOTE mode, bank A 36-43 / bank B 44-51 on MIDI channel 10"
+  }
+ ],
+ "layout": [
+  {
+   "group": "keys",
+   "action": "unbound",
+   "reason": "instrument / live net \u2014 Phase 3"
+  },
+  {
+   "group": "knobs",
+   "index": 0,
+   "action": "unbound",
+   "reason": "CC 1 is shared with the joystick Y axis in this preset \u2014 reprogram knob 1 in the MPK Editor to use it"
+  },
+  {
+   "group": "knobs",
+   "index": 1,
+   "action": "volume",
+   "deck": "A"
+  },
+  {
+   "group": "knobs",
+   "index": 2,
+   "action": "volume",
+   "deck": "B"
+  },
+  {
+   "group": "knobs",
+   "index": 3,
+   "action": "crossfader"
+  },
+  {
+   "group": "knobs",
+   "index": 4,
+   "action": "filter",
+   "deck": "A"
+  },
+  {
+   "group": "knobs",
+   "index": 5,
+   "action": "filter",
+   "deck": "B"
+  },
+  {
+   "group": "knobs",
+   "index": 6,
+   "action": "pitch",
+   "deck": "A"
+  },
+  {
+   "group": "knobs",
+   "index": 7,
+   "action": "pitch",
+   "deck": "B"
+  },
+  {
+   "group": "joystickX",
+   "index": 0,
+   "action": "unbound",
+   "reason": "instrument / live net \u2014 Phase 3"
+  },
+  {
+   "group": "pads",
+   "index": 0,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 0
+  },
+  {
+   "group": "pads",
+   "index": 1,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 1
+  },
+  {
+   "group": "pads",
+   "index": 2,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 2
+  },
+  {
+   "group": "pads",
+   "index": 3,
+   "action": "hotcue",
+   "deck": "A",
+   "slot": 3
+  },
+  {
+   "group": "pads",
+   "index": 4,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 0
+  },
+  {
+   "group": "pads",
+   "index": 5,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 1
+  },
+  {
+   "group": "pads",
+   "index": 6,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 2
+  },
+  {
+   "group": "pads",
+   "index": 7,
+   "action": "hotcue",
+   "deck": "B",
+   "slot": 3
+  },
+  {
+   "group": "padNotes",
+   "action": "unbound",
+   "reason": "stingers / one-shots \u2014 Phase 3"
+  }
+ ]
 }

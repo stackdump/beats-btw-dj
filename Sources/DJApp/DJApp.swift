@@ -107,11 +107,26 @@ final class AppModel {
   func togglePlay(_ deck: String) { dj?[deck].map { $0.setPlaying(!$0.playing) } }
   func hotCue(_ deck: String, _ slot: Int) { dj?[deck]?.hotCue(slot) }
   func clearCue(_ deck: String, _ slot: Int) { dj?[deck]?.clearCue(slot) }
-  func setVolume(_ deck: String, _ v: Double) { dj?[deck]?.volume = v }
-  func setFilter(_ deck: String, _ v: Double) { dj?[deck]?.filter = v }
-  func setPitch(_ deck: String, _ v: Double) { dj?[deck]?.pitch = v }
-  func setCrossfader(_ v: Double) { dj?.crossfader = v }
-  func setMaster(_ v: Double) { dj?.master = v }
+  func setVolume(_ deck: String, _ v: Double) {
+    dj?.owners["\(deck).volume"] = "ui"
+    dj?[deck]?.volume = v
+  }
+  func setFilter(_ deck: String, _ v: Double) {
+    dj?.owners["\(deck).filter"] = "ui"
+    dj?[deck]?.filter = v
+  }
+  func setPitch(_ deck: String, _ v: Double) {
+    dj?.owners["\(deck).pitch"] = "ui"
+    dj?[deck]?.pitch = v
+  }
+  func setCrossfader(_ v: Double) {
+    dj?.owners["crossfader"] = "ui"
+    dj?.crossfader = v
+  }
+  func setMaster(_ v: Double) {
+    dj?.owners["master"] = "ui"
+    dj?.master = v
+  }
   func loadDemo(_ deck: String) { dj?[deck]?.loadDemo() }
 
   func load(_ deck: String, url: URL) {

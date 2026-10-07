@@ -9,13 +9,16 @@ public enum DJEngineError: Error, CustomStringConvertible {
   }
 }
 
-/// One AVAudioEngine. Per deck: source node -> filter (EQ) -> channel strip
-/// (mixer node, gain = deck volume x crossfader) -> main mixer.
+/// One AVAudioEngine. Per deck: source node -> EQ (filter + 3 bands) ->
+/// channel strip (mixer node, gain = trim x volume x crossfader) -> main mixer.
 public final class DJEngine {
   public let engine = AVAudioEngine()
   public let sampleRate: Double
   public let format: AVAudioFormat
   public private(set) var decks: [String: Deck] = [:]
+  /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
+  /// a control id, or "ui". Drives soft takeover between devices.
+  public var owners: [String: String] = [:]
 
   /// 0 = all A, 1 = all B, constant-power curve. Only decks "A" and "B" are faded.
   public var crossfader = 0.5 { didSet { applyGains() } }
@@ -64,7 +67,7 @@ public final class DJEngine {
   }
 
   private func applyGains() {
-    for (name, d) in decks { d.strip.outputVolume = Float(d.volume * crossfadeGain(name)) }
+    for (name, d) in decks { d.strip.outputVolume = Float(d.trim * d.volume * crossfadeGain(name)) }
   }
 
   public func start() throws {
@@ -83,8 +86,9 @@ public final class Deck: JogClock {
   public let name: String
   public let turntable: Turntable
   public let node: AVAudioSourceNode
-  /// Band 0 low-pass, band 1 high-pass; see `filter`.
-  public let filterNode = AVAudioUnitEQ(numberOfBands: 2)
+  /// Band 0 low-pass, 1 high-pass (see `filter`); 2 low shelf, 3 mid peak,
+  /// 4 high shelf (see `eqLow` / `eqMid` / `eqHigh`).
+  public let filterNode = AVAudioUnitEQ(numberOfBands: 5)
   /// Channel strip: its output volume is volume x crossfader gain.
   public let strip = AVAudioMixerNode()
   public private(set) var loaded: SampleBuffer?
@@ -92,11 +96,36 @@ public final class Deck: JogClock {
   public private(set) var playing = false
   /// Cue points in samples, by slot.
   public private(set) var hotCues: [Int: Double] = [:]
+  /// The CUE button's point, in samples.
+  public private(set) var cuePoint = 0.0
+  /// Loop region in samples (unwrapped playhead), and whether it is active.
+  public private(set) var loopStart: Double?
+  public private(set) var loopEnd: Double?
+  public private(set) var looping = false
 
   var onGainChange: (() -> Void)?
 
   /// 0...1 channel fader.
   public var volume = 0.8 { didSet { onGainChange?() } }
+
+  /// Trim knob, 0...1: 0.5 = unity, 1 = +6 dB, 0 = -6 dB.
+  public var gain = 0.5 { didSet { onGainChange?() } }
+  var trim: Double { pow(2, (gain - 0.5) * 2) }
+
+  /// EQ knobs, 0...1: 0.5 = flat, 1 = +6 dB, 0 = -24 dB (near kill).
+  public var eqLow = 0.5 { didSet { setEQ(2, eqLow) } }
+  public var eqMid = 0.5 { didSet { setEQ(3, eqMid) } }
+  public var eqHigh = 0.5 { didSet { setEQ(4, eqHigh) } }
+
+  static func eqDecibels(_ v: Double) -> Float {
+    Float(v < 0.5 ? -24 * (0.5 - v) / 0.5 : 6 * (v - 0.5) / 0.5)
+  }
+
+  private func setEQ(_ band: Int, _ v: Double) {
+    let b = filterNode.bands[band]
+    b.gain = Self.eqDecibels(v)
+    b.bypass = abs(v - 0.5) < 0.01
+  }
 
   /// One-knob DJ filter, 0...1. Centre (0.45...0.55) is flat; below sweeps a
   /// low-pass from 20 kHz down to 200 Hz, above sweeps a high-pass from 20 Hz up to 5 kHz.
@@ -136,8 +165,15 @@ public final class Deck: JogClock {
       tt.render(frames: Int(frames), left: l, right: r)
       return noErr
     }
-    for (band, type) in zip(filterNode.bands, [AVAudioUnitEQFilterType.lowPass, .highPass]) {
-      band.filterType = type
+    let types: [AVAudioUnitEQFilterType] = [
+      .lowPass, .highPass, .lowShelf, .parametric, .highShelf,
+    ]
+    let freqs: [Float] = [20_000, 20, 250, 1_000, 4_000]
+    for (i, band) in filterNode.bands.enumerated() {
+      band.filterType = types[i]
+      band.frequency = freqs[i]
+      band.bandwidth = 1.5
+      band.gain = 0
       band.bypass = true
     }
   }
@@ -146,7 +182,61 @@ public final class Deck: JogClock {
     loaded = buffer
     self.title = title
     hotCues = [:]
+    cuePoint = 0
+    loopStart = nil
+    loopEnd = nil
+    looping = false
     turntable.load(buffer)
+  }
+
+  /// CUE button: while playing, back to the cue point and pause; while
+  /// paused, set the cue point at the playhead.
+  public func cue() {
+    guard loaded != nil else { return }
+    if playing {
+      setPlaying(false)
+      turntable.send(.seek(sample: cuePoint))
+    } else {
+      cuePoint = turntable.position
+    }
+  }
+
+  /// LOOP IN: mark the loop start at the playhead (and leave any active loop).
+  public func loopIn() {
+    guard loaded != nil else { return }
+    if looping { exitLoop() }
+    loopStart = turntable.position
+    loopEnd = nil
+  }
+
+  /// LOOP OUT: close the loop at the playhead and start looping; while
+  /// looping, exit the loop.
+  public func loopOut() {
+    if looping { return exitLoop() }
+    guard let start = loopStart, turntable.position > start + 1 else { return }
+    setLoop(start, turntable.position)
+  }
+
+  public func loopHalve() {
+    guard looping, let s = loopStart, let e = loopEnd, e - s > 64 else { return }
+    setLoop(s, s + (e - s) / 2)
+  }
+
+  public func loopDouble() {
+    guard looping, let s = loopStart, let e = loopEnd else { return }
+    setLoop(s, s + (e - s) * 2)
+  }
+
+  private func setLoop(_ start: Double, _ end: Double) {
+    loopStart = start
+    loopEnd = end
+    looping = true
+    turntable.send(.loop(start: start, end: end))
+  }
+
+  private func exitLoop() {
+    looping = false
+    turntable.send(.loopOff)
   }
 
   /// Jump to the cue in `slot`, or set it at the playhead if empty.

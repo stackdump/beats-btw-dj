@@ -1,42 +1,83 @@
 import Foundation
 
 /// What a control on a surface does. Continuous actions take the control's
-/// value (0...1); momentary ones fire on press.
-public enum DJActionKind: String, Codable, Sendable {
+/// value (0...1); momentary ones fire on press. `unbound` parks a control on
+/// purpose (with a `reason`) so nothing is ever dropped silently.
+public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case volume  // continuous, per deck
   case filter  // continuous, per deck: < 0.5 low-pass, > 0.5 high-pass
   case pitch  // continuous, per deck: ±8 %
+  case gain  // continuous, per deck: trim, 0.5 = unity, 1 = +6 dB
+  case eqLow, eqMid, eqHigh  // continuous, per deck: 0.5 = flat, 0 = kill, 1 = +6 dB
   case crossfader  // continuous: 0 = A, 1 = B
   case master  // continuous
   case play  // press: toggle the deck's transport
+  case cue  // press: playing → back to cue point and pause; paused → set cue point here
   case hotcue  // press: jump to slot, or set it if empty
   case clearcue  // press: forget slot
+  case loopIn  // press: loop start at the playhead
+  case loopOut  // press: loop end at the playhead and start looping; again: exit loop
+  case loopHalve, loopDouble  // press: resize the active loop
+  case shift  // hold: software shift layer for this surface
+  case unbound  // parked on purpose; see `reason`
 }
 
-/// A button/knob surface: pads, faders, keys — everything that is not a jog
-/// wheel. Loaded from `Resources/profiles/<id>.json`, like `JogProfile`.
+/// A button/knob surface: pads, faders, keys, jog-wheel decks' buttons —
+/// anything that is note/CC/pitch-bend. Loaded from
+/// `Resources/profiles/<id>.json`, like `JogProfile`.
 public struct SurfaceProfile: Codable, Sendable {
-  public enum ControlType: String, Codable, Sendable { case note, cc }
+  public enum ControlType: String, Codable, Sendable {
+    case note  // note on/off (velocity 0 = release)
+    case cc  // 7-bit absolute
+    case cc14  // 14-bit absolute: MSB on CC n, LSB on CC n+32
+    case relative  // 7-bit two's-complement increments (0x01 = +1, 0x7F = -1)
+    case pitchbend  // 0xEn, 14-bit; one control per channel
+    case program  // 0xCn program change (e.g. MPK pads in PROG CHANGE mode)
+  }
 
-  /// A contiguous run of notes or CCs: `first ..< first + count`.
+  /// A run of controls of one type on one channel. Either contiguous
+  /// (`first ..< first + count`) or an explicit `numbers` list.
   public struct Group: Codable, Sendable {
     public var id: String
     public var type: ControlType
-    public var first: UInt8
-    public var count: UInt8
-    /// 0-based MIDI channel, or nil for any (the default, as in beats).
+    public var first: UInt8?
+    public var count: UInt8?
+    public var numbers: [UInt8]?
+    /// Per-index names, for monitors and docs ("play", "cue", …).
+    public var names: [String]?
+    /// 0-based MIDI channel, or nil for any.
     public var channel: UInt8?
+    public var comment: String?
+
+    /// MIDI note/CC numbers of the group's controls, by index.
+    public var controlNumbers: [UInt8] {
+      if let numbers { return numbers }
+      guard let first, let count else { return [] }
+      return (0..<count).map { first + $0 }
+    }
+
+    public func name(_ index: Int) -> String? {
+      guard let names, names.indices.contains(index) else { return nil }
+      return names[index]
+    }
   }
 
   public struct Binding: Codable, Sendable, Hashable {
     public var group: String
-    public var index: Int
+    /// Control index within the group, or nil for every control in it.
+    public var index: Int?
     public var action: DJActionKind
     public var deck: String?
     public var slot: Int?
+    /// Only while this surface's shift is held (true), only while it is not
+    /// (false), or regardless (nil).
+    public var shift: Bool?
+    /// Why a control is `unbound` (e.g. "needs BPM — Phase 3").
+    public var reason: String?
   }
 
-  /// APC-style LED feedback: note-on to the same note lights it.
+  /// Note-on LED feedback (APC, Inpulse): note-on to the control's own
+  /// channel and number lights it.
   public struct LEDs: Codable, Sendable {
     public var rgbGroups: [String]
     public var singleGroups: [String]
@@ -52,6 +93,8 @@ public struct SurfaceProfile: Codable, Sendable {
   public var match: String
   public var matchComment: String?
   public var source: String?
+  /// Id of a `JogProfile` for devices with jog wheels on the same port.
+  public var jog: String?
   public var groups: [Group]
   public var leds: LEDs?
   public var layout: [Binding]
@@ -60,66 +103,113 @@ public struct SurfaceProfile: Codable, Sendable {
     portName.range(of: match, options: [.regularExpression, .caseInsensitive]) != nil
   }
 
-  /// Decode a raw MIDI message into the control it came from, if any.
+  /// Stateless decode (7-bit view; a cc14 LSB on its own decodes to nil).
+  /// Use `SurfaceDecoder` for full 14-bit resolution.
   public func parse(_ data: [UInt8]) -> ControlEvent? {
-    guard data.count >= 3 else { return nil }
-    let type = data[0] & 0xF0
-    let channel = data[0] & 0x0F
-    let kind: ControlType
-    let pressed: Bool
-    switch type {
-    case 0x90:
-      kind = .note
-      pressed = data[2] > 0
-    case 0x80:
-      kind = .note
-      pressed = false
-    case 0xB0:
-      kind = .cc
-      pressed = data[2] > 0
-    default: return nil
-    }
-    for g in groups where g.type == kind && (g.channel == nil || g.channel == channel) {
-      let n = Int(data[1]) - Int(g.first)
-      if n >= 0 && n < Int(g.count) {
-        return ControlEvent(
-          group: g.id, index: n, value: Double(data[2]) / 127, pressed: pressed, isCC: kind == .cc)
-      }
-    }
-    return nil
+    var d = SurfaceDecoder(profile: self)
+    return d.decode(data)
   }
 
+  public func group(_ id: String) -> Group? { groups.first { $0.id == id } }
+
   /// The note/CC number for a control, for LED output.
-  public func number(group: String, index: Int) -> UInt8? {
-    guard let g = groups.first(where: { $0.id == group }), index >= 0, index < Int(g.count) else {
-      return nil
-    }
-    return g.first + UInt8(index)
+  public func number(group id: String, index: Int) -> UInt8? {
+    guard let nums = group(id)?.controlNumbers, nums.indices.contains(index) else { return nil }
+    return nums[index]
   }
 
   public static func load(_ id: String) throws -> SurfaceProfile {
     try JSONDecoder().decode(SurfaceProfile.self, from: Data(contentsOf: profileURL(id)))
   }
 
-  public static let apcMiniMK2: SurfaceProfile = {
-    do { return try load("apc-mini-mk2") } catch { fatalError("bundled profile: \(error)") }
-  }()
+  private static func bundled(_ id: String) -> SurfaceProfile {
+    do { return try load(id) } catch { fatalError("bundled profile \(id): \(error)") }
+  }
 
-  public static let mpkMiniMK2: SurfaceProfile = {
-    do { return try load("mpk-mini-mk2") } catch { fatalError("bundled profile: \(error)") }
-  }()
+  public static let apcMiniMK2 = bundled("apc-mini-mk2")
+  public static let mpkMiniMK2 = bundled("mpk-mini-mk2")
+  public static let inpulse200MK3 = bundled("inpulse-200-mk3-surface")
 
-  public static var all: [SurfaceProfile] { [apcMiniMK2, mpkMiniMK2] }
+  public static var all: [SurfaceProfile] { [apcMiniMK2, mpkMiniMK2, inpulse200MK3] }
 }
 
 public struct ControlEvent: Equatable, Sendable {
   public var group: String
   public var index: Int
-  /// 0...1 (data byte / 127).
+  /// 0...1 for absolute controls (7- or 14-bit), 0 for relative.
   public var value: Double
-  /// Note-on with velocity > 0, or CC > 0.
+  /// Note-on with velocity > 0, or a CC / bend value > 0.
   public var pressed: Bool
   public var isCC: Bool
+  /// Signed increments for `relative` controls, else 0.
+  public var delta: Int = 0
+  /// Control name from the profile, if it has one.
+  public var name: String? = nil
+}
+
+/// Decodes one port's messages against a profile. Stateful only for 14-bit
+/// controls: the MSB is remembered so the LSB can refine it.
+public struct SurfaceDecoder: Sendable {
+  public let profile: SurfaceProfile
+  private var msb: [UInt16: UInt8] = [:]  // channel<<8 | cc → last MSB
+
+  public init(profile: SurfaceProfile) { self.profile = profile }
+
+  public mutating func decode(_ data: [UInt8]) -> ControlEvent? {
+    guard data.count >= 3 else { return nil }
+    let status = data[0] & 0xF0
+    let ch = data[0] & 0x0F
+    let (d1, d2) = (data[1], data[2])
+
+    func event(
+      _ g: SurfaceProfile.Group, _ i: Int, value: Double, pressed: Bool, cc: Bool, delta: Int = 0
+    )
+      -> ControlEvent
+    {
+      ControlEvent(
+        group: g.id, index: i, value: value, pressed: pressed, isCC: cc, delta: delta,
+        name: g.name(i))
+    }
+
+    for g in profile.groups where g.channel == nil || g.channel == ch {
+      switch (status, g.type) {
+      case (0x90, .note), (0x80, .note):
+        if let i = g.controlNumbers.firstIndex(of: d1) {
+          return event(g, i, value: Double(d2) / 127, pressed: status == 0x90 && d2 > 0, cc: false)
+        }
+      case (0xB0, .cc):
+        if let i = g.controlNumbers.firstIndex(of: d1) {
+          return event(g, i, value: Double(d2) / 127, pressed: d2 > 0, cc: true)
+        }
+      case (0xB0, .relative):
+        if let i = g.controlNumbers.firstIndex(of: d1) {
+          let delta = d2 < 0x40 ? Int(d2) : Int(d2) - 0x80
+          return event(g, i, value: 0, pressed: delta != 0, cc: true, delta: delta)
+        }
+      case (0xB0, .cc14):
+        let key = UInt16(ch) << 8
+        if let i = g.controlNumbers.firstIndex(of: d1) {
+          msb[key | UInt16(d1)] = d2
+          let v = Double(UInt16(d2) << 7) / 16383
+          return event(g, i, value: min(1, v), pressed: d2 > 0, cc: true)
+        }
+        if d1 >= 32, let i = g.controlNumbers.firstIndex(of: d1 - 32) {
+          let hi = msb[key | UInt16(d1 - 32)] ?? 0
+          let v = Double(UInt16(hi) << 7 | UInt16(d2)) / 16383
+          return event(g, i, value: v, pressed: v > 0, cc: true)
+        }
+      case (0xC0, .program):
+        if let i = g.controlNumbers.firstIndex(of: d1) {
+          return event(g, i, value: 1, pressed: true, cc: false)
+        }
+      case (0xE0, .pitchbend):
+        let v = Double(UInt16(d2) << 7 | UInt16(d1)) / 16383
+        return event(g, 0, value: v, pressed: v != 0.5, cc: true)
+      default: break
+      }
+    }
+    return nil
+  }
 }
 
 /// Where profile JSON lives: the .app's Resources first, then SwiftPM's bundle.

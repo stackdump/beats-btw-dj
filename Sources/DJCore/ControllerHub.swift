@@ -78,29 +78,48 @@ public final class ControllerHub {
   }
 
   func profileName(for port: String) -> String? {
-    if jogProfile.matches(portName: port) { return jogProfile.name }
-    return surfaceProfiles.first { $0.matches(portName: port) }?.name
+    surfaceProfiles.first { $0.matches(portName: port) }?.name
+      ?? (jogProfile.matches(portName: port) ? jogProfile.name : nil)
+  }
+
+  /// Per-port tallies of what arrived, for the coverage report.
+  public private(set) var stats: [String: Stats] = [:]
+  public struct Stats: Sendable {
+    public var bound = 0, jog = 0, unbound = 0, unmapped = 0, undecoded = 0
   }
 
   func route(_ m: MIDIMessage) {
-    if jogProfile.matches(portName: m.port) {
-      if let e = jogProfile.parse(m.bytes) {
-        for a in jogAdapters { a.handle(e) }
-        onMessage?(m, "\(e)")
-      } else {
-        onMessage?(m, "")
-      }
-    } else if let s = surfaces[m.port] {
-      if let e = s.profile.parse(m.bytes) {
-        s.handle(e)
-        let b = s.binding(for: e)
-        onMessage?(
-          m,
-          "\(e.group)[\(e.index)]=\(String(format: "%.2f", e.value))"
-            + (b.map { " → \($0.action.rawValue) \($0.deck ?? "")" } ?? ""))
-      } else {
-        onMessage?(m, "")
-      }
+    // Jog wheels first (the Inpulse shares its port with ordinary controls).
+    if jogProfile.matches(portName: m.port), let e = jogProfile.parse(m.bytes) {
+      for a in jogAdapters { a.handle(e) }
+      stats[m.port, default: Stats()].jog += 1
+      onMessage?(m, "\(e)")
+      return
+    }
+    guard let s = surfaces[m.port] else { return }
+    guard let (e, outcome) = s.handle(bytes: m.bytes) else {
+      stats[m.port, default: Stats()].undecoded += 1
+      onMessage?(m, "(undecoded)")
+      return
+    }
+    let control =
+      "\(e.group)[\(e.index)]" + (e.name.map { " \($0)" } ?? "")
+      + (e.delta != 0 ? " Δ\(e.delta)" : String(format: "=%.3f", e.value))
+    switch outcome {
+    case .bound(let b):
+      stats[m.port, default: Stats()].bound += 1
+      onMessage?(m, "\(control) → \(b.action.rawValue) \(b.deck ?? "")")
+    case .unbound(let reason):
+      stats[m.port, default: Stats()].unbound += 1
+      onMessage?(m, "\(control) (unbound: \(reason))")
+    case .pickup(let b):
+      stats[m.port, default: Stats()].bound += 1
+      onMessage?(
+        m,
+        "\(control) → \(b.action.rawValue) \(b.deck ?? "") (soft takeover: move to current value)")
+    case .unmapped:
+      stats[m.port, default: Stats()].unmapped += 1
+      onMessage?(m, "\(control) (UNMAPPED — profile gap)")
     }
   }
 

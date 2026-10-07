@@ -15,11 +15,16 @@ Two decks (scratchable turntables ported from the lab's scrub worklet), a
 mixer (volume, one-knob filter, ±8 % pitch, crossfader, master) and 4 hot cues
 per deck. Supported controllers, all at once, hot-pluggable:
 
-| Device | Profile | Does |
-|---|---|---|
-| Hercules DJControl Inpulse 200 MK3 | `inpulse-200-mk3.json` | Jog wheels: touch + turn = scratch, ring = nudge, SHIFT = coarse seek |
-| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | Faders 1–3 A vol/filter/pitch, 4 crossfader, 6–8 B pitch/filter/vol, master; bottom grid row hot cues (A left, B right), row above clears them; scene 1/2 and track 1/8 play A/B; LED feedback |
-| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | K1–K8: A vol, B vol, crossfader, master, A/B filter, A/B pitch; pads 1–4 A cues, 5–8 B cues. **Factory map, unverified** — check with `djctl monitor mpk` |
+| Device | Profile | Bound now | Parked for later phases |
+|---|---|---|---|
+| Hercules DJControl Inpulse 200 MK3 | `inpulse-200-mk3.json` (jogs) + `inpulse-200-mk3-surface.json` | Jogs (scratch / bend / shift-seek), PLAY, CUE, LOOP IN/OUT, shift+loop halve/double, hot-cue pads + shift-clear, volume, filter, EQ low/high, gain, pitch, crossfader; LEDs | sync, roll/FX/sampler pads, PFL, load, browser, two unidentified centre knobs |
+| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | Faders (A vol/filter/pitch, crossfader, B pitch/filter/vol, master), hot-cue + clear rows, play buttons, SHIFT (software); LEDs | grid rows 2–7, track 2–7, scene 3–8, fader 5 — Phase 3 section launcher |
+| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | Knobs 2–8 (A/B vol, crossfader, A/B filter, A/B pitch), pads (PROG CHANGE) = hot cues | keys, joystick, pad NOTE mode — Phase 3 instrument; knob 1 shares CC 1 with the joystick |
+
+Every control is either bound or explicitly parked with a reason (`"action": "unbound"`), and
+tests replay every distinct message captured from the real hardware on 2026-10-07. Two devices
+on one parameter: last mover wins, with soft takeover (a knob must reach the current value
+before it takes over). `djctl monitor` shows each message's control name and what it does.
 
 The layouts are data: edit the `layout` array in the profile JSON.
 

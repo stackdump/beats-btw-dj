@@ -38,6 +38,11 @@ its copy; the two are now independent. Rules inherited from that split:
   pads/faders is a `SurfaceProfile` JSON (`groups` + `layout` + optional
   `leds`). Add a device = add a JSON and list it in `SurfaceProfile.all`.
   MIDI routing must go through `DispatchQueue.main.async` (FIFO), not `Task`.
+- Coverage contract: every control in a profile has a layout entry — bound, or
+  `"action": "unbound"` with a `reason`. Values come from the real hardware:
+  re-capture with `djctl monitor <device> > captures/<device>.log`, regenerate
+  `Tests/DJCoreTests/Fixtures/captured-messages.json`, and keep the replay test
+  green. Mark values not yet seen on a unit `[MIXXX]`/`[UNVERIFIED]`.
 - Tests use `DJEngine(offline: true)` (manual rendering) — never the speakers.
 
 ## Hardware notes (macOS)

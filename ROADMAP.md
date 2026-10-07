@@ -18,7 +18,7 @@ Status legend: **done** · **in progress** · **next** · later.
 
 ---
 
-## Phase 1 — Every control on all three devices **(next)**
+## Phase 1 — Every control on all three devices **(done 2026-10-07)**
 
 Goal: every physical control on every device produces a decoded event, and
 every event has either a binding or an explicit "unbound" entry. Nothing a
@@ -63,7 +63,19 @@ fails if a profile has a control group with no layout entry and no explicit
 Done when: `djctl monitor` shows a decoded name for every control on all
 three devices, and the default layouts bind or explicitly park each one.
 
-## Phase 2 — Native music generation with CID equivalence **(in progress)**
+**Outcome.** Measured by sweep capture (`captures/*.log`, gitignored) rather than
+a step-by-step `learn` wizard; the distinct messages are a test fixture
+(`Tests/DJCoreTests/Fixtures/captured-messages.json`). Findings that differ from
+expectations: the Inpulse sends every knob/fader as 14-bit CC pairs, its SHIFT is
+note 0x04 *and* a hardware channel shift (+3), pad modes 0x0F/0x10 select note
+ranges; the MPK preset on this unit sends knobs on CC 1–8 (knob 1 collides with
+the joystick's CC 1) and pads as Program Change — not beats' factory map. Still
+open: identify Inpulse centre knobs CC 0x03/0x04 and buttons 0x01/0x02 on
+channel 1; verify the `[MIXXX]`-only Inpulse entries (FX/sampler pads, PFL,
+load, browser); pad NOTE mode on the MPK. A `djctl learn` wizard is deferred —
+re-capture + fixture regeneration covers preset changes for now.
+
+## Phase 2 — Native music generation with CID equivalence **(next — JS read, no Swift yet)**
 
 Goal: the Swift app composes and renders beats tracks itself, and for the
 same share envelope produces the **same CIDs** as beats.

@@ -135,3 +135,23 @@ struct DJEngineTests {
     #expect(memcmp(a.left, b.left, a.length * 4) == 0)
   }
 }
+
+struct TurntableLoopTests {
+  @Test func loopWrapsThePlayhead() {
+    let sr = 1000.0
+    let tt = Turntable(sampleRate: sr)
+    tt.load(SampleBuffer(left: (0..<100_000).map(Float.init), sampleRate: sr))
+    tt.send(.transport(playing: true))
+    tt.send(.loop(start: 100, end: 300))
+    var out = [Float](repeating: 0, count: 5000)
+    out.withUnsafeMutableBufferPointer {
+      tt.render(frames: 5000, left: $0.baseAddress!, right: nil)
+    }
+    #expect(tt.position >= 100 && tt.position < 300)
+    tt.send(.loopOff)
+    out.withUnsafeMutableBufferPointer {
+      tt.render(frames: 1000, left: $0.baseAddress!, right: nil)
+    }
+    #expect(tt.position > 1000)
+  }
+}

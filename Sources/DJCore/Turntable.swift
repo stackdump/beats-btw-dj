@@ -49,6 +49,9 @@ public enum TurntableCommand: BitwiseCopyable {
   case pitch(ratio: Double)
   /// Jump the playhead (and scrub target) to this sample.
   case seek(sample: Double)
+  /// While playing, wrap the playhead from `end` back to `start` (unwrapped samples).
+  case loop(start: Double, end: Double)
+  case loopOff
   /// Seconds the platter takes to catch up with the hand.
   case chase(seconds: Double)
 }
@@ -80,6 +83,9 @@ public final class Turntable: @unchecked Sendable {
   private var playing = false
   private var nudge = 0.0
   private var pitch = 0.0
+  private var loopStart = 0.0
+  private var loopEnd = 0.0
+  private var looping = false
   private var chaseTau: Double
   private let rateSmooth: Double
   private let motorSmooth: Double
@@ -150,6 +156,10 @@ public final class Turntable: @unchecked Sendable {
           rate += (want - rate) * motorSmooth
         }
         pos += rate
+        if looping && !scrubbing {
+          let len = loopEnd - loopStart
+          if pos >= loopEnd { pos -= len } else if pos < loopStart && rate < 0 { pos += len }
+        }
 
         var p = pos.truncatingRemainder(dividingBy: len)
         if p < 0 { p += len }
@@ -186,6 +196,11 @@ public final class Turntable: @unchecked Sendable {
     case .seek(let sample):
       pos = sample
       target = sample
+    case .loop(let start, let end):
+      loopStart = start
+      loopEnd = max(end, start + 1)
+      looping = true
+    case .loopOff: looping = false
     case .chase(let seconds): chaseTau = max(0.002, seconds) * sampleRate
     }
   }
