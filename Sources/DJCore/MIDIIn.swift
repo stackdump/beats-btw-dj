@@ -37,10 +37,17 @@ public final class MIDIIn: @unchecked Sendable {
   private var connected: [MIDIEndpointRef: String] = [:]
   private let lock = NSLock()
 
-  public init(name: String = "dj-vevr-se", handler: @escaping @Sendable (MIDIMessage) -> Void)
+  /// `onSetupChange` fires (on a CoreMIDI thread) when devices come or go.
+  public init(
+    name: String = "dj-vevr-se", onSetupChange: (@Sendable () -> Void)? = nil,
+    handler: @escaping @Sendable (MIDIMessage) -> Void
+  )
     throws
   {
-    try check(MIDIClientCreateWithBlock(name as CFString, &client, nil), "MIDIClientCreate")
+    try check(
+      MIDIClientCreateWithBlock(name as CFString, &client) { note in
+        if note.pointee.messageID == .msgSetupChanged { onSetupChange?() }
+      }, "MIDIClientCreate")
     try check(
       MIDIInputPortCreateWithProtocol(client, "in" as CFString, ._1_0, &input) {
         [weak self] list, src in
@@ -93,6 +100,35 @@ public final class MIDIIn: @unchecked Sendable {
     var tb = mach_timebase_info_data_t()
     mach_timebase_info(&tb)
     return Double(hostTime) * Double(tb.numer) / Double(tb.denom) / 1e9
+  }
+}
+
+/// Sends MIDI 1.0 messages (e.g. LED feedback) to destinations.
+public final class MIDIOut: @unchecked Sendable {
+  private var client = MIDIClientRef()
+  private var output = MIDIPortRef()
+
+  public init(name: String = "dj-vevr-se out") throws {
+    try check(MIDIClientCreateWithBlock(name as CFString, &client, nil), "MIDIClientCreate")
+    try check(MIDIOutputPortCreate(client, "out" as CFString, &output), "MIDIOutputPortCreate")
+  }
+
+  deinit {
+    MIDIPortDispose(output)
+    MIDIClientDispose(client)
+  }
+
+  /// Send 3-byte channel-voice messages as one MIDI 1.0 UMP event list.
+  public func send(_ messages: [[UInt8]], to port: MIDIPort) {
+    for chunk in stride(from: 0, to: messages.count, by: 64) {
+      var list = MIDIEventList()
+      var packet = MIDIEventListInit(&list, ._1_0)
+      for m in messages[chunk..<min(chunk + 64, messages.count)] where m.count == 3 {
+        var word = UInt32(0x2) << 28 | UInt32(m[0]) << 16 | UInt32(m[1]) << 8 | UInt32(m[2])
+        packet = MIDIEventListAdd(&list, MemoryLayout<MIDIEventList>.size, packet, 0, 1, &word)
+      }
+      MIDISendEventList(output, port.endpoint, &list)
+    }
   }
 }
 

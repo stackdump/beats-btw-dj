@@ -28,6 +28,17 @@ its copy; the two are now independent. Rules inherited from that split:
   generated `Bundle.module` (it only checks the .app root, which codesign
   rejects). Load bundled files `Bundle.main` first, `Bundle.module` second.
 - Go CLI (`cmd/`) and `web/jog` remain as capture/calibration tools.
+- Audio thread rules: `Turntable.render` is the only code on it. Main → audio
+  goes through `SPSCRing<TurntableCommand>`; buffers cross as retained
+  `Unmanaged` pointers and come back through the retire ring to be freed on
+  the main thread. Nothing on the audio thread allocates, locks or releases.
+- Main-thread state that the audio thread applies later (e.g. `turntable.length`)
+  lags by one render; decide UI/controller logic from `Deck`'s own state.
+- Controllers: jog wheels are `JogProfile` + `JogAdapter`; everything with
+  pads/faders is a `SurfaceProfile` JSON (`groups` + `layout` + optional
+  `leds`). Add a device = add a JSON and list it in `SurfaceProfile.all`.
+  MIDI routing must go through `DispatchQueue.main.async` (FIFO), not `Task`.
+- Tests use `DJEngine(offline: true)` (manual rendering) — never the speakers.
 
 ## Hardware notes (macOS)
 

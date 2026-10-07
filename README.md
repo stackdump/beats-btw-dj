@@ -7,14 +7,27 @@ lab (`public/jog/`, commit `b7704ba`) because the goals diverged: beats is a
 deterministic, shareable web studio; this is live performance with real
 hardware (first target: Hercules DJControl Inpulse 200 MK3).
 
-**The app is Swift** (SwiftUI + CoreMIDI, AVAudioEngine next), built with
+**The app is Swift** (SwiftUI + CoreMIDI + AVAudioEngine), built with
 SwiftPM — no Xcode project. The Go CLI and the browser lab stay as hardware
 and capture tools.
+
+Two decks (scratchable turntables ported from the lab's scrub worklet), a
+mixer (volume, one-knob filter, ±8 % pitch, crossfader, master) and 4 hot cues
+per deck. Supported controllers, all at once, hot-pluggable:
+
+| Device | Profile | Does |
+|---|---|---|
+| Hercules DJControl Inpulse 200 MK3 | `inpulse-200-mk3.json` | Jog wheels: touch + turn = scratch, ring = nudge, SHIFT = coarse seek |
+| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | Faders 1–3 A vol/filter/pitch, 4 crossfader, 6–8 B pitch/filter/vol, master; bottom grid row hot cues (A left, B right), row above clears them; scene 1/2 and track 1/8 play A/B; LED feedback |
+| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | K1–K8: A vol, B vol, crossfader, master, A/B filter, A/B pitch; pads 1–4 A cues, 5–8 B cues. **Factory map, unverified** — check with `djctl monitor mpk` |
+
+The layouts are data: edit the `layout` array in the profile JSON.
 
 ```bash
 make swift-test                           # swift-testing suite (DJCore)
 make djctl ARGS=ports                     # Swift CoreMIDI: list sources/destinations
-make djctl ARGS="monitor inpulse"         # raw bytes + decoded jog events
+make djctl ARGS="monitor"                 # raw bytes, decoded per device profile
+make djctl ARGS="play a.wav b.mp3"        # headless: two decks + every controller (demo loop if no file)
 make run-app                              # build build/DJApp.app (ad-hoc signed) and open it
 make fmt lint                             # swift format (bundled with the toolchain)
 
@@ -30,7 +43,7 @@ make serve                                # browser lab on http://localhost:8765
 | Path | What |
 |---|---|
 | `Package.swift` | SwiftPM manifest, macOS 15+. |
-| `Sources/DJCore/` | Profile loading, jog parsing (`JogEvent`), CoreMIDI input (`MIDIIn`). |
+| `Sources/DJCore/` | `Turntable` (real-time DSP, fed by a lock-free `SPSCRing`), `DJEngine`/`Deck` (AVAudioEngine graph, mixer, cues), `JogAdapter`, `SurfaceProfile`/`SurfaceController` (pads/faders + LEDs), `ControllerHub` (matches ports to profiles, hot-plug), `MIDIIn`/`MIDIOut`. |
 | `Sources/DJCore/Resources/profiles/*.json` | **Device profiles — single source of truth.** `web/jog/profile-parity.test.mjs` fails if the JS copy drifts. |
 | `Sources/djctl/` | Swift CLI for hardware checks. |
 | `Sources/DJApp/` | SwiftUI app; `scripts/bundle-app.sh` wraps it in `build/DJApp.app`. |

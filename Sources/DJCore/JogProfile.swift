@@ -42,16 +42,7 @@ public struct JogProfile: Codable, Sendable, Equatable {
   }
 
   public static func load(_ id: String) throws -> JogProfile {
-    // In DJApp.app the profiles sit in Contents/Resources/profiles (see scripts/bundle-app.sh):
-    // SwiftPM's Bundle.module only looks at the .app root, where codesign rejects a bundle.
-    // Under `swift run` / `swift test`, Bundle.module finds them in .build.
-    let url =
-      Bundle.main.url(forResource: id, withExtension: "json", subdirectory: "profiles")
-      ?? Bundle.module.url(forResource: id, withExtension: "json", subdirectory: "profiles")
-    guard let url else {
-      throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "profiles/\(id).json"])
-    }
-    return try JSONDecoder().decode(JogProfile.self, from: Data(contentsOf: url))
+    try JSONDecoder().decode(JogProfile.self, from: Data(contentsOf: profileURL(id)))
   }
 
   public static let inpulse200MK3: JogProfile = {

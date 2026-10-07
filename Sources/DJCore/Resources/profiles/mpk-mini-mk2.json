@@ -1,0 +1,29 @@
+{
+  "name": "MPK Mini Mk II",
+  "manufacturer": "Akai",
+  "match": "mpk.*mini",
+  "source": "factory defaults as documented in beats-bitwrap-io public/lib/ui/device-map.js. UNVERIFIED: the MPK Editor, bank B and firmware revisions all change these; beats ships no MPK preset for that reason. Check with `djctl monitor mpk`.",
+  "groups": [
+    { "id": "knobs", "type": "cc",   "first": 70, "count": 8,  "comment": "K1-K8" },
+    { "id": "pads",  "type": "note", "first": 36, "count": 8,  "comment": "bank A, pads 1-8" },
+    { "id": "keys",  "type": "note", "first": 48, "count": 25, "comment": "C3-C5 at default octave" }
+  ],
+  "layout": [
+    { "group": "knobs", "index": 0, "action": "volume", "deck": "A" },
+    { "group": "knobs", "index": 1, "action": "volume", "deck": "B" },
+    { "group": "knobs", "index": 2, "action": "crossfader" },
+    { "group": "knobs", "index": 3, "action": "master" },
+    { "group": "knobs", "index": 4, "action": "filter", "deck": "A" },
+    { "group": "knobs", "index": 5, "action": "filter", "deck": "B" },
+    { "group": "knobs", "index": 6, "action": "pitch",  "deck": "A" },
+    { "group": "knobs", "index": 7, "action": "pitch",  "deck": "B" },
+    { "group": "pads", "index": 0, "action": "hotcue", "deck": "A", "slot": 0 },
+    { "group": "pads", "index": 1, "action": "hotcue", "deck": "A", "slot": 1 },
+    { "group": "pads", "index": 2, "action": "hotcue", "deck": "A", "slot": 2 },
+    { "group": "pads", "index": 3, "action": "hotcue", "deck": "A", "slot": 3 },
+    { "group": "pads", "index": 4, "action": "hotcue", "deck": "B", "slot": 0 },
+    { "group": "pads", "index": 5, "action": "hotcue", "deck": "B", "slot": 1 },
+    { "group": "pads", "index": 6, "action": "hotcue", "deck": "B", "slot": 2 },
+    { "group": "pads", "index": 7, "action": "hotcue", "deck": "B", "slot": 3 }
+  ]
+}

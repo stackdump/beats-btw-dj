@@ -1,0 +1,50 @@
+{
+  "name": "APC mini mk2",
+  "manufacturer": "Akai",
+  "match": "apc.*mini.*mk2(?!.*notes)",
+  "matchComment": "macOS shows two ports, 'APC mini mk2 Control' (session mode: grid, faders, buttons, LEDs) and 'APC mini mk2 Notes' (note/drum mode). Only Control is ours.",
+  "source": "Akai 'APC mini mk2 - Communications Protocol v1.0', as used by beats-bitwrap-io public/lib/backend/apc-mini-mk2.js",
+  "groups": [
+    { "id": "pads",   "type": "note", "first": 0,   "count": 64, "comment": "8x8 RGB grid; 0 = bottom-left, +1 right, +8 up" },
+    { "id": "track",  "type": "note", "first": 100, "count": 8,  "comment": "red single-LED buttons below the grid" },
+    { "id": "scene",  "type": "note", "first": 112, "count": 8,  "comment": "green single-LED buttons right of the grid, top to bottom" },
+    { "id": "faders", "type": "cc",   "first": 48,  "count": 9,  "comment": "faders 1-8 then master" }
+  ],
+  "leds": {
+    "rgbGroups": ["pads"],
+    "singleGroups": ["track", "scene"],
+    "rgbDimStatus": 146,
+    "rgbFullStatus": 150,
+    "singleOff": 0, "singleOn": 1, "singleBlink": 2
+  },
+  "layout": [
+    { "group": "faders", "index": 0, "action": "volume",     "deck": "A" },
+    { "group": "faders", "index": 1, "action": "filter",     "deck": "A" },
+    { "group": "faders", "index": 2, "action": "pitch",      "deck": "A" },
+    { "group": "faders", "index": 3, "action": "crossfader" },
+    { "group": "faders", "index": 5, "action": "pitch",      "deck": "B" },
+    { "group": "faders", "index": 6, "action": "filter",     "deck": "B" },
+    { "group": "faders", "index": 7, "action": "volume",     "deck": "B" },
+    { "group": "faders", "index": 8, "action": "master" },
+    { "group": "pads", "index": 0, "action": "hotcue", "deck": "A", "slot": 0 },
+    { "group": "pads", "index": 1, "action": "hotcue", "deck": "A", "slot": 1 },
+    { "group": "pads", "index": 2, "action": "hotcue", "deck": "A", "slot": 2 },
+    { "group": "pads", "index": 3, "action": "hotcue", "deck": "A", "slot": 3 },
+    { "group": "pads", "index": 4, "action": "hotcue", "deck": "B", "slot": 0 },
+    { "group": "pads", "index": 5, "action": "hotcue", "deck": "B", "slot": 1 },
+    { "group": "pads", "index": 6, "action": "hotcue", "deck": "B", "slot": 2 },
+    { "group": "pads", "index": 7, "action": "hotcue", "deck": "B", "slot": 3 },
+    { "group": "pads", "index": 8,  "action": "clearcue", "deck": "A", "slot": 0 },
+    { "group": "pads", "index": 9,  "action": "clearcue", "deck": "A", "slot": 1 },
+    { "group": "pads", "index": 10, "action": "clearcue", "deck": "A", "slot": 2 },
+    { "group": "pads", "index": 11, "action": "clearcue", "deck": "A", "slot": 3 },
+    { "group": "pads", "index": 12, "action": "clearcue", "deck": "B", "slot": 0 },
+    { "group": "pads", "index": 13, "action": "clearcue", "deck": "B", "slot": 1 },
+    { "group": "pads", "index": 14, "action": "clearcue", "deck": "B", "slot": 2 },
+    { "group": "pads", "index": 15, "action": "clearcue", "deck": "B", "slot": 3 },
+    { "group": "scene", "index": 0, "action": "play", "deck": "A" },
+    { "group": "scene", "index": 1, "action": "play", "deck": "B" },
+    { "group": "track", "index": 0, "action": "play", "deck": "A" },
+    { "group": "track", "index": 7, "action": "play", "deck": "B" }
+  ]
+}
