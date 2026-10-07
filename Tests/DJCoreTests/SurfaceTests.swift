@@ -232,10 +232,13 @@ struct Phase1ActionTests {
     #expect(a.playing)
     s.handle(bytes: [0x91, 0x06, 0x7F])  // CUE while playing: back to cue, pause
     #expect(!a.playing)
-    s.handle(bytes: [0x91, 0x09, 0x7F])  // LOOP IN
+    // LOOP / STEMS (0x03, 0x09, 0x0A) are parked until identified on the MK3.
+    #expect(
+      s.handle(bytes: [0x91, 0x09, 0x7F])?.1
+        == .unbound(reason: s.binding(for: s.decode([0x91, 0x09, 0x7F])!)!.reason!))
+    a.loopIn()
+    a.setPlaying(true)
     #expect(a.loopStart != nil && !a.looping)
-    s.handle(bytes: [0x91, 0x0A, 0x7F])  // LOOP OUT at the same spot: too short, ignored
-    #expect(!a.looping)
     s.handle(bytes: [0x92, 0x07, 0x7F])  // deck B PLAY
     #expect(dj["B"]!.playing)
   }
@@ -243,16 +246,19 @@ struct Phase1ActionTests {
   @Test func inpulseKnobsDriveGainAndEQ() throws {
     let (dj, s) = try make(.inpulse200MK3)
     let b = dj["B"]!
-    s.handle(bytes: [0xB2, 0x05, 0x7F])  // gain MSB → full
-    s.handle(bytes: [0xB2, 0x25, 0x7F])
+    s.handle(bytes: [0xB5, 0x05, 0x7F])  // SHIFT + HIGH/GAIN = gain → full
+    s.handle(bytes: [0xB5, 0x25, 0x7F])
     #expect(b.gain == 1)
     #expect(abs(b.strip.outputVolume - Float(2 * b.volume * dj.crossfadeGain("B"))) < 1e-4)
     s.handle(bytes: [0xB2, 0x02, 0x00])  // EQ low → kill
     s.handle(bytes: [0xB2, 0x22, 0x00])
     #expect(b.filterNode.bands[2].gain == -24 && !b.filterNode.bands[2].bypass)
-    s.handle(bytes: [0xB2, 0x04, 0x40])  // EQ high → centre
-    s.handle(bytes: [0xB2, 0x24, 0x00])
+    s.handle(bytes: [0xB2, 0x05, 0x40])  // HIGH → centre
+    s.handle(bytes: [0xB2, 0x25, 0x00])
     #expect(abs(b.eqHigh - 0.5) < 0.01 && b.filterNode.bands[4].bypass)
+    s.handle(bytes: [0xB2, 0x04, 0x7F])  // MID → +6 dB
+    s.handle(bytes: [0xB2, 0x24, 0x7F])
+    #expect(b.eqMid == 1 && b.filterNode.bands[3].gain == 6)
   }
 
   @Test func apcShiftIsHeldInSoftware() throws {

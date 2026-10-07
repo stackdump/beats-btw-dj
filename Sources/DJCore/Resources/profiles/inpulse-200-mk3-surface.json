@@ -2,7 +2,7 @@
  "name": "DJControl Inpulse 200 Mk3",
  "manufacturer": "Hercules",
  "match": "inpulse\\s*200",
- "source": "Capture 2026-10-07 (captures/inpulse.log) + Mixxx Hercules_DJControl_Inpulse_200.midi.xml for names; [MIXXX] = not yet seen on this unit",
+ "source": "Capture 2026-10-07 (captures/inpulse.log); MK3 panel from Sweetwater's top-view photo; numbering seeded from Mixxx's original-Inpulse-200 mapping \u2014 [MIXXX] marks entries not yet seen on this unit",
  "jog": "inpulse-200-mk3",
  "groups": [
   {
@@ -23,19 +23,19 @@
     16
    ],
    "names": [
-    "vinyl",
+    "btn03",
     "shift",
     "sync",
     "cue",
     "play",
-    "loopIn",
-    "loopOut",
+    "btn09",
+    "btn0A",
     "pfl",
     "load",
-    "modeHotCue",
-    "modeRoll"
+    "hotCueMode",
+    "fxMode"
    ],
-   "comment": "measured 2026-10-07 except pfl, load [MIXXX]; 0x08 is jog touch (jog profile)"
+   "comment": "measured 2026-10-07. MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03/0x09/0x0A = LOOP + the two STEMS buttons, order unconfirmed"
   },
   {
    "id": "deckA.shiftButtons",
@@ -55,7 +55,7 @@
     "loopIn",
     "loopOut"
    ],
-   "comment": "[MIXXX] SHIFT held; 0x08 is shifted jog touch (jog profile)"
+   "comment": "[MIXXX] SHIFT held (original 200 numbering; MK3 unverified); 0x08 is shifted jog touch (jog profile)"
   },
   {
    "id": "deckA.hotcuePads",
@@ -104,12 +104,12 @@
     19
    ],
    "names": [
-    "roll1",
-    "roll2",
-    "roll4",
-    "roll8"
+    "loop1",
+    "loop2",
+    "loop3",
+    "loop4"
    ],
-   "comment": "roll mode, measured"
+   "comment": "loop mode (SHIFT + HOT CUE on MK3), measured"
   },
   {
    "id": "deckA.fxPads",
@@ -171,11 +171,11 @@
     "volume",
     "filter",
     "eqLow",
+    "eqMid",
     "eqHigh",
-    "gain",
     "pitch"
    ],
-   "comment": "14-bit (LSB on +32), measured"
+   "comment": "14-bit (LSB on +32), measured; knob order confirmed by bottom-to-top sweep against the MK3 panel (filter, low, mid, high/gain)"
   },
   {
    "id": "deckA.padBend",
@@ -207,19 +207,19 @@
     16
    ],
    "names": [
-    "vinyl",
+    "btn03",
     "shift",
     "sync",
     "cue",
     "play",
-    "loopIn",
-    "loopOut",
+    "btn09",
+    "btn0A",
     "pfl",
     "load",
-    "modeHotCue",
-    "modeRoll"
+    "hotCueMode",
+    "fxMode"
    ],
-   "comment": "measured 2026-10-07 except pfl, load [MIXXX]; 0x08 is jog touch (jog profile)"
+   "comment": "measured 2026-10-07. MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03/0x09/0x0A = LOOP + the two STEMS buttons, order unconfirmed"
   },
   {
    "id": "deckB.shiftButtons",
@@ -239,7 +239,7 @@
     "loopIn",
     "loopOut"
    ],
-   "comment": "[MIXXX] SHIFT held; 0x08 is shifted jog touch (jog profile)"
+   "comment": "[MIXXX] SHIFT held (original 200 numbering; MK3 unverified); 0x08 is shifted jog touch (jog profile)"
   },
   {
    "id": "deckB.hotcuePads",
@@ -288,12 +288,12 @@
     19
    ],
    "names": [
-    "roll1",
-    "roll2",
-    "roll4",
-    "roll8"
+    "loop1",
+    "loop2",
+    "loop3",
+    "loop4"
    ],
-   "comment": "roll mode, measured"
+   "comment": "loop mode (SHIFT + HOT CUE on MK3), measured"
   },
   {
    "id": "deckB.fxPads",
@@ -355,11 +355,11 @@
     "volume",
     "filter",
     "eqLow",
+    "eqMid",
     "eqHigh",
-    "gain",
     "pitch"
    ],
-   "comment": "14-bit (LSB on +32), measured"
+   "comment": "14-bit (LSB on +32), measured; knob order confirmed by bottom-to-top sweep against the MK3 panel (filter, low, mid, high/gain)"
   },
   {
    "id": "deckB.padBend",
@@ -384,10 +384,10 @@
    ],
    "names": [
     "crossfader",
-    "centreKnob3",
-    "centreKnob4"
+    "master",
+    "headphones"
    ],
-   "comment": "crossfader measured; 0x03/0x04 measured but not yet identified"
+   "comment": "measured; 0x03 master / 0x04 headphones from sweep order vs the MK3 panel"
   },
   {
    "id": "mixer.buttons",
@@ -401,11 +401,11 @@
    ],
    "names": [
     "browserPush",
-    "centre1",
-    "centre2",
-    "autoDJ"
+    "centre01",
+    "centre02",
+    "centre03"
    ],
-   "comment": "0x01-0x03 measured; names [MIXXX]/unidentified"
+   "comment": "0x01-0x03 measured = ASSIST/PREP, MASTER, BEATMATCH GUIDE in some order (identify live)"
   },
   {
    "id": "mixer.browser",
@@ -442,6 +442,30 @@
     "browserPush"
    ],
    "comment": "[MIXXX] SHIFT + browser push"
+  },
+  {
+   "id": "deckA.shiftFaders",
+   "type": "cc14",
+   "channel": 4,
+   "numbers": [
+    5
+   ],
+   "names": [
+    "gain"
+   ],
+   "comment": "[UNVERIFIED] SHIFT + HIGH/GAIN knob = gain on the MK3 panel"
+  },
+  {
+   "id": "deckB.shiftFaders",
+   "type": "cc14",
+   "channel": 5,
+   "numbers": [
+    5
+   ],
+   "names": [
+    "gain"
+   ],
+   "comment": "[UNVERIFIED] SHIFT + HIGH/GAIN knob = gain on the MK3 panel"
   }
  ],
  "leds": {
@@ -464,7 +488,7 @@
    "index": 0,
    "action": "unbound",
    "deck": "A",
-   "reason": "jog always scratches when touched; vinyl toggle not needed yet"
+   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckA.buttons",
@@ -495,14 +519,16 @@
   {
    "group": "deckA.buttons",
    "index": 5,
-   "action": "loopIn",
-   "deck": "A"
+   "action": "unbound",
+   "deck": "A",
+   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckA.buttons",
    "index": 6,
-   "action": "loopOut",
-   "deck": "A"
+   "action": "unbound",
+   "deck": "A",
+   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckA.buttons",
@@ -556,14 +582,16 @@
   {
    "group": "deckA.shiftButtons",
    "index": 3,
-   "action": "loopHalve",
-   "deck": "A"
+   "action": "unbound",
+   "deck": "A",
+   "reason": "[MIXXX] original-200 shift layer, unverified on MK3"
   },
   {
    "group": "deckA.shiftButtons",
    "index": 4,
-   "action": "loopDouble",
-   "deck": "A"
+   "action": "unbound",
+   "deck": "A",
+   "reason": "[MIXXX] original-200 shift layer, unverified on MK3"
   },
   {
    "group": "deckA.hotcuePads",
@@ -754,13 +782,13 @@
   {
    "group": "deckA.faders",
    "index": 3,
-   "action": "eqHigh",
+   "action": "eqMid",
    "deck": "A"
   },
   {
    "group": "deckA.faders",
    "index": 4,
-   "action": "gain",
+   "action": "eqHigh",
    "deck": "A"
   },
   {
@@ -781,7 +809,7 @@
    "index": 0,
    "action": "unbound",
    "deck": "B",
-   "reason": "jog always scratches when touched; vinyl toggle not needed yet"
+   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckB.buttons",
@@ -812,14 +840,16 @@
   {
    "group": "deckB.buttons",
    "index": 5,
-   "action": "loopIn",
-   "deck": "B"
+   "action": "unbound",
+   "deck": "B",
+   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckB.buttons",
    "index": 6,
-   "action": "loopOut",
-   "deck": "B"
+   "action": "unbound",
+   "deck": "B",
+   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckB.buttons",
@@ -873,14 +903,16 @@
   {
    "group": "deckB.shiftButtons",
    "index": 3,
-   "action": "loopHalve",
-   "deck": "B"
+   "action": "unbound",
+   "deck": "B",
+   "reason": "[MIXXX] original-200 shift layer, unverified on MK3"
   },
   {
    "group": "deckB.shiftButtons",
    "index": 4,
-   "action": "loopDouble",
-   "deck": "B"
+   "action": "unbound",
+   "deck": "B",
+   "reason": "[MIXXX] original-200 shift layer, unverified on MK3"
   },
   {
    "group": "deckB.hotcuePads",
@@ -1071,13 +1103,13 @@
   {
    "group": "deckB.faders",
    "index": 3,
-   "action": "eqHigh",
+   "action": "eqMid",
    "deck": "B"
   },
   {
    "group": "deckB.faders",
    "index": 4,
-   "action": "gain",
+   "action": "eqHigh",
    "deck": "B"
   },
   {
@@ -1101,14 +1133,13 @@
   {
    "group": "mixer.faders",
    "index": 1,
-   "action": "unbound",
-   "reason": "unidentified centre knob \u2014 identify then bind"
+   "action": "master"
   },
   {
    "group": "mixer.faders",
    "index": 2,
    "action": "unbound",
-   "reason": "unidentified centre knob \u2014 identify then bind"
+   "reason": "headphone level \u2014 Phase 4 (cue output)"
   },
   {
    "group": "mixer.buttons",
@@ -1120,19 +1151,19 @@
    "group": "mixer.buttons",
    "index": 1,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "assist / master / beatmatch guide \u2014 identify live, then decide"
   },
   {
    "group": "mixer.buttons",
    "index": 2,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "assist / master / beatmatch guide \u2014 identify live, then decide"
   },
   {
    "group": "mixer.buttons",
    "index": 3,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "assist / master / beatmatch guide \u2014 identify live, then decide"
   },
   {
    "group": "mixer.browser",
@@ -1151,6 +1182,18 @@
    "index": 0,
    "action": "unbound",
    "reason": "browser / library \u2014 Phase 3"
+  },
+  {
+   "group": "deckA.shiftFaders",
+   "index": 0,
+   "action": "gain",
+   "deck": "A"
+  },
+  {
+   "group": "deckB.shiftFaders",
+   "index": 0,
+   "action": "gain",
+   "deck": "B"
   }
  ]
 }

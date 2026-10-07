@@ -2,7 +2,7 @@ BINARY  := dj-vevr-se
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
-.PHONY: build run test test-go test-web e2e serve ports monitor clean \
+.PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test app run-app djctl fmt lint
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
@@ -63,6 +63,10 @@ test-web:
 e2e:
 	node web/jog/e2e.cdp.mjs
 	node web/jog/e2e-calibrate.cdp.mjs
+
+# Live device maps (Chrome: Web MIDI). Needs `make serve` running.
+devices:
+	open -a "Google Chrome" http://localhost:$(PORT)/devices/
 
 # The browser lab. Web MIDI needs localhost (not a LAN IP) or https.
 serve:

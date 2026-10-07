@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Device Maps</title>
+<link rel="icon" href="../favicon.svg">
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #d7d7d2;
+    --body: #2a2a2e; --face: #3a3a40; --label: #e8e8e8;
+    --bound: #2f9e61; --parked: #c98a14; --unmapped: #d23c3c; --jog: #2f6fd2; --nomidi: #8a8a90;
+    --hit: #ffd400;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141416; --panel: #1d1d21; --ink: #ececef; --muted: #9a9aa2; --line: #333339;
+            --body: #0d0d10; --face: #2c2c33; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, system-ui, sans-serif; }
+  header { padding: 16px 20px 8px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+  h1 { font-size: 18px; margin: 0; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  #midi { margin-left: auto; font-size: 12px; color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 8px 20px 24px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .device { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 16px; }
+  .device h2 { font-size: 15px; margin: 0 0 4px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .port { font-size: 12px; font-weight: normal; color: var(--muted); }
+  .port.on { color: var(--bound); }
+  .coverage { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+  .coverage b { color: var(--ink); font-weight: 600; }
+  .gaps { font-size: 12px; color: var(--unmapped); margin: 0 0 8px; }
+  svg { width: 100%; height: auto; display: block; background: var(--body); border-radius: 8px; }
+  svg .shape { cursor: pointer; }
+  svg text { fill: var(--label); font-size: 10px; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+  svg .sel { stroke: #fff; stroke-width: 3; }
+  svg .hit { filter: drop-shadow(0 0 6px var(--hit)); }
+  aside { position: sticky; top: 8px; align-self: start; display: flex; flex-direction: column; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .card h3 { font-size: 13px; margin: 0 0 8px; }
+  #info { font-size: 12px; }
+  #info table { width: 100%; border-collapse: collapse; }
+  #info td { padding: 3px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+  #info code { font-size: 11px; }
+  button { font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); cursor: pointer; }
+  #log { font: 11px/1.45 ui-monospace, Menlo, monospace; height: 320px; overflow: auto; white-space: pre; }
+  #log .bound { color: var(--bound); } #log .parked { color: var(--parked); }
+  #log .unmapped, #log .undecoded { color: var(--unmapped); } #log .jog { color: var(--jog); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Device maps</h1>
+  <div class="legend">
+    <span><i style="background:var(--bound)"></i>bound</span>
+    <span><i style="background:var(--parked)"></i>parked (decoded, reason given)</span>
+    <span><i style="background:var(--unmapped)"></i>no layout entry</span>
+    <span><i style="background:var(--jog)"></i>jog wheel</span>
+    <span><i style="background:var(--nomidi)"></i>sends no MIDI</span>
+    <span><i style="background:var(--hit)"></i>live: just moved</span>
+  </div>
+  <div id="midi">MIDI: starting…</div>
+</header>
+<main>
+  <div id="devices"></div>
+  <aside>
+    <div class="card"><h3>Selected control</h3><div id="info" class="muted">Click a control, or move one on the hardware.</div></div>
+    <div class="card"><h3>Messages <button id="clear" style="float:right">clear</button></h3><div id="log"></div></div>
+  </aside>
+</main>
+<script type="module" src="devices.js"></script>
+</body>
+</html>

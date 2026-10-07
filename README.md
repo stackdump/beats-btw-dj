@@ -41,6 +41,7 @@ make monitor MATCH=inpulse                # print messages live (Ctrl-C to stop)
 ./dj-vevr-se capture -o jog-capture-native.json inpulse   # record, Ctrl-C writes
 make test                                 # swift + go + node --test web/jog
 make serve                                # browser lab on http://localhost:8765/jog/
+make devices                              # live device maps (Chrome): http://localhost:8765/devices/
 ```
 
 ## Layout
@@ -57,6 +58,17 @@ make serve                                # browser lab on http://localhost:8765
 | `internal/capture/` | Captures as `[{t, d, port}]` — the exact shape `web/jog/replay.js` reads, so a native capture replays in the browser demo and feeds `analyze-capture.mjs`. |
 | `web/jog/` | The browser lab as it was in beats: device profile, mock Web MIDI, simulator, adapter, Petri clock, calibration wizard. See its README and ROADMAP. |
 | `web/lib/bjorklund.js` | The one function the lab borrowed from beats, vendored. |
+
+## Device maps
+
+`web/devices/` draws all three controllers from their profile JSON (via the
+`web/profiles` symlink), coloured by binding: bound / parked / no entry / jog /
+sends no MIDI. In Chrome it listens over Web MIDI: moving a control lights it
+with its value and logs the bytes and what the app does with them; clicking a
+control shows its MIDI numbers and binding and can flash its LED on the device.
+Each card also lists profile controls the diagram doesn't draw. Physical
+positions are traced from product photos (Inpulse MK3 and MPK mkII from
+Sweetwater, APC mini mk2 from Akai) — approximate, not measured.
 
 ## Build dependencies
 
