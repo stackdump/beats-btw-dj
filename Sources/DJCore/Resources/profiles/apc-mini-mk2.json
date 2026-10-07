@@ -39,6 +39,14 @@
    "first": 122,
    "count": 1,
    "comment": "below the scene column; a plain note \u2014 shift combos are tracked in software"
+  },
+  {
+   "id": "drumPads",
+   "type": "note",
+   "channel": 9,
+   "first": 64,
+   "count": 16,
+   "comment": "DRUM mode (SHIFT + scene button): pads send notes 64-79 on MIDI channel 10 on the Control port \u2014 measured 2026-10-07 in the live device map; pad positions not yet mapped"
   }
  ],
  "leds": {
@@ -608,6 +616,11 @@
    "index": 4,
    "action": "unbound",
    "reason": "per-role level \u2014 Phase 3"
+  },
+  {
+   "group": "drumPads",
+   "action": "unbound",
+   "reason": "APC drum mode \u2014 Phase 3 instrument (session mode is the DJ layout)"
   }
  ]
 }
