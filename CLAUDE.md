@@ -14,9 +14,20 @@ its copy; the two are now independent. Rules inherited from that split:
   this repo — live performance state is the point here. If something built here
   is ever upstreamed to beats, it must still stay out of beats' share payload.
 - No npm, no bundler for `web/` — vanilla ES modules, same as the ecosystem.
-- The device profile is data and lives in one place
-  (`web/jog/inpulse-200-mk3.js` for now). Never hand-copy it into Go.
-- Go 1.25, Makefile-driven: `make build`, `make test`, `make serve`.
+- The device profile is data and lives in one place:
+  `Sources/DJCore/Resources/profiles/*.json`. The JS lab still has its own
+  object, guarded by `web/jog/profile-parity.test.mjs` — edit both or neither.
+- **Swift is the app language** (chosen 2026-10-07): SwiftPM, no `.xcodeproj`,
+  macOS 15+, swift-testing, `swift format` (2-space default). Keep CoreMIDI
+  callbacks short and hop to the main actor for UI; AVAudioEngine render
+  blocks (when they arrive) must not allocate or lock at all.
+- Makefile-driven: `make swift-test`, `make run-app`, `make test` (Swift + Go
+  + node), `make fmt lint`. Run tests through make — under Command Line Tools
+  only, bare `swift test` cannot find the Testing framework.
+- Resources in `DJApp.app` go in `Contents/Resources`, not via SwiftPM's
+  generated `Bundle.module` (it only checks the .app root, which codesign
+  rejects). Load bundled files `Bundle.main` first, `Bundle.module` second.
+- Go CLI (`cmd/`) and `web/jog` remain as capture/calibration tools.
 
 ## Hardware notes (macOS)
 

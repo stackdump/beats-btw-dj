@@ -1,0 +1,16 @@
+{
+  "name": "DJControl Inpulse 200 Mk3",
+  "manufacturer": "Hercules",
+  "match": "inpulse\\s*200",
+  "decks": { "A": 1, "B": 2 },
+  "shiftChannelOffset": 3,
+  "touch": { "note": 8, "onVelocity": 127, "releaseAsNoteOff": false },
+  "scratchCC": 10,
+  "bendCC": 9,
+  "maxMagnitude": 1,
+  "encoding": "twos",
+  "ticksPerRev": 248,
+  "platterRpm": 33.333333333333336,
+  "usbFrameMs": 1,
+  "coastTauSec": 0.45
+}

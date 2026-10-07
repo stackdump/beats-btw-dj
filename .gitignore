@@ -3,3 +3,6 @@
 /jog-capture-*.json
 /captures/
 .DS_Store
+.build/
+/build/
+.swiftpm/
