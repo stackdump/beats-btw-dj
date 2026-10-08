@@ -16,6 +16,8 @@ public final class ControllerHub {
   public private(set) var devices: [Device] = []
   /// Every routed message, decoded, for monitors and the UI.
   public var onMessage: ((MIDIMessage, String) -> Void)?
+  /// The control a surface message landed on (port, group id, index), for highlighting.
+  public var onControl: ((String, String, Int) -> Void)?
 
   public var jogProfile: JogProfile { router.jogProfile }
   public var surfaceProfiles: [SurfaceProfile] { router.surfaceProfiles }
@@ -92,6 +94,7 @@ public final class ControllerHub {
       stats[m.port, default: Stats()].undecoded += 1
       onMessage?(m, "(undecoded)")
     case .surface(let e, let outcome):
+      onControl?(m.port, e.group, e.index)
       let control =
         "\(e.group)[\(e.index)]" + (e.name.map { " \($0)" } ?? "")
         + (e.delta != 0 ? " Δ\(e.delta)" : String(format: "=%.3f", e.value))

@@ -163,11 +163,16 @@ PNGs for a human to look at.
 
 5.1 **(done)** Waveform strip: min/max overview (`WaveformOverview`), playhead / loop / hot-cue /
 bar-line overlay (`Deck.waveformOverlay`), `WaveformStrip`.
-5.2 Platter and beat strip (DJViews).
-5.3 Net / marking view for net decks.
-5.4 Section timeline.
-5.5 APC grid mirror.
-5.6 Device-map UI.
+5.2 **(done)** Platter and beat strip (DJViews).
+5.3 **(done)** Net / marking view for net decks.
+5.4 **(done)** Section timeline.
+5.5 **(done)** APC grid mirror.
+5.6 **(done)** Device-map UI (`SurfaceProfile.deviceMap()` rows, `DeviceMapView`, the touched control highlighted).
+
+Not verified by eye in the running app: the sandbox can't capture other apps' windows
+(`screencapture` returns the desktop only), so each view is checked through
+`ImageRenderer` pixels instead. The first time the full window is opened on a real
+display is the check that layout (sizes, spacing, the 3-way deck column) looks right.
 
 ---
 

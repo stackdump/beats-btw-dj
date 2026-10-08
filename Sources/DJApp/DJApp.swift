@@ -77,6 +77,8 @@ final class AppModel {
   var padLights: [String: [PadLight]] = [:]
   var padPort: String?
   var showPads = false
+  var showMap = false
+  var lastControl: (device: String, group: String, index: Int, at: Date)?
 
   private var dj: DJEngine?
   private var hub: ControllerHub?
@@ -92,6 +94,10 @@ final class AppModel {
       let hub = ControllerHub(engine: dj)
       hub.onMessage = { [weak self] m, d in
         self?.lastMessage = "\(m.port): " + (d.isEmpty ? "(unbound)" : d)
+      }
+      hub.onControl = { [weak self] port, group, index in
+        let dev = hub.router.profileName(for: port) ?? port
+        self?.lastControl = (dev, group, index, Date())
       }
       try hub.start()
       self.dj = dj
@@ -337,6 +343,15 @@ struct ContentView: View {
         MixerView(model: model)
         DeckView(name: "B", model: model, tint: .cyan)
       }
+      if model.showMap {
+        DeviceMapView(
+          maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
+          highlight: model.lastControl.flatMap {
+            Date().timeIntervalSince($0.at) < 1.5 ? ($0.device, $0.group, $0.index) : nil
+          }
+        )
+        .frame(height: 240)
+      }
       if model.showPads, let pads = model.padLights["pads"] {
         PadGridView(
           pads: pads, tracks: model.padLights["track"] ?? [], scenes: model.padLights["scene"] ?? []
@@ -356,6 +371,8 @@ struct ContentView: View {
         }
         Spacer()
         HStack {
+          Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
+            .toggleStyle(.button)
           Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
             .toggleStyle(.button)
           Toggle(

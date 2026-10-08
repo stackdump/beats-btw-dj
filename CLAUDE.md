@@ -63,6 +63,17 @@ its copy; the two are now independent. Rules inherited from that split:
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 
+## Visuals (Phase 5)
+
+- SwiftUI lives only in `Sources/DJViews` (and the `DJApp` shell). DJCore has models
+  (`WaveformOverview`, `NetSnapshot`, `SectionTimeline`, `PadLight`, `DeviceMapRow`) and never
+  imports SwiftUI; a view that needs data the core doesn't expose adds a model there first.
+- Views are tested by rendering them (`renderPixels` in `Tests/DJViewsTests/Render.swift`) and
+  asserting pixels / geometry. `DJ_SHOT_DIR=/path swift test --filter …` also writes PNGs
+  (`savePNG`) to look at.
+- Anything the UI does to a deck goes through `DJEngine.perform` (recorded); on-screen pad
+  presses go through `ControllerRouter.press` (recorded as MIDI).
+
 ## Hardware notes (macOS)
 
 - `./dj-vevr-se ports` is the native replacement for `amidi -l`;
