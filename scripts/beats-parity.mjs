@@ -166,17 +166,29 @@ writeFileSync0('envelopes.json', { meta, envelopes });
 // Full canonical text is stored for a handful (readable diffs, 2.3 round-trips);
 // the rest carry length + sha256, which is enough to prove byte identity.
 const FULL = new Set(['techno/42/loop/v2', 'jazz/42/standard/v1', 'dnb/1/minimal/v2']);
+// compose() leaves some control nets (fade-in/out, drum-break) as plain objects that the
+// app parses on load; parse them here so canonical/doc output is defined for every case.
+const normalized = (proj) => {
+  for (const [id, nb] of Object.entries(proj.nets)) if (!(nb instanceof pflow.NetBundle)) proj.nets[id] = pflow.parseNetBundle(nb);
+  return proj;
+};
+const digest = (proj) => {
+  normalized(proj);
+  const canonical = pflow.canonicalProjectJSON(proj);
+  return { canonical, canonicalBytes: Buffer.byteLength(canonical), modelCID: sha256hex(canonical),
+    docSha: sha256hex(JSON.stringify(pflow.projectToJSON(proj))) };
+};
 const projects = [];
 const projSizes = ['loop', 'minimal', 'standard', 'extended'];
 for (const genre of genres) for (const size of projSizes) for (const cohesion of ['v1', 'v2']) for (const seed of [1, 42]) {
   const overrides = { seed, cohesion };
   if (size !== 'loop') overrides.structure = size;
   const proj = gen.compose(genre, overrides);
-  const canonical = pflow.canonicalProjectJSON(proj);
+  const d = digest(proj);
   const key = `${genre}/${seed}/${size}/${cohesion}`;
   const entry = { genre, seed, structure: size, cohesion, name: proj.name, tempo: proj.tempo,
-    nets: Object.keys(proj.nets).length, canonicalBytes: Buffer.byteLength(canonical), modelCID: sha256hex(canonical) };
-  if (FULL.has(key)) entry.canonical = canonical;
+    nets: Object.keys(proj.nets).length, canonicalBytes: d.canonicalBytes, modelCID: d.modelCID, docSha: d.docSha };
+  if (FULL.has(key)) entry.canonical = d.canonical;
   projects.push(entry);
 }
 // Determinism self-check: the oracle must agree with itself or the fixtures are noise.
@@ -259,6 +271,29 @@ const resolves = [];
 for (const midi of [null, {}, { duration: 250 }, { duration: NaN }, { durationSteps: 2 }, { durationSteps: 2, duration: 999 }, { durationSteps: 3 }, { durationSteps: 1, duration: 40 }, { durationSteps: 0, duration: 77 }])
   for (const bpm of [0, 60, 120, 128, 133.3, 174]) resolves.push({ midi, bpm, ms: pflow.resolveDurationMs(midi, bpm) });
 writeFileSync0('pflow.json', { meta, docs: pflowDocs, generated: pflowGenerated, durations, resolves });
+
+// --- compose() with the long tail of overrides --------------------------
+
+const variations = [
+  { seed: 7, bpm: 100 },
+  { seed: 8, chorus: true },
+  { seed: 9, 'fade-in': true, 'fade-out': true, 'drum-break': true },
+  { seed: 10, cohesion: 'v1', 'walking-bass': true, 'call-response': true, 'ghost-notes': 0, 'modal-interchange': 0.4, syncopation: 0.3, polyrhythm: 6 },
+  { seed: 11, structure: 'standard', cohesion: 'v1', 'tension-curve': true, 'drum-fills': true },
+  { seed: 12, structure: 'jam', macroCurve: [{ section: 'verse', macro: 'fade', bars: 4 }, { section: 'solo', macro: 'x' }, { section: 'nope', macro: 'y' }, { section: 'verse', macro: 0 }] },
+  { seed: 13, structure: 'ab' }, { seed: 14, structure: 'drop', cohesion: 'v1', chorus: true }, { seed: 15, structure: 'build' },
+  { seed: 16, instruments: { bass: 'reese', kick: 'drums-808', melody: 7 } },
+  { seed: -5 }, { seed: 4294967299 }, { seed: 0, structure: 'extended', macroCurve: [] }, { seed: 1.5, 'drum-fills': false, 'tension-curve': false },
+  { seed: 17, structure: 'bogus-size' }, { seed: 18, cohesion: 'v9', structure: 'minimal' },
+  { seed: 19, 'fade-in': true, structure: 'minimal' },
+];
+const extraGenres = ['techno', 'house', 'jazz', 'ambient', 'dnb', 'edm', 'blues', 'synthwave', 'trance', 'lofi', 'bossa', 'metal', 'nonesuch'];
+const composeCases = [];
+for (const genre of extraGenres) for (const overrides of variations) {
+  const proj = gen.compose(genre, JSON.parse(JSON.stringify(overrides)));
+  composeCases.push({ genre, overrides, name: proj.name, nets: Object.keys(proj.nets).length, ...(({ canonical, ...rest }) => rest)(digest(proj)) });
+}
+writeFileSync0('compose.json', { meta, cases: composeCases });
 
 function writeFileSync0(name, obj) {
   mkdirSync(outDir, { recursive: true });

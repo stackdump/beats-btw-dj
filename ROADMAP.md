@@ -90,7 +90,7 @@ structure, cohesion) → project JSON + model CID; module-level vectors (RNG,
 bjorklund, motif, structure). Swift tests compare byte-for-byte.
 2.3 **(done — `Sources/DJCore/Beats/PFlow.swift`; layout recompute and runtime fire/isEnabled deferred to 2.6)** Port `pflow.js` (NetBundle, parse, `projectToJSON`, durations, CID) —
 go-pflow `petri` semantics where JS leaves gaps.
-2.4 Port the composer in dependency order: core → theory → euclidean →
+2.4 **(done — `Sources/DJCore/Beats/Generator/`; arrangeWithOpts / counter-melody / macros deferred, see below)** Port the composer in dependency order: core → theory → euclidean →
 markov → riffs → variety → countermelody → arrange → theme → groove →
 structure → composer. Gate each on fixtures.
 2.5 Share envelope → params (`shareFromPayload`), including tempo / swing /
