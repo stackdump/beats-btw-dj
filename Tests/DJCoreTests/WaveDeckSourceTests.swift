@@ -182,6 +182,8 @@ struct WaveDeckSourceTests {
     src.noteOn(64, velocity: 90)
     src.noteOff(60)
     src.allNotesOff()
+    src.align(ticks: 3.4)
+    src.align(ticks: -2.25)
     let report = countAllocations {
       run(1500)
       src.panic()

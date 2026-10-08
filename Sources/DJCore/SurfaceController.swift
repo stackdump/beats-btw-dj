@@ -112,7 +112,7 @@ public final class SurfaceController {
       // centred control: 0.5 = no nudge, full travel = ± the tempo-fader range
       dj[dj.focus]?.nudge((e.value - 0.5) * 2 * Deck.pitchRange)
     case .section, .sectionPrev, .sectionNext, .roleMute, .macro, .panic, .stinger, .nextTrack,
-      .keys:
+      .keys, .sync, .quantize, .rewind:
       perform(b, deck: deck, event: e, press: press, now: now)
     case .play, .cue, .hotcue, .clearcue, .loopIn, .loopOut, .loopHalve, .loopDouble:
       guard press else { break }
@@ -158,6 +158,14 @@ public final class SurfaceController {
     case .panic: deck.panic()
     case .stinger: deck.stinger(b.slot ?? 0)
     case .nextTrack: deck.skipToNextTrack()
+    case .sync:
+      if let other = dj.decks.values.sorted(by: { $0.name < $1.name }).first(where: { $0 !== deck })
+      {
+        deck.sync(to: other, align: b.slot == 1 ? .bar : .beat)
+      }
+    case .quantize:
+      deck.quantize = deck.quantize == .off ? .beat : (deck.quantize == .beat ? .bar : .off)
+    case .rewind: deck.rewind()
     default: break
     }
   }
@@ -215,6 +223,13 @@ public final class SurfaceController {
       guard let d, d.mode == .net, !d.sections.isEmpty else { return leds.singleOff }
       return leds.singleOn
     case .nextTrack: return d?.nextReady != nil ? leds.singleBlink : leds.singleOff
+    case .quantize: return d?.quantize == .off ? leds.singleOff : leds.singleOn
+    case .sync:
+      // lit while this deck runs at the other deck's tempo
+      guard let d, let mine = d.effectiveBPM,
+        let other = dj.decks.values.first(where: { $0 !== d })?.effectiveBPM
+      else { return leds.singleOff }
+      return abs(mine - other) < 0.05 ? leds.singleOn : leds.singleOff
     case .play: return d?.playing == true ? leds.singleBlink : leds.singleOn
     case .hotcue: return d?.hotCues[b.slot ?? 0] != nil ? leds.singleOn : leds.singleOff
     case .loopOut: return d?.looping == true ? leds.singleOn : leds.singleOff

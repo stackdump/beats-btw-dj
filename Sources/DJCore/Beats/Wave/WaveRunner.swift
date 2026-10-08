@@ -353,6 +353,26 @@ public final class WaveRunner {
     if let g = graph, let i = g.byId[netId] { g.muted[i] = muted ? 1 : 0 }
   }
 
+  // MARK: beat alignment
+
+  /// Move this deck's beat grid by `ticks` ticks (a tick is a sixteenth). Positive moves
+  /// forward in the song: whole ticks are replayed silently, the remainder shifts the
+  /// tick boundary. Negative holds the clock back (the next tick comes later).
+  public func align(ticks: Double) {
+    guard let g = graph else { return }
+    if ticks < 0 {
+      clock[clkTickPos] += ticks * clock[clkSpt]
+      return
+    }
+    let whole = ticks.rounded(.down)
+    var n = 0
+    while Double(n) < whole && !g.stopRequested {
+      g.advance { _, _ in }
+      n += 1
+    }
+    clock[clkTickPos] += (ticks - whole) * clock[clkSpt]
+  }
+
   // MARK: live performance
 
   /// A key goes down on the pooled live voice (already scale-locked by the caller).

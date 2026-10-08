@@ -500,9 +500,9 @@
   {
    "group": "deckA.buttons",
    "index": 2,
-   "action": "unbound",
+   "action": "sync",
    "deck": "A",
-   "reason": "needs BPM / beat grid — Phase 3"
+   "slot": 0
   },
   {
    "group": "deckA.buttons",
@@ -540,9 +540,8 @@
   {
    "group": "deckA.buttons",
    "index": 8,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "no track library yet — Phase 3 (generate on deck)"
+   "action": "nextTrack",
+   "deck": "A"
   },
   {
    "group": "deckA.buttons",
@@ -561,16 +560,15 @@
   {
    "group": "deckA.shiftButtons",
    "index": 0,
-   "action": "unbound",
+   "action": "sync",
    "deck": "A",
-   "reason": "needs BPM / beat grid — Phase 3"
+   "slot": 1
   },
   {
    "group": "deckA.shiftButtons",
    "index": 1,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "rewind-to-start — Phase 3"
+   "action": "rewind",
+   "deck": "A"
   },
   {
    "group": "deckA.shiftButtons",
@@ -709,9 +707,9 @@
   {
    "group": "deckB.buttons",
    "index": 2,
-   "action": "unbound",
+   "action": "sync",
    "deck": "B",
-   "reason": "needs BPM / beat grid — Phase 3"
+   "slot": 0
   },
   {
    "group": "deckB.buttons",
@@ -749,9 +747,8 @@
   {
    "group": "deckB.buttons",
    "index": 8,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "no track library yet — Phase 3 (generate on deck)"
+   "action": "nextTrack",
+   "deck": "B"
   },
   {
    "group": "deckB.buttons",
@@ -770,16 +767,15 @@
   {
    "group": "deckB.shiftButtons",
    "index": 0,
-   "action": "unbound",
+   "action": "sync",
    "deck": "B",
-   "reason": "needs BPM / beat grid — Phase 3"
+   "slot": 1
   },
   {
    "group": "deckB.shiftButtons",
    "index": 1,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "rewind-to-start — Phase 3"
+   "action": "rewind",
+   "deck": "B"
   },
   {
    "group": "deckB.shiftButtons",

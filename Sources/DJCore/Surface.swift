@@ -27,6 +27,9 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case panic  // press: restore every macro effect now
   case stinger  // press: ring stinger `slot` (0–3) for a bar
   case nextTrack  // press: hand over to the pre-composed next track
+  case sync  // press: match tempo + phase to the other deck (`slot` 0 = beat, 1 = bar)
+  case quantize  // press: cycle cue/loop snapping off → beat → bar
+  case rewind  // press: back to the start
   case keys  // note-on/off: play the live voice, scale-locked (focus deck)
   case nudge  // continuous, centred: momentary tempo nudge (focus deck)
   case unbound  // parked on purpose; see `reason`

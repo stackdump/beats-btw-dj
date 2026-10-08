@@ -118,6 +118,13 @@ public final class Deck: JogClock {
   public var nextProvider: (() -> TrackSpec)?
   var generation = 0
   var netNudge = 0.0
+  /// Tempo and first-beat position of a sample deck (analysed, tapped or known).
+  public internal(set) var beatGrid: BeatGrid?
+  /// Snap cues and loops to this grid on a sample deck.
+  public var quantize: Quantize = .off
+  /// A deck whose tempo this one tracks (`follow(_:)`).
+  weak var leader: Deck?
+  var analysisToken = 0
   var netCueTick = 0.0
   var heldKeys: [Int: Int] = [:]
   let next = NextTrackSlot()
@@ -221,6 +228,7 @@ public final class Deck: JogClock {
   public func load(_ buffer: SampleBuffer, title: String) {
     leaveNetMode()
     loaded = buffer
+    beatGrid = nil
     self.title = title
     hotCues = [:]
     cuePoint = 0
@@ -249,7 +257,7 @@ public final class Deck: JogClock {
       setPlaying(false)
       turntable.send(.seek(sample: cuePoint))
     } else {
-      cuePoint = turntable.position
+      cuePoint = snapped(turntable.position)
     }
   }
 
@@ -257,7 +265,7 @@ public final class Deck: JogClock {
   public func loopIn() {
     guard loaded != nil else { return }
     if looping { exitLoop() }
-    loopStart = turntable.position
+    loopStart = snapped(turntable.position)
     loopEnd = nil
   }
 
@@ -265,8 +273,10 @@ public final class Deck: JogClock {
   /// looping, exit the loop.
   public func loopOut() {
     if looping { return exitLoop() }
-    guard let start = loopStart, turntable.position > start + 1 else { return }
-    setLoop(start, turntable.position)
+    guard let start = loopStart else { return }
+    let end = snapped(turntable.position)
+    guard end > start + 1 else { return }
+    setLoop(start, end)
   }
 
   public func loopHalve() {
@@ -279,7 +289,7 @@ public final class Deck: JogClock {
     setLoop(s, s + (e - s) * 2)
   }
 
-  private func setLoop(_ start: Double, _ end: Double) {
+  func setLoop(_ start: Double, _ end: Double) {
     loopStart = start
     loopEnd = end
     looping = true
@@ -304,23 +314,28 @@ public final class Deck: JogClock {
       return
     }
     if let at = hotCues[slot] {
-      turntable.send(.seek(sample: at))
+      // Quantized, a jump keeps the beat phase: land as far past the cue as we were past
+      // the grid line when the button went down.
+      let held = quantize != .off && playing ? turntable.position - snapped(turntable.position) : 0
+      turntable.send(.seek(sample: at + held))
     } else if loaded != nil {  // not turntable.length: that lags until the next render
-      hotCues[slot] = turntable.position
+      hotCues[slot] = snapped(turntable.position)
     }
   }
 
   public func clearCue(_ slot: Int) { hotCues[slot] = nil }
 
-  /// Decode (and resample if needed) a file, then load it.
+  /// Decode (and resample if needed) a file, then load it. The tempo is measured in the
+  /// background and lands in `beatGrid` when ready.
   public func load(contentsOf url: URL) throws {
-    load(
-      try Self.decode(url, sampleRate: turntable.sampleRate),
-      title: url.deletingPathExtension().lastPathComponent)
+    let buffer = try Self.decode(url, sampleRate: turntable.sampleRate)
+    load(buffer, title: url.deletingPathExtension().lastPathComponent)
+    analyze(buffer)
   }
 
   public func loadDemo() {
     load(DemoLoop.make(sampleRate: turntable.sampleRate), title: "demo loop")
+    beatGrid = BeatGrid(bpm: DemoLoop.bpm, offset: 0, confidence: 1)  // known, not measured
   }
 
   public func setPlaying(_ on: Bool) {

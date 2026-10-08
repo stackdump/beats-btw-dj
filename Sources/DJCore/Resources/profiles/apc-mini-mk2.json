@@ -238,13 +238,29 @@
    "group": "track",
    "index": 0,
    "action": "play",
-   "deck": "A"
+   "deck": "A",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 0,
+   "action": "quantize",
+   "deck": "A",
+   "shift": true
   },
   {
    "group": "track",
    "index": 7,
    "action": "play",
-   "deck": "B"
+   "deck": "B",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 7,
+   "action": "quantize",
+   "deck": "B",
+   "shift": true
   },
   {
    "group": "shift",

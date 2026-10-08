@@ -21,6 +21,8 @@ public enum WaveCommand: BitwiseCopyable {
   case noteOn(note: Int16, velocity: UInt8)
   case noteOff(note: Int16)
   case allNotesOff
+  /// Shift the beat grid by this many ticks (see `WaveRunner.align`).
+  case align(ticks: Double)
 }
 
 /// A `WaveRunner` that a deck can play: the Petri-net executor and the wave synthesis
@@ -125,6 +127,7 @@ public final class WaveDeckSource: @unchecked Sendable {
   }
   public func noteOff(_ note: Int) { send(.noteOff(note: Int16(clamping: note))) }
   public func allNotesOff() { send(.allNotesOff) }
+  public func align(ticks: Double) { send(.align(ticks: ticks)) }
 
   /// Is the role (a riff group or a plain net id) making sound right now? Reads the
   /// mute mirror and the latest project's role table, so it is main-thread safe.
@@ -207,6 +210,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .noteOn(let note, let velocity): runner.noteOn(Int(note), velocity: Int(velocity))
     case .noteOff(let note): runner.noteOff(Int(note))
     case .allNotesOff: runner.allNotesOff()
+    case .align(let ticks): runner.align(ticks: ticks)
     }
   }
 }

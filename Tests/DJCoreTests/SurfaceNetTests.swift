@@ -181,3 +181,55 @@ struct SurfaceNetTests {
     #expect(back)
   }
 }
+
+@MainActor
+struct SurfaceBeatTests {
+  @Test func inpulseSyncRewindAndLoadButtons() async throws {
+    let dj = try DJEngine(offline: true)
+    let a = dj["A"]!
+    let b = dj["B"]!
+    await a.generate(
+      TrackSpec(genre: "techno", seed: 1, extra: JSONObject([("bpm", .number(127))])))
+    b.loadDemo()
+    let s = SurfaceController(profile: .inpulse200MK3, engine: dj)
+    // deck B (channel 2): SYNC is deckB.buttons[2] → note 5
+    let prof = SurfaceProfile.inpulse200MK3
+    let syncB = prof.number(group: "deckB.buttons", index: 2)!
+    s.handle(bytes: [0x92, syncB, 0x7F])
+    #expect(abs(b.effectiveBPM! - 127) < 1e-9)
+    let led = s.ledFrame()
+    let lit: [UInt8] = [0x92, syncB, prof.leds!.singleOn]
+    #expect(led.contains(lit), "SYNC lights while the tempi match: \(led)")
+    // shift + SYNC = bar sync (shift buttons live on channel 5 for deck B)
+    let shiftSyncB = prof.number(group: "deckB.shiftButtons", index: 0)!
+    b.pitch = 0
+    s.handle(bytes: [0x95, shiftSyncB, 0x7F])
+    #expect(abs(b.effectiveBPM! - 127) < 1e-9)
+    // rewind (shift + CUE)
+    b.turntable.send(.seek(sample: 30_000))
+    _ = try { dj.stop() }()
+    let shiftCueB = prof.number(group: "deckB.shiftButtons", index: 1)!
+    s.handle(bytes: [0x95, shiftCueB, 0x7F])
+    try dj.start()
+    defer { dj.stop() }
+    _ = try renderOffline(dj, frames: 256)
+    #expect(b.turntable.position < 1000)
+  }
+
+  @Test func apcShiftedPlayButtonCyclesQuantize() throws {
+    let dj = try DJEngine(offline: true)
+    let s = SurfaceController(profile: .apcMiniMK2, engine: dj)
+    let a = dj["A"]!
+    #expect(a.quantize == .off)
+    s.handle(bytes: [0x90, 122, 0x7F])  // hold SHIFT
+    s.handle(bytes: [0x90, 100, 0x7F])  // track 0 = deck A
+    #expect(a.quantize == .beat)
+    s.handle(bytes: [0x90, 100, 0x7F])
+    #expect(a.quantize == .bar)
+    s.handle(bytes: [0x90, 100, 0x7F])
+    #expect(a.quantize == .off)
+    s.handle(bytes: [0x80, 122, 0x00])
+    s.handle(bytes: [0x90, 100, 0x7F])  // plain press still plays
+    #expect(a.playing)
+  }
+}
