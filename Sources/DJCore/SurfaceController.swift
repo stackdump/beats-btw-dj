@@ -12,6 +12,18 @@ public enum SurfaceOutcome: Equatable, Sendable {
   case pickup(SurfaceProfile.Binding)
 }
 
+/// One LED as a display shows it.
+public struct PadLight: Equatable, Sendable {
+  public enum Level: Sendable { case off, dim, full, blink }
+  /// APC palette index (RGB pads); 0 for single-colour LEDs.
+  public var colorIndex: UInt8
+  public var level: Level
+  public init(colorIndex: UInt8, level: Level) {
+    self.colorIndex = colorIndex
+    self.level = level
+  }
+}
+
 /// Routes one surface's messages to the engine and computes its LED
 /// feedback. Not thread-safe: use from the main actor.
 public final class SurfaceController {
@@ -199,6 +211,32 @@ public final class SurfaceController {
       for (i, note) in g.controlNumbers.enumerated() {
         let b = exact[Self.key(g.id, i)]?.first
         emit(g.channel ?? 0, note, 0x90, singleState(b, leds))
+      }
+    }
+    return out
+  }
+
+  /// What each LED of the surface is showing right now — the same state `ledFrame` sends,
+  /// as data, for a mirror on screen. Keyed by group id, one entry per control.
+  public func lights(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> [String:
+    [PadLight]]
+  {
+    guard let leds = profile.leds else { return [:] }
+    var out: [String: [PadLight]] = [:]
+    for g in profile.groups where leds.rgbGroups.contains(g.id) {
+      out[g.id] = g.controlNumbers.indices.map { i in
+        let k = Self.key(g.id, i)
+        let full = now - (flashed[k] ?? -1) < Self.flashSeconds
+        let (color, lit) = rgbState(exact[k]?.first)
+        return PadLight(colorIndex: color, level: (full || lit) ? .full : .dim)
+      }
+    }
+    for g in profile.groups where leds.singleGroups.contains(g.id) {
+      out[g.id] = g.controlNumbers.indices.map { i in
+        let v = singleState(exact[Self.key(g.id, i)]?.first, leds)
+        let level: PadLight.Level =
+          v == leds.singleBlink ? .blink : (v == leds.singleOn ? .full : .off)
+        return PadLight(colorIndex: 0, level: level)
       }
     }
     return out

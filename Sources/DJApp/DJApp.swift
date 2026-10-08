@@ -74,6 +74,9 @@ final class AppModel {
   var headphoneLevel = 0.7
   var inpulseOutput: AudioOutputDevice?
   var inpulseRouted = false
+  var padLights: [String: [PadLight]] = [:]
+  var padPort: String?
+  var showPads = false
 
   private var dj: DJEngine?
   private var hub: ControllerHub?
@@ -117,6 +120,13 @@ final class AppModel {
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
     inpulseOutput = AudioDevices.inpulse()
+    if let apc = hub.router.lights(profileName: SurfaceProfile.apcMiniMK2.name) {
+      padPort = apc.port
+      padLights = apc.groups
+    } else {
+      padPort = nil
+      padLights = [:]
+    }
     for (name, d) in dj.decks {
       let adapter = hub.jogAdapters.first { $0.deck == name }
       decks[name] = DeckState(
@@ -162,6 +172,18 @@ final class AppModel {
   func setCrossfader(_ v: Double) { dj?.perform(.crossfader(v)) }
   func setMaster(_ v: Double) { dj?.perform(.master(v)) }
   // Cue/headphone state doesn't change the master mix a session renders: not recorded.
+  /// Show the APC grid on screen; with no hardware attached, a virtual APC takes its place.
+  func setShowPads(_ on: Bool) {
+    showPads = on
+    if on, hub?.router.lights(profileName: SurfaceProfile.apcMiniMK2.name) == nil {
+      hub?.router.attach(port: "APC mini mk2 Control (on screen)")
+    }
+  }
+  func pressPad(_ group: String, _ index: Int) {
+    guard let port = padPort else { return }
+    hub?.router.press(port: port, group: group, index: index)
+  }
+
   func setPFL(_ deck: String, _ on: Bool) { dj?[deck]?.pfl = on }
   func setHeadphoneMix(_ v: Double) {
     dj?.owners["headphoneMix"] = "ui"
@@ -315,6 +337,12 @@ struct ContentView: View {
         MixerView(model: model)
         DeckView(name: "B", model: model, tint: .cyan)
       }
+      if model.showPads, let pads = model.padLights["pads"] {
+        PadGridView(
+          pads: pads, tracks: model.padLights["track"] ?? [], scenes: model.padLights["scene"] ?? []
+        ) { model.pressPad($0, $1) }
+        .frame(width: 300, height: 300)
+      }
       Divider()
       HStack {
         VStack(alignment: .leading, spacing: 2) {
@@ -328,6 +356,8 @@ struct ContentView: View {
         }
         Spacer()
         HStack {
+          Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
+            .toggleStyle(.button)
           Toggle(
             model.isRecording ? "● REC" : "Record",
             isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })

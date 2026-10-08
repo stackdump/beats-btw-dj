@@ -77,6 +77,33 @@ public final class ControllerRouter {
     for a in jogAdapters { a.decay(now: now) }
   }
 
+  /// The lights of the attached surface whose profile is `profileName`, with its port.
+  public func lights(
+    profileName: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime
+  ) -> (port: String, groups: [String: [PadLight]])? {
+    guard let (port, s) = surfaces.first(where: { $0.value.profile.name == profileName }) else {
+      return nil
+    }
+    return (port, s.lights(now: now))
+  }
+
+  /// Press and release a control on screen, as if it had been touched on the hardware:
+  /// the same MIDI bytes through `route`, so it is recorded like any controller input.
+  @discardableResult
+  public func press(
+    port: String, group: String, index: Int,
+    now: TimeInterval = ProcessInfo.processInfo.systemUptime
+  ) -> Bool {
+    guard let s = surfaces[port], let g = s.profile.group(group), g.type == .note,
+      g.controlNumbers.indices.contains(index)
+    else { return false }
+    let note = g.controlNumbers[index]
+    let ch = g.channel ?? 0
+    route(port: port, bytes: [0x90 | ch, note, 127], now: now)
+    route(port: port, bytes: [0x80 | ch, note, 0], now: now)
+    return true
+  }
+
   /// LED updates for every attached surface, by port.
   public func ledFrames(now: TimeInterval = ProcessInfo.processInfo.systemUptime)
     -> [(port: String, messages: [[UInt8]])]
