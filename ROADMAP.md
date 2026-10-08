@@ -88,7 +88,7 @@ base58btc) and model CID (sha256 of `canonicalProjectJSON`).
 writes fixtures — share envelope → canonical bytes + CID; (genre, seed,
 structure, cohesion) → project JSON + model CID; module-level vectors (RNG,
 bjorklund, motif, structure). Swift tests compare byte-for-byte.
-2.3 Port `pflow.js` (NetBundle, parse, `projectToJSON`, durations, CID) —
+2.3 **(done — `Sources/DJCore/Beats/PFlow.swift`; layout recompute and runtime fire/isEnabled deferred to 2.6)** Port `pflow.js` (NetBundle, parse, `projectToJSON`, durations, CID) —
 go-pflow `petri` semantics where JS leaves gaps.
 2.4 Port the composer in dependency order: core → theory → euclidean →
 markov → riffs → variety → countermelody → arrange → theme → groove →

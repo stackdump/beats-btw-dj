@@ -187,6 +187,79 @@ for (const genre of genres) for (const size of projSizes) for (const cohesion of
 }
 writeFileSync0('projects.json', { meta, projects });
 
+// --- pflow.js: parse / serialize / duration / model CID (2.3) ------------
+
+// Hand-written documents that hit every branch of parseNetBundle / parseProject /
+// bundleToJSON / normalizeBundleForCID. Expected values come from running the JS.
+const edgeDocs = [
+  {},
+  { name: 'Bare', nets: {} },
+  { name: 'Defaults', nets: { a: {} } },
+  { name: 'Key <&> é · 😀', tempo: 133.5, swing: 0.25, humanize: 0.1, rootNote: 45, scaleName: 'Minor', bars: 8.4,
+    initialMutes: ['bass', 3, 'lead'], structure: [{ name: 'verse', steps: 63.5, phrases: { drums: ['a', 5, 'b'], bass: 'nope' } }, null, 7, { steps: -0.5 }],
+    nets: { drums: {
+      role: 'music', riffGroup: 'g1', riffVariant: 'v2',
+      track: { channel: 10, defaultVelocity: 90.5, instrument: 'kick', instrumentSet: ['kick', 'snare'], mix: { vol: 0.8, pan: -0.25 }, group: 'drums',
+        generator: 'euclidean', ringSize: 16, beats: 5, rotation: 2, note: 36, generatorParams: { a: [1, 2], b: { c: null } } },
+      places: { p0: { initial: [1, 'x', 2], x: 10, y: 20, label: 'start' }, p1: {}, p2: { initial: [0] }, p10: { initial: [] }, p9: { initial: [3] } },
+      transitions: {
+        t0: { x: 1, y: 2, label: 'hit', midi: { note: 36.6, velocity: 127, channel: 10, duration: 250, durationSteps: 2 } },
+        t1: { midi: { note: 38, duration: 75 } },
+        t2: { midi: { note: 40, duration: 100 } },
+        t3: { midi: { velocity: 90.5, channel: 1.5, duration: -0.5 } },
+        t4: { control: { action: 'toggle-track', targetNet: 'bass', targetNote: 3, macro: 'fade', macroBars: 4, macroParams: { depth: 0.5 } } },
+        t5: { control: { targetNote: -2 } },
+        t6: { midi: { note: 1 }, control: { action: 'x' } },
+        t7: {},
+      },
+      arcs: [
+        { source: 't1', target: 'p1', weight: [1] }, { source: 'p0', target: 't0' }, { source: 'p0', target: 't1', weight: [2, 3] },
+        { source: 'p1', target: 't0', inhibit: true }, { source: 'p0', target: 't0', weight: ['z', 1.5] }, { source: '😀', target: 'x' }, { source: '￿', target: 'x' },
+        { source: 'p0', target: 't0', weight: [1] },
+      ],
+    },
+    '10': { places: { a: {} } }, '9': {}, b: null, c: 'str', '01': {} } },
+  { name: 'Siblings', tempo: 90, nets: { s: { track: { channel: 3, defaultVelocity: 80 }, places: { p: {} }, transitions: { t: {}, u: {} },
+      bindings: { t: { note: 61, duration: 300 }, u: { note: 62, durationSteps: 3, channel: 3 } },
+      controlBindings: { t: { action: 'mute', macro: 'm', macroBars: 2, macroParams: { k: 1 } } }, arcs: [] } } },
+  { name: 'Negative', tempo: 0, rootNote: -1, bars: -3, swing: -0.1, humanize: 0, nets: { n: { places: { p: { initial: [-0.5, 0.25] } } } } },
+  { name: 'Wrong types', tempo: '120', swing: 'x', rootNote: 'C', bars: null, structure: 'no', initialMutes: 'no', nets: [] },
+];
+const clone = (x) => JSON.parse(JSON.stringify(x));
+const sha = (s) => sha256hex(s);
+const pflowDocs = [];
+for (const doc of edgeDocs) {
+  const proj = pflow.parseProject(doc);
+  const out = JSON.stringify(pflow.projectToJSON(proj));
+  const canon = pflow.canonicalProjectJSON(proj);
+  const stamped = pflow.parseProject(doc);
+  pflow.stampDurationSteps(stamped);
+  pflowDocs.push({ doc, projectToJSON: out, canonical: canon, modelCID: sha(canon),
+    stampedProjectToJSON: JSON.stringify(pflow.projectToJSON(stamped)), stampedModelCID: sha(pflow.canonicalProjectJSON(stamped)) });
+}
+// Real composer output, via the share/file route: compose -> projectToJSON -> parse -> CID.
+// `viaCompose` is the model CID of the composed object itself (projects.json has it too);
+// Swift must reach the same CID from the serialized document alone.
+const pflowGenerated = [];
+for (const genre of genres) for (const [size, seed, cohesion] of [['loop', 42, 'v2'], ['loop', 1, 'v1']].concat(genre === 'techno' || genre === 'jazz' ? [['minimal', 42, 'v2']] : [])) {
+  const o = { seed, cohesion }; if (size !== 'loop') o.structure = size;
+  const proj = gen.compose(genre, o);
+  const doc = pflow.projectToJSON(proj);
+  const reparsed = pflow.parseProject(JSON.parse(JSON.stringify(doc)));
+  const canon = pflow.canonicalProjectJSON(reparsed);
+  pflowGenerated.push({ genre, seed, structure: size, cohesion, doc,
+    docSha: sha(JSON.stringify(doc)), roundTripSha: sha(JSON.stringify(pflow.projectToJSON(reparsed))),
+    viaCompose: sha(pflow.canonicalProjectJSON(proj)), modelCID: sha(canon) });
+}
+const durations = [];
+for (const ms of [-5, 0, 1, 10, 100, 125, 250, 333, 500, 1000, 2500, 0.4, NaN]) for (const bpm of [0, -1, 60, 90, 120, 128, 174, 200, NaN]) {
+  durations.push({ ms, bpm, steps: pflow.durationStepsFromMs(ms, bpm) });
+}
+const resolves = [];
+for (const midi of [null, {}, { duration: 250 }, { duration: NaN }, { durationSteps: 2 }, { durationSteps: 2, duration: 999 }, { durationSteps: 3 }, { durationSteps: 1, duration: 40 }, { durationSteps: 0, duration: 77 }])
+  for (const bpm of [0, 60, 120, 128, 133.3, 174]) resolves.push({ midi, bpm, ms: pflow.resolveDurationMs(midi, bpm) });
+writeFileSync0('pflow.json', { meta, docs: pflowDocs, generated: pflowGenerated, durations, resolves });
+
 function writeFileSync0(name, obj) {
   mkdirSync(outDir, { recursive: true });
   writeFileSync(path.join(outDir, name), JSON.stringify(obj) + '\n');
