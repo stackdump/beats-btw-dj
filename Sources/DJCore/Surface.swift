@@ -11,6 +11,9 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case eqLow, eqMid, eqHigh  // continuous, per deck: 0.5 = flat, 0 = kill, 1 = +6 dB
   case crossfader  // continuous: 0 = A, 1 = B
   case master  // continuous
+  case headphoneMix  // continuous: 0 = cue only … 1 = master only in the headphones
+  case headphoneLevel  // continuous
+  case pfl  // press: toggle this deck's headphone cue
   case play  // press: toggle the deck's transport
   case cue  // press: playing → back to cue point and pause; paused → set cue point here
   case hotcue  // press: jump to slot, or set it if empty

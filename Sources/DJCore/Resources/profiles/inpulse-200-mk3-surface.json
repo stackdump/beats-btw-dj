@@ -533,9 +533,8 @@
   {
    "group": "deckA.buttons",
    "index": 7,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "headphone cue — Phase 4 (Inpulse audio interface)"
+   "action": "pfl",
+   "deck": "A"
   },
   {
    "group": "deckA.buttons",
@@ -740,9 +739,8 @@
   {
    "group": "deckB.buttons",
    "index": 7,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "headphone cue — Phase 4 (Inpulse audio interface)"
+   "action": "pfl",
+   "deck": "B"
   },
   {
    "group": "deckB.buttons",
@@ -910,8 +908,7 @@
   {
    "group": "mixer.faders",
    "index": 2,
-   "action": "unbound",
-   "reason": "headphone level — Phase 4 (cue output)"
+   "action": "headphoneLevel"
   },
   {
    "group": "mixer.buttons",

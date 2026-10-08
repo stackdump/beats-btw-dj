@@ -124,3 +124,48 @@ func renderOffline(_ dj: DJEngine, frames: Int) throws -> [Float] {
   }
   return left
 }
+
+/// Render `frames` of a multichannel offline engine, one array per channel.
+func renderChannels(_ dj: DJEngine, frames: Int) throws -> [[Float]] {
+  let fmt = dj.engine.manualRenderingFormat
+  let out = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 4096)!
+  var chans = [[Float]](repeating: [], count: Int(fmt.channelCount))
+  var done = 0
+  while done < frames {
+    let n = AVAudioFrameCount(min(4096, frames - done))
+    guard try dj.engine.renderOffline(n, to: out) == .success else { break }
+    for c in 0..<chans.count {
+      chans[c] += UnsafeBufferPointer(start: out.floatChannelData![c], count: Int(out.frameLength))
+    }
+    done += Int(out.frameLength)
+  }
+  return chans
+}
+
+// MARK: - Session store harness (Foundation file I/O, away from the Testing overlay issue)
+
+final class StoreHarness {
+  let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "djvevr-\(UUID().uuidString)")
+  var store: SessionStore { SessionStore(directory: dir) }
+  deinit { try? FileManager.default.removeItem(at: dir) }
+
+  func fileURL(_ cid: String) -> URL { dir.appendingPathComponent("\(cid).json") }
+
+  func tamper(_ cid: String, replacing a: String, with b: String) throws {
+    let text = try String(contentsOf: fileURL(cid), encoding: .utf8)
+    try text.replacingOccurrences(of: a, with: b).write(
+      to: fileURL(cid), atomically: true, encoding: .utf8)
+  }
+
+  /// Export the session's replay as float32 WAV and return the file's bytes.
+  func exportedWAV(_ session: Session) throws -> Data {
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let wav = dir.appendingPathComponent("set.wav")
+    try SessionStore.exportWAV(session, to: wav, float32: true)
+    return try Data(contentsOf: wav)
+  }
+}
+
+func sameBytes(_ d: Data, _ other: Data) -> Bool { d == other }
+func wavBytes(_ audio: RenderedAudio) -> Data { WAV.encode(audio, float32: true) }

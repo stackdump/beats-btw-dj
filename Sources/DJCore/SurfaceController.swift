@@ -106,13 +106,15 @@ public final class SurfaceController {
       deck?.pitch = abs(p) < Self.pitchDeadZone ? 0 : p
     case .crossfader: dj.crossfader = e.value
     case .master: dj.master = e.value
+    case .headphoneMix: dj.headphoneMix = e.value
+    case .headphoneLevel: dj.headphoneLevel = e.value
     case .shift: shiftHeld = e.pressed
     case .unbound: break
     case .nudge:
       // centred control: 0.5 = no nudge, full travel = ± the tempo-fader range
       dj[dj.focus]?.nudge((e.value - 0.5) * 2 * Deck.pitchRange)
     case .section, .sectionPrev, .sectionNext, .roleMute, .macro, .panic, .stinger, .nextTrack,
-      .keys, .sync, .quantize, .rewind:
+      .keys, .sync, .quantize, .rewind, .pfl:
       perform(b, deck: deck, event: e, press: press, now: now)
     case .play, .cue, .hotcue, .clearcue, .loopIn, .loopOut, .loopHalve, .loopDouble:
       guard press else { break }
@@ -166,6 +168,7 @@ public final class SurfaceController {
     case .quantize:
       deck.quantize = deck.quantize == .off ? .beat : (deck.quantize == .beat ? .bar : .off)
     case .rewind: deck.rewind()
+    case .pfl: deck.pfl.toggle()
     default: break
     }
   }
@@ -224,6 +227,7 @@ public final class SurfaceController {
       return leds.singleOn
     case .nextTrack: return d?.nextReady != nil ? leds.singleBlink : leds.singleOff
     case .quantize: return d?.quantize == .off ? leds.singleOff : leds.singleOn
+    case .pfl: return d?.pfl == true ? leds.singleOn : leds.singleOff
     case .sync:
       // lit while this deck runs at the other deck's tempo
       guard let d, let mine = d.effectiveBPM,
@@ -267,6 +271,8 @@ public final class SurfaceController {
     switch b.action {
     case .crossfader: "crossfader"
     case .master: "master"
+    case .headphoneMix: "headphoneMix"
+    case .headphoneLevel: "headphoneLevel"
     case .volume, .filter, .gain, .eqLow, .eqMid, .eqHigh, .pitch:
       "\(b.deck ?? "?").\(b.action.rawValue)"
     default: nil
@@ -279,6 +285,8 @@ public final class SurfaceController {
     switch b.action {
     case .crossfader: return dj.crossfader
     case .master: return dj.master
+    case .headphoneMix: return dj.headphoneMix
+    case .headphoneLevel: return dj.headphoneLevel
     case .volume: return d?.volume
     case .filter: return d?.filter
     case .gain: return d?.gain

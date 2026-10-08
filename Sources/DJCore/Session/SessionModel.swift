@@ -39,7 +39,7 @@ public enum DeckSourceDescriptor: Equatable, Sendable {
   case sample(id: String, title: String, grid: BeatGrid?)
   case net(TrackSpec)
 
-  static let demoID = "demo-loop"
+  public static let demoID = "demo-loop"
 }
 
 /// Per-deck knobs at the start of a session.

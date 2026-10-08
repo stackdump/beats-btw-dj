@@ -1,3 +1,4 @@
+import Darwin
 import Testing
 
 @testable import DJCore
@@ -258,6 +259,53 @@ struct SessionReplayTests {
     #expect(other.left != Array(live.left.prefix(other.frames)))
   }
 
+  @Test func audioLoadedMidSetIsNamedByContentAndReplaysWithItsLibrary() throws {
+    // a "file": not the demo loop, so it is named by its content id
+    var l = [Float](repeating: 0, count: 44_100)
+    for i in 0..<l.count {
+      l[i] = Float(sin(Double(i) * 0.05)) * 0.4 * Float(i % 5512 < 3000 ? 1 : 0.2)
+    }
+    let file = SampleBuffer(left: l, sampleRate: rate)
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
+    dj.deterministic = true
+    try dj.start()
+    defer { dj.stop() }
+    let recorder = try SessionRecorder.start(on: dj)
+    let conductor = OfflineConductor(engine: dj, router: ControllerRouter(engine: dj))
+    var out: [Float] = []
+    for b in 0..<250 {
+      let (bl, _) = try conductor.step {
+        if b == 5 {
+          dj.perform(
+            .load(deck: "A", source: .sample(id: "", title: "file", grid: nil)), buffer: file)
+          dj.perform(.play(deck: "A", on: true))
+        }
+        if b == 120 {
+          dj.perform(
+            .load(
+              deck: "B", source: .sample(id: DeckSourceDescriptor.demoID, title: "demo", grid: nil))
+          )
+        }
+        if b == 125 { dj.perform(.play(deck: "B", on: true)) }
+      }
+      out += bl
+    }
+    let session = recorder.finish()
+    #expect(session.decks["A"] == DeckSourceDescriptor.none)
+    let named = session.events.compactMap { e -> String? in
+      if case .action(.load(_, .sample(let id, _, _))) = e.kind { return id }
+      return nil
+    }
+    #expect(named.first == file.contentID && named.last == "demo-loop")
+    #expect(dj.sampleLibrary[file.contentID] === file)
+    let replay = try SessionPlayer(session: session, samples: { dj.sampleLibrary[$0] }).render()
+    #expect(replay.left == out)
+    #expect(out.reduce(0) { max($0, abs($1)) } > 0.1)
+    #expect(throws: SessionError.missingSample(id: file.contentID)) {
+      try SessionPlayer(session: session).render()
+    }
+  }
+
   @Test func aMissingSampleIsReportedNotInvented() throws {
     var s = SessionModelTests.sample()
     s.decks = ["B": .sample(id: "deadbeef", title: "x", grid: nil)]
@@ -286,5 +334,28 @@ struct WAVTests {
     #expect(le(44 + 4) == 16384 || le(44 + 4) == 16383)  // 0.5 → ~16384
     #expect(le(44 + 8) == -32768 && le(44 + 12) == 32767)
     #expect(le(44 + 14) == 32767, "clipped, not wrapped")
+  }
+}
+
+struct SessionStoreTests {
+  @Test func filesAreNamedByTheirCIDAndVerified() throws {
+    let h = StoreHarness()
+    let s = SessionModelTests.sample()
+    let (cid, url) = try h.store.save(s)
+    #expect(cid == s.cid && url.lastPathComponent == "\(cid).json")
+    #expect(try h.store.load(cid: cid) == s)
+    #expect(h.store.list() == [cid])
+    // idempotent: the same performance is the same file
+    #expect(try h.store.save(s).url == url && h.store.list().count == 1)
+    // tampering is caught by the name
+    try h.tamper(cid, replacing: "\"frames\":96000", with: "\"frames\":96001")
+    #expect(throws: SessionError.cidMismatch) { try h.store.load(cid: cid) }
+  }
+
+  @Test func exportsAWAVOfTheReplay() throws {
+    let h = StoreHarness()
+    let (session, live) = try SessionReplayTests.perform(blocks: 200)
+    let bytes = try h.exportedWAV(session)
+    #expect(sameBytes(bytes, wavBytes(live)))
   }
 }

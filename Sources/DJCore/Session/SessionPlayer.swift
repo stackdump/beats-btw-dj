@@ -73,13 +73,19 @@ public final class SessionPlayer {
       decks: session.decks.keys.sorted(), offline: true, sampleRate: session.sampleRate)
     dj.deterministic = true
     dj.sampleResolver = samples
+    // Every sample the set ever loads must be in hand before the first frame.
+    var needed: [String] = []
+    for source in session.decks.values {
+      if case .sample(let id, _, _) = source { needed.append(id) }
+    }
+    for e in session.events {
+      if case .action(.load(_, .sample(let id, _, _))) = e.kind { needed.append(id) }
+    }
+    for id in needed where id != DeckSourceDescriptor.demoID && samples(id) == nil {
+      throw SessionError.missingSample(id: id)
+    }
     // Starting state.
     for (name, source) in session.decks.sorted(by: { $0.key < $1.key }) {
-      if case .sample(let id, _, _) = source, id != DeckSourceDescriptor.demoID,
-        samples(id) == nil
-      {
-        throw SessionError.missingSample(id: id)
-      }
       dj.applyAction(.load(deck: name, source: source))
       if let p = session.params[name] { dj[name]?.apply(p) }
     }

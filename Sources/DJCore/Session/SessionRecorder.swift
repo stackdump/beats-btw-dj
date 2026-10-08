@@ -114,8 +114,9 @@ extension DJEngine {
     var recorded = action
     // A sample loaded from a file is named by its content id, known only now.
     if case .load(let deck, .sample(_, let title, _)) = action, let buffer {
-      recorded = .load(
-        deck: deck, source: .sample(id: buffer.contentID, title: title, grid: nil))
+      let id = buffer.contentID
+      sampleLibrary[id] = buffer
+      recorded = .load(deck: deck, source: .sample(id: id, title: title, grid: nil))
     }
     if let gridded = applyAction(action, prepared: prepared, buffer: buffer),
       case .load(let deck, .sample(let id, let title, _)) = recorded
@@ -175,8 +176,13 @@ extension DJEngine {
           d.loadDemo()
         } else if let b = buffer ?? sampleResolver?(id) {
           d.load(b, title: title)
-          // The recorded grid stands in for the (asynchronous) tempo analysis.
-          if let grid { d.setBeatGrid(grid) }
+          // A recorded grid stands in for the (asynchronous) tempo analysis; live, with
+          // none recorded, the analysis runs and its result is recorded when it lands.
+          if let grid {
+            d.setBeatGrid(grid)
+          } else if !deterministic {
+            d.analyze(b)
+          }
           return d.beatGrid
         }
       }

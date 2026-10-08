@@ -54,6 +54,7 @@ struct DeckState: Equatable {
   var nextComposing = false
   var quantize = "off"
   var scrubbing = false
+  var pfl = false
 }
 
 @MainActor @Observable
@@ -64,6 +65,10 @@ final class AppModel {
   var decks: [String: DeckState] = ["A": .init(), "B": .init()]
   var crossfader = 0.5
   var master = 0.8
+  var headphoneMix = 0.0
+  var headphoneLevel = 0.7
+  var inpulseOutput: AudioOutputDevice?
+  var inpulseRouted = false
 
   private var dj: DJEngine?
   private var hub: ControllerHub?
@@ -104,6 +109,9 @@ final class AppModel {
     devices = hub.devices
     crossfader = dj.crossfader
     master = dj.master
+    headphoneMix = dj.headphoneMix
+    headphoneLevel = dj.headphoneLevel
+    inpulseOutput = AudioDevices.inpulse()
     for (name, d) in dj.decks {
       let adapter = hub.jogAdapters.first { $0.deck == name }
       decks[name] = DeckState(
@@ -118,7 +126,7 @@ final class AppModel {
         rolesOn: Set(d.roles.filter { d.isRoleOn($0) }), nextReady: d.nextReady != nil,
         nextComposing: d.nextComposing != nil,
         quantize: d.quantize == .off ? "off" : (d.quantize == .beat ? "beat" : "bar"),
-        scrubbing: d.wave.isScrubbing)
+        scrubbing: d.wave.isScrubbing, pfl: d.pfl)
       if d.mode == .net {
         decks[name]?.duration =
           Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
@@ -128,62 +136,166 @@ final class AppModel {
     }
   }
 
-  // Actions from the UI. Hardware goes through the hub; both end up on Deck.
-  func togglePlay(_ deck: String) { dj?[deck].map { $0.setPlaying(!$0.playing) } }
-  func hotCue(_ deck: String, _ slot: Int) { dj?[deck]?.hotCue(slot) }
-  func clearCue(_ deck: String, _ slot: Int) { dj?[deck]?.clearCue(slot) }
+  // Actions from the UI. Hardware goes through the hub's router; UI inputs go through
+  // `DJEngine.perform`. Both are recorded when a session is being recorded.
+  func togglePlay(_ deck: String) {
+    guard let d = dj?[deck] else { return }
+    dj?.perform(.play(deck: deck, on: !d.playing))
+  }
+  func hotCue(_ deck: String, _ slot: Int) { dj?.perform(.hotCue(deck: deck, slot: slot)) }
+  func clearCue(_ deck: String, _ slot: Int) { dj?.perform(.clearCue(deck: deck, slot: slot)) }
   func setVolume(_ deck: String, _ v: Double) {
-    dj?.owners["\(deck).volume"] = "ui"
-    dj?[deck]?.volume = v
+    dj?.perform(.param(deck: deck, name: "volume", value: v))
   }
   func setFilter(_ deck: String, _ v: Double) {
-    dj?.owners["\(deck).filter"] = "ui"
-    dj?[deck]?.filter = v
+    dj?.perform(.param(deck: deck, name: "filter", value: v))
   }
   func setPitch(_ deck: String, _ v: Double) {
-    dj?.owners["\(deck).pitch"] = "ui"
-    dj?[deck]?.pitch = v
+    dj?.perform(.param(deck: deck, name: "pitch", value: v))
   }
-  func setCrossfader(_ v: Double) {
-    dj?.owners["crossfader"] = "ui"
-    dj?.crossfader = v
+  func setCrossfader(_ v: Double) { dj?.perform(.crossfader(v)) }
+  func setMaster(_ v: Double) { dj?.perform(.master(v)) }
+  // Cue/headphone state doesn't change the master mix a session renders: not recorded.
+  func setPFL(_ deck: String, _ on: Bool) { dj?[deck]?.pfl = on }
+  func setHeadphoneMix(_ v: Double) {
+    dj?.owners["headphoneMix"] = "ui"
+    dj?.headphoneMix = v
   }
-  func setMaster(_ v: Double) {
-    dj?.owners["master"] = "ui"
-    dj?.master = v
+  func setHeadphoneLevel(_ v: Double) {
+    dj?.owners["headphoneLevel"] = "ui"
+    dj?.headphoneLevel = v
   }
-  func loadDemo(_ deck: String) { dj?[deck]?.loadDemo() }
+
+  /// Master → the Inpulse's outputs 1/2, headphone cue → 3/4. Restarts the engine; if the
+  /// device refuses, the stereo path comes back.
+  func toggleInpulseOutput() {
+    guard let dj else { return }
+    Task { @MainActor in
+      dj.stop()
+      do {
+        if inpulseRouted {
+          try dj.disableCueRouting()
+          inpulseRouted = false
+        } else if let dev = AudioDevices.inpulse() {
+          try await dj.enableCueOutput(device: dev)
+          inpulseRouted = true
+        }
+        try dj.start()
+        status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
+      } catch {
+        status = "cue output: \(error)"
+        try? dj.disableCueRouting()
+        inpulseRouted = false
+        try? dj.start()
+      }
+    }
+  }
+
+  func loadDemo(_ deck: String) {
+    dj?.perform(
+      .load(
+        deck: deck, source: .sample(id: DeckSourceDescriptor.demoID, title: "demo loop", grid: nil))
+    )
+  }
 
   // Live nets
   func generate(_ deck: String, _ spec: TrackSpec) {
+    guard let dj else { return }
     status = "composing \(spec.genre)…"
-    let d = dj?[deck]
+    let sr = dj.sampleRate
     Task { @MainActor in
-      await d?.generate(spec)
-      status = "\(Int(dj?.sampleRate ?? 0)) Hz"
+      let track = await Task.detached(priority: .userInitiated) {
+        PreparedTrack(spec: spec, sampleRate: sr)
+      }.value
+      dj.perform(.load(deck: deck, source: .net(spec)), prepared: track)
+      status = "\(Int(dj.sampleRate)) Hz"
     }
   }
-  func queueNext(_ deck: String, _ spec: TrackSpec) { dj?[deck]?.queueNext(spec) }
-  func setAutoAdvance(_ deck: String, _ on: Bool) { dj?[deck]?.autoAdvance = on }
-  func launchSection(_ deck: String, _ i: Int) { dj?[deck]?.launchSection(i) }
-  func toggleRole(_ deck: String, _ role: String) { dj?[deck]?.toggleRole(role) }
-  func fire(_ deck: String, _ macro: NetMacro) { dj?[deck]?.fire(macro) }
-  func panic(_ deck: String) { dj?[deck]?.panic() }
-  func stinger(_ deck: String, _ n: Int) { dj?[deck]?.stinger(n) }
-  func skipToNext(_ deck: String) { dj?[deck]?.skipToNextTrack() }
-  func sync(_ deck: String) {
-    guard let d = dj?[deck], let other = dj?.decks.values.first(where: { $0 !== d }) else { return }
-    d.sync(to: other, align: .bar)
+  func queueNext(_ deck: String, _ spec: TrackSpec) {
+    dj?.perform(.queueNext(deck: deck, spec: spec))
   }
+  func setAutoAdvance(_ deck: String, _ on: Bool) { dj?.perform(.autoAdvance(deck: deck, on: on)) }
+  func launchSection(_ deck: String, _ i: Int) { dj?.perform(.section(deck: deck, index: i)) }
+  func toggleRole(_ deck: String, _ role: String) {
+    guard let d = dj?[deck] else { return }
+    dj?.perform(.role(deck: deck, role: role, on: !d.isRoleOn(role)))
+  }
+  func fire(_ deck: String, _ macro: NetMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
+  func panic(_ deck: String) { dj?.perform(.panic(deck: deck)) }
+  func stinger(_ deck: String, _ n: Int) { dj?.perform(.stinger(deck: deck, n: n)) }
+  func skipToNext(_ deck: String) { dj?.perform(.nextTrack(deck: deck)) }
+  func sync(_ deck: String) { dj?.perform(.sync(deck: deck, align: "bar")) }
   func cycleQuantize(_ deck: String) {
     guard let d = dj?[deck] else { return }
-    d.quantize = d.quantize == .off ? .beat : (d.quantize == .beat ? .bar : .off)
+    let next = d.quantize == .off ? "beat" : (d.quantize == .beat ? "bar" : "off")
+    dj?.perform(.quantize(deck: deck, mode: next))
   }
 
   func load(_ deck: String, url: URL) {
     let access = url.startAccessingSecurityScopedResource()
     defer { if access { url.stopAccessingSecurityScopedResource() } }
-    do { try dj?[deck]?.load(contentsOf: url) } catch { status = "\(error)" }
+    do {
+      let buffer = try Deck.decode(url, sampleRate: dj?.sampleRate ?? 48_000)
+      dj?.perform(
+        .load(
+          deck: deck,
+          source: .sample(
+            id: "", title: url.deletingPathExtension().lastPathComponent, grid: nil)),
+        buffer: buffer)
+    } catch {
+      status = "\(error)"
+    }
+  }
+
+  // Session recording
+  var isRecording = false
+  var lastSession: String?
+  private var recorder: SessionRecorder?
+  private var lastSessionValue: Session?
+
+  func toggleRecording() {
+    guard let dj else { return }
+    if let r = recorder {
+      let session = r.finish()
+      recorder = nil
+      isRecording = false
+      do {
+        let saved = try SessionStore().save(session)
+        lastSession = saved.cid
+        lastSessionValue = session
+        status = String(
+          format: "saved %.0f s set %@…", session.duration, String(saved.cid.prefix(14)))
+      } catch {
+        status = "could not save session: \(error)"
+      }
+    } else {
+      do {
+        recorder = try SessionRecorder.start(on: dj)
+        isRecording = true
+        status = "recording"
+      } catch {
+        status = "can't record yet: \(error)"
+      }
+    }
+  }
+
+  /// Re-render the last recorded set to a WAV (off the main thread).
+  func exportLastSession() {
+    guard let session = lastSessionValue, let dj else { return }
+    let panel = NSSavePanel()
+    panel.allowedContentTypes = [.wav]
+    panel.nameFieldStringValue = "set-\(session.cid.prefix(10)).wav"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    let library = dj.sampleLibrary
+    status = "rendering…"
+    Task.detached {
+      do {
+        try SessionStore.exportWAV(session, to: url, samples: { library[$0] })
+        await MainActor.run { self.status = "exported \(url.lastPathComponent)" }
+      } catch {
+        await MainActor.run { self.status = "export failed: \(error)" }
+      }
+    }
   }
 }
 
@@ -209,8 +321,21 @@ struct ContentView: View {
           }
         }
         Spacer()
+        HStack {
+          Toggle(
+            model.isRecording ? "● REC" : "Record",
+            isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })
+          )
+          .toggleStyle(.button).tint(.red)
+          Button("Export WAV…") { model.exportLastSession() }
+            .disabled(model.lastSession == nil || model.isRecording)
+        }
         VStack(alignment: .trailing, spacing: 2) {
           Text(model.status).font(.caption)
+          if let cid = model.lastSession {
+            Text(cid).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(
+              .enabled)
+          }
           Text(model.lastMessage).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(
             1)
         }
@@ -253,6 +378,8 @@ struct DeckView: View {
       HStack {
         Button(state.playing ? "Pause" : "Play") { model.togglePlay(name) }
           .keyboardShortcut(name == "A" ? "a" : "b", modifiers: [])
+        Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
+          .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
         ForEach(0..<4, id: \.self) { slot in
           Button("\(slot + 1)") { model.hotCue(name, slot) }
             .tint(state.cues.contains(slot) ? tint : nil)
@@ -300,7 +427,22 @@ struct MixerView: View {
       LabeledSlider(
         label: "Master", value: Binding(get: { model.master }, set: { model.setMaster($0) }),
         range: 0...1)
-      Spacer().frame(height: 120)
+      LabeledSlider(
+        label: "Phones",
+        value: Binding(get: { model.headphoneLevel }, set: { model.setHeadphoneLevel($0) }),
+        range: 0...1)
+      LabeledSlider(
+        label: "Cue ↔ Mix",
+        value: Binding(get: { model.headphoneMix }, set: { model.setHeadphoneMix($0) }),
+        range: 0...1)
+      if model.inpulseOutput != nil || model.inpulseRouted {
+        Toggle(
+          "Inpulse out (1/2 master, 3/4 cue)",
+          isOn: Binding(get: { model.inpulseRouted }, set: { _ in model.toggleInpulseOutput() })
+        )
+        .font(.caption).help("[UNVERIFIED on hardware] needs the Inpulse's own audio interface")
+      }
+      Spacer().frame(height: 40)
       VStack(spacing: 2) {
         Slider(
           value: Binding(get: { model.crossfader }, set: { model.setCrossfader($0) }), in: 0...1)

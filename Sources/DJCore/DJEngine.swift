@@ -37,6 +37,8 @@ public final class DJEngine {
   public var recorder: SessionRecorder?
   /// Resolves a sample's content id to audio (replays, and `perform(.load)`).
   public var sampleResolver: ((String) -> SampleBuffer?)?
+  /// Audio loaded through `perform`, by content id: lets a session be exported.
+  public var sampleLibrary: [String: SampleBuffer] = [:]
   /// Replay mode: anything that normally finishes on a background thread (section
   /// launches, composing, queueing) completes inline, so the same inputs give the same
   /// audio every time.
@@ -44,6 +46,14 @@ public final class DJEngine {
     didSet { for d in decks.values { d.deterministic = deterministic } }
   }
   private let frameClock = FrameClock()
+  // Headphone cue: pre-fader sends → cueSum ─┐
+  //                master mix → headMaster ──┴→ headBus (→ the cue pair, once routed)
+  let cueSum = AVAudioMixerNode()
+  let headMaster = AVAudioMixerNode()
+  let headBus = AVAudioMixerNode()
+  var channelRouter: AVAudioUnit?
+  var _headphoneMix = 0.0
+  var _headphoneLevel = 0.7
   /// Samples rendered since the engine was built.
   public var frame: Int { frameClock.frames.load(ordering: .relaxed) }
   /// 0...1
@@ -56,17 +66,31 @@ public final class DJEngine {
   /// (tests, and bouncing a mix to a file).
   public init(
     decks names: [String] = ["A", "B"], offline: Bool = false,
-    sampleRate offlineRate: Double = 48_000
+    sampleRate offlineRate: Double = 48_000, outputChannels: Int = 2
   ) throws {
     if offline {
       sampleRate = offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: offlineRate, channels: 2)!
-      try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
+      // More than two output channels is for the headphone/cue path (see `enableCueRouting`).
+      let renderFormat =
+        outputChannels <= 2
+        ? format
+        : AVAudioFormat(
+          commonFormat: .pcmFormatFloat32, sampleRate: offlineRate, interleaved: false,
+          channelLayout: AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | UInt32(outputChannels))!)
+      try engine.enableManualRenderingMode(.offline, format: renderFormat, maximumFrameCount: 4096)
     } else {
       let hw = engine.outputNode.outputFormat(forBus: 0).sampleRate
       sampleRate = hw > 0 ? hw : offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
+    engine.attach(cueSum)
+    engine.attach(headMaster)
+    engine.attach(headBus)
+    engine.connect(cueSum, to: headBus, format: format)
+    engine.connect(headMaster, to: headBus, format: format)
+    applyHeadphoneMix()
     // A silent source whose only job is to count the frames the engine renders.
     let clock = frameClock
     let clockNode = AVAudioSourceNode(format: format) { _, _, frames, abl in
@@ -83,9 +107,18 @@ public final class DJEngine {
       engine.attach(deck.node)
       engine.attach(deck.filterNode)
       engine.attach(deck.strip)
+      engine.attach(deck.cueSend)
       engine.connect(deck.node, to: deck.filterNode, format: format)
-      engine.connect(deck.filterNode, to: deck.strip, format: format)
+      // Post-EQ, pre-fader: the strip feeds the master, the cue send feeds the headphones.
+      engine.connect(
+        deck.filterNode,
+        to: [
+          AVAudioConnectionPoint(node: deck.strip, bus: 0),
+          AVAudioConnectionPoint(node: deck.cueSend, bus: 0),
+        ], fromBus: 0, format: format)
       engine.connect(deck.strip, to: engine.mainMixerNode, format: format)
+      engine.connect(deck.cueSend, to: cueSum, format: format)
+      deck.cueSend.outputVolume = 0  // after attach: attaching resets a mixer to unity
       deck.onGainChange = { [weak self] in self?.applyGains() }
       deck.onGrid = { [weak self] g in
         self?.recorder?.record(.grid(deck: name, bpm: g.bpm, offset: g.offset))
@@ -139,6 +172,10 @@ public final class Deck: JogClock {
   public let filterNode = AVAudioUnitEQ(numberOfBands: 5)
   /// Channel strip: its output volume is volume x crossfader gain.
   public let strip = AVAudioMixerNode()
+  /// Pre-fader send to the headphone bus: volume 1 while `pfl` is on.
+  let cueSend = AVAudioMixerNode()
+  /// Headphone cue (pre-fade listen): this deck's pre-fader signal goes to the cue bus.
+  public var pfl = false { didSet { cueSend.outputVolume = pfl ? 1 : 0 } }
   public private(set) var loaded: SampleBuffer?
   public private(set) var mode: DeckMode = .sample
   /// The project a net deck is playing (nil in sample mode).
@@ -239,6 +276,7 @@ public final class Deck: JogClock {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
     let wv = WaveDeckSource(sampleRate: sampleRate)
+    cueSend.outputVolume = 0
     turntable = tt
     wave = wv
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
@@ -468,7 +506,7 @@ public final class Deck: JogClock {
 
   // MARK: decoding
 
-  static func decode(_ url: URL, sampleRate: Double) throws -> SampleBuffer {
+  public static func decode(_ url: URL, sampleRate: Double) throws -> SampleBuffer {
     let file: AVAudioFile
     do { file = try AVAudioFile(forReading: url) } catch {
       throw DJEngineError.unreadable(url, error.localizedDescription)

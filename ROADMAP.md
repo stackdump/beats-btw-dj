@@ -129,15 +129,28 @@ reversible Petri clock), and the WAV path stays for imported audio.
 
 Goal: a set is reproducible and content-addressed, like a beats track.
 
+Status: 4.1–4.3 done and proven by test (a scripted set across all three controllers
+and the UI replays bit-identical to the live render; two renders are byte-identical).
+4.4: headphone cue (per-deck PFL, post-EQ pre-fader; cue/master mix; level) feeds a
+channel router that puts the master on outputs 1/2 and the cue on 3/4 of a multichannel
+device — verified offline on a 4-channel engine. **Not verified on the Inpulse**: that
+its interface exposes ≥ 4 outputs with the headphones on 3/4, that the device accepts
+the channel layout, and how the hardware headphone knobs map (`mixer.faders[2]` →
+headphone level is from the sweep order, and the mix knob is on APC fader 5 for lack of
+one on the Inpulse). Pressing "Inpulse out" in the app is the first real test; if it
+fails the stereo path is restored. 4.5: sessions are saved as `<cid>.json` (verified on
+load) under Application Support and exported to WAV; uploading to the beats share store
+or CDN needs an endpoint/credentials decision and is not built.
+
 4.1 **(done)** Record every controller event (time, device, decoded control, value)
 against the deck clocks.
 4.2 **(done)** A session envelope: the decks' share envelopes + the event log →
 canonical JSON → CID.
 4.3 **(done)** Offline re-render of a session to WAV (same engine, same events) and a
 determinism test (two renders, same bytes).
-4.4 Cue/headphone output through the Inpulse's built-in audio interface
+4.4 **(done in software; hardware unverified — see below)** Cue/headphone output through the Inpulse's built-in audio interface
 (pre-listen mix on outputs 3/4).
-4.5 Optional: publish sessions to the beats share store / CDN.
+4.5 **(local part done: `SessionStore`, Record/Export in the app; publishing needs a decision)** Optional: publish sessions to the beats share store / CDN.
 
 ## Phase 5 — Visuals (later)
 

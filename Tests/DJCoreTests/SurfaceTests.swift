@@ -86,7 +86,9 @@ struct SurfaceProfileTests {
         if b.action == .unbound {
           #expect(b.reason != nil, "\(p.name): \(b.group) parked without a reason")
         }
-        let deckless: Set<DJActionKind> = [.crossfader, .master, .shift, .unbound, .keys, .nudge]
+        let deckless: Set<DJActionKind> = [
+          .crossfader, .master, .shift, .unbound, .keys, .nudge, .headphoneMix, .headphoneLevel,
+        ]
         if !deckless.contains(b.action) { #expect(b.deck != nil, "\(p.name): \(b)") }
       }
       let keys = p.layout.map {
