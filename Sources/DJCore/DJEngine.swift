@@ -195,6 +195,7 @@ public final class Deck: JogClock {
   /// Told when a sample deck's beat grid changes (analysis finished, tapped, moved).
   var onGrid: ((BeatGrid) -> Void)?
   var netNudge = 0.0
+  var ringShapes: [String: RingShape] = [:]
   /// Tempo and first-beat position of a sample deck (analysed, tapped or known).
   public internal(set) var beatGrid: BeatGrid?
   /// Whole-track peaks of the loaded audio, ready shortly after a load (nil until then).
@@ -449,6 +450,7 @@ public final class Deck: JogClock {
       wave.isActive = true
     }
     netProject = project
+    ringShapes = [:]
     netBaseBPM = project.tempo > 0 ? project.tempo : 120
     self.title = title ?? project.name
     hotCues = [:]

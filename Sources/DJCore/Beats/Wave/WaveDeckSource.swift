@@ -102,6 +102,9 @@ public final class WaveDeckSource: @unchecked Sendable {
     drainRetired()
     if commands.push(.load(p)) {
       latest = prepared
+      // A stopped deck installs the project at once: show its starting mutes before the
+      // first render publishes the real ones.
+      if !isPlaying { publishMutes(prepared.graph.muted) }
     } else {
       Unmanaged<WaveProject>.fromOpaque(p).release()
     }
@@ -137,6 +140,19 @@ public final class WaveDeckSource: @unchecked Sendable {
   public func freeze() { send(.freeze) }
   public func scrub(ticks: Double) { send(.scrub(ticks: ticks)) }
   public func release() { send(.release) }
+
+  /// Is net `index` of the latest project muted right now? (Mute mirror, main-thread safe.)
+  public func isNetMuted(index i: Int) -> Bool {
+    guard i >= 0, i < 256 else { return false }
+    let w: UInt64
+    switch i / 64 {
+    case 0: w = muteWord0.load(ordering: .relaxed)
+    case 1: w = muteWord1.load(ordering: .relaxed)
+    case 2: w = muteWord2.load(ordering: .relaxed)
+    default: w = muteWord3.load(ordering: .relaxed)
+    }
+    return w & (1 << UInt64(i % 64)) != 0
+  }
 
   /// Is the role (a riff group or a plain net id) making sound right now? Reads the
   /// mute mirror and the latest project's role table, so it is main-thread safe.
@@ -182,25 +198,28 @@ public final class WaveDeckSource: @unchecked Sendable {
     stoppedAtomic.store(runner.stopped, ordering: .relaxed)
     hasProjectAtomic.store(runner.graph != nil, ordering: .relaxed)
     scrubbingAtomic.store(runner.isScrubbing, ordering: .relaxed)
-    if let g = runner.graph {
-      var w0: UInt64 = 0
-      var w1: UInt64 = 0
-      var w2: UInt64 = 0
-      var w3: UInt64 = 0
-      for i in 0..<min(256, g.muted.count) where g.muted[i] != 0 {
-        let bit: UInt64 = 1 << UInt64(i % 64)
-        switch i / 64 {
-        case 0: w0 |= bit
-        case 1: w1 |= bit
-        case 2: w2 |= bit
-        default: w3 |= bit
-        }
+    if let g = runner.graph { publishMutes(g.muted) }
+  }
+
+  /// Write the mute table into the four mirror words. No allocation.
+  private func publishMutes(_ muted: [UInt8]) {
+    var w0: UInt64 = 0
+    var w1: UInt64 = 0
+    var w2: UInt64 = 0
+    var w3: UInt64 = 0
+    for i in 0..<min(256, muted.count) where muted[i] != 0 {
+      let bit: UInt64 = 1 << UInt64(i % 64)
+      switch i / 64 {
+      case 0: w0 |= bit
+      case 1: w1 |= bit
+      case 2: w2 |= bit
+      default: w3 |= bit
       }
-      muteWord0.store(w0, ordering: .relaxed)
-      muteWord1.store(w1, ordering: .relaxed)
-      muteWord2.store(w2, ordering: .relaxed)
-      muteWord3.store(w3, ordering: .relaxed)
     }
+    muteWord0.store(w0, ordering: .relaxed)
+    muteWord1.store(w1, ordering: .relaxed)
+    muteWord2.store(w2, ordering: .relaxed)
+    muteWord3.store(w3, ordering: .relaxed)
   }
 
   private func apply(_ c: WaveCommand) {
