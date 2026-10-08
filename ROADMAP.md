@@ -93,7 +93,7 @@ go-pflow `petri` semantics where JS leaves gaps.
 2.4 **(done — `Sources/DJCore/Beats/Generator/`; arrangeWithOpts / counter-melody / macros deferred, see below)** Port the composer in dependency order: core → theory → euclidean →
 markov → riffs → variety → countermelody → arrange → theme → groove →
 structure → composer. Gate each on fixtures.
-2.5 Share envelope → params (`shareFromPayload`), including tempo / swing /
+2.5 **(done — `Sources/DJCore/Beats/Share.swift`; URL/gzip decoding and raw-`nets` envelopes deferred)** Share envelope → params (`shareFromPayload`), including tempo / swing /
 humanize overrides, cohesion pin (v1 for envelopes without the field),
 traits, `macroCurve`.
 2.6 Port the wave engine (`net.js`, `synth.js`, `runner.js`): trace exact,

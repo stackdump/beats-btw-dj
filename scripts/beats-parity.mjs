@@ -137,6 +137,18 @@ for (const t of themes.filter((x) => x.seed === 42 && x.supported)) {
 }
 writeFileSync0('modules.json', { meta, bjorklund, structures, themes, motifs });
 
+// compose() leaves some control nets (fade-in/out, drum-break) as plain objects that the
+// app parses on load; parse them here so canonical/doc output is defined for every case.
+const normalized = (proj) => {
+  for (const [id, nb] of Object.entries(proj.nets)) if (!(nb instanceof pflow.NetBundle)) proj.nets[id] = pflow.parseNetBundle(nb);
+  return proj;
+};
+const digest = (proj) => {
+  normalized(proj);
+  const canonical = pflow.canonicalProjectJSON(proj);
+  return { canonical, canonicalBytes: Buffer.byteLength(canonical), modelCID: sha256hex(canonical),
+    docSha: sha256hex(JSON.stringify(pflow.projectToJSON(proj))) };
+};
 // --- share envelopes ----------------------------------------------------
 
 const payloads = [
@@ -151,12 +163,28 @@ const payloads = [
   { genre: 'metal', seed: 2147483648, structure: 'loop', parents: ['zdj3abc'] },
   { genre: 'blues', seed: 1, cohesion: 'v3' },
   { b: 1, a: { z: 1, y: [3, 2, 1], '10': 'ten', '9': 'nine' }, genre: 'garage', seed: 0.5 },
+  // envelope edge cases: legacy pin, trait precedence, truthiness, overlay passthrough
+  { genre: 'house', seed: 21, structure: 'standard', traits: { seed: 22, cohesion: 'v2', 'drum-fills': true } },
+  { genre: 'edm', seed: 23, structure: 'extended', cohesion: 'v2', macroCurve: [{ section: 'drop', macro: 'riser', bars: 2 }] },
+  { genre: 'dnb', seed: 24, structure: 5, traits: ['x'], cohesion: 'v1' },
+  { genre: 'jazz', seed: 25, structure: '', cohesion: 'v2', tempo: 150, swing: 0.4, humanize: 'no', note: 'n', initialMutes: ['bass'], tracks: { 4: { instrument: 'vibes', mix: { vol: 0.5 } } } },
+  { genre: 'ambient', seed: 26, structure: 'minimal', fadeIn: [{ target: 'bass' }], drumBreak: 8, sections: [{ name: 'x' }], feelCurve: [], counterMelody: 3, parents: ['za', 'zb'], maxVariants: 3, arrangeSeed: 9, velocityDeltas: {} , name: 'Named'},
+  { genre: 'techno', nets: { a: { places: {} } }, structure: 'standard', arrangeSeed: 4 },
+  { seed: 5 },
+  { genre: 'trance', seed: 27, structure: 'standard', cohesion: 'v1', traits: { 'tension-curve': true, 'modal-interchange': 0.35, bpm: 133 } },
 ];
 const envelopes = [];
 for (const payload of payloads) {
   const canonical = codec.canonicalizeJSON(payload);
   const cid = await codec.computeCidForJsonLd(payload);
-  envelopes.push({ payload, canonical, cid, share: url.shareFromPayload(payload, cid) });
+  const share = url.shareFromPayload(payload, cid);
+  const entry = { payload, canonical, cid, share };
+  // The composer path: worker runs compose(share.genre, share.params).
+  if (share.genre && !share.nets && typeof share.params.seed === 'number') {
+    entry.project = digest(gen.compose(share.genre, JSON.parse(JSON.stringify(share.params))));
+    delete entry.project.canonical;
+  }
+  envelopes.push(entry);
 }
 writeFileSync0('envelopes.json', { meta, envelopes });
 
@@ -166,18 +194,6 @@ writeFileSync0('envelopes.json', { meta, envelopes });
 // Full canonical text is stored for a handful (readable diffs, 2.3 round-trips);
 // the rest carry length + sha256, which is enough to prove byte identity.
 const FULL = new Set(['techno/42/loop/v2', 'jazz/42/standard/v1', 'dnb/1/minimal/v2']);
-// compose() leaves some control nets (fade-in/out, drum-break) as plain objects that the
-// app parses on load; parse them here so canonical/doc output is defined for every case.
-const normalized = (proj) => {
-  for (const [id, nb] of Object.entries(proj.nets)) if (!(nb instanceof pflow.NetBundle)) proj.nets[id] = pflow.parseNetBundle(nb);
-  return proj;
-};
-const digest = (proj) => {
-  normalized(proj);
-  const canonical = pflow.canonicalProjectJSON(proj);
-  return { canonical, canonicalBytes: Buffer.byteLength(canonical), modelCID: sha256hex(canonical),
-    docSha: sha256hex(JSON.stringify(pflow.projectToJSON(proj))) };
-};
 const projects = [];
 const projSizes = ['loop', 'minimal', 'standard', 'extended'];
 for (const genre of genres) for (const size of projSizes) for (const cohesion of ['v1', 'v2']) for (const seed of [1, 42]) {
