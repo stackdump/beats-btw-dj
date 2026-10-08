@@ -46,26 +46,39 @@ extension Deck {
     return true
   }
 
-  /// Fire-and-forget `jumpToSection` for controllers (callable from any thread).
+  /// Move the net to a tick (the swap lands on the next bar). Off the main thread by
+  /// default; inline in `deterministic` (replay) mode.
+  public func relocate(toTick tick: Int) {
+    guard mode == .net, let project = netProject else { return }
+    if deterministic {
+      wave.load(WaveRunner.prepare(project, sampleRate: wave.sampleRate, startTick: max(0, tick)))
+      applyNetTempo()
+    } else {
+      Task { @MainActor in await self.jumpToTick(tick) }
+    }
+  }
+
+  /// Fire-and-forget section launch for controllers (callable from any thread).
   public func launchSection(_ index: Int) {
-    Task { @MainActor in await self.jumpToSection(index) }
+    let secs = sections
+    guard secs.indices.contains(index) else { return }
+    relocate(toTick: secs[index].startTick)
   }
 
   public func stepSection(_ delta: Int) {
-    Task { @MainActor in
-      let n = self.sections.count
-      guard n > 0 else { return }
-      let cur = self.currentSectionIndex ?? 0
-      await self.jumpToSection(min(n - 1, max(0, cur + delta)))
-    }
+    let secs = sections
+    guard !secs.isEmpty else { return }
+    let cur = currentSectionIndex ?? 0
+    relocate(toTick: secs[min(secs.count - 1, max(0, cur + delta))].startTick)
   }
 
   /// Controller button: hand over to the pre-composed next track and keep playing.
   public func skipToNextTrack() {
-    Task { @MainActor in
-      let was = self.playing
-      if self.advanceToNext(), was || self.autoAdvance { self.setPlaying(true) }
+    func go() {
+      let was = playing
+      if advanceToNext(), was || autoAdvance { setPlaying(true) }
     }
+    if deterministic { go() } else { Task { @MainActor in go() } }
   }
 
   /// Jump the net to an exact tick (quantised to the next bar by the swap).

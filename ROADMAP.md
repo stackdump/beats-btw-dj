@@ -129,11 +129,11 @@ reversible Petri clock), and the WAV path stays for imported audio.
 
 Goal: a set is reproducible and content-addressed, like a beats track.
 
-4.1 Record every controller event (time, device, decoded control, value)
+4.1 **(done)** Record every controller event (time, device, decoded control, value)
 against the deck clocks.
-4.2 A session envelope: the decks' share envelopes + the event log →
+4.2 **(done)** A session envelope: the decks' share envelopes + the event log →
 canonical JSON → CID.
-4.3 Offline re-render of a session to WAV (same engine, same events) and a
+4.3 **(done)** Offline re-render of a session to WAV (same engine, same events) and a
 determinism test (two renders, same bytes).
 4.4 Cue/headphone output through the Inpulse's built-in audio interface
 (pre-listen mix on outputs 3/4).

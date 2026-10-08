@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import Synchronization
 
 public enum DJEngineError: Error, CustomStringConvertible {
   case unreadable(URL, String)
@@ -7,6 +8,12 @@ public enum DJEngineError: Error, CustomStringConvertible {
     case .unreadable(let url, let why): "\(url.lastPathComponent): \(why)"
     }
   }
+}
+
+/// Counts frames pulled through the engine: the session timebase. Audio thread writes,
+/// any thread reads.
+final class FrameClock: Sendable {
+  let frames = Atomic<Int>(0)
 }
 
 /// One AVAudioEngine. Per deck: source node -> EQ (filter + 3 bands) ->
@@ -25,6 +32,20 @@ public final class DJEngine {
   /// The deck keys, the joystick and other deck-less performance controls act on:
   /// the one a controller touched last.
   public var focus = "A"
+
+  /// Records the performance when set (see `SessionRecorder`).
+  public var recorder: SessionRecorder?
+  /// Resolves a sample's content id to audio (replays, and `perform(.load)`).
+  public var sampleResolver: ((String) -> SampleBuffer?)?
+  /// Replay mode: anything that normally finishes on a background thread (section
+  /// launches, composing, queueing) completes inline, so the same inputs give the same
+  /// audio every time.
+  public var deterministic = false {
+    didSet { for d in decks.values { d.deterministic = deterministic } }
+  }
+  private let frameClock = FrameClock()
+  /// Samples rendered since the engine was built.
+  public var frame: Int { frameClock.frames.load(ordering: .relaxed) }
   /// 0...1
   public var master: Double {
     get { Double(engine.mainMixerNode.outputVolume) }
@@ -46,6 +67,17 @@ public final class DJEngine {
       sampleRate = hw > 0 ? hw : offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
+    // A silent source whose only job is to count the frames the engine renders.
+    let clock = frameClock
+    let clockNode = AVAudioSourceNode(format: format) { _, _, frames, abl in
+      for b in UnsafeMutableAudioBufferListPointer(abl) {
+        if let d = b.mData { memset(d, 0, Int(b.mDataByteSize)) }
+      }
+      clock.frames.add(Int(frames), ordering: .relaxed)
+      return noErr
+    }
+    engine.attach(clockNode)
+    engine.connect(clockNode, to: engine.mainMixerNode, format: format)
     for name in names {
       let deck = Deck(name: name, sampleRate: sampleRate, format: format)
       engine.attach(deck.node)
@@ -55,6 +87,9 @@ public final class DJEngine {
       engine.connect(deck.filterNode, to: deck.strip, format: format)
       engine.connect(deck.strip, to: engine.mainMixerNode, format: format)
       deck.onGainChange = { [weak self] in self?.applyGains() }
+      deck.onGrid = { [weak self] g in
+        self?.recorder?.record(.grid(deck: name, bpm: g.bpm, offset: g.offset))
+      }
       decks[name] = deck
     }
     applyGains()
@@ -117,6 +152,11 @@ public final class Deck: JogClock {
   /// Called whenever no next track is composed or composing: keeps one coming.
   public var nextProvider: (() -> TrackSpec)?
   var generation = 0
+  /// See `DJEngine.deterministic`.
+  var deterministic = false
+  var isDemo = false
+  /// Told when a sample deck's beat grid changes (analysis finished, tapped, moved).
+  var onGrid: ((BeatGrid) -> Void)?
   var netNudge = 0.0
   /// Tempo and first-beat position of a sample deck (analysed, tapped or known).
   public internal(set) var beatGrid: BeatGrid?
@@ -229,6 +269,7 @@ public final class Deck: JogClock {
     leaveNetMode()
     loaded = buffer
     beatGrid = nil
+    isDemo = false
     self.title = title
     hotCues = [:]
     cuePoint = 0
@@ -245,8 +286,7 @@ public final class Deck: JogClock {
       // Net cue: playing → back to the cue tick and pause; paused → set it here.
       if playing {
         setPlaying(false)
-        let t = Int(netCueTick)
-        Task { @MainActor in await self.jumpToTick(t) }
+        relocate(toTick: Int(netCueTick))
       } else {
         netCueTick = Double(wave.tick)
       }
@@ -306,8 +346,7 @@ public final class Deck: JogClock {
     if mode == .net {
       // A net hot cue is a tick on the net clock; jumping replays the control nets to it.
       if let at = hotCues[slot] {
-        let t = Int(at)
-        Task { @MainActor in await self.jumpToTick(t) }
+        relocate(toTick: Int(at))
       } else if wave.hasProject {
         hotCues[slot] = Double(wave.tick)
       }
@@ -336,6 +375,7 @@ public final class Deck: JogClock {
   public func loadDemo() {
     load(DemoLoop.make(sampleRate: turntable.sampleRate), title: "demo loop")
     beatGrid = BeatGrid(bpm: DemoLoop.bpm, offset: 0, confidence: 1)  // known, not measured
+    isDemo = true
   }
 
   public func setPlaying(_ on: Bool) {
@@ -359,6 +399,7 @@ public final class Deck: JogClock {
 
   /// Hand over a project compiled elsewhere (`WaveRunner.prepare`).
   public func loadNet(_ prepared: WaveProject, project: Project, title: String? = nil) {
+    currentSpec = nil  // a hand-built net has no spec; `loadNet(_:)` for a track sets it after
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net

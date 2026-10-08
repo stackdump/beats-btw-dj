@@ -1,0 +1,378 @@
+import CryptoKit
+import Foundation
+
+// A performance as data: the decks' starting contents, the mixer's starting state and the
+// stream of inputs (controller messages and UI actions), each stamped with the engine
+// frame it arrived on. Canonical JSON → CID, the way a beats track is content-addressed
+// (share/codec.js: canonicalizeJSON → sha256 → CIDv1 dag-json), so a set can be named,
+// compared and re-rendered by anyone holding the same samples.
+
+public enum SessionError: Error, Equatable {
+  /// A session starts with every deck stopped at its beginning.
+  case notAtRest(deck: String)
+  /// The deck holds something a session can't name (a hand-built net, not a `TrackSpec`).
+  case unrecordable(deck: String)
+  case badSchema
+  case cidMismatch
+  case missingSample(id: String)
+}
+
+/// Content id of decoded audio: sha256 over the rate and both channels' float bits.
+extension SampleBuffer {
+  public var contentID: String {
+    var h = SHA256()
+    var rate = sampleRate.bitPattern
+    withUnsafeBytes(of: &rate) { h.update(bufferPointer: $0) }
+    h.update(bufferPointer: UnsafeRawBufferPointer(start: left, count: length * 4))
+    if right != left {
+      h.update(bufferPointer: UnsafeRawBufferPointer(start: right, count: length * 4))
+    }
+    return h.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+}
+
+/// What a deck holds.
+public enum DeckSourceDescriptor: Equatable, Sendable {
+  case none
+  /// Audio, by content id. The built-in demo loop is `demo-loop`. The grid is recorded so
+  /// a replay doesn't depend on re-running the tempo analysis.
+  case sample(id: String, title: String, grid: BeatGrid?)
+  case net(TrackSpec)
+
+  static let demoID = "demo-loop"
+}
+
+/// Per-deck knobs at the start of a session.
+public struct DeckParams: Equatable, Sendable {
+  public var volume = 0.8
+  public var gain = 0.5
+  public var filter = 0.5
+  public var eqLow = 0.5
+  public var eqMid = 0.5
+  public var eqHigh = 0.5
+  public var pitch = 0.0
+  public var quantize = "off"
+  public var autoAdvance = false
+  public init() {}
+}
+
+/// Every input a performer (or a UI) can give a deck. Controller hardware arrives as MIDI
+/// bytes; these are the other ways in.
+public enum DeckAction: Equatable, Sendable {
+  case play(deck: String, on: Bool)
+  case cue(deck: String)
+  case hotCue(deck: String, slot: Int)
+  case clearCue(deck: String, slot: Int)
+  case loop(deck: String, op: String)  // in | out | halve | double
+  /// name: volume | filter | gain | eqLow | eqMid | eqHigh | pitch
+  case param(deck: String, name: String, value: Double)
+  case crossfader(Double)
+  case master(Double)
+  case load(deck: String, source: DeckSourceDescriptor)
+  case queueNext(deck: String, spec: TrackSpec)
+  case nextTrack(deck: String)
+  case autoAdvance(deck: String, on: Bool)
+  case section(deck: String, index: Int)
+  case role(deck: String, role: String, on: Bool)
+  case macro(deck: String, id: String)
+  case panic(deck: String)
+  case stinger(deck: String, n: Int)
+  case sync(deck: String, align: String)  // beat | bar | tempo
+  case quantize(deck: String, mode: String)  // off | beat | bar
+  case follow(deck: String, leader: String?)
+  /// The tempo analysis (or a tap) put a beat grid on a sample deck.
+  case grid(deck: String, bpm: Double, offset: Double)
+}
+
+public enum SessionEventKind: Equatable, Sendable {
+  case midi(port: String, bytes: [UInt8])
+  case action(DeckAction)
+}
+
+public struct SessionEvent: Equatable, Sendable {
+  /// Engine frame (samples rendered since the session began) at which it was applied.
+  public var frame: Int
+  public var kind: SessionEventKind
+  public init(frame: Int, kind: SessionEventKind) {
+    self.frame = frame
+    self.kind = kind
+  }
+}
+
+public struct Session: Equatable, Sendable {
+  public static let schema = "dj-vevr-se/session/v1"
+  public var sampleRate: Double
+  /// Length of the performance in frames.
+  public var frames: Int
+  public var decks: [String: DeckSourceDescriptor]
+  public var params: [String: DeckParams]
+  public var crossfader: Double
+  public var master: Double
+  public var events: [SessionEvent]
+
+  public init(
+    sampleRate: Double, frames: Int, decks: [String: DeckSourceDescriptor],
+    params: [String: DeckParams], crossfader: Double, master: Double, events: [SessionEvent]
+  ) {
+    self.sampleRate = sampleRate
+    self.frames = frames
+    self.decks = decks
+    self.params = params
+    self.crossfader = crossfader
+    self.master = master
+    self.events = events
+  }
+
+  public var duration: TimeInterval { Double(frames) / sampleRate }
+}
+
+// MARK: - JSON
+
+extension TrackSpec {
+  /// A beats share-envelope payload for this spec (so a deck's source is a normal share).
+  public var payload: JSONValue {
+    var o = JSONObject()
+    o["genre"] = .string(genre)
+    o["seed"] = .number(seed)
+    if let structure, !structure.isEmpty { o["structure"] = .string(structure) }
+    o["cohesion"] = .string(cohesion)
+    for (k, v) in extra.entries where o[k] == nil { o[k] = v }
+    return .object(o)
+  }
+
+  init?(payload p: JSONValue) {
+    guard let genre = p["genre"]?.string, let seed = p["seed"]?.double else { return nil }
+    var extra = JSONObject()
+    for (k, v) in p.object?.entries ?? []
+    where !["genre", "seed", "structure", "cohesion"].contains(k) {
+      extra[k] = v
+    }
+    self.init(
+      genre: genre, seed: seed, structure: p["structure"]?.string,
+      cohesion: p["cohesion"]?.string ?? "v2", extra: extra)
+  }
+}
+
+extension DeckSourceDescriptor {
+  var json: JSONValue {
+    switch self {
+    case .none: return .object(JSONObject([("kind", .string("none"))]))
+    case .net(let spec):
+      return .object(
+        JSONObject([
+          ("kind", .string("net")), ("share", spec.payload),
+          ("cid", .string(BeatsCID.shareCID(spec.payload))),
+        ]))
+    case .sample(let id, let title, let grid):
+      var o = JSONObject([
+        ("kind", .string("sample")), ("id", .string(id)), ("title", .string(title)),
+      ])
+      if let grid {
+        o["grid"] = .object(
+          JSONObject([("bpm", .number(grid.bpm)), ("offset", .number(grid.offset))]))
+      }
+      return .object(o)
+    }
+  }
+
+  init?(json v: JSONValue) {
+    switch v["kind"]?.string {
+    case "none": self = .none
+    case "net":
+      guard let p = v["share"], let spec = TrackSpec(payload: p) else { return nil }
+      self = .net(spec)
+    case "sample":
+      guard let id = v["id"]?.string else { return nil }
+      var grid: BeatGrid?
+      if let g = v["grid"], let bpm = g["bpm"]?.double {
+        grid = BeatGrid(bpm: bpm, offset: g["offset"]?.double ?? 0, confidence: 1)
+      }
+      self = .sample(id: id, title: v["title"]?.string ?? "", grid: grid)
+    default: return nil
+    }
+  }
+}
+
+extension DeckParams {
+  var json: JSONValue {
+    .object(
+      JSONObject([
+        ("volume", .number(volume)), ("gain", .number(gain)), ("filter", .number(filter)),
+        ("eqLow", .number(eqLow)), ("eqMid", .number(eqMid)), ("eqHigh", .number(eqHigh)),
+        ("pitch", .number(pitch)), ("quantize", .string(quantize)),
+        ("autoAdvance", .bool(autoAdvance)),
+      ]))
+  }
+
+  init(json v: JSONValue) {
+    self.init()
+    volume = v["volume"]?.double ?? volume
+    gain = v["gain"]?.double ?? gain
+    filter = v["filter"]?.double ?? filter
+    eqLow = v["eqLow"]?.double ?? eqLow
+    eqMid = v["eqMid"]?.double ?? eqMid
+    eqHigh = v["eqHigh"]?.double ?? eqHigh
+    pitch = v["pitch"]?.double ?? pitch
+    quantize = v["quantize"]?.string ?? quantize
+    autoAdvance = v["autoAdvance"]?.bool ?? autoAdvance
+  }
+}
+
+extension DeckAction {
+  var json: JSONValue {
+    func o(_ op: String, _ rest: [(String, JSONValue)]) -> JSONValue {
+      .object(JSONObject([("op", .string(op))] + rest))
+    }
+    func d(_ s: String) -> (String, JSONValue) { ("deck", .string(s)) }
+    switch self {
+    case .play(let deck, let on): return o("play", [d(deck), ("on", .bool(on))])
+    case .cue(let deck): return o("cue", [d(deck)])
+    case .hotCue(let deck, let slot): return o("hotCue", [d(deck), ("slot", .int(slot))])
+    case .clearCue(let deck, let slot): return o("clearCue", [d(deck), ("slot", .int(slot))])
+    case .loop(let deck, let op): return o("loop", [d(deck), ("loop", .string(op))])
+    case .param(let deck, let name, let value):
+      return o("param", [d(deck), ("name", .string(name)), ("value", .number(value))])
+    case .crossfader(let v): return o("crossfader", [("value", .number(v))])
+    case .master(let v): return o("master", [("value", .number(v))])
+    case .load(let deck, let source): return o("load", [d(deck), ("source", source.json)])
+    case .queueNext(let deck, let spec): return o("queueNext", [d(deck), ("share", spec.payload)])
+    case .nextTrack(let deck): return o("nextTrack", [d(deck)])
+    case .autoAdvance(let deck, let on): return o("autoAdvance", [d(deck), ("on", .bool(on))])
+    case .section(let deck, let i): return o("section", [d(deck), ("index", .int(i))])
+    case .role(let deck, let role, let on):
+      return o("role", [d(deck), ("role", .string(role)), ("on", .bool(on))])
+    case .macro(let deck, let id): return o("macro", [d(deck), ("macro", .string(id))])
+    case .panic(let deck): return o("panic", [d(deck)])
+    case .stinger(let deck, let n): return o("stinger", [d(deck), ("n", .int(n))])
+    case .sync(let deck, let align): return o("sync", [d(deck), ("align", .string(align))])
+    case .quantize(let deck, let mode): return o("quantize", [d(deck), ("mode", .string(mode))])
+    case .follow(let deck, let leader):
+      return o("follow", [d(deck), ("leader", leader.map { .string($0) } ?? .null)])
+    case .grid(let deck, let bpm, let offset):
+      return o("grid", [d(deck), ("bpm", .number(bpm)), ("offset", .number(offset))])
+    }
+  }
+
+  init?(json v: JSONValue) {
+    guard let op = v["op"]?.string else { return nil }
+    let deck = v["deck"]?.string ?? ""
+    switch op {
+    case "play": self = .play(deck: deck, on: v["on"]?.bool ?? false)
+    case "cue": self = .cue(deck: deck)
+    case "hotCue": self = .hotCue(deck: deck, slot: v["slot"]?.int ?? 0)
+    case "clearCue": self = .clearCue(deck: deck, slot: v["slot"]?.int ?? 0)
+    case "loop": self = .loop(deck: deck, op: v["loop"]?.string ?? "")
+    case "param":
+      self = .param(deck: deck, name: v["name"]?.string ?? "", value: v["value"]?.double ?? 0)
+    case "crossfader": self = .crossfader(v["value"]?.double ?? 0.5)
+    case "master": self = .master(v["value"]?.double ?? 0.8)
+    case "load":
+      guard let s = v["source"].flatMap(DeckSourceDescriptor.init(json:)) else { return nil }
+      self = .load(deck: deck, source: s)
+    case "queueNext":
+      guard let s = v["share"].flatMap(TrackSpec.init(payload:)) else { return nil }
+      self = .queueNext(deck: deck, spec: s)
+    case "nextTrack": self = .nextTrack(deck: deck)
+    case "autoAdvance": self = .autoAdvance(deck: deck, on: v["on"]?.bool ?? false)
+    case "section": self = .section(deck: deck, index: v["index"]?.int ?? 0)
+    case "role": self = .role(deck: deck, role: v["role"]?.string ?? "", on: v["on"]?.bool ?? true)
+    case "macro": self = .macro(deck: deck, id: v["macro"]?.string ?? "")
+    case "panic": self = .panic(deck: deck)
+    case "stinger": self = .stinger(deck: deck, n: v["n"]?.int ?? 0)
+    case "sync": self = .sync(deck: deck, align: v["align"]?.string ?? "beat")
+    case "quantize": self = .quantize(deck: deck, mode: v["mode"]?.string ?? "off")
+    case "follow": self = .follow(deck: deck, leader: v["leader"]?.string)
+    case "grid":
+      self = .grid(deck: deck, bpm: v["bpm"]?.double ?? 120, offset: v["offset"]?.double ?? 0)
+    default: return nil
+    }
+  }
+}
+
+extension SessionEvent {
+  var json: JSONValue {
+    switch kind {
+    case .midi(let port, let bytes):
+      return .object(
+        JSONObject([
+          ("f", .int(frame)), ("k", .string("midi")), ("p", .string(port)),
+          ("b", .array(bytes.map { .int(Int($0)) })),
+        ]))
+    case .action(let a):
+      return .object(JSONObject([("f", .int(frame)), ("k", .string("act")), ("a", a.json)]))
+    }
+  }
+
+  init?(json v: JSONValue) {
+    guard let f = v["f"]?.int else { return nil }
+    switch v["k"]?.string {
+    case "midi":
+      guard let p = v["p"]?.string, let b = v["b"]?.ints else { return nil }
+      self.init(frame: f, kind: .midi(port: p, bytes: b.map { UInt8(clamping: $0) }))
+    case "act":
+      guard let a = v["a"].flatMap(DeckAction.init(json:)) else { return nil }
+      self.init(frame: f, kind: .action(a))
+    default: return nil
+    }
+  }
+}
+
+extension Session {
+  /// The envelope as JSON. Key order is irrelevant: the canonical form sorts keys.
+  public var json: JSONValue {
+    var decksObj = JSONObject()
+    for name in decks.keys.sorted() {
+      decksObj[name] = .object(
+        JSONObject([
+          ("source", decks[name]!.json), ("params", (params[name] ?? DeckParams()).json),
+        ]))
+    }
+    return .object(
+      JSONObject([
+        ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
+        ("frames", .int(frames)), ("decks", .object(decksObj)),
+        (
+          "mixer",
+          .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
+        ),
+        ("events", .array(events.map(\.json))),
+      ]))
+  }
+
+  /// `canonicalizeJSON` of the envelope — the bytes the CID hashes.
+  public var canonical: String { json.canonicalJS }
+
+  /// CIDv1 (dag-json, sha2-256, base58btc), the same function beats names a share with.
+  public var cid: String { BeatsCID.shareCID(canonical: canonical) }
+
+  public init(json v: JSONValue) throws {
+    guard v["schema"]?.string == Self.schema, let sr = v["sampleRate"]?.double,
+      let frames = v["frames"]?.int, let decksObj = v["decks"]?.object
+    else { throw SessionError.badSchema }
+    var decks: [String: DeckSourceDescriptor] = [:]
+    var params: [String: DeckParams] = [:]
+    for (name, d) in decksObj.entries {
+      guard let s = d["source"].flatMap(DeckSourceDescriptor.init(json:)) else {
+        throw SessionError.badSchema
+      }
+      decks[name] = s
+      params[name] = d["params"].map(DeckParams.init(json:)) ?? DeckParams()
+    }
+    var events: [SessionEvent] = []
+    for e in v["events"]?.array ?? [] {
+      guard let ev = SessionEvent(json: e) else { throw SessionError.badSchema }
+      events.append(ev)
+    }
+    self.init(
+      sampleRate: sr, frames: frames, decks: decks, params: params,
+      crossfader: v["mixer"]?["crossfader"]?.double ?? 0.5,
+      master: v["mixer"]?["master"]?.double ?? 0.8, events: events)
+  }
+
+  /// Parse envelope text; with `cid`, the content must hash to it.
+  public static func decode(_ text: String, cid: String? = nil) throws -> Session {
+    let v = try JSONValue.parse(text)
+    if let cid, BeatsCID.shareCID(v) != cid { throw SessionError.cidMismatch }
+    return try Session(json: v)
+  }
+}

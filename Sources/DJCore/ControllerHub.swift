@@ -12,14 +12,14 @@ public final class ControllerHub {
   }
 
   public let dj: DJEngine
+  public let router: ControllerRouter
   public private(set) var devices: [Device] = []
   /// Every routed message, decoded, for monitors and the UI.
   public var onMessage: ((MIDIMessage, String) -> Void)?
 
-  public let jogProfile: JogProfile
-  public let surfaceProfiles: [SurfaceProfile]
-  public private(set) var jogAdapters: [JogAdapter] = []
-  private var surfaces: [String: SurfaceController] = [:]  // by port name
+  public var jogProfile: JogProfile { router.jogProfile }
+  public var surfaceProfiles: [SurfaceProfile] { router.surfaceProfiles }
+  public var jogAdapters: [JogAdapter] { router.jogAdapters }
   private var midiIn: MIDIIn?
   private let midiOut: MIDIOut?
   private var timer: Timer?
@@ -29,12 +29,8 @@ public final class ControllerHub {
     surfaces: [SurfaceProfile] = SurfaceProfile.all
   ) {
     dj = engine
-    self.jogProfile = jogProfile
-    surfaceProfiles = surfaces
+    router = ControllerRouter(engine: engine, jogProfile: jogProfile, surfaces: surfaces)
     midiOut = try? MIDIOut()
-    jogAdapters = engine.decks.keys.sorted().map {
-      JogAdapter(profile: jogProfile, clock: engine.decks[$0]!, deck: $0)
-    }
   }
 
   public func start() throws {
@@ -57,7 +53,7 @@ public final class ControllerHub {
 
   public func stop() {
     timer?.invalidate()
-    for (port, s) in surfaces { send(s.blackout(), to: port) }
+    for (port, messages) in router.blackouts() { send(messages, to: port) }
   }
 
   /// Connect any newly appeared sources that match a profile.
@@ -65,22 +61,19 @@ public final class ControllerHub {
     guard let midiIn else { return }
     let known = Set(devices.map(\.port))
     _ = try? midiIn.connect { [self] p in
-      guard !known.contains(p.name), let name = profileName(for: p.name) else { return false }
-      devices.append(Device(port: p.name, profile: name))
-      if let s = surfaceProfiles.first(where: { $0.matches(portName: p.name) }) {
-        surfaces[p.name] = SurfaceController(profile: s, engine: dj)
+      guard !known.contains(p.name), let name = router.profileName(for: p.name) else {
+        return false
       }
+      devices.append(Device(port: p.name, profile: name))
+      router.attach(port: p.name)
       return true
     }
     let present = Set(MIDIPort.sources().map(\.name))
     devices.removeAll { !present.contains($0.port) }
-    surfaces = surfaces.filter { present.contains($0.key) }
+    router.keepOnly(present)
   }
 
-  func profileName(for port: String) -> String? {
-    surfaceProfiles.first { $0.matches(portName: port) }?.name
-      ?? (jogProfile.matches(portName: port) ? jogProfile.name : nil)
-  }
+  func profileName(for port: String) -> String? { router.profileName(for: port) }
 
   /// Per-port tallies of what arrived, for the coverage report.
   public private(set) var stats: [String: Stats] = [:]
@@ -89,51 +82,50 @@ public final class ControllerHub {
   }
 
   func route(_ m: MIDIMessage) {
-    // Jog wheels first (the Inpulse shares its port with ordinary controls).
-    if jogProfile.matches(portName: m.port), let e = jogProfile.parse(m.bytes) {
-      for a in jogAdapters { a.handle(e) }
+    switch router.route(port: m.port, bytes: m.bytes) {
+    case .ignored:
+      return
+    case .jog(let e):
       stats[m.port, default: Stats()].jog += 1
       onMessage?(m, "\(e)")
-      return
-    }
-    guard let s = surfaces[m.port] else { return }
-    guard let (e, outcome) = s.handle(bytes: m.bytes) else {
+    case .undecoded:
       stats[m.port, default: Stats()].undecoded += 1
       onMessage?(m, "(undecoded)")
-      return
-    }
-    let control =
-      "\(e.group)[\(e.index)]" + (e.name.map { " \($0)" } ?? "")
-      + (e.delta != 0 ? " Δ\(e.delta)" : String(format: "=%.3f", e.value))
-    switch outcome {
-    case .bound(let b):
-      stats[m.port, default: Stats()].bound += 1
-      onMessage?(m, "\(control) → \(b.action.rawValue) \(b.deck ?? "")")
-    case .unbound(let reason):
-      stats[m.port, default: Stats()].unbound += 1
-      onMessage?(m, "\(control) (unbound: \(reason))")
-    case .pickup(let b):
-      stats[m.port, default: Stats()].bound += 1
-      onMessage?(
-        m,
-        "\(control) → \(b.action.rawValue) \(b.deck ?? "") (soft takeover: move to current value)")
-    case .unmapped:
-      stats[m.port, default: Stats()].unmapped += 1
-      onMessage?(m, "\(control) (UNMAPPED — profile gap)")
+    case .surface(let e, let outcome):
+      let control =
+        "\(e.group)[\(e.index)]" + (e.name.map { " \($0)" } ?? "")
+        + (e.delta != 0 ? " Δ\(e.delta)" : String(format: "=%.3f", e.value))
+      switch outcome {
+      case .bound(let b):
+        stats[m.port, default: Stats()].bound += 1
+        onMessage?(m, "\(control) → \(b.action.rawValue) \(b.deck ?? "")")
+      case .unbound(let reason):
+        stats[m.port, default: Stats()].unbound += 1
+        onMessage?(m, "\(control) (unbound: \(reason))")
+      case .pickup(let b):
+        stats[m.port, default: Stats()].bound += 1
+        onMessage?(
+          m,
+          "\(control) → \(b.action.rawValue) \(b.deck ?? "") (soft takeover: move to current value)"
+        )
+      case .unmapped:
+        stats[m.port, default: Stats()].unmapped += 1
+        onMessage?(m, "\(control) (UNMAPPED — profile gap)")
+      }
     }
   }
 
   private var lastLED = 0.0
 
   func tick(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
-    for a in jogAdapters { a.decay(now: now) }
+    router.tick(now: now)
     for d in dj.decks.values {
       d.turntable.drainRetired()
       d.service()
     }
     if now - lastLED >= 0.05 {
       lastLED = now
-      for (port, s) in surfaces { send(s.ledFrame(now: now), to: port) }
+      for (port, messages) in router.ledFrames(now: now) { send(messages, to: port) }
     }
   }
 

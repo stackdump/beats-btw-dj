@@ -92,6 +92,16 @@ final class NextTrackSlot: Sendable {
     }
   }
 
+  /// Compose on the calling thread (replay mode).
+  func requestSync(_ spec: TrackSpec, sampleRate: Double) {
+    let track = PreparedTrack(spec: spec, sampleRate: sampleRate)
+    state.withLock { s in
+      s.token += 1
+      s.ready = track
+      s.inFlight = nil
+    }
+  }
+
   func take() -> PreparedTrack? {
     state.withLock { s in
       defer { s.ready = nil }
@@ -125,21 +135,26 @@ extension Deck {
   }
 
   /// Load a track composed elsewhere.
-  @MainActor
   public func loadNet(_ track: PreparedTrack) {
-    currentSpec = track.spec
     loadNet(track.prepared, project: track.project)
+    currentSpec = track.spec
   }
 
   /// Start composing the next track in the background (cancels an earlier request).
-  public func queueNext(_ spec: TrackSpec) { next.request(spec, sampleRate: wave.sampleRate) }
+  public func queueNext(_ spec: TrackSpec) {
+    if deterministic {
+      next.requestSync(spec, sampleRate: wave.sampleRate)
+    } else {
+      next.request(spec, sampleRate: wave.sampleRate)
+    }
+  }
 
   public var nextReady: TrackSpec? { next.readySpec }
   public var nextComposing: TrackSpec? { next.pendingSpec }
   public func cancelNext() { next.cancel() }
 
   /// Move the pre-composed track onto the deck. False if none is ready yet.
-  @MainActor @discardableResult
+  @discardableResult
   public func advanceToNext() -> Bool {
     guard let track = next.take() else { return false }
     loadNet(track)
@@ -148,7 +163,6 @@ extension Deck {
 
   /// Housekeeping for the main thread (the hub calls it ~100×/s): free what the audio
   /// thread let go of, notice a song that ended, and keep the next track coming.
-  @MainActor
   public func service() {
     wave.drainRetired()
     if let leader, let target = leader.effectiveBPM, let base = baseBPM {

@@ -79,14 +79,23 @@ extension Deck {
       await MainActor.run {
         guard token == analysisToken, loaded === buffer, let grid else { return }
         beatGrid = grid
+        onGrid?(grid)
       }
     }
+  }
+
+  /// Put a grid in place directly (a session replay, or a stored analysis).
+  func setBeatGrid(_ grid: BeatGrid) {
+    guard mode == .sample else { return }
+    analysisToken += 1  // an analysis still running must not overwrite it
+    beatGrid = grid
   }
 
   /// Declare the tempo by hand (or after a tap). Keeps the current grid offset.
   public func setBPM(_ bpm: Double) {
     guard mode == .sample, bpm > 0 else { return }
     beatGrid = BeatGrid(bpm: bpm, offset: beatGrid?.offset ?? 0, confidence: 1)
+    onGrid?(beatGrid!)
   }
 
   /// Declare that the playhead is on a downbeat: the grid origin moves here.
@@ -96,6 +105,7 @@ extension Deck {
     var p = turntable.position.truncatingRemainder(dividingBy: Double(turntable.length))
     if p < 0 { p += Double(turntable.length) }
     beatGrid = BeatGrid(bpm: g.bpm, offset: p.truncatingRemainder(dividingBy: spb), confidence: 1)
+    onGrid?(beatGrid!)
   }
 
   // MARK: sync
@@ -156,7 +166,7 @@ extension Deck {
   public func rewind() {
     switch mode {
     case .sample: turntable.send(.seek(sample: 0))
-    case .net: Task { @MainActor in await self.jumpToTick(0) }
+    case .net: relocate(toTick: 0)
     }
   }
 
