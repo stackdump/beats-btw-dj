@@ -58,6 +58,8 @@ struct DeckState: Equatable {
   var pfl = false
   var overview: WaveformOverview?
   var overlay: WaveformOverlay?
+  var snapshot: NetSnapshot?
+  var timeline: SectionTimeline?
 }
 
 @MainActor @Observable
@@ -130,7 +132,7 @@ final class AppModel {
         nextComposing: d.nextComposing != nil,
         quantize: d.quantize == .off ? "off" : (d.quantize == .beat ? "beat" : "bar"),
         scrubbing: d.wave.isScrubbing, pfl: d.pfl, overview: d.waveform,
-        overlay: d.waveformOverlay)
+        overlay: d.waveformOverlay, snapshot: d.netSnapshot, timeline: d.sectionTimeline)
       if d.mode == .net {
         decks[name]?.duration =
           Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
@@ -403,7 +405,12 @@ struct DeckView: View {
       }
       BeatStripView(
         bpm: state.bpm, beatInBar: state.beatInBar, scrubbing: state.scrubbing, tint: tint)
-      if state.isNet { NetPanel(name: name, state: state, model: model, tint: tint) }
+      if state.isNet {
+        SectionTimelineView(timeline: state.timeline) { model.launchSection(name, $0) }
+          .frame(height: 26)
+        NetRingsView(snapshot: state.snapshot, tint: tint)
+        NetPanel(name: name, state: state, model: model, tint: tint)
+      }
       LabeledSlider(
         label: "Vol", value: Binding(get: { state.volume }, set: { model.setVolume(name, $0) }),
         range: 0...1)
@@ -494,16 +501,6 @@ struct NetPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      if !state.sections.isEmpty {
-        FlowRow(spacing: 4) {
-          ForEach(Array(state.sections.enumerated()), id: \.offset) { i, sec in
-            Button(sec.name) { model.launchSection(name, i) }
-              .buttonStyle(.bordered)
-              .tint(state.currentSection == i ? tint : nil)
-              .controlSize(.small)
-          }
-        }
-      }
       FlowRow(spacing: 4) {
         ForEach(state.roles, id: \.self) { r in
           Toggle(
