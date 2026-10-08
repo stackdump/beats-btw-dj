@@ -197,6 +197,9 @@ public final class Deck: JogClock {
   var netNudge = 0.0
   /// Tempo and first-beat position of a sample deck (analysed, tapped or known).
   public internal(set) var beatGrid: BeatGrid?
+  /// Whole-track peaks of the loaded audio, ready shortly after a load (nil until then).
+  public internal(set) var waveform: WaveformOverview?
+  var waveformToken = 0
   /// Snap cues and loops to this grid on a sample deck.
   public var quantize: Quantize = .off
   /// A deck whose tempo this one tracks (`follow(_:)`).
@@ -305,9 +308,11 @@ public final class Deck: JogClock {
 
   public func load(_ buffer: SampleBuffer, title: String) {
     leaveNetMode()
+    waveform = nil
     loaded = buffer
     beatGrid = nil
     isDemo = false
+    computeWaveform(buffer)
     self.title = title
     hotCues = [:]
     cuePoint = 0

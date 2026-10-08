@@ -152,10 +152,22 @@ determinism test (two renders, same bytes).
 (pre-listen mix on outputs 3/4).
 4.5 **(local part done: `SessionStore`, Record/Export in the app; publishing needs a decision)** Optional: publish sessions to the beats share store / CDN.
 
-## Phase 5 — Visuals (later)
+## Phase 5 — Visuals
 
 Platter and waveform rendering, net/marking view, section timeline, APC grid
-mirror, device-map UI. Deferred by decision; the core must not depend on it.
+mirror, device-map UI. Deferred earlier by decision, started once the core was done;
+the core still does not depend on it: models live in DJCore (no SwiftUI), views in the
+`DJViews` target, the app composes them. Views are tested by rendering them to pixels
+(`ImageRenderer`) and asserting on the pixels; `DJ_SHOT_DIR=… swift test` also writes
+PNGs for a human to look at.
+
+5.1 **(done)** Waveform strip: min/max overview (`WaveformOverview`), playhead / loop / hot-cue /
+bar-line overlay (`Deck.waveformOverlay`), `WaveformStrip`.
+5.2 Platter and beat strip (DJViews).
+5.3 Net / marking view for net decks.
+5.4 Section timeline.
+5.5 APC grid mirror.
+5.6 Device-map UI.
 
 ---
 

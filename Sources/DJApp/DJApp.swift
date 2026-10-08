@@ -1,5 +1,6 @@
 import AppKit
 import DJCore
+import DJViews
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -55,6 +56,8 @@ struct DeckState: Equatable {
   var quantize = "off"
   var scrubbing = false
   var pfl = false
+  var overview: WaveformOverview?
+  var overlay: WaveformOverlay?
 }
 
 @MainActor @Observable
@@ -126,7 +129,8 @@ final class AppModel {
         rolesOn: Set(d.roles.filter { d.isRoleOn($0) }), nextReady: d.nextReady != nil,
         nextComposing: d.nextComposing != nil,
         quantize: d.quantize == .off ? "off" : (d.quantize == .beat ? "beat" : "bar"),
-        scrubbing: d.wave.isScrubbing, pfl: d.pfl)
+        scrubbing: d.wave.isScrubbing, pfl: d.pfl, overview: d.waveform,
+        overlay: d.waveformOverlay)
       if d.mode == .net {
         decks[name]?.duration =
           Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
@@ -389,6 +393,10 @@ struct DeckView: View {
               state.cues.contains(slot)
                 ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
         }
+      }
+      if !state.isNet {
+        WaveformStrip(overview: state.overview, overlay: state.overlay, tint: tint)
+          .frame(height: 46)
       }
       BeatStrip(state: state, tint: tint)
       if state.isNet { NetPanel(name: name, state: state, model: model, tint: tint) }

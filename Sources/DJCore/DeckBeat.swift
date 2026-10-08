@@ -67,6 +67,24 @@ extension Deck {
     }
   }
 
+  // MARK: waveform
+
+  /// Peaks for the strip display, off the main thread (inline in deterministic mode).
+  func computeWaveform(_ buffer: SampleBuffer) {
+    waveformToken += 1
+    let token = waveformToken
+    if deterministic {
+      waveform = WaveformOverview(buffer: buffer, columns: 1200)
+      return
+    }
+    Task.detached(priority: .utility) { [self] in
+      let w = WaveformOverview(buffer: buffer, columns: 1200)
+      await MainActor.run {
+        if token == waveformToken, loaded === buffer { waveform = w }
+      }
+    }
+  }
+
   // MARK: analysis, tapping
 
   /// Measure the tempo off the main thread; the result lands if the deck still holds

@@ -18,10 +18,14 @@ let package = Package(
     ),
     // CLI: ports / monitor — the Swift twin of the Go tool, for hardware checks.
     .executableTarget(name: "djctl", dependencies: ["DJCore"]),
+    // Visual components (waveform, platter, net view, timeline, pad mirror, device map).
+    // SwiftUI lives here; DJCore must never import it.
+    .target(name: "DJViews", dependencies: ["DJCore"]),
     // SwiftUI app. `make app` wraps it in a .app bundle.
-    .executableTarget(name: "DJApp", dependencies: ["DJCore"]),
+    .executableTarget(name: "DJApp", dependencies: ["DJCore", "DJViews"]),
     .testTarget(
       name: "DJCoreTests", dependencies: ["DJCore"],
       resources: [.copy("Fixtures")]),
+    .testTarget(name: "DJViewsTests", dependencies: ["DJViews", "DJCore"]),
   ]
 )
