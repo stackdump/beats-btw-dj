@@ -96,7 +96,7 @@ structure → composer. Gate each on fixtures.
 2.5 **(done — `Sources/DJCore/Beats/Share.swift`; URL/gzip decoding and raw-`nets` envelopes deferred)** Share envelope → params (`shareFromPayload`), including tempo / swing /
 humanize overrides, cohesion pin (v1 for envelopes without the field),
 traits, `macroCurve`.
-2.6 Port the wave engine (`net.js`, `synth.js`, `runner.js`): trace exact,
+2.6 **(done — `Sources/DJCore/Beats/Wave/`; parity form, real-time hardening is 3.1)** Port the wave engine (`net.js`, `synth.js`, `runner.js`): trace exact,
 audio within 1e-5 (bit-exact where libm agrees), same as beats-py.
 2.7 Second oracle: run the Go generator (`tools/parity`) on the same inputs
 for model CIDs.

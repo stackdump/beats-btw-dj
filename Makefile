@@ -84,3 +84,4 @@ beats-tables:
 
 fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-parity.mjs
+	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-wave.mjs
