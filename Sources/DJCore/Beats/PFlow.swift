@@ -135,6 +135,26 @@ public struct Track {
   public var rotation: Double?
   public var note: Double?
   public var generatorParams: JSONValue?
+
+  public init(
+    channel: Int = 1, defaultVelocity: Int = 100, instrument: String = "",
+    instrumentSet: [JSONValue] = [], mix: JSONValue? = nil, group: String? = nil,
+    generator: String? = nil, ringSize: Double? = nil, beats: Double? = nil,
+    rotation: Double? = nil, note: Double? = nil, generatorParams: JSONValue? = nil
+  ) {
+    self.channel = channel
+    self.defaultVelocity = defaultVelocity
+    self.instrument = instrument
+    self.instrumentSet = instrumentSet
+    self.mix = mix
+    self.group = group
+    self.generator = generator
+    self.ringSize = ringSize
+    self.beats = beats
+    self.rotation = rotation
+    self.note = note
+    self.generatorParams = generatorParams
+  }
 }
 
 public struct NetBundle {
@@ -166,6 +186,8 @@ public struct Project {
   public var nets = OrderedMap<NetBundle>()
   public var structure: [Section] = []
   public var initialMutes: [String] = []
+  /// Set by the composer when the cohesion-v2 engine ran; not part of the model CID.
+  public var cohesion: String?
 }
 
 // MARK: - Parsing

@@ -5,6 +5,7 @@ import Foundation
 /// in insertion order. Re-setting an existing key keeps its original position.
 public struct JSONObject: Equatable, Sendable {
   public private(set) var entries: [(key: String, value: JSONValue)] = []
+  private var index: [String: Int] = [:]
 
   public init() {}
 
@@ -13,11 +14,17 @@ public struct JSONObject: Equatable, Sendable {
   }
 
   public subscript(key: String) -> JSONValue? {
-    get { entries.first { $0.key == key }?.value }
+    get { index[key].map { entries[$0].value } }
     set {
-      if let i = entries.firstIndex(where: { $0.key == key }) {
-        if let newValue { entries[i].value = newValue } else { entries.remove(at: i) }
+      if let i = index[key] {
+        if let newValue {
+          entries[i].value = newValue
+        } else {
+          entries.remove(at: i)
+          reindex()
+        }
       } else if let newValue {
+        index[key] = entries.count
         entries.append((key, newValue))
         if Self.arrayIndex(key) != nil { normalizeOrder() }
       }
@@ -44,6 +51,12 @@ public struct JSONObject: Equatable, Sendable {
       .sorted { $0.0 < $1.0 }.map(\.1)
     let rest = entries.filter { Self.arrayIndex($0.key) == nil }
     entries = ints + rest
+    reindex()
+  }
+
+  private mutating func reindex() {
+    index.removeAll(keepingCapacity: true)
+    for (i, e) in entries.enumerated() { index[e.key] = i }
   }
 }
 
