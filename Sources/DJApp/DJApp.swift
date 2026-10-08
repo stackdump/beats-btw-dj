@@ -41,6 +41,19 @@ struct DeckState: Equatable {
   var nudge = 0.0
   var touching = false
   var cues: Set<Int> = []
+  // live-net decks
+  var isNet = false
+  var bpm: Double?
+  var beatInBar = 0
+  var beatPhase = 0.0
+  var sections: [Deck.SectionInfo] = []
+  var currentSection: Int?
+  var roles: [String] = []
+  var rolesOn: Set<String> = []
+  var nextReady = false
+  var nextComposing = false
+  var quantize = "off"
+  var scrubbing = false
 }
 
 @MainActor @Observable
@@ -99,7 +112,19 @@ final class AppModel {
         duration: d.loaded?.duration ?? 0, rate: d.turntable.currentRate, volume: d.volume,
         filter: d.filter,
         pitch: d.pitch, nudge: adapter?.nudge ?? 0, touching: adapter?.touching ?? false,
-        cues: Set(d.hotCues.keys))
+        cues: Set(d.hotCues.keys), isNet: d.mode == .net, bpm: d.effectiveBPM,
+        beatInBar: d.beatState?.beatInBar ?? 0, beatPhase: d.beatState?.beatPhase ?? 0,
+        sections: d.sections, currentSection: d.currentSectionIndex, roles: d.roles,
+        rolesOn: Set(d.roles.filter { d.isRoleOn($0) }), nextReady: d.nextReady != nil,
+        nextComposing: d.nextComposing != nil,
+        quantize: d.quantize == .off ? "off" : (d.quantize == .beat ? "beat" : "bar"),
+        scrubbing: d.wave.isScrubbing)
+      if d.mode == .net {
+        decks[name]?.duration =
+          Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
+        decks[name]?.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
+        decks[name]?.platterSeconds = decks[name]?.positionSeconds ?? 0
+      }
     }
   }
 
@@ -128,6 +153,32 @@ final class AppModel {
     dj?.master = v
   }
   func loadDemo(_ deck: String) { dj?[deck]?.loadDemo() }
+
+  // Live nets
+  func generate(_ deck: String, _ spec: TrackSpec) {
+    status = "composing \(spec.genre)…"
+    let d = dj?[deck]
+    Task { @MainActor in
+      await d?.generate(spec)
+      status = "\(Int(dj?.sampleRate ?? 0)) Hz"
+    }
+  }
+  func queueNext(_ deck: String, _ spec: TrackSpec) { dj?[deck]?.queueNext(spec) }
+  func setAutoAdvance(_ deck: String, _ on: Bool) { dj?[deck]?.autoAdvance = on }
+  func launchSection(_ deck: String, _ i: Int) { dj?[deck]?.launchSection(i) }
+  func toggleRole(_ deck: String, _ role: String) { dj?[deck]?.toggleRole(role) }
+  func fire(_ deck: String, _ macro: NetMacro) { dj?[deck]?.fire(macro) }
+  func panic(_ deck: String) { dj?[deck]?.panic() }
+  func stinger(_ deck: String, _ n: Int) { dj?[deck]?.stinger(n) }
+  func skipToNext(_ deck: String) { dj?[deck]?.skipToNextTrack() }
+  func sync(_ deck: String) {
+    guard let d = dj?[deck], let other = dj?.decks.values.first(where: { $0 !== d }) else { return }
+    d.sync(to: other, align: .bar)
+  }
+  func cycleQuantize(_ deck: String) {
+    guard let d = dj?[deck] else { return }
+    d.quantize = d.quantize == .off ? .beat : (d.quantize == .beat ? .bar : .off)
+  }
 
   func load(_ deck: String, url: URL) {
     let access = url.startAccessingSecurityScopedResource()
@@ -174,6 +225,7 @@ struct DeckView: View {
   let model: AppModel
   let tint: Color
   @State private var importing = false
+  @State private var generating = false
 
   var state: DeckState { model.decks[name] ?? .init() }
 
@@ -185,6 +237,7 @@ struct DeckView: View {
         Menu("Load") {
           Button("Audio file…") { importing = true }
           Button("Demo loop") { model.loadDemo(name) }
+          Button("Generate…") { generating = true }
         }
         .fixedSize()
       }
@@ -210,6 +263,8 @@ struct DeckView: View {
                 ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
         }
       }
+      BeatStrip(state: state, tint: tint)
+      if state.isNet { NetPanel(name: name, state: state, model: model, tint: tint) }
       LabeledSlider(
         label: "Vol", value: Binding(get: { state.volume }, set: { model.setVolume(name, $0) }),
         range: 0...1)
@@ -228,6 +283,7 @@ struct DeckView: View {
     .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
       if case .success(let url) = result { model.load(name, url: url) }
     }
+    .sheet(isPresented: $generating) { GenerateSheet(name: name, model: model) }
   }
 
   func clock(_ s: Double) -> String {
@@ -289,5 +345,179 @@ struct Platter: View {
       Rectangle().fill(.white).frame(width: 3, height: 60).offset(y: -38)
         .rotationEffect(.degrees(seconds / 1.8 * 360))
     }
+  }
+}
+
+/// BPM, the beat within the bar, and sync / quantize.
+struct BeatStrip: View {
+  let state: DeckState
+  let tint: Color
+  var body: some View {
+    HStack(spacing: 6) {
+      if let bpm = state.bpm {
+        Text(String(format: "%.1f BPM", bpm)).font(.caption.monospacedDigit())
+        ForEach(0..<4, id: \.self) { i in
+          Circle()
+            .fill(i == state.beatInBar ? tint : .gray.opacity(0.35))
+            .frame(width: i == 0 ? 10 : 7, height: i == 0 ? 10 : 7)
+        }
+      } else {
+        Text("no tempo").font(.caption).foregroundStyle(.secondary)
+      }
+      Spacer()
+      if state.scrubbing { Text("SCRATCH").font(.caption.bold()).foregroundStyle(tint) }
+    }
+  }
+}
+
+/// Performance controls for a deck running a live net.
+struct NetPanel: View {
+  let name: String
+  let state: DeckState
+  let model: AppModel
+  let tint: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if !state.sections.isEmpty {
+        FlowRow(spacing: 4) {
+          ForEach(Array(state.sections.enumerated()), id: \.offset) { i, sec in
+            Button(sec.name) { model.launchSection(name, i) }
+              .buttonStyle(.bordered)
+              .tint(state.currentSection == i ? tint : nil)
+              .controlSize(.small)
+          }
+        }
+      }
+      FlowRow(spacing: 4) {
+        ForEach(state.roles, id: \.self) { r in
+          Toggle(
+            r,
+            isOn: Binding(
+              get: { state.rolesOn.contains(r) }, set: { _ in model.toggleRole(name, r) })
+          )
+          .toggleStyle(.button).controlSize(.small).tint(tint)
+        }
+      }
+      FlowRow(spacing: 4) {
+        ForEach(NetMacro.allCases, id: \.rawValue) { m in
+          Button(m.label) { model.fire(name, m) }.controlSize(.small)
+        }
+        Button("Panic") { model.panic(name) }.controlSize(.small).tint(.red)
+      }
+      HStack(spacing: 4) {
+        ForEach(0..<4, id: \.self) { n in
+          Button("Hit \(n + 1)") { model.stinger(name, n) }.controlSize(.small)
+        }
+        Spacer()
+        Button("Sync") { model.sync(name) }.controlSize(.small)
+        Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)
+        Button(state.nextReady ? "Next ▶︎" : (state.nextComposing ? "…" : "Next")) {
+          model.skipToNext(name)
+        }
+        .controlSize(.small).disabled(!state.nextReady)
+      }
+    }
+  }
+}
+
+/// Wraps its children onto as many rows as the width needs.
+struct FlowLayout: Layout {
+  var spacing: CGFloat = 4
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    layout(in: proposal.width ?? 260, subviews: subviews).size
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    let result = layout(in: bounds.width, subviews: subviews)
+    for (sub, p) in zip(subviews, result.positions) {
+      sub.place(at: CGPoint(x: bounds.minX + p.x, y: bounds.minY + p.y), proposal: .unspecified)
+    }
+  }
+
+  private func layout(in width: CGFloat, subviews: Subviews) -> (size: CGSize, positions: [CGPoint])
+  {
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+    var rowHeight: CGFloat = 0
+    var maxX: CGFloat = 0
+    var positions: [CGPoint] = []
+    for sub in subviews {
+      let size = sub.sizeThatFits(.unspecified)
+      if x > 0 && x + size.width > width {
+        x = 0
+        y += rowHeight + spacing
+        rowHeight = 0
+      }
+      positions.append(CGPoint(x: x, y: y))
+      x += size.width + spacing
+      maxX = max(maxX, x - spacing)
+      rowHeight = max(rowHeight, size.height)
+    }
+    return (CGSize(width: maxX, height: y + rowHeight), positions)
+  }
+}
+
+struct FlowRow<Content: View>: View {
+  let spacing: CGFloat
+  @ViewBuilder let content: Content
+  var body: some View { FlowLayout(spacing: spacing) { content } }
+}
+
+struct GenerateSheet: View {
+  let name: String
+  let model: AppModel
+  @Environment(\.dismiss) private var dismiss
+  @State private var genre = "techno"
+  @State private var structure = "standard"
+  @State private var seed = String(Int.random(in: 1...999_999))
+  @State private var cohesion = "v2"
+  @State private var autoAdvance = false
+
+  private var spec: TrackSpec {
+    TrackSpec(
+      genre: genre, seed: Double(seed) ?? 1, structure: structure == "loop" ? nil : structure,
+      cohesion: cohesion)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Generate on deck \(name)").font(.title3.bold())
+      Picker("Genre", selection: $genre) {
+        ForEach(BeatsTables.shared.genreIDs, id: \.self) { Text($0).tag($0) }
+      }
+      Picker("Structure", selection: $structure) {
+        ForEach(["loop", "minimal", "standard", "extended"], id: \.self) { Text($0).tag($0) }
+      }
+      Picker("Cohesion", selection: $cohesion) {
+        Text("v2 (motif + harmony)").tag("v2")
+        Text("v1 (legacy)").tag("v1")
+      }
+      HStack {
+        TextField("Seed", text: $seed).frame(width: 120)
+        Button("Roll") { seed = String(Int.random(in: 1...999_999)) }
+      }
+      Toggle("Start the next track when this one ends", isOn: $autoAdvance)
+      HStack {
+        Button("Cancel") { dismiss() }
+        Spacer()
+        Button("Queue next") {
+          model.queueNext(name, spec)
+          model.setAutoAdvance(name, autoAdvance)
+          dismiss()
+        }
+        Button("Generate now") {
+          model.generate(name, spec)
+          model.setAutoAdvance(name, autoAdvance)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+      }
+    }
+    .padding(20)
+    .frame(width: 360)
   }
 }

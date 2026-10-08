@@ -108,7 +108,7 @@ Done when: every genre × {loop, minimal, standard, extended} × cohesion
 {v1, v2} × N seeds matches project JSON and model CID, share CIDs match, and
 renders match the JS engine.
 
-## Phase 3 — Live Petri decks
+## Phase 3 — Live Petri decks **(done on branch `phase3-live-decks`)**
 
 Goal: a deck can play a *generated net live*, not just a WAV, and the
 controllers perform on the net.

@@ -45,6 +45,24 @@ its copy; the two are now independent. Rules inherited from that split:
   green. Mark values not yet seen on a unit `[MIXXX]`/`[UNVERIFIED]`.
 - Tests use `DJEngine(offline: true)` (manual rendering) — never the speakers.
 
+## Live net decks (Phase 3)
+
+- A deck plays either a sample (`Turntable`) or a live Petri net (`WaveDeckSource`, the
+  Swift port of beats' wave engine). Only one is rendered at a time (`Deck.mode`).
+- **The wave source obeys the same audio-thread rules as the turntable**, and they are
+  measured, not asserted: `make swift-rt-test` builds in release and counts malloc/free
+  on the render thread (`countAllocations`, a `malloc_logger` hook) across swaps, macros,
+  keys and scratching. Debug builds skip those tests (unoptimised Swift allocates).
+  Traps found so far: a marking array sharing storage with its `initial` copy (CoW on the
+  first write), non-escaping closures that became escaping, retiring objects on the
+  audio thread (hand them back through the retire ring).
+- Projects are composed and compiled off the audio thread (`TrackSpec` →
+  `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
+- Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
+  `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md).
+- Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
+  `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
+
 ## Hardware notes (macOS)
 
 - `./dj-vevr-se ports` is the native replacement for `amidi -l`;
