@@ -371,8 +371,11 @@ struct DeckView: View {
         .fixedSize()
       }
       Text(state.title).font(.callout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-      Platter(seconds: state.platterSeconds, touching: state.touching, tint: tint)
-        .frame(width: 150, height: 150)
+      PlatterView(
+        seconds: state.platterSeconds, touching: state.touching, tint: tint,
+        beatInBar: state.bpm == nil ? nil : state.beatInBar
+      )
+      .frame(width: 150, height: 150)
       Text(
         String(
           format: "%@ / %@  ·  %.3f×", clock(state.positionSeconds), clock(state.duration),
@@ -398,7 +401,8 @@ struct DeckView: View {
         WaveformStrip(overview: state.overview, overlay: state.overlay, tint: tint)
           .frame(height: 46)
       }
-      BeatStrip(state: state, tint: tint)
+      BeatStripView(
+        bpm: state.bpm, beatInBar: state.beatInBar, scrubbing: state.scrubbing, tint: tint)
       if state.isNet { NetPanel(name: name, state: state, model: model, tint: tint) }
       LabeledSlider(
         label: "Vol", value: Binding(get: { state.volume }, set: { model.setVolume(name, $0) }),
@@ -477,45 +481,6 @@ struct LabeledSlider: View {
     HStack {
       Text(label).font(.caption).frame(width: 84, alignment: .leading)
       Slider(value: value, in: range)
-    }
-  }
-}
-
-/// One revolution = 1.8 s of audio (33⅓ rpm).
-struct Platter: View {
-  let seconds: Double
-  let touching: Bool
-  let tint: Color
-
-  var body: some View {
-    ZStack {
-      Circle().fill(.black.opacity(0.85))
-      Circle().strokeBorder(touching ? tint : .gray.opacity(0.5), lineWidth: touching ? 5 : 2)
-      Circle().fill(tint.opacity(0.8)).frame(width: 36, height: 36)
-      Rectangle().fill(.white).frame(width: 3, height: 60).offset(y: -38)
-        .rotationEffect(.degrees(seconds / 1.8 * 360))
-    }
-  }
-}
-
-/// BPM, the beat within the bar, and sync / quantize.
-struct BeatStrip: View {
-  let state: DeckState
-  let tint: Color
-  var body: some View {
-    HStack(spacing: 6) {
-      if let bpm = state.bpm {
-        Text(String(format: "%.1f BPM", bpm)).font(.caption.monospacedDigit())
-        ForEach(0..<4, id: \.self) { i in
-          Circle()
-            .fill(i == state.beatInBar ? tint : .gray.opacity(0.35))
-            .frame(width: i == 0 ? 10 : 7, height: i == 0 ? 10 : 7)
-        }
-      } else {
-        Text("no tempo").font(.caption).foregroundStyle(.secondary)
-      }
-      Spacer()
-      if state.scrubbing { Text("SCRATCH").font(.caption.bold()).foregroundStyle(tint) }
     }
   }
 }
