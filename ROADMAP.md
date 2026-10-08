@@ -98,7 +98,7 @@ humanize overrides, cohesion pin (v1 for envelopes without the field),
 traits, `macroCurve`.
 2.6 **(done — `Sources/DJCore/Beats/Wave/`; parity form, real-time hardening is 3.1)** Port the wave engine (`net.js`, `synth.js`, `runner.js`): trace exact,
 audio within 1e-5 (bit-exact where libm agrees), same as beats-py.
-2.7 Second oracle: run the Go generator (`tools/parity`) on the same inputs
+2.7 **(done — `make fixtures-go`, `Tests/DJCoreTests/BeatsGoOracleTests.swift`; finding: Go ≠ JS end to end, see commit)** Second oracle: run the Go generator (`tools/parity`) on the same inputs
 for model CIDs.
 Later in this phase: raw-`nets` envelopes + `arrangeWithOpts`, overlay
 directives (fadeIn, drumBreak, feelCurve, counterMelody), `tracks`/`fx`
