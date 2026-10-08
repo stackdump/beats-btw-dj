@@ -38,7 +38,7 @@
    "type": "note",
    "first": 122,
    "count": 1,
-   "comment": "below the scene column; a plain note \u2014 shift combos are tracked in software"
+   "comment": "below the scene column; a plain note — shift combos are tracked in software"
   },
   {
    "id": "drumPads",
@@ -46,7 +46,7 @@
    "channel": 9,
    "first": 64,
    "count": 16,
-   "comment": "DRUM mode (SHIFT + scene button): pads send notes 64-79 on MIDI channel 10 on the Control port \u2014 measured 2026-10-07 in the live device map; pad positions not yet mapped"
+   "comment": "DRUM mode (SHIFT + scene button): pads send notes 64-79 on MIDI channel 10 on the Control port — measured 2026-10-07 in the live device map; pad positions not yet mapped"
   }
  ],
  "leds": {
@@ -252,375 +252,481 @@
    "action": "shift"
   },
   {
-   "group": "pads",
-   "index": 16,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 17,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 18,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 19,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 20,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 21,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 22,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 23,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 24,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 25,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 26,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 27,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 28,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 29,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 30,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 31,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 32,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 33,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 34,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 35,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 36,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 37,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 38,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 39,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 40,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 41,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 42,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 43,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 44,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 45,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 46,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 47,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 48,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 49,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 50,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 51,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 52,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 53,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 54,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 55,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 56,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 57,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 58,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 59,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 60,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 61,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 62,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "pads",
-   "index": 63,
-   "action": "unbound",
-   "reason": "section / slot launcher and macros \u2014 Phase 3"
-  },
-  {
-   "group": "track",
-   "index": 1,
-   "action": "unbound",
-   "reason": "role mutes \u2014 Phase 3"
-  },
-  {
-   "group": "track",
-   "index": 2,
-   "action": "unbound",
-   "reason": "role mutes \u2014 Phase 3"
-  },
-  {
-   "group": "track",
-   "index": 3,
-   "action": "unbound",
-   "reason": "role mutes \u2014 Phase 3"
-  },
-  {
-   "group": "track",
-   "index": 4,
-   "action": "unbound",
-   "reason": "role mutes \u2014 Phase 3"
-  },
-  {
-   "group": "track",
-   "index": 5,
-   "action": "unbound",
-   "reason": "role mutes \u2014 Phase 3"
-  },
-  {
-   "group": "track",
-   "index": 6,
-   "action": "unbound",
-   "reason": "role mutes \u2014 Phase 3"
-  },
-  {
-   "group": "scene",
-   "index": 2,
-   "action": "unbound",
-   "reason": "section jumps \u2014 Phase 3"
-  },
-  {
-   "group": "scene",
-   "index": 3,
-   "action": "unbound",
-   "reason": "section jumps \u2014 Phase 3"
-  },
-  {
-   "group": "scene",
-   "index": 4,
-   "action": "unbound",
-   "reason": "section jumps \u2014 Phase 3"
-  },
-  {
-   "group": "scene",
-   "index": 5,
-   "action": "unbound",
-   "reason": "section jumps \u2014 Phase 3"
-  },
-  {
-   "group": "scene",
-   "index": 6,
-   "action": "unbound",
-   "reason": "section jumps \u2014 Phase 3"
-  },
-  {
-   "group": "scene",
-   "index": 7,
-   "action": "unbound",
-   "reason": "section jumps \u2014 Phase 3"
-  },
-  {
    "group": "faders",
    "index": 4,
    "action": "unbound",
-   "reason": "per-role level \u2014 Phase 3"
+   "reason": "per-role level — Phase 3"
   },
   {
    "group": "drumPads",
    "action": "unbound",
-   "reason": "APC drum mode \u2014 Phase 3 instrument (session mode is the DJ layout)"
+   "reason": "APC drum mode — Phase 3 instrument (session mode is the DJ layout)"
+  },
+  {
+   "group": "pads",
+   "index": 16,
+   "action": "section",
+   "deck": "A",
+   "slot": 0
+  },
+  {
+   "group": "pads",
+   "index": 17,
+   "action": "section",
+   "deck": "A",
+   "slot": 1
+  },
+  {
+   "group": "pads",
+   "index": 18,
+   "action": "section",
+   "deck": "A",
+   "slot": 2
+  },
+  {
+   "group": "pads",
+   "index": 19,
+   "action": "section",
+   "deck": "A",
+   "slot": 3
+  },
+  {
+   "group": "pads",
+   "index": 20,
+   "action": "section",
+   "deck": "A",
+   "slot": 4
+  },
+  {
+   "group": "pads",
+   "index": 21,
+   "action": "section",
+   "deck": "A",
+   "slot": 5
+  },
+  {
+   "group": "pads",
+   "index": 22,
+   "action": "section",
+   "deck": "A",
+   "slot": 6
+  },
+  {
+   "group": "pads",
+   "index": 23,
+   "action": "section",
+   "deck": "A",
+   "slot": 7
+  },
+  {
+   "group": "pads",
+   "index": 24,
+   "action": "section",
+   "deck": "A",
+   "slot": 8
+  },
+  {
+   "group": "pads",
+   "index": 25,
+   "action": "section",
+   "deck": "A",
+   "slot": 9
+  },
+  {
+   "group": "pads",
+   "index": 26,
+   "action": "section",
+   "deck": "A",
+   "slot": 10
+  },
+  {
+   "group": "pads",
+   "index": 27,
+   "action": "section",
+   "deck": "A",
+   "slot": 11
+  },
+  {
+   "group": "pads",
+   "index": 28,
+   "action": "section",
+   "deck": "A",
+   "slot": 12
+  },
+  {
+   "group": "pads",
+   "index": 29,
+   "action": "section",
+   "deck": "A",
+   "slot": 13
+  },
+  {
+   "group": "pads",
+   "index": 30,
+   "action": "section",
+   "deck": "A",
+   "slot": 14
+  },
+  {
+   "group": "pads",
+   "index": 31,
+   "action": "section",
+   "deck": "A",
+   "slot": 15
+  },
+  {
+   "group": "pads",
+   "index": 32,
+   "action": "section",
+   "deck": "B",
+   "slot": 0
+  },
+  {
+   "group": "pads",
+   "index": 33,
+   "action": "section",
+   "deck": "B",
+   "slot": 1
+  },
+  {
+   "group": "pads",
+   "index": 34,
+   "action": "section",
+   "deck": "B",
+   "slot": 2
+  },
+  {
+   "group": "pads",
+   "index": 35,
+   "action": "section",
+   "deck": "B",
+   "slot": 3
+  },
+  {
+   "group": "pads",
+   "index": 36,
+   "action": "section",
+   "deck": "B",
+   "slot": 4
+  },
+  {
+   "group": "pads",
+   "index": 37,
+   "action": "section",
+   "deck": "B",
+   "slot": 5
+  },
+  {
+   "group": "pads",
+   "index": 38,
+   "action": "section",
+   "deck": "B",
+   "slot": 6
+  },
+  {
+   "group": "pads",
+   "index": 39,
+   "action": "section",
+   "deck": "B",
+   "slot": 7
+  },
+  {
+   "group": "pads",
+   "index": 40,
+   "action": "section",
+   "deck": "B",
+   "slot": 8
+  },
+  {
+   "group": "pads",
+   "index": 41,
+   "action": "section",
+   "deck": "B",
+   "slot": 9
+  },
+  {
+   "group": "pads",
+   "index": 42,
+   "action": "section",
+   "deck": "B",
+   "slot": 10
+  },
+  {
+   "group": "pads",
+   "index": 43,
+   "action": "section",
+   "deck": "B",
+   "slot": 11
+  },
+  {
+   "group": "pads",
+   "index": 44,
+   "action": "section",
+   "deck": "B",
+   "slot": 12
+  },
+  {
+   "group": "pads",
+   "index": 45,
+   "action": "section",
+   "deck": "B",
+   "slot": 13
+  },
+  {
+   "group": "pads",
+   "index": 46,
+   "action": "section",
+   "deck": "B",
+   "slot": 14
+  },
+  {
+   "group": "pads",
+   "index": 47,
+   "action": "section",
+   "deck": "B",
+   "slot": 15
+  },
+  {
+   "group": "pads",
+   "index": 48,
+   "action": "macro",
+   "deck": "A",
+   "macro": "drop"
+  },
+  {
+   "group": "pads",
+   "index": 49,
+   "action": "macro",
+   "deck": "A",
+   "macro": "breakdown"
+  },
+  {
+   "group": "pads",
+   "index": 50,
+   "action": "macro",
+   "deck": "A",
+   "macro": "cut"
+  },
+  {
+   "group": "pads",
+   "index": 51,
+   "action": "macro",
+   "deck": "A",
+   "macro": "beat-repeat"
+  },
+  {
+   "group": "pads",
+   "index": 56,
+   "action": "macro",
+   "deck": "A",
+   "macro": "half-time"
+  },
+  {
+   "group": "pads",
+   "index": 57,
+   "action": "macro",
+   "deck": "A",
+   "macro": "tape-stop"
+  },
+  {
+   "group": "pads",
+   "index": 58,
+   "action": "macro",
+   "deck": "A",
+   "macro": "double-drop"
+  },
+  {
+   "group": "pads",
+   "index": 59,
+   "action": "panic",
+   "deck": "A"
+  },
+  {
+   "group": "pads",
+   "index": 52,
+   "action": "macro",
+   "deck": "B",
+   "macro": "drop"
+  },
+  {
+   "group": "pads",
+   "index": 53,
+   "action": "macro",
+   "deck": "B",
+   "macro": "breakdown"
+  },
+  {
+   "group": "pads",
+   "index": 54,
+   "action": "macro",
+   "deck": "B",
+   "macro": "cut"
+  },
+  {
+   "group": "pads",
+   "index": 55,
+   "action": "macro",
+   "deck": "B",
+   "macro": "beat-repeat"
+  },
+  {
+   "group": "pads",
+   "index": 60,
+   "action": "macro",
+   "deck": "B",
+   "macro": "half-time"
+  },
+  {
+   "group": "pads",
+   "index": 61,
+   "action": "macro",
+   "deck": "B",
+   "macro": "tape-stop"
+  },
+  {
+   "group": "pads",
+   "index": 62,
+   "action": "macro",
+   "deck": "B",
+   "macro": "double-drop"
+  },
+  {
+   "group": "pads",
+   "index": 63,
+   "action": "panic",
+   "deck": "B"
+  },
+  {
+   "group": "track",
+   "index": 1,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "kick",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 1,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "kick",
+   "shift": true
+  },
+  {
+   "group": "track",
+   "index": 2,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "snare",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 2,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "snare",
+   "shift": true
+  },
+  {
+   "group": "track",
+   "index": 3,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "hihat",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 3,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "hihat",
+   "shift": true
+  },
+  {
+   "group": "track",
+   "index": 4,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "bass",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 4,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "bass",
+   "shift": true
+  },
+  {
+   "group": "track",
+   "index": 5,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "melody",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 5,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "melody",
+   "shift": true
+  },
+  {
+   "group": "track",
+   "index": 6,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "harmony",
+   "shift": false
+  },
+  {
+   "group": "track",
+   "index": 6,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "harmony",
+   "shift": true
+  },
+  {
+   "group": "scene",
+   "index": 2,
+   "action": "sectionPrev",
+   "deck": "A"
+  },
+  {
+   "group": "scene",
+   "index": 3,
+   "action": "sectionNext",
+   "deck": "A"
+  },
+  {
+   "group": "scene",
+   "index": 4,
+   "action": "sectionPrev",
+   "deck": "B"
+  },
+  {
+   "group": "scene",
+   "index": 5,
+   "action": "sectionNext",
+   "deck": "B"
+  },
+  {
+   "group": "scene",
+   "index": 6,
+   "action": "nextTrack",
+   "deck": "A"
+  },
+  {
+   "group": "scene",
+   "index": 7,
+   "action": "nextTrack",
+   "deck": "B"
   }
  ]
 }

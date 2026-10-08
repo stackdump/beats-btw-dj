@@ -22,6 +22,9 @@ public final class DJEngine {
 
   /// 0 = all A, 1 = all B, constant-power curve. Only decks "A" and "B" are faded.
   public var crossfader = 0.5 { didSet { applyGains() } }
+  /// The deck keys, the joystick and other deck-less performance controls act on:
+  /// the one a controller touched last.
+  public var focus = "A"
   /// 0...1
   public var master: Double {
     get { Double(engine.mainMixerNode.outputVolume) }
@@ -114,6 +117,9 @@ public final class Deck: JogClock {
   /// Called whenever no next track is composed or composing: keeps one coming.
   public var nextProvider: (() -> TrackSpec)?
   var generation = 0
+  var netNudge = 0.0
+  var netCueTick = 0.0
+  var heldKeys: [Int: Int] = [:]
   let next = NextTrackSlot()
   public private(set) var title = "—"
   public internal(set) var playing = false
@@ -177,7 +183,7 @@ public final class Deck: JogClock {
   public var pitch = 0.0 {
     didSet {
       turntable.send(.pitch(ratio: pitch * Self.pitchRange))
-      if mode == .net { wave.setTempo(netBaseBPM * (1 + pitch * Self.pitchRange)) }
+      applyNetTempo()
     }
   }
   public static let pitchRange = 0.08
@@ -227,6 +233,17 @@ public final class Deck: JogClock {
   /// CUE button: while playing, back to the cue point and pause; while
   /// paused, set the cue point at the playhead.
   public func cue() {
+    if mode == .net {
+      // Net cue: playing → back to the cue tick and pause; paused → set it here.
+      if playing {
+        setPlaying(false)
+        let t = Int(netCueTick)
+        Task { @MainActor in await self.jumpToTick(t) }
+      } else {
+        netCueTick = Double(wave.tick)
+      }
+      return
+    }
     guard loaded != nil else { return }
     if playing {
       setPlaying(false)
@@ -276,6 +293,16 @@ public final class Deck: JogClock {
 
   /// Jump to the cue in `slot`, or set it at the playhead if empty.
   public func hotCue(_ slot: Int) {
+    if mode == .net {
+      // A net hot cue is a tick on the net clock; jumping replays the control nets to it.
+      if let at = hotCues[slot] {
+        let t = Int(at)
+        Task { @MainActor in await self.jumpToTick(t) }
+      } else if wave.hasProject {
+        hotCues[slot] = Double(wave.tick)
+      }
+      return
+    }
     if let at = hotCues[slot] {
       turntable.send(.seek(sample: at))
     } else if loaded != nil {  // not turntable.length: that lags until the next render
@@ -330,8 +357,14 @@ public final class Deck: JogClock {
     loopEnd = nil
     looping = false
     wave.load(prepared)
-    wave.setTempo(netBaseBPM * (1 + pitch * Self.pitchRange))
+    applyNetTempo()
     if playing { wave.play() }
+  }
+
+  /// Net clock = project BPM × tempo fader × momentary nudge (jog ring / joystick).
+  func applyNetTempo() {
+    guard mode == .net else { return }
+    wave.setTempo(netBaseBPM * (1 + pitch * Self.pitchRange) * (1 + netNudge))
   }
 
   private func leaveNetMode() {
@@ -362,7 +395,11 @@ public final class Deck: JogClock {
     turntable.send(.scrub(samples: seconds * turntable.sampleRate))
   }
   public func release() { turntable.send(.release) }
-  public func nudge(_ ratio: Double) { turntable.send(.nudge(ratio: ratio)) }
+  public func nudge(_ ratio: Double) {
+    turntable.send(.nudge(ratio: ratio))
+    netNudge = ratio
+    applyNetTempo()
+  }
 
   // MARK: decoding
 

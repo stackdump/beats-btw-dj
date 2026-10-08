@@ -19,6 +19,16 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case loopOut  // press: loop end at the playhead and start looping; again: exit loop
   case loopHalve, loopDouble  // press: resize the active loop
   case shift  // hold: software shift layer for this surface
+  // Live-net performance (net decks; ignored on sample decks)
+  case section  // press: launch section `slot` of the song (at the next bar)
+  case sectionPrev, sectionNext  // press: step the section launcher
+  case roleMute  // press: toggle `role` (kick, bass, …) on/off
+  case macro  // press: fire the net macro named by `macro`
+  case panic  // press: restore every macro effect now
+  case stinger  // press: ring stinger `slot` (0–3) for a bar
+  case nextTrack  // press: hand over to the pre-composed next track
+  case keys  // note-on/off: play the live voice, scale-locked (focus deck)
+  case nudge  // continuous, centred: momentary tempo nudge (focus deck)
   case unbound  // parked on purpose; see `reason`
 }
 
@@ -74,6 +84,10 @@ public struct SurfaceProfile: Codable, Sendable {
     public var shift: Bool?
     /// Why a control is `unbound` (e.g. "needs BPM — Phase 3").
     public var reason: String?
+    /// `roleMute`: the role name ("kick", "bass", …).
+    public var role: String?
+    /// `macro`: the net macro id ("drop", "beat-repeat", …).
+    public var macro: String?
   }
 
   /// Note-on LED feedback (APC, Inpulse): note-on to the control's own

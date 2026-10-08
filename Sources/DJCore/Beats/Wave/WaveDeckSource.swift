@@ -10,6 +10,17 @@ public enum WaveCommand: BitwiseCopyable {
   case tempo(Double)
   /// Mute a net by `strHash(netId)`.
   case mute(hash: Int32, muted: Bool)
+  /// Mute / unmute a role (riff group or plain net) by `strHash(role)`.
+  case roleMute(hash: Int32, muted: Bool)
+  /// `activate-slot` on the net with this `strHash(netId)`.
+  case slot(hash: Int32)
+  case macro(id: UInt8, ticks: Int32)
+  case stinger(hash: Int32, ticks: Int32)
+  case panic
+  /// Live keys (already scale-locked by the sender).
+  case noteOn(note: Int16, velocity: UInt8)
+  case noteOff(note: Int16)
+  case allNotesOff
 }
 
 /// A `WaveRunner` that a deck can play: the Petri-net executor and the wave synthesis
@@ -37,6 +48,11 @@ public final class WaveDeckSource: @unchecked Sendable {
   private let hasProjectAtomic = Atomic<Bool>(false)
   /// Whether the owning deck routes its output through this source.
   private let activeAtomic = Atomic<Bool>(false)
+  /// Bit i of word i/64 = net i is muted (first 256 nets), refreshed every block.
+  private let muteWord0 = Atomic<UInt64>(0)
+  private let muteWord1 = Atomic<UInt64>(0)
+  private let muteWord2 = Atomic<UInt64>(0)
+  private let muteWord3 = Atomic<UInt64>(0)
 
   /// Main-thread only: the last project handed over, to resolve net ids.
   public private(set) var latest: WaveProject?
@@ -92,6 +108,37 @@ public final class WaveDeckSource: @unchecked Sendable {
     send(.mute(hash: strHash(netId), muted: muted))
   }
 
+  public func setRoleMuted(_ role: String, _ muted: Bool) {
+    send(.roleMute(hash: strHash(role), muted: muted))
+  }
+
+  public func activateSlot(_ netId: String) { send(.slot(hash: strHash(netId))) }
+  public func fire(_ macro: NetMacro, ticks: Int? = nil) {
+    send(.macro(id: macro.rawValue, ticks: Int32(ticks ?? macro.ticks())))
+  }
+  public func fireStinger(_ netId: String, ticks: Int = 16) {
+    send(.stinger(hash: strHash(netId), ticks: Int32(ticks)))
+  }
+  public func panic() { send(.panic) }
+  public func noteOn(_ note: Int, velocity: Int) {
+    send(.noteOn(note: Int16(clamping: note), velocity: UInt8(clamping: velocity)))
+  }
+  public func noteOff(_ note: Int) { send(.noteOff(note: Int16(clamping: note))) }
+  public func allNotesOff() { send(.allNotesOff) }
+
+  /// Is the role (a riff group or a plain net id) making sound right now? Reads the
+  /// mute mirror and the latest project's role table, so it is main-thread safe.
+  public func isRoleAudible(_ role: String) -> Bool {
+    guard let g = latest?.graph, let t = g.roleTargets[strHash(role)] else { return false }
+    let words = [
+      muteWord0.load(ordering: .relaxed), muteWord1.load(ordering: .relaxed),
+      muteWord2.load(ordering: .relaxed), muteWord3.load(ordering: .relaxed),
+    ]
+    func muted(_ i: Int) -> Bool { i < 256 && words[i / 64] & (1 << UInt64(i % 64)) != 0 }
+    if t >= 0 { return g.groupNets[t].contains { !muted($0) } }
+    return !muted(-t - 2)
+  }
+
   /// Free projects the audio thread has let go of. Called by `send`/`load`; call it
   /// from a timer too.
   public func drainRetired() {
@@ -121,6 +168,25 @@ public final class WaveDeckSource: @unchecked Sendable {
     playingAtomic.store(runner.playing, ordering: .relaxed)
     stoppedAtomic.store(runner.stopped, ordering: .relaxed)
     hasProjectAtomic.store(runner.graph != nil, ordering: .relaxed)
+    if let g = runner.graph {
+      var w0: UInt64 = 0
+      var w1: UInt64 = 0
+      var w2: UInt64 = 0
+      var w3: UInt64 = 0
+      for i in 0..<min(256, g.muted.count) where g.muted[i] != 0 {
+        let bit: UInt64 = 1 << UInt64(i % 64)
+        switch i / 64 {
+        case 0: w0 |= bit
+        case 1: w1 |= bit
+        case 2: w2 |= bit
+        default: w3 |= bit
+        }
+      }
+      muteWord0.store(w0, ordering: .relaxed)
+      muteWord1.store(w1, ordering: .relaxed)
+      muteWord2.store(w2, ordering: .relaxed)
+      muteWord3.store(w3, ordering: .relaxed)
+    }
   }
 
   private func apply(_ c: WaveCommand) {
@@ -132,6 +198,15 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .stop: runner.stop()
     case .tempo(let bpm): runner.setTempo(bpm)
     case .mute(let hash, let muted): runner.setMute(hash: hash, muted)
+    case .roleMute(let hash, let muted): runner.setRoleMuted(hash: hash, muted)
+    case .slot(let hash): runner.activateSlot(hash: hash)
+    case .macro(let id, let ticks):
+      if let m = NetMacro(rawValue: id) { runner.fireMacro(m, ticks: Int(ticks)) }
+    case .stinger(let hash, let ticks): runner.fireStinger(hash: hash, ticks: Int(ticks))
+    case .panic: runner.panic()
+    case .noteOn(let note, let velocity): runner.noteOn(Int(note), velocity: Int(velocity))
+    case .noteOff(let note): runner.noteOff(Int(note))
+    case .allNotesOff: runner.allNotesOff()
     }
   }
 }

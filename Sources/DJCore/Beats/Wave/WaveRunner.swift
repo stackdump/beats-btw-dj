@@ -87,6 +87,9 @@ final class Lane {
   var sd: [Double] = []
   var sa: [Double] = []
   var md: [Double] = []
+  /// Live keys: a held voice does not decay until released.
+  var hold: [Bool] = []
+  var heldNote: [Int] = []
 
   init(voice: VoiceSpec, sr: Double, tonal: Bool) {
     self.voice = voice
@@ -136,6 +139,8 @@ private func tonalLane(
   lane.sd = [Double](repeating: 0, count: poly)
   lane.sa = [Double](repeating: 0, count: poly)
   lane.md = [Double](repeating: 0, count: poly)
+  lane.hold = [Bool](repeating: false, count: poly)
+  lane.heldNote = [Int](repeating: -1, count: poly)
   return lane
 }
 
@@ -147,7 +152,10 @@ public final class WaveProject: @unchecked Sendable {
   let lanes: [Lane]
   let byNet: [String: [Int]]
   let sources: [Lane]
-  init(graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane]) {
+  /// Index in `lanes` of the pooled voice that MIDI keys play.
+  let liveLane: Int
+  init(graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int) {
+    self.liveLane = liveLane
     self.graph = graph
     self.lanes = lanes
     self.byNet = byNet
@@ -206,7 +214,16 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
     if m.silentSource { for li in src { lanes[li].st[slotLevel] = 0 } }
     if !sources.contains(where: { $0 === lanes[src[0]] }) { sources.append(lanes[src[0]]) }
   }
-  return WaveProject(graph: g, lanes: lanes, byNet: byNet, sources: sources)
+  // Live keys: one extra pooled voice, shaped like the melody net's instrument.
+  let melody = g.nets.first { $0.bundle.riffGroup == "melody" || $0.id == "melody" }
+  let liveVoice = tonalVoice(
+    instrument: melody?.bundle.track.instrument ?? "", group: "melody")
+  let live = tonalLane(liveVoice, sr, 8, tables: &tables)
+  live.netId = "<live>"
+  let liveIndex = lanes.count
+  lanes.append(live)
+  return WaveProject(
+    graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex)
 }
 
 // clock slots
@@ -250,12 +267,13 @@ public final class WaveRunner {
   private func spt(_ bpm: Double) -> Double { sampleRate * 60 / (bpm * ppq) }
 
   /// Compile everything off the audio thread. Hand the result to `load(prepared:)`.
+  /// `startTick` replays the net silently to that tick first (a section launch).
   public static func prepare(
-    _ project: Project, sampleRate: Double, opts: WaveOptions = WaveOptions()
-  )
-    -> WaveProject
-  {
-    buildLanes(WaveGraph(project: project), sampleRate, opts)
+    _ project: Project, sampleRate: Double, opts: WaveOptions = WaveOptions(), startTick: Int = 0
+  ) -> WaveProject {
+    let g = WaveGraph(project: project)
+    if startTick > 0 { g.fastForward(to: startTick) }
+    return buildLanes(g, sampleRate, opts)
   }
 
   public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())
@@ -327,8 +345,120 @@ public final class WaveRunner {
   /// Fraction (0..<1) of the current tick that has elapsed.
   public var tickPhase: Double { clock[clkSpt] > 0 ? clock[clkTickPos] / clock[clkSpt] : 0 }
 
+  public func setRoleMuted(hash: Int32, _ muted: Bool) { graph?.setRoleMuted(hash: hash, muted) }
+  public func activateSlot(hash: Int32) { graph?.activateSlot(hash: hash) }
+  public func fireStinger(hash: Int32, ticks: Int) { graph?.fireStinger(hash: hash, ticks: ticks) }
+
   public func setMute(_ netId: String, _ muted: Bool) {
     if let g = graph, let i = g.byId[netId] { g.muted[i] = muted ? 1 : 0 }
+  }
+
+  // MARK: live performance
+
+  /// A key goes down on the pooled live voice (already scale-locked by the caller).
+  /// The voice holds until `noteOff`, then rings out.
+  public func noteOn(_ note: Int, velocity: Int) {
+    guard let proj = current else { return }
+    let lane = proj.lanes[proj.liveLane]
+    lane.active = true
+    let w = Double(max(1, min(127, velocity))) / 127
+    var v = 0
+    var best = Double.infinity
+    for k in 0..<lane.poly {
+      // prefer a free (not held) voice, then the quietest
+      let a = abs(lane.sd[k] + lane.sa[k]) + (lane.hold[k] ? 1000 : 0)
+      if a < best {
+        best = a
+        v = k
+      }
+    }
+    let cur = lane.sd[v] + lane.sa[v]
+    lane.inc[v] = 440 * pow(2, (Double(note) - 69) / 12) * lane.st[slotInvSr]
+    lane.md[v] = exp(-lane.st[slotInvSr] / 0.3)  // release time constant, used after noteOff
+    lane.hold[v] = true
+    lane.heldNote[v] = note
+    lane.sd[v] = w
+    lane.sa[v] = cur - w
+  }
+
+  public func noteOff(_ note: Int) {
+    guard let proj = current else { return }
+    let lane = proj.lanes[proj.liveLane]
+    for k in 0..<lane.poly where lane.hold[k] && lane.heldNote[k] == note {
+      lane.hold[k] = false
+      lane.heldNote[k] = -1
+    }
+  }
+
+  public func allNotesOff() {
+    guard let proj = current else { return }
+    let lane = proj.lanes[proj.liveLane]
+    for k in 0..<lane.poly {
+      lane.hold[k] = false
+      lane.heldNote[k] = -1
+    }
+  }
+
+  private enum TempoFx { case none, hold, sweep }
+  private var tempoFx = TempoFx.none
+  private var fxStartSample = 0.0
+  private var fxDurSamples = 0.0
+  private var fxStartBpm = 120.0
+  private var fxTarget = 120.0
+
+  private func beginTempoFx(_ kind: TempoFx, target: Double, ticks: Int) {
+    // A stacked fire restores to the tempo the first one started from, not its own peak.
+    let start = tempoFx == .none ? clock[clkTempo] : fxStartBpm
+    tempoFx = kind
+    fxStartBpm = start
+    fxTarget = target
+    fxStartSample = clock[clkSamples]
+    fxDurSamples = Double(max(1, ticks)) * clock[clkSpt]
+    if kind == .hold { setTempo(target) }
+  }
+
+  private func serviceTempoFx() {
+    guard tempoFx != .none else { return }
+    let elapsed = clock[clkSamples] - fxStartSample
+    if elapsed >= fxDurSamples {
+      tempoFx = .none
+      setTempo(fxStartBpm)
+    } else if tempoFx == .sweep {
+      let t = min(1, elapsed / fxDurSamples)
+      let eased = 1 - (1 - t) * (1 - t)
+      setTempo(fxStartBpm + (fxTarget - fxStartBpm) * eased)
+    }
+  }
+
+  /// Fire a net macro (`catalog.js`): mutes restore after `ticks` net ticks; tempo
+  /// macros last `ticks` ticks of wall time at the tempo they were fired at.
+  public func fireMacro(_ macro: NetMacro, ticks: Int) {
+    guard let g = graph else { return }
+    switch macro {
+    case .drop: g.fireMute(.nonDrums, ticks: ticks)
+    case .breakdown: g.fireMute(.drumsOnly, ticks: ticks)
+    case .soloDrums: g.fireMute(.nonDrums, ticks: ticks)
+    case .cut: g.fireMute(.everything, ticks: ticks)
+    case .doubleDrop:
+      g.fireMute(.everything, ticks: 2)
+      // the second half lands 260 ms later (a timer on the net clock, in ticks)
+      let delay = max(1, Int((0.26 / (60 / (clock[clkTempo] * ppq))).rounded()))
+      g.scheduleMute(.nonDrums, after: delay, ticks: ticks)
+    case .beatRepeat: g.fireBeatRepeat(ticks: ticks)
+    case .halfTime:
+      beginTempoFx(.hold, target: max(20, jsRound(clock[clkTempo] * 0.5)), ticks: ticks)
+    case .tapeStop: beginTempoFx(.sweep, target: 22, ticks: ticks)
+    case .tempoAnchor: beginTempoFx(.hold, target: max(20, g.project.tempo), ticks: ticks)
+    }
+  }
+
+  /// Restore every pending macro effect now.
+  public func panic() {
+    graph?.cancelMacros()
+    if tempoFx != .none {
+      tempoFx = .none
+      setTempo(fxStartBpm)
+    }
   }
 
   // MARK: onsets
@@ -425,7 +555,7 @@ public final class WaveRunner {
       live = true
       let env = sd + sa
       envSum += env
-      lane.sd[k] = sd * lane.md[k]
+      lane.sd[k] = sd * (lane.hold[k] ? 1.0 : lane.md[k])
       lane.sa[k] = sa * am
       var ph = lane.phase[k] + lane.inc[k] * fmk
       ph -= ph.rounded(.down)
@@ -473,6 +603,7 @@ public final class WaveRunner {
     _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
   ) {
     ticksInBlock = 0
+    serviceTempoFx()
     let gain = masterGain
     for i in 0..<frames {
       if playing {

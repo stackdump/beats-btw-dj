@@ -117,7 +117,7 @@ controllers perform on the net.
 JS runner: no allocation in `process`).
 3.2 **(done — `Deck.generate/queueNext/advanceToNext/service`, `TrackSpec`)** Generate on a deck: genre + seed (+ structure) → compose → play; next
 track pre-composed in the background.
-3.3 Controls drive the net: section jump / slot activate (APC grid), role
+3.3 **(done — `DeckPerform`, `WaveMacros`, profiles; FX/pan/shape/pitch/feel macros need a wave master chain, not ported)** Controls drive the net: section jump / slot activate (APC grid), role
 mutes (APC track buttons), macros (port beats' macro catalog), live tempo,
 MPK keys into a scale-locked live net, stingers on pads.
 3.4 Beat-aware mixing: both decks know BPM and bar phase (from the net

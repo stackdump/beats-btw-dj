@@ -168,7 +168,27 @@ struct WaveDeckSourceTests {
     src.pause()
     src.stop()  // resets the marking in place
     src.play()
-    let report = countAllocations { run(3000) }
+    // the whole performance surface: roles, slots, macros, stingers, keys, panic
+    src.setRoleMuted("bass", true)
+    src.setRoleMuted("bass", false)
+    src.activateSlot("melody-1")
+    src.fire(.drop)
+    src.fire(.beatRepeat)
+    src.fire(.doubleDrop)
+    src.fire(.halfTime)
+    src.fire(.tapeStop)
+    src.fireStinger("hit1")
+    src.noteOn(60, velocity: 100)
+    src.noteOn(64, velocity: 90)
+    src.noteOff(60)
+    src.allNotesOff()
+    let report = countAllocations {
+      run(1500)
+      src.panic()
+      src.fire(.cut)
+      src.noteOn(67, velocity: 80)
+      run(1500)
+    }
     #expect(report.allocations == 0, "render allocated \(report.allocations) times")
     #expect(report.frees == 0, "render freed \(report.frees) times")
     src.drainRetired()

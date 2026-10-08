@@ -36,7 +36,7 @@
     "knob7",
     "knob8"
    ],
-   "comment": "CC n = knob n in this preset. CC 1 is ALSO the joystick's Y axis (mod) \u2014 the two cannot be told apart"
+   "comment": "CC n = knob n in this preset. CC 1 is ALSO the joystick's Y axis (mod) — the two cannot be told apart"
   },
   {
    "id": "joystickX",
@@ -85,14 +85,13 @@
  "layout": [
   {
    "group": "keys",
-   "action": "unbound",
-   "reason": "instrument / live net \u2014 Phase 3"
+   "action": "keys"
   },
   {
    "group": "knobs",
    "index": 0,
    "action": "unbound",
-   "reason": "CC 1 is shared with the joystick Y axis in this preset \u2014 reprogram knob 1 in the MPK Editor to use it"
+   "reason": "CC 1 is shared with the joystick Y axis in this preset — reprogram knob 1 in the MPK Editor to use it"
   },
   {
    "group": "knobs",
@@ -138,8 +137,7 @@
   {
    "group": "joystickX",
    "index": 0,
-   "action": "unbound",
-   "reason": "instrument / live net \u2014 Phase 3"
+   "action": "nudge"
   },
   {
    "group": "pads",
@@ -199,8 +197,64 @@
   },
   {
    "group": "padNotes",
+   "index": 0,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 0
+  },
+  {
+   "group": "padNotes",
+   "index": 1,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 1
+  },
+  {
+   "group": "padNotes",
+   "index": 2,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 2
+  },
+  {
+   "group": "padNotes",
+   "index": 3,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 3
+  },
+  {
+   "group": "padNotes",
+   "index": 4,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 0
+  },
+  {
+   "group": "padNotes",
+   "index": 5,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 1
+  },
+  {
+   "group": "padNotes",
+   "index": 6,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 2
+  },
+  {
+   "group": "padNotes",
+   "index": 7,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 3
+  },
+  {
+   "group": "padNotes",
    "action": "unbound",
-   "reason": "stingers / one-shots \u2014 Phase 3"
+   "reason": "bank B (notes 44-51) and pads 9-16 unused — [UNVERIFIED] numbering"
   }
  ]
 }

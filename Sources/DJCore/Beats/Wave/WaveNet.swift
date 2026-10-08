@@ -206,6 +206,31 @@ public final class WaveGraph {
   public var controlCount = 0
   public var overflow = 0
 
+  // Live-performance state (not in the JS executor: see WaveMacros.swift).
+  /// Per net: drum channel / control net. Computed once at compile time.
+  let isDrumNet: [Bool]
+  let isControlNet: [Bool]
+  let isKickNet: [Bool]
+  /// Role name hash → group index (>= 0) or `-(net index) - 2` for a plain net.
+  let roleTargets: [Int32: Int]
+  /// Net indices of each group, in project order.
+  let groupNets: [[Int]]
+  /// The slot a group last activated (-1: none yet).
+  var activeSlot: [Int]
+  // Tick-locked timers (the restore half of a macro): fixed capacity, never grown.
+  static let timerCapacity = 512
+  var timerRemaining = [Int32](repeating: 0, count: WaveGraph.timerCapacity)
+  /// 0 free, 1 unmute, 2 mute, 3 delayed mute macro
+  var timerKind = [UInt8](repeating: 0, count: WaveGraph.timerCapacity)
+  var timerNet = [Int32](repeating: 0, count: WaveGraph.timerCapacity)
+  var timerArg = [Int32](repeating: 0, count: WaveGraph.timerCapacity)
+  public internal(set) var timerOverflow = 0
+  // Beat-repeat: bursts of mutes every `repeatStep` ticks.
+  var repeatRemaining = 0
+  var repeatElapsed = 0
+  var repeatStep = 2
+  var repeatBurst = 1
+
   /// `compileProject(json)`: the project is round-tripped through `parseProject` in the JS,
   /// so a composed Project goes through its own JSON form here for the same rounding.
   public convenience init(project p: Project) {
@@ -236,6 +261,24 @@ public final class WaveGraph {
       }
     }
     tempo = proj.tempo > 0 ? proj.tempo : 120
+    isControlNet = nets.map { $0.bundle.role == "control" }
+    isDrumNet = nets.map { isDrumChannel($0.bundle.track.channel) }
+    isKickNet = nets.map { n in
+      n.bundle.riffGroup == "kick" || n.id == "kick" || n.id.hasPrefix("kick:")
+    }
+    var roleTargets: [Int32: Int] = [:]
+    var groupNets = [[Int]](repeating: [], count: groups.count)
+    for n in nets where n.bundle.role != "control" {
+      if n.groupIdx >= 0 { groupNets[n.groupIdx].append(n.index) }
+    }
+    for (gi, name) in groups.enumerated() { roleTargets[strHash(name)] = gi }
+    for n in nets where n.bundle.role != "control" && n.groupIdx < 0 {
+      // a plain net is addressed by its id, unless a group already claimed that name
+      if roleTargets[strHash(n.id)] == nil { roleTargets[strHash(n.id)] = -n.index - 2 }
+    }
+    self.roleTargets = roleTargets
+    self.groupNets = groupNets
+    activeSlot = [Int](repeating: -1, count: groups.count)
     muted = [UInt8](repeating: 0, count: nets.count)
     mutedNotes = [UInt8](repeating: 0, count: nets.count * 128)
     mutedGroups = [UInt8](repeating: 0, count: max(1, groups.count))
@@ -253,6 +296,8 @@ public final class WaveGraph {
     for id in project.initialMutes {
       if let i = byId[id] { muted[i] = 1 }
     }
+    clearMacros()
+    for gi in 0..<groupNets.count { activeSlot[gi] = groupNets[gi].first { muted[$0] == 0 } ?? -1 }
   }
 
   // MARK: executor
@@ -335,6 +380,7 @@ public final class WaveGraph {
         if gi >= 0 {
           for o in nets where o.groupIdx == gi && o.index != tgt { muted[o.index] = 1 }
           if mutedGroups[gi] == 0 { muted[tgt] = 0 }
+          activeSlot[gi] = tgt
         }
       }
     case .stop: stopRequested = true
@@ -381,6 +427,7 @@ public final class WaveGraph {
         }
       }
     }
+    serviceMacros()
   }
 
   /// Plain marking `{netId: {place: tokens}}` — for the UI, allocates.

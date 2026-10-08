@@ -14,7 +14,8 @@ private let stackLoggingTypeAlloc: UInt32 = 2
 private let stackLoggingTypeDealloc: UInt32 = 4
 
 // Storage the hook can touch without allocating or locking.
-nonisolated(unsafe) private let counters = UnsafeMutablePointer<Int>.allocate(capacity: 2)  // [allocs, frees]
+// [allocs, frees]
+nonisolated(unsafe) private let counters = UnsafeMutablePointer<Int>.allocate(capacity: 2)
 nonisolated(unsafe) private let armed = UnsafeMutablePointer<pthread_t?>.allocate(capacity: 1)
 
 private let hook: MallocLogger = { type, _, _, _, _, _ in

@@ -108,6 +108,12 @@ public final class SurfaceController {
     case .master: dj.master = e.value
     case .shift: shiftHeld = e.pressed
     case .unbound: break
+    case .nudge:
+      // centred control: 0.5 = no nudge, full travel = ± the tempo-fader range
+      dj[dj.focus]?.nudge((e.value - 0.5) * 2 * Deck.pitchRange)
+    case .section, .sectionPrev, .sectionNext, .roleMute, .macro, .panic, .stinger, .nextTrack,
+      .keys:
+      perform(b, deck: deck, event: e, press: press, now: now)
     case .play, .cue, .hotcue, .clearcue, .loopIn, .loopOut, .loopHalve, .loopDouble:
       guard press else { break }
       if let i = b.index { flashed[Self.key(b.group, i)] = now }
@@ -124,6 +130,36 @@ public final class SurfaceController {
       }
     }
     return result
+  }
+
+  /// Net-deck performance actions. They act on the binding's deck, or the focus deck for
+  /// deck-less ones (keys).
+  private func perform(
+    _ b: SurfaceProfile.Binding, deck: Deck?, event e: ControlEvent, press: Bool, now: TimeInterval
+  ) {
+    if b.action == .keys {
+      guard let d = dj[dj.focus] else { return }
+      if e.pressed && e.value > 0 {
+        d.keyDown(e.index, velocity: max(1, Int((e.value * 127).rounded())))
+      } else {
+        d.keyUp(e.index)
+      }
+      return
+    }
+    guard press, let deck else { return }
+    dj.focus = deck.name
+    if let i = b.index { flashed[Self.key(b.group, i)] = now }
+    switch b.action {
+    case .section: deck.launchSection(b.slot ?? 0)
+    case .sectionPrev: deck.stepSection(-1)
+    case .sectionNext: deck.stepSection(1)
+    case .roleMute: if let r = b.role { deck.toggleRole(r) }
+    case .macro: if let m = b.macro.flatMap(NetMacro.init(id:)) { deck.fire(m) }
+    case .panic: deck.panic()
+    case .stinger: deck.stinger(b.slot ?? 0)
+    case .nextTrack: deck.skipToNextTrack()
+    default: break
+    }
   }
 
   /// LED messages whose state changed since the last call (empty for surfaces
@@ -174,6 +210,11 @@ public final class SurfaceController {
     guard let b, b.action != .unbound else { return leds.singleOff }
     let d = b.deck.flatMap { dj[$0] }
     switch b.action {
+    case .roleMute: return d?.isRoleOn(b.role ?? "") == true ? leds.singleOn : leds.singleOff
+    case .sectionPrev, .sectionNext:
+      guard let d, d.mode == .net, !d.sections.isEmpty else { return leds.singleOff }
+      return leds.singleOn
+    case .nextTrack: return d?.nextReady != nil ? leds.singleBlink : leds.singleOff
     case .play: return d?.playing == true ? leds.singleBlink : leds.singleOn
     case .hotcue: return d?.hotCues[b.slot ?? 0] != nil ? leds.singleOn : leds.singleOff
     case .loopOut: return d?.looping == true ? leds.singleOn : leds.singleOff
@@ -191,6 +232,13 @@ public final class SurfaceController {
     let deckColor = b.deck == "A" ? Color.orange : Color.cyan
     let isSet = d.hotCues[b.slot ?? 0] != nil
     switch b.action {
+    case .section:
+      let secs = d.sections
+      guard secs.indices.contains(b.slot ?? 0) else { return (Color.off, false) }
+      return (deckColor, d.currentSectionIndex == b.slot)
+    case .macro, .panic, .stinger:
+      guard d.mode == .net else { return (Color.off, false) }
+      return (b.action == .panic ? Color.red : deckColor, false)
     case .hotcue: return (deckColor, isSet)
     case .clearcue: return (isSet ? Color.red : Color.off, false)
     default: return (deckColor, false)

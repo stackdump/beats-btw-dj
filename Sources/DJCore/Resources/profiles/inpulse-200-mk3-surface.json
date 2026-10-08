@@ -2,7 +2,7 @@
  "name": "DJControl Inpulse 200 Mk3",
  "manufacturer": "Hercules",
  "match": "inpulse\\s*200",
- "source": "Capture 2026-10-07 (captures/inpulse.log); MK3 panel from Sweetwater's top-view photo; numbering seeded from Mixxx's original-Inpulse-200 mapping \u2014 [MIXXX] marks entries not yet seen on this unit",
+ "source": "Capture 2026-10-07 (captures/inpulse.log); MK3 panel from Sweetwater's top-view photo; numbering seeded from Mixxx's original-Inpulse-200 mapping — [MIXXX] marks entries not yet seen on this unit",
  "jog": "inpulse-200-mk3",
  "groups": [
   {
@@ -488,7 +488,7 @@
    "index": 0,
    "action": "unbound",
    "deck": "A",
-   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
+   "reason": "identify on the live diagram (web/devices) — MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckA.buttons",
@@ -502,7 +502,7 @@
    "index": 2,
    "action": "unbound",
    "deck": "A",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
+   "reason": "needs BPM / beat grid — Phase 3"
   },
   {
    "group": "deckA.buttons",
@@ -521,28 +521,28 @@
    "index": 5,
    "action": "unbound",
    "deck": "A",
-   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
+   "reason": "identify on the live diagram (web/devices) — MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckA.buttons",
    "index": 6,
    "action": "unbound",
    "deck": "A",
-   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
+   "reason": "identify on the live diagram (web/devices) — MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckA.buttons",
    "index": 7,
    "action": "unbound",
    "deck": "A",
-   "reason": "headphone cue \u2014 Phase 4 (Inpulse audio interface)"
+   "reason": "headphone cue — Phase 4 (Inpulse audio interface)"
   },
   {
    "group": "deckA.buttons",
    "index": 8,
    "action": "unbound",
    "deck": "A",
-   "reason": "no track library yet \u2014 Phase 3 (generate on deck)"
+   "reason": "no track library yet — Phase 3 (generate on deck)"
   },
   {
    "group": "deckA.buttons",
@@ -563,21 +563,21 @@
    "index": 0,
    "action": "unbound",
    "deck": "A",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
+   "reason": "needs BPM / beat grid — Phase 3"
   },
   {
    "group": "deckA.shiftButtons",
    "index": 1,
    "action": "unbound",
    "deck": "A",
-   "reason": "rewind-to-start \u2014 Phase 3"
+   "reason": "rewind-to-start — Phase 3"
   },
   {
    "group": "deckA.shiftButtons",
    "index": 2,
    "action": "unbound",
    "deck": "A",
-   "reason": "play stutter \u2014 Phase 3"
+   "reason": "play stutter — Phase 3"
   },
   {
    "group": "deckA.shiftButtons",
@@ -648,118 +648,6 @@
    "action": "clearcue",
    "deck": "A",
    "slot": 3
-  },
-  {
-   "group": "deckA.rollPads",
-   "index": 0,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.rollPads",
-   "index": 1,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.rollPads",
-   "index": 2,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.rollPads",
-   "index": 3,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 0,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 1,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 2,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 3,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 4,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 5,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 6,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.fxPads",
-   "index": 7,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.samplerPads",
-   "index": 0,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "stingers / one-shots \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.samplerPads",
-   "index": 1,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "stingers / one-shots \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.samplerPads",
-   "index": 2,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "stingers / one-shots \u2014 Phase 3"
-  },
-  {
-   "group": "deckA.samplerPads",
-   "index": 3,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "stingers / one-shots \u2014 Phase 3"
   },
   {
    "group": "deckA.faders",
@@ -802,14 +690,14 @@
    "index": 0,
    "action": "unbound",
    "deck": "A",
-   "reason": "nudge from pads \u2014 later"
+   "reason": "nudge from pads — later"
   },
   {
    "group": "deckB.buttons",
    "index": 0,
    "action": "unbound",
    "deck": "B",
-   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
+   "reason": "identify on the live diagram (web/devices) — MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckB.buttons",
@@ -823,7 +711,7 @@
    "index": 2,
    "action": "unbound",
    "deck": "B",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
+   "reason": "needs BPM / beat grid — Phase 3"
   },
   {
    "group": "deckB.buttons",
@@ -842,28 +730,28 @@
    "index": 5,
    "action": "unbound",
    "deck": "B",
-   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
+   "reason": "identify on the live diagram (web/devices) — MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckB.buttons",
    "index": 6,
    "action": "unbound",
    "deck": "B",
-   "reason": "identify on the live diagram (web/devices) \u2014 MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
+   "reason": "identify on the live diagram (web/devices) — MK3 has one LOOP + two STEMS buttons where the original 200 had loop in/out/vinyl"
   },
   {
    "group": "deckB.buttons",
    "index": 7,
    "action": "unbound",
    "deck": "B",
-   "reason": "headphone cue \u2014 Phase 4 (Inpulse audio interface)"
+   "reason": "headphone cue — Phase 4 (Inpulse audio interface)"
   },
   {
    "group": "deckB.buttons",
    "index": 8,
    "action": "unbound",
    "deck": "B",
-   "reason": "no track library yet \u2014 Phase 3 (generate on deck)"
+   "reason": "no track library yet — Phase 3 (generate on deck)"
   },
   {
    "group": "deckB.buttons",
@@ -884,21 +772,21 @@
    "index": 0,
    "action": "unbound",
    "deck": "B",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
+   "reason": "needs BPM / beat grid — Phase 3"
   },
   {
    "group": "deckB.shiftButtons",
    "index": 1,
    "action": "unbound",
    "deck": "B",
-   "reason": "rewind-to-start \u2014 Phase 3"
+   "reason": "rewind-to-start — Phase 3"
   },
   {
    "group": "deckB.shiftButtons",
    "index": 2,
    "action": "unbound",
    "deck": "B",
-   "reason": "play stutter \u2014 Phase 3"
+   "reason": "play stutter — Phase 3"
   },
   {
    "group": "deckB.shiftButtons",
@@ -969,118 +857,6 @@
    "action": "clearcue",
    "deck": "B",
    "slot": 3
-  },
-  {
-   "group": "deckB.rollPads",
-   "index": 0,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.rollPads",
-   "index": 1,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.rollPads",
-   "index": 2,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.rollPads",
-   "index": 3,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "needs BPM / beat grid \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 0,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 1,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 2,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 3,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 4,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 5,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 6,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.fxPads",
-   "index": 7,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "deck FX \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.samplerPads",
-   "index": 0,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "stingers / one-shots \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.samplerPads",
-   "index": 1,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "stingers / one-shots \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.samplerPads",
-   "index": 2,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "stingers / one-shots \u2014 Phase 3"
-  },
-  {
-   "group": "deckB.samplerPads",
-   "index": 3,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "stingers / one-shots \u2014 Phase 3"
   },
   {
    "group": "deckB.faders",
@@ -1123,7 +899,7 @@
    "index": 0,
    "action": "unbound",
    "deck": "B",
-   "reason": "nudge from pads \u2014 later"
+   "reason": "nudge from pads — later"
   },
   {
    "group": "mixer.faders",
@@ -1139,49 +915,49 @@
    "group": "mixer.faders",
    "index": 2,
    "action": "unbound",
-   "reason": "headphone level \u2014 Phase 4 (cue output)"
+   "reason": "headphone level — Phase 4 (cue output)"
   },
   {
    "group": "mixer.buttons",
    "index": 0,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "browser / library — Phase 3"
   },
   {
    "group": "mixer.buttons",
    "index": 1,
    "action": "unbound",
-   "reason": "assist / master / beatmatch guide \u2014 identify live, then decide"
+   "reason": "assist / master / beatmatch guide — identify live, then decide"
   },
   {
    "group": "mixer.buttons",
    "index": 2,
    "action": "unbound",
-   "reason": "assist / master / beatmatch guide \u2014 identify live, then decide"
+   "reason": "assist / master / beatmatch guide — identify live, then decide"
   },
   {
    "group": "mixer.buttons",
    "index": 3,
    "action": "unbound",
-   "reason": "assist / master / beatmatch guide \u2014 identify live, then decide"
+   "reason": "assist / master / beatmatch guide — identify live, then decide"
   },
   {
    "group": "mixer.browser",
    "index": 0,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "browser / library — Phase 3"
   },
   {
    "group": "mixer.shiftBrowser",
    "index": 0,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "browser / library — Phase 3"
   },
   {
    "group": "mixer.shiftButtons",
    "index": 0,
    "action": "unbound",
-   "reason": "browser / library \u2014 Phase 3"
+   "reason": "browser / library — Phase 3"
   },
   {
    "group": "deckA.shiftFaders",
@@ -1193,6 +969,226 @@
    "group": "deckB.shiftFaders",
    "index": 0,
    "action": "gain",
+   "deck": "B"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 0,
+   "action": "macro",
+   "deck": "A",
+   "macro": "cut"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 1,
+   "action": "macro",
+   "deck": "A",
+   "macro": "beat-repeat"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 2,
+   "action": "macro",
+   "deck": "A",
+   "macro": "drop"
+  },
+  {
+   "group": "deckA.rollPads",
+   "index": 3,
+   "action": "macro",
+   "deck": "A",
+   "macro": "breakdown"
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 0,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 0
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 1,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 1
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 2,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 2
+  },
+  {
+   "group": "deckA.samplerPads",
+   "index": 3,
+   "action": "stinger",
+   "deck": "A",
+   "slot": 3
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 0,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "kick"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 1,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "snare"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 2,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "hihat"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 3,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "bass"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 4,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "melody"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 5,
+   "action": "roleMute",
+   "deck": "A",
+   "role": "harmony"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 6,
+   "action": "sectionPrev",
+   "deck": "A"
+  },
+  {
+   "group": "deckA.fxPads",
+   "index": 7,
+   "action": "sectionNext",
+   "deck": "A"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 0,
+   "action": "macro",
+   "deck": "B",
+   "macro": "cut"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 1,
+   "action": "macro",
+   "deck": "B",
+   "macro": "beat-repeat"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 2,
+   "action": "macro",
+   "deck": "B",
+   "macro": "drop"
+  },
+  {
+   "group": "deckB.rollPads",
+   "index": 3,
+   "action": "macro",
+   "deck": "B",
+   "macro": "breakdown"
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 0,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 0
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 1,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 1
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 2,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 2
+  },
+  {
+   "group": "deckB.samplerPads",
+   "index": 3,
+   "action": "stinger",
+   "deck": "B",
+   "slot": 3
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 0,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "kick"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 1,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "snare"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 2,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "hihat"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 3,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "bass"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 4,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "melody"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 5,
+   "action": "roleMute",
+   "deck": "B",
+   "role": "harmony"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 6,
+   "action": "sectionPrev",
+   "deck": "B"
+  },
+  {
+   "group": "deckB.fxPads",
+   "index": 7,
+   "action": "sectionNext",
    "deck": "B"
   }
  ]
