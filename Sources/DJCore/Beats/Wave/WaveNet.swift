@@ -136,7 +136,12 @@ public final class CompiledNet {
       st[i] = nb.places[p]!.initial.reduce(0, +)
     }
     initial = st
-    state = st
+    // A separate buffer: `state = st` would share storage with `initial`, and the first
+    // write on the audio thread would copy it (an allocation).
+    state = [Double](unsafeUninitializedCapacity: st.count) { buf, count in
+      for i in 0..<st.count { buf[i] = st[i] }
+      count = st.count
+    }
 
     var midi = [Bool](repeating: false, count: nTrans)
     var note = [Int](repeating: 0, count: nTrans)
@@ -184,6 +189,9 @@ public final class WaveGraph {
   public let project: Project
   public let nets: [CompiledNet]
   public let byId: [String: Int]
+  /// strHash(netId) → net index (first net wins on a hash collision): lets the audio
+  /// thread address a net without a string.
+  public let byHash: [Int32: Int]
   public let groups: [String]
   public var tempo: Double
   public var tick = 0
@@ -214,6 +222,9 @@ public final class WaveGraph {
     var byId: [String: Int] = [:]
     for (i, id) in ids.enumerated() { byId[id] = i }
     self.byId = byId
+    var byHash: [Int32: Int] = [:]
+    for (i, id) in ids.enumerated() where byHash[strHash(id)] == nil { byHash[strHash(id)] = i }
+    self.byHash = byHash
     var groups: [String] = []
     for n in nets where !n.group.isEmpty && !groups.contains(n.group) { groups.append(n.group) }
     self.groups = groups
@@ -237,7 +248,8 @@ public final class WaveGraph {
     for i in 0..<muted.count { muted[i] = 0 }
     for i in 0..<mutedNotes.count { mutedNotes[i] = 0 }
     for i in 0..<mutedGroups.count { mutedGroups[i] = 0 }
-    for n in nets { n.state = n.initial }
+    // In place (never `state = initial`): reset runs on the audio thread via stop().
+    for n in nets { for p in 0..<n.nPlaces { n.state[p] = n.initial[p] } }
     for id in project.initialMutes {
       if let i = byId[id] { muted[i] = 1 }
     }
@@ -339,7 +351,9 @@ public final class WaveGraph {
 
   /// Advance every net one tick. `onNote(net, t)` is called for each fired transition
   /// whose MIDI binding is audible (net un-muted, note un-muted), in firing order.
-  public func advance(onNote: ((CompiledNet, Int) -> Void)? = nil) {
+  public func advance() { advance { _, _ in } }
+
+  public func advance(_ onNote: (CompiledNet, Int) -> Void) {
     tick += 1
     firedCount = 0
     controlCount = 0
@@ -363,7 +377,7 @@ public final class WaveGraph {
           } else {
             overflow += 1
           }
-          onNote?(n, t)
+          onNote(n, t)
         }
       }
     }

@@ -80,11 +80,21 @@ public final class DJEngine {
   public subscript(name: String) -> Deck? { decks[name] }
 }
 
-/// A turntable plus its AVAudioSourceNode. Conforms to `JogClock` so a
-/// `JogAdapter` can drive it directly.
+/// What a deck is playing.
+public enum DeckMode: Sendable {
+  /// Decoded audio on the turntable (WAV, MP3, …).
+  case sample
+  /// A Petri net rendered live by the wave engine (`WaveDeckSource`).
+  case net
+}
+
+/// A turntable plus a wave-engine source behind one AVAudioSourceNode. Conforms to
+/// `JogClock` so a `JogAdapter` can drive it directly.
 public final class Deck: JogClock {
   public let name: String
   public let turntable: Turntable
+  /// The live-net source. Only one of `turntable` / `wave` is rendered at a time.
+  public let wave: WaveDeckSource
   public let node: AVAudioSourceNode
   /// Band 0 low-pass, 1 high-pass (see `filter`); 2 low shelf, 3 mid peak,
   /// 4 high shelf (see `eqLow` / `eqMid` / `eqHigh`).
@@ -92,8 +102,21 @@ public final class Deck: JogClock {
   /// Channel strip: its output volume is volume x crossfader gain.
   public let strip = AVAudioMixerNode()
   public private(set) var loaded: SampleBuffer?
+  public private(set) var mode: DeckMode = .sample
+  /// The project a net deck is playing (nil in sample mode).
+  public private(set) var netProject: Project?
+  /// The net's tempo before the pitch fader: the project's own BPM.
+  public private(set) var netBaseBPM = 120.0
+  /// What `generate` / `advanceToNext` last loaded.
+  public internal(set) var currentSpec: TrackSpec?
+  /// When a song ends (its `stop-transport` fires), start the pre-composed next one.
+  public var autoAdvance = false
+  /// Called whenever no next track is composed or composing: keeps one coming.
+  public var nextProvider: (() -> TrackSpec)?
+  var generation = 0
+  let next = NextTrackSlot()
   public private(set) var title = "—"
-  public private(set) var playing = false
+  public internal(set) var playing = false
   /// Cue points in samples, by slot.
   public private(set) var hotCues: [Int: Double] = [:]
   /// The CUE button's point, in samples.
@@ -151,18 +174,29 @@ public final class Deck: JogClock {
   }
 
   /// Tempo fader, -1...1 maps to ±`pitchRange`.
-  public var pitch = 0.0 { didSet { turntable.send(.pitch(ratio: pitch * Self.pitchRange)) } }
+  public var pitch = 0.0 {
+    didSet {
+      turntable.send(.pitch(ratio: pitch * Self.pitchRange))
+      if mode == .net { wave.setTempo(netBaseBPM * (1 + pitch * Self.pitchRange)) }
+    }
+  }
   public static let pitchRange = 0.08
 
   init(name: String, sampleRate: Double, format: AVAudioFormat) {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
+    let wv = WaveDeckSource(sampleRate: sampleRate)
     turntable = tt
+    wave = wv
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
       let list = UnsafeMutableAudioBufferListPointer(abl)
       guard let l = list[0].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
       let r = list.count > 1 ? list[1].mData?.assumingMemoryBound(to: Float.self) : nil
-      tt.render(frames: Int(frames), left: l, right: r)
+      if wv.isActive {
+        wv.render(frames: Int(frames), left: l, right: r)
+      } else {
+        tt.render(frames: Int(frames), left: l, right: r)
+      }
       return noErr
     }
     let types: [AVAudioUnitEQFilterType] = [
@@ -179,6 +213,7 @@ public final class Deck: JogClock {
   }
 
   public func load(_ buffer: SampleBuffer, title: String) {
+    leaveNetMode()
     loaded = buffer
     self.title = title
     hotCues = [:]
@@ -263,7 +298,49 @@ public final class Deck: JogClock {
 
   public func setPlaying(_ on: Bool) {
     playing = on
-    turntable.send(.transport(playing: on))
+    if mode == .net {
+      if on { wave.play() } else { wave.pause() }
+    } else {
+      turntable.send(.transport(playing: on))
+    }
+  }
+
+  // MARK: net mode
+
+  /// Put an already-composed project on the deck. Compiles on the calling thread
+  /// (use `generate` to keep that off the main thread). A playing deck swaps at the
+  /// next bar; a stopped one switches at once.
+  public func loadNet(_ project: Project, title: String? = nil) {
+    loadNet(
+      WaveRunner.prepare(project, sampleRate: wave.sampleRate), project: project, title: title)
+  }
+
+  /// Hand over a project compiled elsewhere (`WaveRunner.prepare`).
+  public func loadNet(_ prepared: WaveProject, project: Project, title: String? = nil) {
+    if mode != .net {
+      turntable.send(.transport(playing: false))
+      mode = .net
+      wave.isActive = true
+    }
+    netProject = project
+    netBaseBPM = project.tempo > 0 ? project.tempo : 120
+    self.title = title ?? project.name
+    hotCues = [:]
+    loopStart = nil
+    loopEnd = nil
+    looping = false
+    wave.load(prepared)
+    wave.setTempo(netBaseBPM * (1 + pitch * Self.pitchRange))
+    if playing { wave.play() }
+  }
+
+  private func leaveNetMode() {
+    guard mode == .net else { return }
+    wave.pause()
+    wave.isActive = false
+    mode = .sample
+    netProject = nil
+    playing = false
   }
 
   /// Playhead in seconds within the loaded audio (wrapped).
@@ -341,3 +418,7 @@ public final class Deck: JogClock {
     return SampleBuffer(left: left, right: right, sampleRate: sampleRate)
   }
 }
+
+// A deck is shared between the main thread, the audio thread (through lock-free queues)
+// and background compose tasks; its mutable state is main-thread by convention.
+extension Deck: @unchecked Sendable {}

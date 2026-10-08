@@ -139,14 +139,23 @@ private func tonalLane(
   return lane
 }
 
-private struct Built {
-  var graph: WaveGraph
-  var lanes: [Lane]
-  var byNet: [String: [Int]]
-  var sources: [Lane]
+/// A compiled project plus its voices: everything the audio thread needs, built off the
+/// audio thread (`WaveRunner.prepare`) and handed over whole. Reference-counted so the
+/// runner can pass it to a retire hook instead of freeing it on the audio thread.
+public final class WaveProject: @unchecked Sendable {
+  public let graph: WaveGraph
+  let lanes: [Lane]
+  let byNet: [String: [Int]]
+  let sources: [Lane]
+  init(graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane]) {
+    self.graph = graph
+    self.lanes = lanes
+    self.byNet = byNet
+    self.sources = sources
+  }
 }
 
-private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Built {
+private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
@@ -197,7 +206,7 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Bu
     if m.silentSource { for li in src { lanes[li].st[slotLevel] = 0 } }
     if !sources.contains(where: { $0 === lanes[src[0]] }) { sources.append(lanes[src[0]]) }
   }
-  return Built(graph: g, lanes: lanes, byNet: byNet, sources: sources)
+  return WaveProject(graph: g, lanes: lanes, byNet: byNet, sources: sources)
 }
 
 // clock slots
@@ -211,12 +220,14 @@ public final class WaveRunner {
   public var opts: WaveOptions
   public var masterGain: Double
   private let linear: Bool
-  public private(set) var graph: WaveGraph?
-  private var lanes: [Lane] = []
-  private var byNet: [String: [Int]] = [:]
-  private var sources: [Lane] = []
-  private var pending: Built?
-  private var fading: [Lane] = []
+  private var current: WaveProject?
+  private var pending: WaveProject?
+  /// The previous project's voices, ringing out after a swap.
+  private var fading: WaveProject?
+  /// Called instead of dropping a project on the calling thread, so a real-time
+  /// caller can hand it to another thread to free. Default: just drop.
+  public var onRetire: ((WaveProject) -> Void)?
+  public var graph: WaveGraph? { current?.graph }
   public private(set) var playing = false
   private var clock = [Double](repeating: 0, count: 4)
   public private(set) var ticksInBlock = 0
@@ -238,30 +249,55 @@ public final class WaveRunner {
 
   private func spt(_ bpm: Double) -> Double { sampleRate * 60 / (bpm * ppq) }
 
-  /// Compile a project. Applied now when stopped, at the next bar when playing.
-  public func load(_ project: Project) { load(graph: WaveGraph(project: project)) }
-  public func load(json: JSONValue) { load(graph: WaveGraph(json: json)) }
+  /// Compile everything off the audio thread. Hand the result to `load(prepared:)`.
+  public static func prepare(
+    _ project: Project, sampleRate: Double, opts: WaveOptions = WaveOptions()
+  )
+    -> WaveProject
+  {
+    buildLanes(WaveGraph(project: project), sampleRate, opts)
+  }
 
-  private func load(graph g: WaveGraph) {
-    let next = buildLanes(g, sampleRate, opts)
-    if playing && graph != nil {
+  public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())
+    -> WaveProject
+  {
+    buildLanes(WaveGraph(json: json), sampleRate, opts)
+  }
+
+  /// Compile a project. Applied now when stopped, at the next bar when playing.
+  public func load(_ project: Project) {
+    load(prepared: Self.prepare(project, sampleRate: sampleRate, opts: opts))
+  }
+  public func load(json: JSONValue) {
+    load(prepared: Self.prepare(json: json, sampleRate: sampleRate, opts: opts))
+  }
+
+  /// Install a prepared project: immediately when stopped, at the next bar when
+  /// playing. Allocation-free; anything displaced goes to `onRetire`.
+  public func load(prepared next: WaveProject) {
+    if playing && current != nil {
+      if let old = pending { retire(old) }
       pending = next
       return
     }
     install(next)
   }
 
-  private func install(_ next: Built) {
-    if graph != nil { fading = lanes }
-    graph = next.graph
-    lanes = next.lanes
-    byNet = next.byNet
-    sources = next.sources
+  private func retire(_ p: WaveProject) {
+    if let onRetire { onRetire(p) }
+  }
+
+  private func install(_ next: WaveProject) {
+    if let old = current {
+      if let f = fading { retire(f) }
+      fading = old
+    }
+    current = next
     setTempo(next.graph.tempo)
   }
 
   public func play() {
-    guard graph != nil, !playing else { return }
+    guard current != nil, !playing else { return }
     playing = true
     stopped = false
     clock[clkTickPos] = clock[clkSpt] - 1  // first tick lands on the next sample
@@ -282,6 +318,14 @@ public final class WaveRunner {
     clock[clkSpt] = spt(bpm)
     clock[clkTickPos] = frac * clock[clkSpt]
   }
+
+  /// Mute by `strHash(netId)` (allocation-free; what the audio-thread facade uses).
+  public func setMute(hash: Int32, _ muted: Bool) {
+    if let g = graph, let i = g.byHash[hash] { g.muted[i] = muted ? 1 : 0 }
+  }
+
+  /// Fraction (0..<1) of the current tick that has elapsed.
+  public var tickPhase: Double { clock[clkSpt] > 0 ? clock[clkTickPos] / clock[clkSpt] : 0 }
 
   public func setMute(_ netId: String, _ muted: Bool) {
     if let g = graph, let i = g.byId[netId] { g.muted[i] = muted ? 1 : 0 }
@@ -403,16 +447,18 @@ public final class WaveRunner {
   }
 
   private func doTick() {
-    let g = graph!
+    guard let proj = current else { return }
+    let g = proj.graph
     if let next = pending, (g.tick + 1) % 16 == 0 {
       pending = nil
       install(next)
       ticksInBlock += 1
       return
     }
-    g.advance { [unowned self] n, t in
+    let lanes = proj.lanes
+    g.advance { n, t in
       let li = n.lane[t]
-      if li >= 0 { self.hit(self.lanes[li], n, t) }
+      if li >= 0 { self.hit(lanes[li], n, t) }
     }
     ticksInBlock += 1
     opts.onTick?(self)
@@ -437,20 +483,25 @@ public final class WaveRunner {
         }
       }
       acc = 0
-      for lane in lanes {
-        if lane.active {
-          laneSample(lane)
-        } else {
-          lane.st[slotEnv] = 0
+      if let proj = current {
+        for lane in proj.lanes {
+          if lane.active {
+            laneSample(lane)
+          } else {
+            lane.st[slotEnv] = 0
+          }
         }
       }
-      for lane in fading where lane.active { laneSample(lane) }
-      for lane in sources { lane.st[slotPrev] = lane.st[slotEnv] }
+      if let f = fading { for lane in f.lanes where lane.active { laneSample(lane) } }
+      if let proj = current { for lane in proj.sources { lane.st[slotPrev] = lane.st[slotEnv] } }
       let y = linear ? acc : tanh(acc * gain)
       left[i] = Float(y)
       right?[i] = Float(y)
       clock[clkSamples] += 1
     }
-    if !fading.isEmpty && !fading.contains(where: { $0.active }) { fading = [] }
+    if let f = fading, !f.lanes.contains(where: { $0.active }) {
+      fading = nil
+      retire(f)
+    }
   }
 }

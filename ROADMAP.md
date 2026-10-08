@@ -113,9 +113,9 @@ renders match the JS engine.
 Goal: a deck can play a *generated net live*, not just a WAV, and the
 controllers perform on the net.
 
-3.1 `WaveRunner` as a deck source (real-time safe port, same contract as the
+3.1 **(done — `WaveDeckSource`, `Deck.loadNet`; `make swift-rt-test` measures zero allocation in render)** `WaveRunner` as a deck source (real-time safe port, same contract as the
 JS runner: no allocation in `process`).
-3.2 Generate on a deck: genre + seed (+ structure) → compose → play; next
+3.2 **(done — `Deck.generate/queueNext/advanceToNext/service`, `TrackSpec`)** Generate on a deck: genre + seed (+ structure) → compose → play; next
 track pre-composed in the background.
 3.3 Controls drive the net: section jump / slot activate (APC grid), role
 mutes (APC track buttons), macros (port beats' macro catalog), live tempo,

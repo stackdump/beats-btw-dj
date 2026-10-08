@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import Foundation
 
 @testable import DJCore
@@ -107,4 +108,19 @@ func renderWaveCase(_ c: JSONValue) -> WaveRenderResult {
   return WaveRenderResult(
     left: left, right: right, tempoAtEnd: runner.tempo, stopped: runner.stopped,
     samples: runner.samples, graphTick: runner.graph!.tick)
+}
+
+// MARK: - Offline deck rendering
+
+/// Render `frames` of an offline `DJEngine` (already started), returning the left channel.
+func renderOffline(_ dj: DJEngine, frames: Int) throws -> [Float] {
+  let out = AVAudioPCMBuffer(pcmFormat: dj.engine.manualRenderingFormat, frameCapacity: 4096)!
+  var left: [Float] = []
+  while left.count < frames {
+    let n = AVAudioFrameCount(min(4096, frames - left.count))
+    let status = try dj.engine.renderOffline(n, to: out)
+    guard status == .success else { break }
+    left += UnsafeBufferPointer(start: out.floatChannelData![0], count: Int(out.frameLength))
+  }
+  return left
 }

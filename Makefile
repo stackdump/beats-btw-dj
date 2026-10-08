@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test app run-app djctl fmt lint fixtures-beats fixtures-go beats-tables
+        swift-build swift-test swift-rt-test app run-app djctl fmt lint fixtures-beats fixtures-go beats-tables
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -25,7 +25,7 @@ ports: build
 monitor: build
 	./$(BINARY) monitor $(MATCH)
 
-test: swift-test test-go test-web
+test: swift-test swift-rt-test test-go test-web
 
 # --- Swift (the app) ---------------------------------------------------------
 
@@ -34,6 +34,11 @@ swift-build:
 
 swift-test:
 	swift test $(SWIFT_TEST_FLAGS)
+
+# The audio-thread contract ("render allocates nothing") is only meaningful with the
+# optimizer on, so those tests skip in debug and run here in a release build.
+swift-rt-test:
+	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'WaveRunnerRealTimeTests|WaveDeckSourceTests|AllocationCounterTests'
 
 # make djctl ARGS="monitor inpulse"
 djctl:

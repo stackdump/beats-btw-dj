@@ -127,7 +127,10 @@ public final class ControllerHub {
 
   func tick(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
     for a in jogAdapters { a.decay(now: now) }
-    for d in dj.decks.values { d.turntable.drainRetired() }
+    for d in dj.decks.values {
+      d.turntable.drainRetired()
+      d.service()
+    }
     if now - lastLED >= 0.05 {
       lastLED = now
       for (port, s) in surfaces { send(s.ledFrame(now: now), to: port) }
