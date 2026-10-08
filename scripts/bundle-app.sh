@@ -15,6 +15,7 @@ cp "$bin/DJApp" "$app/Contents/MacOS/DJApp"
 # SwiftPM's own .bundle is not copied: its accessor wants it at the .app root,
 # which codesign rejects.
 cp -R Sources/DJCore/Resources/profiles "$app/Contents/Resources/profiles"
+cp -R Sources/DJCore/Resources/beats "$app/Contents/Resources/beats"
 
 cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test app run-app djctl fmt lint fixtures-beats
+        swift-build swift-test app run-app djctl fmt lint fixtures-beats beats-tables
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -79,5 +79,8 @@ clean:
 
 # Regenerate the oracle fixtures from beats' JS. Node must be on PATH.
 BEATS_PUBLIC ?= $(HOME)/Workspace/beats-bitwrap-io/public
+beats-tables:
+	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-tables.mjs
+
 fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-parity.mjs
