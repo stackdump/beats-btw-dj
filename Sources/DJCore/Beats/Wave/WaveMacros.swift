@@ -75,10 +75,8 @@ extension WaveGraph {
   /// A mute macro that starts `delay` ticks from now.
   func scheduleMute(_ which: MacroTargets, after delay: Int, ticks: Int) {
     for i in 0..<Self.timerCapacity where timerKind[i] == 0 {
-      timerKind[i] = 3
-      timerNet[i] = Int32(which.rawValue)
-      timerRemaining[i] = Int32(max(1, delay))
-      timerArg[i] = Int32(ticks)
+      setTimer(
+        i, kind: 3, net: Int32(which.rawValue), remaining: Int32(max(1, delay)), arg: Int32(ticks))
       return
     }
     timerOverflow += 1
@@ -132,9 +130,7 @@ extension WaveGraph {
 
   private func addTimer(kind: UInt8, net: Int, ticks: Int) {
     for i in 0..<Self.timerCapacity where timerKind[i] == 0 {
-      timerKind[i] = kind
-      timerNet[i] = Int32(net)
-      timerRemaining[i] = Int32(max(1, ticks))
+      setTimer(i, kind: kind, net: Int32(net), remaining: Int32(max(1, ticks)), arg: 0)
       return
     }
     timerOverflow += 1
@@ -154,7 +150,7 @@ extension WaveGraph {
       case .everything: break
       case .nonKick: if isKickNet[i] { continue }
       }
-      muted[i] = 1
+      setMuted(i, 1)
       addTimer(kind: 1, net: i, ticks: ticks)
       n += 1
     }
@@ -163,6 +159,7 @@ extension WaveGraph {
 
   /// Beat repeat: a mute burst of `burst` ticks every `step` ticks for `ticks` ticks.
   public func fireBeatRepeat(ticks: Int, step: Int = 2, burst: Int = 1) {
+    logRepeat()
     repeatStep = max(1, step)
     repeatBurst = max(1, burst)
     repeatElapsed = 0
@@ -175,10 +172,10 @@ extension WaveGraph {
   /// Unmute a stinger net (`hit1`…) for `ticks` ticks, then mute it again.
   public func fireStinger(hash: Int32, ticks: Int) {
     guard let i = byHash[hash] else { return }
-    muted[i] = 0
+    setMuted(i, 0)
     // Replace any pending restore for this net so a re-fire extends rather than stacks.
     for k in 0..<Self.timerCapacity where timerKind[k] == 2 && Int(timerNet[k]) == i {
-      timerKind[k] = 0
+      setTimer(k, kind: 0, net: 0, remaining: 0, arg: 0)
     }
     addTimer(kind: 2, net: i, ticks: ticks)
   }
@@ -186,12 +183,14 @@ extension WaveGraph {
   /// Run all pending restores now and stop the repeater (the panic button).
   public func cancelMacros() {
     for i in 0..<Self.timerCapacity where timerKind[i] != 0 {
-      if timerKind[i] != 3 { muted[Int(timerNet[i])] = timerKind[i] == 1 ? 0 : 1 }
-      timerKind[i] = 0
+      if timerKind[i] != 3 { setMuted(Int(timerNet[i]), timerKind[i] == 1 ? 0 : 1) }
+      setTimer(i, kind: 0, net: 0, remaining: 0, arg: 0)
     }
+    logRepeat()
     repeatRemaining = 0
   }
 
+  /// Drop all macro state without restoring anything (reset / fast-forward).
   func clearMacros() {
     for i in 0..<Self.timerCapacity { timerKind[i] = 0 }
     repeatRemaining = 0
@@ -204,18 +203,23 @@ extension WaveGraph {
   /// the project, so its last transition fires on the Nth tick after injection).
   func serviceMacros() {
     for i in 0..<Self.timerCapacity where timerKind[i] != 0 {
-      timerRemaining[i] -= 1
-      if timerRemaining[i] <= 0 {
-        if timerKind[i] == 3 {
-          timerKind[i] = 0
-          fireMute(MacroTargets(rawValue: UInt8(timerNet[i])) ?? .nonDrums, ticks: Int(timerArg[i]))
+      let remaining = timerRemaining[i] - 1
+      if remaining <= 0 {
+        let kind = timerKind[i]
+        let net = timerNet[i]
+        let arg = timerArg[i]
+        setTimer(i, kind: 0, net: 0, remaining: 0, arg: 0)
+        if kind == 3 {
+          fireMute(MacroTargets(rawValue: UInt8(net)) ?? .nonDrums, ticks: Int(arg))
         } else {
-          muted[Int(timerNet[i])] = timerKind[i] == 1 ? 0 : 1
-          timerKind[i] = 0
+          setMuted(Int(net), kind == 1 ? 0 : 1)
         }
+      } else {
+        setTimer(i, kind: timerKind[i], net: timerNet[i], remaining: remaining, arg: timerArg[i])
       }
     }
     if repeatRemaining > 0 {
+      logRepeat()
       if repeatElapsed % repeatStep == 0 { fireMute(.nonKick, ticks: repeatBurst) }
       repeatElapsed += 1
       repeatRemaining -= 1
@@ -228,11 +232,14 @@ extension WaveGraph {
   /// sequencer worker's `fastForwardTo` does). Not for the audio thread: it is O(tick).
   public func fastForward(to target: Int) {
     reset()
+    recording = false
     var n = 0
     while n < target && !stopRequested {
       advance { _, _ in }
       n += 1
     }
     stopRequested = false
+    recording = true
+    clearHistory()
   }
 }

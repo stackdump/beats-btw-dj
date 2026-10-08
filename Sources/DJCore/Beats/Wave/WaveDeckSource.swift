@@ -23,6 +23,11 @@ public enum WaveCommand: BitwiseCopyable {
   case allNotesOff
   /// Shift the beat grid by this many ticks (see `WaveRunner.align`).
   case align(ticks: Double)
+  /// Scratching the net clock.
+  case freeze
+  case scrub(ticks: Double)
+  case release
+  case chase(seconds: Double)
 }
 
 /// A `WaveRunner` that a deck can play: the Petri-net executor and the wave synthesis
@@ -48,6 +53,7 @@ public final class WaveDeckSource: @unchecked Sendable {
   private let playingAtomic = Atomic<Bool>(false)
   private let stoppedAtomic = Atomic<Bool>(false)
   private let hasProjectAtomic = Atomic<Bool>(false)
+  private let scrubbingAtomic = Atomic<Bool>(false)
   /// Whether the owning deck routes its output through this source.
   private let activeAtomic = Atomic<Bool>(false)
   /// Bit i of word i/64 = net i is muted (first 256 nets), refreshed every block.
@@ -128,6 +134,9 @@ public final class WaveDeckSource: @unchecked Sendable {
   public func noteOff(_ note: Int) { send(.noteOff(note: Int16(clamping: note))) }
   public func allNotesOff() { send(.allNotesOff) }
   public func align(ticks: Double) { send(.align(ticks: ticks)) }
+  public func freeze() { send(.freeze) }
+  public func scrub(ticks: Double) { send(.scrub(ticks: ticks)) }
+  public func release() { send(.release) }
 
   /// Is the role (a riff group or a plain net id) making sound right now? Reads the
   /// mute mirror and the latest project's role table, so it is main-thread safe.
@@ -156,6 +165,7 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// A `stop-transport` control fired (the song ended). Cleared by the next `play`.
   public var hasEnded: Bool { stoppedAtomic.load(ordering: .relaxed) }
   public var hasProject: Bool { hasProjectAtomic.load(ordering: .relaxed) }
+  public var isScrubbing: Bool { scrubbingAtomic.load(ordering: .relaxed) }
 
   // MARK: audio-thread side
 
@@ -171,6 +181,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     playingAtomic.store(runner.playing, ordering: .relaxed)
     stoppedAtomic.store(runner.stopped, ordering: .relaxed)
     hasProjectAtomic.store(runner.graph != nil, ordering: .relaxed)
+    scrubbingAtomic.store(runner.isScrubbing, ordering: .relaxed)
     if let g = runner.graph {
       var w0: UInt64 = 0
       var w1: UInt64 = 0
@@ -211,6 +222,10 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .noteOff(let note): runner.noteOff(Int(note))
     case .allNotesOff: runner.allNotesOff()
     case .align(let ticks): runner.align(ticks: ticks)
+    case .freeze: runner.freeze()
+    case .scrub(let ticks): runner.scrub(ticks: ticks)
+    case .release: runner.release()
+    case .chase(let seconds): runner.setChase(seconds: seconds)
     }
   }
 }

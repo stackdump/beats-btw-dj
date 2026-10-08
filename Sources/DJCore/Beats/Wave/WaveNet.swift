@@ -225,6 +225,20 @@ public final class WaveGraph {
   var timerNet = [Int32](repeating: 0, count: WaveGraph.timerCapacity)
   var timerArg = [Int32](repeating: 0, count: WaveGraph.timerCapacity)
   public internal(set) var timerOverflow = 0
+  // Reversible history (WaveHistory.swift): what each recent tick fired and every state
+  // change it (or a macro command just before it) made, so the clock can run backwards.
+  static let historyTicks = 512
+  static let fireCapacity = 1 << 17
+  static let changeCapacity = 6 << 14
+  var hFires = [Int32](repeating: 0, count: WaveGraph.fireCapacity)
+  var hChanges = [Int32](repeating: 0, count: WaveGraph.changeCapacity)
+  var hFireEnd = [Int32](repeating: 0, count: WaveGraph.historyTicks)
+  var hChangeEnd = [Int32](repeating: 0, count: WaveGraph.historyTicks)
+  var hTicks = 0  // ticks currently recorded (oldest first)
+  var hFireCount = 0
+  var hChangeCount = 0
+  var recording = true
+  var fireNeedCache = -1
   // Beat-repeat: bursts of mutes every `repeatStep` ticks.
   var repeatRemaining = 0
   var repeatElapsed = 0
@@ -297,6 +311,7 @@ public final class WaveGraph {
       if let i = byId[id] { muted[i] = 1 }
     }
     clearMacros()
+    clearHistory()
     for gi in 0..<groupNets.count { activeSlot[gi] = groupNets[gi].first { muted[$0] == 0 } ?? -1 }
   }
 
@@ -368,9 +383,9 @@ public final class WaveGraph {
   private func applyControl(_ n: CompiledNet, _ t: Int) {
     let tgt = n.actionTargetIdx[t]
     switch n.action[t] {
-    case .mute: if tgt >= 0 { muted[tgt] = 1 }
-    case .unmute: if tgt >= 0 { muted[tgt] = 0 }
-    case .toggle: if tgt >= 0 { muted[tgt] ^= 1 }
+    case .mute: if tgt >= 0 { setMuted(tgt, 1) }
+    case .unmute: if tgt >= 0 { setMuted(tgt, 0) }
+    case .toggle: if tgt >= 0 { setMuted(tgt, muted[tgt] ^ 1) }
     case .muteNote: if tgt >= 0 { mutedNotes[tgt * 128 + (n.actionNote[t] & 127)] = 1 }
     case .unmuteNote: if tgt >= 0 { mutedNotes[tgt * 128 + (n.actionNote[t] & 127)] = 0 }
     case .toggleNote: if tgt >= 0 { mutedNotes[tgt * 128 + (n.actionNote[t] & 127)] ^= 1 }
@@ -378,8 +393,9 @@ public final class WaveGraph {
       if tgt >= 0 {
         let gi = nets[tgt].groupIdx
         if gi >= 0 {
-          for o in nets where o.groupIdx == gi && o.index != tgt { muted[o.index] = 1 }
-          if mutedGroups[gi] == 0 { muted[tgt] = 0 }
+          for o in nets where o.groupIdx == gi && o.index != tgt { setMuted(o.index, 1) }
+          if mutedGroups[gi] == 0 { setMuted(tgt, 0) }
+          logChange(2, gi, activeSlot[gi])
           activeSlot[gi] = tgt
         }
       }
@@ -403,6 +419,7 @@ public final class WaveGraph {
     tick += 1
     firedCount = 0
     controlCount = 0
+    ensureHistoryRoom()
     for ni in 0..<nets.count {
       let n = nets[ni]
       var count = 0
@@ -414,6 +431,7 @@ public final class WaveGraph {
       for i in 0..<count {
         let t = n.enabled[i]
         fire(n, t)
+        logFire(ni, t)
         if n.action[t] != .none { applyControl(n, t) }
         if n.midi[t] && muted[ni] == 0 && mutedNotes[ni * 128 + (n.note[t] & 127)] == 0 {
           if firedCount + 2 <= fired.count {
@@ -428,6 +446,7 @@ public final class WaveGraph {
       }
     }
     serviceMacros()
+    endTickRecord()
   }
 
   /// Plain marking `{netId: {place: tokens}}` — for the UI, allocates.

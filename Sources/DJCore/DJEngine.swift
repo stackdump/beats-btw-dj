@@ -405,11 +405,20 @@ public final class Deck: JogClock {
 
   // MARK: JogClock
 
-  public func freeze() { turntable.send(.freeze) }
-  public func scrubBy(seconds: Double) {
-    turntable.send(.scrub(samples: seconds * turntable.sampleRate))
+  public func freeze() {
+    if mode == .net { wave.freeze() } else { turntable.send(.freeze) }
   }
-  public func release() { turntable.send(.release) }
+  public func scrubBy(seconds: Double) {
+    if mode == .net {
+      // platter seconds → ticks at the deck's tempo (a tick is a sixteenth: 4 per beat)
+      wave.scrub(ticks: seconds * (effectiveBPM ?? 120) * 4 / 60)
+    } else {
+      turntable.send(.scrub(samples: seconds * turntable.sampleRate))
+    }
+  }
+  public func release() {
+    if mode == .net { wave.release() } else { turntable.send(.release) }
+  }
   public func nudge(_ ratio: Double) {
     turntable.send(.nudge(ratio: ratio))
     netNudge = ratio

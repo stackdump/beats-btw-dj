@@ -122,7 +122,7 @@ mutes (APC track buttons), macros (port beats' macro catalog), live tempo,
 MPK keys into a scale-locked live net, stingers on pads.
 3.4 **(done — `BeatGrid`/`BPMAnalyzer`, `DeckBeat`: sync, follow, quantized cues and loops)** Beat-aware mixing: both decks know BPM and bar phase (from the net
 clock or WAV analysis) — sync, quantized cues and loops to bars.
-3.5 Scratching a live net: freeze/scrub/reverse the tick clock (the jog lab's
+3.5 **(done — `WaveHistory`, `WaveRunner.freeze/scrub/release`, Deck JogClock)** Scratching a live net: freeze/scrub/reverse the tick clock (the jog lab's
 reversible Petri clock), and the WAV path stays for imported audio.
 
 ## Phase 4 — Performance capture and sharing

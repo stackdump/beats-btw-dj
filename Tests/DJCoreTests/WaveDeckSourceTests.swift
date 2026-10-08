@@ -184,15 +184,30 @@ struct WaveDeckSourceTests {
     src.allNotesOff()
     src.align(ticks: 3.4)
     src.align(ticks: -2.25)
-    let report = countAllocations {
-      run(1500)
-      src.panic()
-      src.fire(.cut)
-      src.noteOn(67, velocity: 80)
-      run(1500)
+    // Sends run on this thread, so they stay outside the measured regions (a send also
+    // drains the retire ring, i.e. frees a swapped-out project — main-thread work).
+    var allocs = 0
+    var frees = 0
+    func measure(_ blocks: Int) {
+      let r = countAllocations { run(blocks) }
+      allocs += r.allocations
+      frees += r.frees
     }
-    #expect(report.allocations == 0, "render allocated \(report.allocations) times")
-    #expect(report.frees == 0, "render freed \(report.frees) times")
+    measure(1500)
+    src.panic()
+    src.fire(.cut)
+    src.noteOn(67, velocity: 80)
+    measure(1000)
+    // scratch: freeze, forward over ticks, back over them (un-firing), let go
+    src.freeze()
+    src.scrub(ticks: 9)
+    measure(150)
+    src.scrub(ticks: -14)
+    measure(150)
+    src.release()
+    measure(200)
+    #expect(allocs == 0, "render allocated \(allocs) times")
+    #expect(frees == 0, "render freed \(frees) times")
     src.drainRetired()
   }
 }

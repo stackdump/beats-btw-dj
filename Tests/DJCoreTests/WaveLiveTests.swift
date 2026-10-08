@@ -313,3 +313,161 @@ struct DeckPerformTests {
     #expect(deck.isRoleOn("kick"))
   }
 }
+
+struct WaveScratchTests {
+  private func runner(_ p: Project, tempo: Double = 120, play: Bool = true) -> WaveRunner {
+    let r = WaveRunner(sampleRate: 8000)
+    r.load(p)
+    r.setTempo(tempo)
+    if play { r.play() }
+    return r
+  }
+
+  @discardableResult
+  private func run(_ r: WaveRunner, blocks: Int) -> [Float] {
+    var out: [Float] = []
+    var l = [Float](repeating: 0, count: 128)
+    for _ in 0..<blocks {
+      l.withUnsafeMutableBufferPointer { r.process($0.baseAddress!, nil, frames: 128) }
+      out += l
+    }
+    return out
+  }
+
+  private func marking(_ g: WaveGraph) -> [[Double]] { g.nets.map { $0.state } }
+
+  @Test func scratchingForwardAndBackLeavesTheMarkingYouLeft() {
+    let r = runner(project("techno", 42, "standard"), tempo: 240)
+    run(r, blocks: 90)
+    let g = r.graph!
+    r.freeze()
+    run(r, blocks: 1)
+    let t0 = g.tick
+    let m0 = marking(g)
+    let mutes0 = g.muted
+    #expect(r.isScrubbing && t0 > 5)
+
+    r.scrub(ticks: 24)
+    run(r, blocks: 60)
+    #expect(g.tick == t0 + 24, "reached the target: \(g.tick)")
+    #expect(marking(g) != m0)
+
+    r.scrub(ticks: -24)
+    run(r, blocks: 60)
+    #expect(g.tick == t0)
+    #expect(marking(g) == m0, "the marking is the one we left")
+    #expect(g.muted == mutes0)
+  }
+
+  @Test func scratchingPlaysTheNotesItCrosses() {
+    let r = runner(project("techno", 42, nil), tempo: 120, play: false)
+    r.freeze()
+    let silent = run(r, blocks: 40).reduce(0) { max($0, abs($1)) }
+    #expect(silent == 0, "a frozen, stopped net is silent")
+    r.scrub(ticks: 12)
+    let forward = run(r, blocks: 60)
+    #expect(forward.reduce(0) { max($0, abs($1)) } > 0.05)
+    r.scrub(ticks: -12)
+    let backward = run(r, blocks: 60)
+    #expect(backward.reduce(0) { max($0, abs($1)) } > 0.05, "going back plays the notes too")
+  }
+
+  @Test func theStartOfTheSongIsAWall() {
+    let r = runner(project("techno", 42, nil), tempo: 120, play: false)
+    r.freeze()
+    r.scrub(ticks: 6)
+    run(r, blocks: 40)
+    let g = r.graph!
+    #expect(g.tick == 6)
+    r.scrub(ticks: -50)
+    run(r, blocks: 80)
+    #expect(g.tick == 0, "can't go before tick 0 (at \(g.tick))")
+    r.scrub(ticks: 9)  // the hand was far past the wall; it still comes back
+    run(r, blocks: 80)
+    #expect(g.tick >= 0)
+    r.scrub(ticks: 40)
+    run(r, blocks: 200)
+    #expect(g.tick > 5)
+  }
+
+  @Test func releaseResumesTheClockFromWhereThePlatterIs() {
+    let r = runner(project("techno", 42, nil), tempo: 240)
+    run(r, blocks: 30)
+    r.freeze()
+    r.scrub(ticks: 5)
+    run(r, blocks: 60)
+    let g = r.graph!
+    let held = g.tick
+    r.release()
+    #expect(!r.isScrubbing)
+    run(r, blocks: 30)  // ~0.5 s at 240 bpm = 8 ticks
+    #expect(g.tick >= held + 5 && g.tick <= held + 10, "running again: \(held) → \(g.tick)")
+  }
+
+  @Test func theSameGestureSoundsTheSameEveryTime() {
+    func gesture() -> [Float] {
+      let r = runner(project("jazz", 7, "standard"), tempo: 200)
+      run(r, blocks: 40)
+      r.freeze()
+      var out: [Float] = []
+      for d in [10.0, -4, 7, -13, 6] {
+        r.scrub(ticks: d)
+        out += run(r, blocks: 25)
+      }
+      r.release()
+      return out + run(r, blocks: 20)
+    }
+    let a = gesture()
+    #expect(a == gesture())
+    #expect(a.contains { $0 != 0 })
+  }
+}
+
+@MainActor
+struct DeckScratchTests {
+  @Test func jogClockDrivesTheNetClockOnANetDeck() async throws {
+    let dj = try DJEngine(decks: ["A"], offline: true)
+    let deck = try #require(dj["A"])
+    await deck.generate(
+      TrackSpec(genre: "techno", seed: 1, extra: JSONObject([("bpm", .number(120))])))
+    deck.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    _ = try renderOffline(dj, frames: 24_000)
+    let t0 = deck.wave.tick
+    deck.freeze()
+    // one platter second at 120 bpm = 2 beats = 8 ticks
+    deck.scrubBy(seconds: 1)
+    _ = try renderOffline(dj, frames: 12_000)
+    #expect(deck.wave.isScrubbing)
+    #expect(abs(deck.wave.tick - (t0 + 8)) <= 1, "tick \(deck.wave.tick) vs \(t0 + 8)")
+    deck.scrubBy(seconds: -1)
+    _ = try renderOffline(dj, frames: 12_000)
+    #expect(abs(deck.wave.tick - t0) <= 1)
+    deck.release()
+    _ = try renderOffline(dj, frames: 24_000)
+    #expect(!deck.wave.isScrubbing && deck.wave.tick > t0 + 3)
+  }
+
+  @Test func theJogAdapterScratchesANetDeck() async throws {
+    let dj = try DJEngine(decks: ["A"], offline: true)
+    let deck = try #require(dj["A"])
+    await deck.generate(TrackSpec(genre: "techno", seed: 1))
+    deck.setPlaying(true)
+    let jog = JogAdapter(profile: .inpulse200MK3, clock: deck, deck: "A")
+    try dj.start()
+    defer { dj.stop() }
+    _ = try renderOffline(dj, frames: 12_000)
+    // touch → freeze; ticks of the wheel → scrub
+    jog.handle(.touch(deck: "A", shift: false, down: true))
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(deck.wave.isScrubbing)
+    let t0 = deck.wave.tick
+    jog.handle(.scratch(deck: "A", shift: false, ticks: 400))
+    _ = try renderOffline(dj, frames: 24_000)
+    #expect(deck.wave.tick > t0, "the wheel moved the net clock: \(t0) → \(deck.wave.tick)")
+    jog.handle(.touch(deck: "A", shift: false, down: false))
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(!deck.wave.isScrubbing)
+  }
+}

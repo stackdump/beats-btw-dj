@@ -251,6 +251,12 @@ public final class WaveRunner {
   /// Set when a stop-transport control fires.
   public private(set) var stopped = false
   private var acc = 0.0
+  private var scrubbing = false
+  private var scrubPos = 0.0
+  private var scrubTarget = 0.0
+  private var scrubRate = 0.0
+  private lazy var scrubChase = 0.035 * sampleRate
+  private lazy var scrubSmooth = 1 - exp(-1 / (0.004 * sampleRate))
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
@@ -351,6 +357,75 @@ public final class WaveRunner {
 
   public func setMute(_ netId: String, _ muted: Bool) {
     if let g = graph, let i = g.byId[netId] { g.muted[i] = muted ? 1 : 0 }
+  }
+
+  // MARK: scratching the net clock
+
+  /// Hand on the platter: the tick clock stops following the tempo and follows the hand.
+  public func freeze() {
+    guard graph != nil, !scrubbing else { return }
+    scrubbing = true
+    scrubPos = Double(graph!.tick) + tickPhase
+    scrubTarget = scrubPos
+    scrubRate = 0
+  }
+
+  /// Move the hand by this many ticks (negative = backwards, undoing ticks).
+  public func scrub(ticks: Double) { if scrubbing { scrubTarget += ticks } }
+
+  /// Hand off: back to the tempo clock from wherever the platter is.
+  public func release() {
+    guard scrubbing else { return }
+    scrubbing = false
+    scrubRate = 0
+    clock[clkTickPos] = (scrubPos - scrubPos.rounded(.down)) * clock[clkSpt]
+  }
+
+  /// Seconds the net clock takes to catch up with the hand.
+  public func setChase(seconds: Double) { scrubChase = max(0.002, seconds) * sampleRate }
+
+  public var isScrubbing: Bool { scrubbing }
+
+  private func scrubSample() {
+    guard let g = graph else { return }
+    let spt = clock[clkSpt]
+    let maxRate = 12 / spt  // ticks per sample: 12× normal speed
+    let want = min(maxRate, max(-maxRate, (scrubTarget - scrubPos) / scrubChase))
+    scrubRate += (want - scrubRate) * scrubSmooth
+    var newPos = scrubPos + scrubRate
+    if abs(scrubTarget - newPos) < 1e-3 {  // settled: land on the target, not just short of it
+      newPos = scrubTarget
+      scrubRate = 0
+    }
+    let goal = Int(newPos.rounded(.down))
+    while g.tick < goal {
+      stepForwardScrub(g)
+    }
+    while g.tick > goal {
+      let proj = current
+      let ok = g.unadvance { n, t in
+        let li = n.lane[t]
+        if li >= 0, let lanes = proj?.lanes { self.hit(lanes[li], n, t) }
+      }
+      if !ok {  // the start of the log: the platter stops here
+        newPos = Double(g.tick)
+        scrubRate = 0
+        scrubTarget = max(scrubTarget, newPos)
+        break
+      }
+    }
+    scrubPos = newPos
+    clock[clkTickPos] = (newPos - newPos.rounded(.down)) * spt
+  }
+
+  private func stepForwardScrub(_ g: WaveGraph) {
+    let lanes = current?.lanes ?? []
+    g.advance { n, t in
+      let li = n.lane[t]
+      if li >= 0 { self.hit(lanes[li], n, t) }
+    }
+    ticksInBlock += 1
+    g.stopRequested = false  // a scratched-over end of song doesn't stop the deck
   }
 
   // MARK: beat alignment
@@ -626,7 +701,9 @@ public final class WaveRunner {
     serviceTempoFx()
     let gain = masterGain
     for i in 0..<frames {
-      if playing {
+      if scrubbing {
+        scrubSample()
+      } else if playing {
         clock[clkTickPos] += 1
         if clock[clkTickPos] >= clock[clkSpt] {
           clock[clkTickPos] -= clock[clkSpt]
