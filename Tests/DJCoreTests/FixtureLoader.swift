@@ -11,3 +11,12 @@ func capturedMessages() throws -> [String: [[UInt8]]] {
   else { throw CocoaError(.fileNoSuchFile) }
   return try JSONDecoder().decode([String: [[UInt8]]].self, from: Data(contentsOf: url))
 }
+
+/// Raw text of a Phase 2 parity fixture written by scripts/beats-parity.mjs.
+func beatsFixtureText(_ name: String) throws -> String {
+  guard
+    let url = Bundle.module.url(
+      forResource: name, withExtension: "json", subdirectory: "Fixtures/beats")
+  else { throw CocoaError(.fileNoSuchFile) }
+  return try String(contentsOf: url, encoding: .utf8)
+}

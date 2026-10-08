@@ -80,11 +80,11 @@ re-capture + fixture regeneration covers preset changes for now.
 Goal: the Swift app composes and renders beats tracks itself, and for the
 same share envelope produces the **same CIDs** as beats.
 
-2.1 Foundation: order-preserving JSON (JS key order rules), JS number
+2.1 **(done — `Sources/DJCore/Beats/`)** Foundation: order-preserving JSON (JS key order rules), JS number
 formatting (`JSON.stringify`), mulberry32 / `Math.imul` / ToInt32 helpers,
 stable sort, Go-escaped canonical JSON, CIDv1 (dag-json, sha2-256,
 base58btc) and model CID (sha256 of `canonicalProjectJSON`).
-2.2 Parity harness: node script imports beats' JS (`BEATS_PUBLIC`) and
+2.2 **(done — `make fixtures-beats`, `Tests/DJCoreTests/BeatsFoundationTests.swift`)** Parity harness: node script imports beats' JS (`BEATS_PUBLIC`) and
 writes fixtures — share envelope → canonical bytes + CID; (genre, seed,
 structure, cohesion) → project JSON + model CID; module-level vectors (RNG,
 bjorklund, motif, structure). Swift tests compare byte-for-byte.

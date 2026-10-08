@@ -165,7 +165,7 @@ writeFileSync0('envelopes.json', { meta, envelopes });
 // (genre, seed, structure, cohesion) -> project -> canonical model JSON -> model CID.
 // Full canonical text is stored for a handful (readable diffs, 2.3 round-trips);
 // the rest carry length + sha256, which is enough to prove byte identity.
-const FULL = new Set(['techno/42/loop/v2', 'jazz/7/standard/v1', 'dnb/3/extended/v2']);
+const FULL = new Set(['techno/42/loop/v2', 'jazz/42/standard/v1', 'dnb/1/minimal/v2']);
 const projects = [];
 const projSizes = ['loop', 'minimal', 'standard', 'extended'];
 for (const genre of genres) for (const size of projSizes) for (const cohesion of ['v1', 'v2']) for (const seed of [1, 42]) {

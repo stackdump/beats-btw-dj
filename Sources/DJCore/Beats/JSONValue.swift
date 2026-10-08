@@ -398,3 +398,20 @@ extension JSONValue {
     }
   }
 }
+
+// MARK: - Accessors
+
+extension JSONValue {
+  public subscript(key: String) -> JSONValue? {
+    if case .object(let o) = self { return o[key] }
+    return nil
+  }
+  public subscript(index: Int) -> JSONValue? {
+    if case .array(let a) = self, a.indices.contains(index) { return a[index] }
+    return nil
+  }
+  public var string: String? { if case .string(let s) = self { s } else { nil } }
+  public var double: Double? { if case .number(let d) = self { d } else { nil } }
+  public var array: [JSONValue]? { if case .array(let a) = self { a } else { nil } }
+  public var object: JSONObject? { if case .object(let o) = self { o } else { nil } }
+}
