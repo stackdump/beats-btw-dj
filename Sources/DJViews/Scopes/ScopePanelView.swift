@@ -57,19 +57,33 @@ struct ScopePanelView: View {
   var windowHeight: Double?
 
   @State private var subscription = ScopeSubscription()
+  /// A mode's own status text (the raster's "raster · loop cycle · ..."); see ScopeStatusLine.
+  @State private var statusLine: ScopeStatusLine
+  /// Tests hand in a raster controller that has already settled (a rendered frame cannot wait
+  /// for the background compute); the app leaves it nil and the raster view makes its own.
+  private let rasterController: RasterController?
 
   init(
     hub: ScopeHub, kind: Binding<ScopeKind>, source: Binding<ScopeSource>,
-    measured: Binding<Bool>, windowHeight: Double? = nil
+    measured: Binding<Bool>, windowHeight: Double? = nil, statusLine: ScopeStatusLine? = nil,
+    rasterController: RasterController? = nil
   ) {
     self.hub = hub
     _kind = kind
     _source = source
     _measured = measured
     self.windowHeight = windowHeight
+    _statusLine = State(initialValue: statusLine ?? ScopeStatusLine())
+    self.rasterController = rasterController
   }
 
   private var feed: ScopeFeed { hub.feed(source) }
+
+  /// Lanes the height rule counts: the raster draws the lead deck's lanes only, not the master's
+  /// two decks' together.
+  private func heightLanes(for kind: ScopeKind) -> Int {
+    kind == .raster ? feed.laneSet.lanes.count : feed.lanes.count
+  }
 
   var body: some View {
     // The header and the height follow the lane count and status at a leisurely rate; the body
@@ -80,9 +94,10 @@ struct ScopePanelView: View {
         header
         body(for: kind)
           .id(ObjectIdentifier(feed))  // a feed switch is a fresh mode view, never reused state
+          .environment(\.scopeStatusLine, statusLine)
           .frame(
             height: kind.height(
-              measured: measured, laneCount: feed.lanes.count, windowHeight: windowHeight)
+              measured: measured, laneCount: heightLanes(for: kind), windowHeight: windowHeight)
           )
           .clipShape(RoundedRectangle(cornerRadius: 4))
       }
@@ -97,7 +112,12 @@ struct ScopePanelView: View {
     case .live: ScopeLiveView(feed: feed, measured: measured, hub: hub)
     case .spectro: ScopeSpectroView(feed: feed, measured: measured, hub: hub)
     case .bands: ScopeBandsView(feed: feed, measured: measured, hub: hub)
-    case .raster: ScopeRasterView(feed: feed, measured: measured, hub: hub)
+    case .raster:
+      if let rasterController {
+        ScopeRasterView(feed: feed, measured: measured, hub: hub, raster: rasterController)
+      } else {
+        ScopeRasterView(feed: feed, measured: measured, hub: hub)
+      }
     }
   }
 
@@ -120,7 +140,7 @@ struct ScopePanelView: View {
       }
       Spacer()
       // On the window's own background, not the scope's: a scheme-aware colour.
-      Text(feed.statusText)
+      Text(statusLine.text ?? feed.statusText)
         .font(.system(size: 10, design: .monospaced))
         .foregroundStyle(.secondary)
         .lineLimit(1)

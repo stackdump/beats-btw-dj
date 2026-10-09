@@ -32,9 +32,12 @@ struct ScopeHostTests {
     return n
   }
 
-  // (a mode that has been ported draws itself and has its own tests: it leaves this list)
-  @Test(arguments: ScopeKind.allCases.filter { $0 != .live })
-  func everyPlaceholderRendersLabelledNotBlank(
+  /// The modes that are still placeholders. A ported mode leaves this list and has its own tests
+  /// (live: ScopeLiveViewTests, raster: ScopeRasterViewTests, ScopeRasterPanelTests).
+  nonisolated static let portedKinds: Set<ScopeKind> = [.live, .raster]
+  nonisolated static let placeholderKinds = ScopeKind.allCases.filter { !portedKinds.contains($0) }
+
+  @Test(arguments: placeholderKinds) func everyPlaceholderRendersLabelledNotBlank(
     _ kind: ScopeKind
   ) throws {
     let rig = try ScopeViewRig()
