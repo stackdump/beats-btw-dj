@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-rt-test app run-app djctl fmt lint fixtures-beats fixtures-go beats-tables
+        swift-build swift-test swift-test-filter swift-rt-test app run-app djctl fmt lint fixtures-beats fixtures-go beats-tables
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -35,10 +35,15 @@ swift-build:
 swift-test:
 	swift test $(SWIFT_TEST_FLAGS)
 
+# One suite or test: make swift-test-filter FILTER='ScopeLive'
+swift-test-filter:
+	swift test $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
+
 # The audio-thread contract ("render allocates nothing") is only meaningful with the
 # optimizer on, so those tests skip in debug and run here in a release build.
+# The filter is a regex: name every new audio-thread test suite `…RealTime…` to include it.
 swift-rt-test:
-	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'WaveRunnerRealTimeTests|WaveDeckSourceTests|AllocationCounterTests'
+	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
 
 # make djctl ARGS="monitor inpulse"
 djctl:
