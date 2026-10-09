@@ -2,8 +2,9 @@ import Testing
 
 @testable import DJCore
 
-// SpectroController over a real offline engine: the model fills the image where the kick is, a
-// sample deck has no model, and the sounding step is the last column that is final.
+// SpectroController over a real offline engine: the model fills the image where the kick is, the
+// measured half follows the toggle, a sample deck has no model, and the sounding step is the last
+// column that is final.
 
 /// Per image row (0 = top): the largest and the mean level.
 private func rowStats(_ img: SpectroBitmap) -> (max: [Int], mean: [Int]) {
@@ -20,18 +21,19 @@ private func rowStats(_ img: SpectroBitmap) -> (max: [Int], mean: [Int]) {
 @MainActor
 struct SpectroControllerTests {
   private func spectro(_ cache: ModelKernelCache) -> SpectroController {
-    SpectroController(cache: cache)
+    SpectroController(cache: cache, readers: MeasuredReaderStore())
   }
 
   /// Render in half-second pumps as a UI would, updating the controller after each.
   private func run(
-    _ rig: ScopeRig, _ feed: ScopeFeed, _ s: SpectroController, seconds: Double
+    _ rig: ScopeRig, _ feed: ScopeFeed, _ s: SpectroController, seconds: Double,
+    measured: Bool = false
   ) {
     var t = 0.0
     while t < seconds {
       rig.render(seconds: 0.5)
       rig.hub.pump()
-      s.update(feed: feed, engine: rig.dj)
+      s.update(feed: feed, engine: rig.dj, measured: measured)
       t += 0.5
     }
   }
@@ -44,7 +46,7 @@ struct SpectroControllerTests {
     feed.acquire()
     let s = spectro(cache)
     run(rig, feed, s, seconds: 7)
-    let scene = s.scene(feed: feed, width: 800, height: 330)
+    let scene = s.scene(feed: feed, width: 800, height: 330, measured: false)
     let m = try #require(scene.model)
     let img = try #require(m.bitmap)
     // 7 s at 300 BPM is step ~140; the 64-step window is final from its left edge up to the
@@ -90,7 +92,7 @@ struct SpectroControllerTests {
       "specCur \(model.specCur) vs sounding-1 \(sounding)")
     // the scene's image shows exactly the final steps: its last valid column is specCur - 1
     let img = try #require(
-      s.scene(feed: feed, width: 800, height: 330).model?.bitmap)
+      s.scene(feed: feed, width: 800, height: 330, measured: false).model?.bitmap)
     let axis = feed.timeAxis(x0: 30, w: 770)
     let first = Int(axis.stepOf(axis.t0).rounded(.down))
     let lastLit = (0..<66).last { x in (0..<28).contains { img.level(x, $0) != 0 } }
@@ -106,27 +108,65 @@ struct SpectroControllerTests {
     feed.acquire()
     let s = spectro(cache)
     run(rig, feed, s, seconds: 5)
-    let m = try #require(s.scene(feed: feed, width: 800, height: 330).model)
+    let m = try #require(s.scene(feed: feed, width: 800, height: 330, measured: false).model)
     #expect(m.bitmap?.levels.contains { $0 != 0 } == true)
     #expect(m.note?.text == "master")
   }
 
-  @Test func aSampleDeckHasNoModel() throws {
+  @Test func theMeasuredHalfFollowsTheToggle() throws {
+    let rig = try ScopeRig(net: ["A"], genre: "techno", seed: 42, structure: "loop", tempo: 300)
+    defer { rig.stop() }
+    let cache = warmedCache([("techno", 42, "loop", 300)])
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let s = spectro(cache)
+    run(rig, feed, s, seconds: 3, measured: false)
+    #expect(s.reader == nil, "no reader (no arrays, no FFT) until measured is first on")
+    #expect(s.scene(feed: feed, width: 800, height: 330, measured: false).measured == nil)
+    // on: the measured block exists and has the kick in its low rows
+    run(rig, feed, s, seconds: 3, measured: true)
+    let reader = try #require(s.reader)
+    #expect(reader.reads >= 5)
+    let scene = s.scene(feed: feed, width: 800, height: 330, measured: true)
+    let x = try #require(scene.measured)
+    let img = try #require(x.bitmap)
+    let st = rowStats(img)
+    #expect(st.max[16...27].max()! >= 245, "the loudest cell is in the low rows: \(st.max)")
+    #expect(st.max[0..<12].max()! <= st.max[16...27].max()! - 40)
+    let lowMean = st.mean[17..<26].reduce(0, +) / 9
+    let highMean = st.mean[1..<10].reduce(0, +) / 9
+    #expect(lowMean > highMean + 30, "mean level low \(lowMean) vs high \(highMean)")
+    #expect(st.max[0] == 0, "14 ... 16 kHz is above this rig's Nyquist: black")
+    // the model half is still there, and shorter
+    #expect(scene.model?.height == 156 && scene.model?.bitmap != nil)
+    // off again: the block is gone and the reader is not read
+    let reads = reader.reads
+    run(rig, feed, s, seconds: 1, measured: false)
+    #expect(s.scene(feed: feed, width: 800, height: 330, measured: false).measured == nil)
+    #expect(reader.reads == reads)
+  }
+
+  @Test func aSampleDeckHasNoModelButItsAudioIsMeasured() throws {
     let rig = try ScopeRig(net: [], samples: ["A"])
     defer { rig.stop() }
     let feed = rig.hub.feed(.deck("A"))
     feed.acquire()
     let s = spectro(ModelKernelCache())
-    run(rig, feed, s, seconds: 3)
-    let m = try #require(s.scene(feed: feed, width: 800, height: 330).model)
+    run(rig, feed, s, seconds: 3, measured: true)
+    let scene = s.scene(feed: feed, width: 800, height: 330, measured: true)
+    let m = try #require(scene.model)
     #expect(m.message?.text == "needs a net deck" && m.bitmap == nil && m.note == nil)
     #expect(m.grid.lines.isEmpty, "a sample deck has no steps")
+    let img = try #require(scene.measured?.bitmap)
+    #expect(img.levels.contains { $0 != 0 }, "the demo loop is audible")
     #expect(s.statusText(feed: feed) == "needs a net deck")
     // on a master with nothing but a sample deck it says no net deck
     let master = rig.hub.feed(.master)
     master.acquire()
-    run(rig, master, s, seconds: 1)
-    #expect(s.scene(feed: master, width: 800, height: 330).model?.message?.text == "no net deck")
+    run(rig, master, s, seconds: 1, measured: true)
+    #expect(
+      s.scene(feed: master, width: 800, height: 330, measured: false).model?.message?.text
+        == "no net deck")
     #expect(s.statusText(feed: master) == "no net deck")
   }
 
@@ -163,7 +203,7 @@ struct SpectroControllerTests {
     let ma = s.model
     rig.render(seconds: 0.5)
     rig.hub.pump()
-    s.update(feed: b, engine: rig.dj)
+    s.update(feed: b, engine: rig.dj, measured: false)
     #expect(s.model !== ma && s.model === ModelEngine.existing(for: b))
   }
 }

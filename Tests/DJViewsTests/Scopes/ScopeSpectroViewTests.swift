@@ -41,15 +41,27 @@ private func handColumns() -> SpectroColumns {
   return c
 }
 
+/// Frames every 1/30 s over the 8 s window: row j at -10 - 2j dB, 20 dB down for the 5 frames in
+/// 30 that are "between kicks", so the picture has stripes in time.
+private func handFrames() -> MeasuredFrameRing {
+  var r = MeasuredFrameRing()
+  for i in 0..<300 {
+    let t = 2 + Double(i) / 30 + 0.001
+    let quiet: Float = i % 30 < 5 ? -20 : 0
+    r.push(time: t, values: (0..<28).map { -10 - 2 * Float($0) + quiet })
+  }
+  return r
+}
+
 private func handScene(
-  sections: [ScopeSection] = [], hasNet: Bool = true,
+  measured: Bool = false, sections: [ScopeSection] = [], hasNet: Bool = true,
   hasTables: Bool = true, fx: String? = "pre-fader tap"
 ) -> SpectroScene {
   SpectroScene.make(
     width: 800, height: 330,
     input: SpectroScene.Input(
       axis: handAxis, sections: sections, hasNet: hasNet, hasTables: hasTables,
-      columns: handColumns(), fxLabel: fx))
+      columns: handColumns(), measured: measured ? handFrames() : nil, fxLabel: fx))
 }
 
 /// The pixel at the centre of cell (c, y) of a block's image.
@@ -179,19 +191,70 @@ struct ScopeSpectroViewTests {
     #expect(lit(on, 760..<800, 2..<14, textGrey, tol: 50) < 3)
   }
 
-  @Test func aSourceWithNoNetShowsItsMessage() throws {
+  @Test func theMeasuredBlockIsOnlyThereWhenAskedFor() throws {
+    let off = try #require(renderPixels(SceneOnly(scene: handScene()), width: 800, height: 330))
+    let on = try #require(
+      renderPixels(SceneOnly(scene: handScene(measured: true)), width: 800, height: 330))
+    let view = SceneOnly(scene: handScene(measured: true))
+    savePNG(view, width: 800, height: 330, name: "scope-spectro-measured-hand")
+    // the gap between the blocks (y 156 ... 161) is background; with measured off it is image
+    #expect(on.near(400, 158, bg, tol: 2), "gap \(on.color(400, 158))")
+    #expect(!off.near(400, 158, bg, tol: 2))
+    // "measured" at (690, 164) only when on
+    #expect(lit(on, 688..<750, 164..<176, textGrey, tol: 50) > 15, "measured title")
+    #expect(lit(off, 688..<750, 164..<176, textGrey, tol: 50) < 3)
+    // the labels repeat for the second block: 12k at y0 + 164.1 ... (162 + 2)
+    #expect(lit(on, 1..<29, 164..<176, textGrey, tol: 50) > 5)
+    // bar numbers only once, under the last block: none in the strip under the model block
+    #expect(lit(on, 417..<428, 157..<162, textGrey, tol: 50) == 0, "no bar number between")
+    #expect(lit(on, 417..<428, 319..<330, textGrey, tol: 50) > 3, "under the measured block")
+  }
+
+  @Test func theMeasuredImageIsPaintedSliceForSliceInMagmaColours() throws {
+    let scene = handScene(measured: true)
+    let px = try #require(renderPixels(SceneOnly(scene: scene), width: 800, height: 330))
+    let x = try #require(scene.measured)
+    let img = try #require(x.bitmap)
+    #expect(img.width == 160 && img.peakDb == -10)
+    var lit = 0
+    for slice in [3, 20, 47, 80, 101, 130, 158] {
+      for bin in [0, 5, 14, 20, 25] {
+        let y = 27 - bin
+        let (cx, cy) = cellPixel(x, slice, y)
+        let level = img.level(slice, y)
+        // skip cells next to a grid line (a slice is 4.8 px wide, a grid line 1 px)
+        let want = magma(level)
+        let ok =
+          px.near(cx, cy, want, tol: 4) || px.near(cx, cy, grid, tol: 2)
+          || px.near(cx, cy, barLine, tol: 2)
+        #expect(ok, "slice \(slice) bin \(bin) at (\(cx), \(cy)): \(px.color(cx, cy)) vs \(want)")
+        if level > 0 { lit += 1 }
+      }
+    }
+    #expect(lit > 20, "the picture really has colour in it: \(lit)")
+    // louder frames (the first 25 of every 30) are brighter than the quiet ones: stripes
+    let loud = magma(img.level(7, 27))
+    let quiet = magma(img.level(0, 27))
+    #expect(loud != quiet || img.level(7, 27) == img.level(0, 27))
+  }
+
+  @Test func aSourceWithNoNetShowsItsMessageAndStillTheMeasuredBlock() throws {
     let scene = SpectroScene.make(
       width: 800, height: 330,
       input: SpectroScene.Input(
         axis: ScopeTimeAxis(tickSec: 0.125, tNow: 10, anchor: nil, x0: 30, w: 770),
-        hasNet: false, hasTables: false, noNetText: "needs a net deck"))
+        hasNet: false, hasTables: false, measured: handFrames(), noNetText: "needs a net deck"))
     let view = SceneOnly(scene: scene)
     savePNG(view, width: 800, height: 330, name: "scope-spectro-no-net")
     let px = try #require(renderPixels(view, width: 800, height: 330))
     // the message at (38, 8)
     #expect(lit(px, 36..<140, 6..<20, textGrey, tol: 50) > 20, "needs a net deck")
-    // the model block is empty (no black image: the background shows), and no grid without steps
+    // the model block is empty (no black image: the background shows), the measured one is drawn
     #expect(px.near(400, 80, bg, tol: 2), "no model image \(px.color(400, 80))")
+    let x = try #require(scene.measured)
+    let (cx, cy) = cellPixel(x, 158, 27 - 5)
+    #expect(px.near(cx, cy, magma(x.bitmap!.level(158, 22)), tol: 4))
+    // and no grid without steps
     #expect(lit(px, 30..<800, 100..<110, grid, tol: 2) == 0)
   }
 
@@ -216,19 +279,20 @@ struct ScopeSpectroViewTests {
 
 @MainActor
 struct ScopeSpectroEngineViewTests {
-  /// A controller that has watched `seconds` of the rig, updated every 0.1 s as a 10 Hz UI would.
+  /// A controller that has watched `seconds` of the rig, updated every 0.1 s as a 10 Hz UI would
+  /// (so the measured frames are never more than a quarter second apart).
   private func settled(
-    _ rig: ScopeViewRig, source: ScopeSource, seconds: Double = 7
+    _ rig: ScopeViewRig, source: ScopeSource, measured: Bool, seconds: Double = 7
   ) throws -> (feed: ScopeFeed, controller: SpectroController) {
     let feed = rig.hub.feed(source)
     feed.acquire()
-    let controller = SpectroController(cache: sharedKernels)
+    let controller = SpectroController(cache: sharedKernels, readers: MeasuredReaderStore())
     try rig.run(seconds: 0.5)  // the feed learns the lanes
-    controller.update(feed: feed, engine: rig.dj)
+    controller.update(feed: feed, engine: rig.dj, measured: measured)
     controller.model?.waitForKernels()
     for _ in 0..<Int((seconds * 10).rounded()) {
       try rig.run(seconds: 0.1)
-      controller.update(feed: feed, engine: rig.dj)
+      controller.update(feed: feed, engine: rig.dj, measured: measured)
     }
     return (feed, controller)
   }
@@ -261,13 +325,13 @@ struct ScopeSpectroEngineViewTests {
   @Test func aNetDeckShowsTheModelSpectrogramInMagma() throws {
     let rig = try ScopeViewRig()
     defer { rig.stop() }
-    let (feed, controller) = try settled(rig, source: .deck("A"))
+    let (feed, controller) = try settled(rig, source: .deck("A"), measured: false)
     let line = ScopeStatusLine()
     let view = ScopeSpectroView(feed: feed, measured: false, hub: rig.hub, controller: controller)
       .environment(\.scopeStatusLine, line)
     savePNG(view, width: 800, height: 330, name: "scope-spectro-engine-deck")
     let px = try #require(renderPixels(view, width: 800, height: 330))
-    let scene = controller.scene(feed: feed, width: 800, height: 330)
+    let scene = controller.scene(feed: feed, width: 800, height: 330, measured: false)
     let m = try #require(scene.model)
     #expect(m.bitmap?.levels.filter { $0 > 200 }.count ?? 0 > 40, "the picture has loud cells")
     _ = checkCells(px, m, minLevel: 100)
@@ -288,28 +352,65 @@ struct ScopeSpectroEngineViewTests {
   @Test func theMasterShowsItToo() throws {
     let rig = try ScopeViewRig()
     defer { rig.stop() }
-    let (feed, controller) = try settled(rig, source: .master, seconds: 5)
+    let (feed, controller) = try settled(rig, source: .master, measured: false, seconds: 5)
     let view = ScopeSpectroView(feed: feed, measured: false, hub: rig.hub, controller: controller)
     savePNG(view, width: 800, height: 330, name: "scope-spectro-engine-master")
     let px = try #require(renderPixels(view, width: 800, height: 330))
     let m = try #require(
-      controller.scene(feed: feed, width: 800, height: 330).model)
+      controller.scene(feed: feed, width: 800, height: 330, measured: false).model)
     _ = checkCells(px, m, minLevel: 100)
     #expect(lit(px, 688..<770, 14..<26, textGrey, tol: 60) > 10, "master")
     #expect(m.note?.text == "master")
   }
 
-  @Test func aSampleDeckSaysItNeedsANetDeck() throws {
+  @Test func measuredAddsTheAnalyserBlockBelowWithTheSameAxes() throws {
     let rig = try ScopeViewRig()
     defer { rig.stop() }
-    let (feed, controller) = try settled(rig, source: .deck("B"), seconds: 3)
+    let (feed, controller) = try settled(rig, source: .deck("A"), measured: true)
+    let view = ScopeSpectroView(feed: feed, measured: true, hub: rig.hub, controller: controller)
+    savePNG(view, width: 800, height: 330, name: "scope-spectro-engine-measured")
+    let px = try #require(renderPixels(view, width: 800, height: 330))
+    let scene = controller.scene(feed: feed, width: 800, height: 330, measured: true)
+    let model = try #require(scene.model)
+    let measured = try #require(scene.measured)
+    #expect(model.height == 156 && measured.y0 == 162)
+    _ = checkCells(px, model, minLevel: 100)
+    _ = checkCells(px, measured, minLevel: 100)
+    // the gap between the blocks is background, the second block's title and bar numbers are there
+    #expect(px.near(400, 158, bg, tol: 2))
+    #expect(lit(px, 688..<750, 164..<176, textGrey, tol: 60) > 15, "measured")
+    #expect(
+      lit(px, 30..<800, 319..<330, textGrey, tol: 60) > 6, "bar numbers under the second block")
+    // both halves have their loud cells in the low half of the plot (kick and bass)
+    func loudRows(_ b: SpectroScene.Block) -> Double {
+      let img = b.bitmap!
+      var sum = 0.0
+      var n = 0.0
+      for y in 0..<28 {
+        for x in 0..<img.width where img.level(x, y) >= 230 {
+          sum += Double(y)
+          n += 1
+        }
+      }
+      return n > 0 ? sum / n : -1
+    }
+    #expect(
+      loudRows(model) > 16 && loudRows(measured) > 16, "\(loudRows(model)) \(loudRows(measured))")
+  }
+
+  @Test func aSampleDeckSaysItNeedsANetDeckAndStillMeasures() throws {
+    let rig = try ScopeViewRig()
+    defer { rig.stop() }
+    let (feed, controller) = try settled(rig, source: .deck("B"), measured: true, seconds: 3)
     let line = ScopeStatusLine()
-    let view = ScopeSpectroView(feed: feed, measured: false, hub: rig.hub, controller: controller)
+    let view = ScopeSpectroView(feed: feed, measured: true, hub: rig.hub, controller: controller)
       .environment(\.scopeStatusLine, line)
     savePNG(view, width: 800, height: 330, name: "scope-spectro-engine-sample")
     let px = try #require(renderPixels(view, width: 800, height: 330))
     #expect(lit(px, 36..<140, 6..<20, textGrey, tol: 60) > 20, "needs a net deck")
     #expect(px.near(400, 80, bg, tol: 2), "no model image")
+    let scene = controller.scene(feed: feed, width: 800, height: 330, measured: true)
+    _ = checkCells(px, try #require(scene.measured), minLevel: 80, want: 5)
     #expect(line.text == "needs a net deck")
   }
 
@@ -324,7 +425,7 @@ struct ScopeSpectroEngineViewTests {
     let model = ModelEngine.start(for: feed, engine: rig.dj)
     model.waitForKernels()
     try rig.run(seconds: 7)  // the hub keeps the model consuming
-    for measured in [false] {
+    for measured in [false, true] {
       let panel = VStack(spacing: 0) {
         ScopePanelView(
           hub: rig.hub, kind: .constant(.spectro), source: .constant(.deck("A")),
@@ -345,16 +446,18 @@ struct ScopeSpectroEngineViewTests {
 
   @Test func theViewOutlivesNothingItNeedsToKeep() throws {
     // the host builds a new view for every switch of kind: a new controller finds the model the
-    // first one started, with its history
+    // first one started, with its history, and reads the same measured reader
     let rig = try ScopeViewRig()
     defer { rig.stop() }
-    let (feed, first) = try settled(rig, source: .deck("A"), seconds: 3)
+    let (feed, first) = try settled(rig, source: .deck("A"), measured: true, seconds: 3)
     let model = try #require(first.model)
+    let reader = try #require(first.reader)
     let fires = model.fires
-    let second = SpectroController(cache: sharedKernels)
+    let second = SpectroController(cache: sharedKernels, readers: MeasuredReaderStore())
     try rig.run(seconds: 0.5)
-    second.update(feed: feed, engine: rig.dj)
+    second.update(feed: feed, engine: rig.dj, measured: false)
     #expect(second.model === model && model.fires > fires)
+    #expect(second.reader == nil, "not measured: no reader asked for")
+    #expect(reader.frames.count > 20)
   }
-
 }
