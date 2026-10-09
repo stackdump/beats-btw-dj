@@ -698,3 +698,61 @@ struct StagePetalRenderTests {
     #expect(px.near(5, 400, Sw.background, tol: 3))
   }
 }
+
+// MARK: - shuffle (mode 12)
+
+@MainActor
+struct StageShuffleRenderTests {
+  /// A real deck, shuffle selected, a "random" source that always picks the first choice: the
+  /// shuffle starts on the corona (the first other than the constellation) and, on the 64th fire,
+  /// swaps to the constellation (the first other than the corona), whole picture and toolbar.
+  @Test func theShuffleSwapsTheWholePictureWhileTheSelectKeepsSayingShuffle() throws {
+    let rig = try StageViewRig()
+    defer { rig.stop() }
+    rig.model.layers.solo.random = { 0.0 }
+    rig.model.settings.visualizer = .shuffle
+    rig.model.settings.menuCollapsed = false
+    try rig.run(seconds: 0.5)
+    func render() throws -> Pixels {
+      try #require(renderPixels(rig.scene(), width: 1000, height: 800))
+    }
+    func bar(_ px: Pixels) -> Int {
+      px.count(inX: 0..<1000, y: 0..<56) { r, g, b in r + g + b > 220 }
+    }
+    var ctx = rig.model.context
+    #expect(ctx.selection == .shuffle && ctx.visualizer == .corona, "\(ctx.visualizer)")
+    #expect(rig.model.settings.visualizer == .shuffle)
+    let corona = try render()
+    savePNG(rig.scene(), width: 1000, height: 800, name: "shuffle-corona")
+    var waited = 0
+    while rig.model.context.visualizer == .corona && waited < 600 {
+      try rig.run(seconds: 0.05)
+      waited += 1
+    }
+    ctx = rig.model.context
+    #expect(ctx.selection == .shuffle && ctx.visualizer == .constellation, "after \(waited) frames")
+    #expect(rig.model.settings.visualizer == .shuffle, "the select is untouched by the swap")
+    let grid = try render()
+    savePNG(rig.scene(), width: 1000, height: 800, name: "shuffle-constellation")
+    // the constellation is back: the kick panel is drawn, the toolbar has its constellation
+    // controls again; the corona's bars are gone from the annulus round the ring
+    let p = try #require(ctx.panels.first { $0.netId == "kick-0" })
+    let c = Sw.ipt(p.center)
+    let panelLit = grid.count(inX: (c.0 - 55)..<(c.0 + 55), y: (c.1 - 55)..<(c.1 + 55)) { r, g, b in
+      abs(r - 10) + abs(g - 10) + abs(b - 26) > 24
+    }
+    #expect(panelLit > 300, "the kick panel is drawn again (\(panelLit))")
+    #expect(
+      bar(grid) > bar(corona) + 300,
+      "constellation controls are back: \(bar(grid)) vs \(bar(corona))")
+    // and the other way: the first picture was the corona, with an empty middle
+    #expect(corona.near(500, 400, Sw.background, tol: 8))
+    // 64 fires later the shuffle swaps back to the corona
+    var again = 0
+    while rig.model.context.visualizer == .constellation && again < 600 {
+      try rig.run(seconds: 0.05)
+      again += 1
+    }
+    #expect(rig.model.context.visualizer == .corona && rig.model.context.selection == .shuffle)
+  }
+}

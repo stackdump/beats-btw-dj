@@ -4,11 +4,13 @@
 // constellation controls (stage.js `viz-solo`) and shows `StageSoloLayer` full window. This model
 // owns the state of the three visualizers and the shuffle state machine; the host calls
 // `resolveVisualizer` once per frame BEFORE it builds the context and shows whatever it returns
-// (never `.shuffle`), then `advance(_:)` with the finished context.
+// (never `.shuffle`), then `advance(_:)` with the finished context. The arrow keys come in through
+// `handleKey` and write the toolbar's selection.
 //
 //   corona  StageCoronaModel.swift   the master's FFT as 128 bars (audio-driven)
 //   sonar   StageSonarModel.swift    an expanding ring per fire (beat-driven)
 //   petal   StagePetalModel.swift    one petal per panel, breathing with its fires (beat-driven)
+//   shuffle StageShuffle.swift       every 64 fires a new one of the four; the arrow keys cycle
 //
 // Everything the view draws is a value (`StageSoloPaint`) computed here from the context, so the
 // view is a pure function of it and the numbers are unit-tested without a window.
@@ -29,39 +31,93 @@ public final class StageSoloModel: StageLayerModel {
   /// The petals' energies (stage.js `session.petalEnergy`).
   public private(set) var petals = StagePetals()
 
+  /// The shuffle state: whether the toolbar's "shuffle" is on, the fire count, what shows.
+  public private(set) var shuffle = StageShuffle()
+
+  /// The random source (stage.js `Math.random`): the shuffle's choices. Tests replace it.
+  public var random: () -> Double {
+    get { rng.generate }
+    set { rng = ClosureRandom(generate: newValue) }
+  }
+
+  private var rng: ClosureRandom
   /// The visualizer the last frame showed: a change is `setVisualizer`, which starts the
   /// beat-driven visualizers from scratch.
   private var lastShown: StageVisualizer?
+  /// The toolbar value last seen (nil before the first frame).
+  private var lastSelection: StageVisualizer?
+  /// What `resolveVisualizer` found for the frame that `advance` is about to see: whether a
+  /// visualizer switch happened inside it (state starts from scratch) and the index of the fire
+  /// that made it (that fire, and the ones after, belong to the NEW visualizer, because
+  /// stage.js runs the shuffle step before the sonar and petal branches of the same fire).
+  private var pending = (from: 0, reset: false)
 
-  public init() {}
+  public init(random: @escaping () -> Double = { Double.random(in: 0..<1) }) {
+    rng = ClosureRandom(generate: random)
+  }
+
+  // MARK: which visualizer shows
 
   /// The visualizer to show this frame. `selection` is the toolbar's value (may be `.shuffle`);
   /// `fires` are the frame's fires (shuffle counts them: 64 per swap), `now` the wall clock.
-  /// (The shuffle itself lands with mode 12; until then `.shuffle` shows the constellation.)
   public func resolveVisualizer(
     selection: StageVisualizer, fires: [StageFire], now: Double
   ) -> StageVisualizer {
-    selection == .shuffle ? .constellation : selection
+    var from = 0
+    var reset = false
+    if selection != lastSelection {  // the toolbar changed (applyVisualizer)
+      shuffle.apply(selection, using: &rng)
+      lastSelection = selection
+      reset = true
+    }
+    if shuffle.shuffling {
+      for i in fires.indices {
+        if shuffle.fired(using: &rng) {  // the swap: this fire starts the new visualizer
+          from = i
+          reset = true
+        }
+      }
+    }
+    pending = (reset ? from : pending.from, pending.reset || reset)
+    return shuffle.current
+  }
+
+  /// The arrow keys: Right and Left cycle `mandala, corona, sonar, petal` from the visualizer that
+  /// SHOWS (while shuffling, the one the shuffle is on) and write the selection, which also ends
+  /// shuffling (`applyVisualizer` of a fixed name). Other keys are not this layer's.
+  public func handleKey(_ key: StageKey, settings: StageSettings) -> Bool {
+    let step: Int
+    switch key {
+    case .left: step = -1
+    case .right: step = 1
+    case .t: return false
+    }
+    let shown = settings.visualizer == .shuffle ? shuffle.current : settings.visualizer
+    settings.visualizer = StageShuffle.cycle(from: shown, step: step)
+    return true
   }
 
   public func advance(_ context: StageContext) {
     let shown = context.visualizer
-    if shown != lastShown {
+    let (from, switched) = pending
+    pending = (0, false)
+    if switched || shown != lastShown {
       resetVisualizers()
       lastShown = shown
     }
+    let fires = context.fires.dropFirst(from)
     switch shown {
     case .corona:
       corona.advance(feed: context.feed, dt: context.dt)
     case .sonar:
       corona.rest()
-      for fire in context.fires {
+      for fire in fires {
         sonar.fire(channel: channel(of: fire, in: context), nowMs: fire.wallTime * 1000)
       }
       sonar.prune(nowMs: context.nowMs)
     case .petal:
       corona.rest()
-      for fire in context.fires { petals.fire(PetalKey(deck: fire.deck, netId: fire.netId)) }
+      for fire in fires { petals.fire(PetalKey(deck: fire.deck, netId: fire.netId)) }
       petals.decay(dt: context.dt)
     case .constellation, .shuffle:
       corona.rest()
