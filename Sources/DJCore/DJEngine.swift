@@ -167,6 +167,24 @@ public final class Deck: JogClock {
   /// The live-net source. Only one of `turntable` / `wave` is rendered at a time.
   public let wave: WaveDeckSource
   public let node: AVAudioSourceNode
+  let renderer: DeckRenderer
+  /// Mono history of this deck's output (the source node's mixdown, before the EQ and the
+  /// fader), for the scopes. Off until a scope calls `tap.acquire()`.
+  public var tap: ScopeTap { renderer.tap }
+  /// Frames this deck's source node has rendered, in both source modes (sample and net): the
+  /// common time base of `tap`, the deck's fire events and its tick anchors. Monotonic;
+  /// readable from any thread. Everything stamped below the value you read is already
+  /// readable from its ring.
+  public var renderedFrames: Int { renderer.renderedFrames }
+
+  /// What the source node's block runs on the audio thread: render the active source,
+  /// count the frames, feed the tap if a scope subscribed. Internal so tests can drive a
+  /// deck block by block without an engine running.
+  func renderBlock(
+    frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
+  ) {
+    renderer.renderBlock(frames: frames, left: left, right: right)
+  }
   /// Band 0 low-pass, 1 high-pass (see `filter`); 2 low shelf, 3 mid peak,
   /// 4 high shelf (see `eqLow` / `eqMid` / `eqHigh`).
   public let filterNode = AVAudioUnitEQ(numberOfBands: 5)
@@ -283,15 +301,10 @@ public final class Deck: JogClock {
     cueSend.outputVolume = 0
     turntable = tt
     wave = wv
+    let core = DeckRenderer(turntable: tt, wave: wv)
+    renderer = core
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
-      let list = UnsafeMutableAudioBufferListPointer(abl)
-      guard let l = list[0].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
-      let r = list.count > 1 ? list[1].mData?.assumingMemoryBound(to: Float.self) : nil
-      if wv.isActive {
-        wv.render(frames: Int(frames), left: l, right: r)
-      } else {
-        tt.render(frames: Int(frames), left: l, right: r)
-      }
+      core.render(abl, frames: Int(frames))
       return noErr
     }
     let types: [AVAudioUnitEQFilterType] = [

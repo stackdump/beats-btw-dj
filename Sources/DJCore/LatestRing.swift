@@ -70,6 +70,25 @@ public final class LatestRing<T: BitwiseCopyable>: @unchecked Sendable {
     writtenTotal.store(w + n, ordering: .releasing)
   }
 
+  /// Producer side. Appends `count` copies of `value`; any count is fine, a count beyond the
+  /// capacity costs no more than one lap (only the last `capacity` copies are written, and the
+  /// older sequence numbers read as lost). A run of silence for a gap in time goes through
+  /// here, never through a bare jump of the sequence numbers: until the copies are in, a reader
+  /// that was caught up sees nothing new, instead of stale values from the previous lap.
+  public func write(repeating value: T, count n: Int) {
+    guard n > 0 else { return }
+    let w = writtenTotal.load(ordering: .relaxed)
+    claimedTotal.store(w + n, ordering: .relaxed)
+    atomicMemoryFence(ordering: .releasing)
+    let m = min(n, capacity)  // only the last `capacity` copies can survive
+    var i = n - m
+    while i < n {
+      (slots + ((w + i) & mask)).initialize(to: value)
+      i += 1
+    }
+    writtenTotal.store(w + n, ordering: .releasing)
+  }
+
   /// Consumer side. Copies the values from sequence number `from` on into `out` (as many as
   /// are complete and fit). Returns `count`, the number copied (into `out[0..<count]`), and
   /// `lost`, how many values were skipped before the first copied one because they were
