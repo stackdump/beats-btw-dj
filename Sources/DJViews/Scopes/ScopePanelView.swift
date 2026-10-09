@@ -9,8 +9,8 @@ import SwiftUI
 // subscription when the source changes, so the taps run only while a panel is visible (the
 // bookkeeping is `ScopeSubscription`, in DJCore, where it is tested against a real hub).
 //
-// THE PLACEHOLDER REPLACEMENT CONTRACT
-// ------------------------------------
+// THE MODE VIEW CONTRACT
+// ----------------------
 // The body is one view per `ScopeKind`, each in its own file:
 //
 //   ScopeLiveView.swift    ScopeSpectroView.swift    ScopeBandsView.swift    ScopeRasterView.swift
@@ -22,8 +22,8 @@ import SwiftUI
 //     var body: some View
 //   }
 //
-// A mode agent REPLACES its file wholesale. This host depends on nothing but the type name and
-// that initialiser, so nothing else needs to change. Inside a mode view:
+// This host depends on nothing but the type name and that initialiser, so a mode can be
+// reworked inside its own file without touching anything else. Inside a mode view:
 //   * draw through `ScopeCanvas(hub: hub) { ctx, size in … }` (it paces the frames, pumps the
 //     hub, fills the background); never start your own timeline;
 //   * read only from `feed` (see ScopeFeed.swift for the time-base contract) — never from the
@@ -39,12 +39,12 @@ import SwiftUI
 // A mode that needs another input in the future gets it from the environment, not from a new
 // initialiser parameter.
 //
-// STAGE EXTENSION POINT
-// ---------------------
+// THE STAGE
+// ---------
 // The stage (SPEC modes 7…21: constellation, corona, sonar … over the whole window) is not a
-// `ScopeKind`; it is a separate full-window entry point that the stage agent adds next to the
-// "Scopes" toggle in `ContentView`. Nothing here needs to change for it. Source selection and
-// feeds are shared: the stage takes `hub.feed(.master)` / `hub.feed(.deck(…))` like this panel.
+// `ScopeKind`; it is its own window (`Sources/DJViews/Scopes/Stage`), opened by the "Stage"
+// button next to the "Scopes" toggle in `ContentView`. Source selection and feeds are shared: the
+// stage takes `hub.feed(.master)` / `hub.feed(.deck(…))` like this panel.
 
 struct ScopePanelView: View {
   let hub: ScopeHub

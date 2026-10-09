@@ -25,53 +25,6 @@ struct ScopeHostTests {
     (0..<(px.height - 6)).first { y in (0..<6).allSatisfy { px.near(10, y + $0, bg, tol: 2) } }
   }
 
-  /// Rows of scope background from `top` down at the left edge.
-  func bodyRows(_ px: Pixels, from top: Int) -> Int {
-    var n = 0
-    while top + n < px.height, px.near(10, top + n, bg, tol: 2) { n += 1 }
-    return n
-  }
-
-  /// The modes that are still placeholders. A ported mode leaves this list and has its own tests
-  /// (live: ScopeLiveViewTests, spectro: ScopeSpectroViewTests, bands: ScopeBandsViewTests,
-  /// raster: ScopeRasterViewTests,
-  /// ScopeRasterPanelTests).
-  nonisolated static let portedKinds: Set<ScopeKind> = [.live, .spectro, .bands, .raster]
-  nonisolated static let placeholderKinds = ScopeKind.allCases.filter { !portedKinds.contains($0) }
-
-  @Test(arguments: placeholderKinds) func everyPlaceholderRendersLabelledNotBlank(
-    _ kind: ScopeKind
-  ) throws {
-    let rig = try ScopeViewRig()
-    defer { rig.stop() }
-    let feed = rig.hub.feed(.master)
-    feed.acquire()
-    try rig.run(seconds: 1)
-    let view = panel(rig, kind: kind)
-    savePNG(view, width: 900, height: 700, name: "scope-host-\(kind.rawValue)")
-    let px = try #require(renderPixels(view, width: 900, height: 700))
-    // header: the kind pills and the source pills are drawn
-    let header = px.count(inX: 0..<900, y: 0..<26) { r, g, b in r + g + b > 150 }
-    #expect(header > 300, "\(kind): header has text and pills (\(header) lit pixels)")
-    // body: the scope background, as tall as scope.js's viewHeight says
-    let top = try #require(bodyTop(px), "\(kind): scope background found")
-    #expect(top > 15 && top < 60)
-    let want = Int(kind.height(measured: false, laneCount: feed.lanes.count, windowHeight: 800))
-    let got = bodyRows(px, from: top)
-    #expect(abs(got - want) <= 2, "\(kind): body \(got) rows, viewHeight \(want)")
-    // body: labelled "not yet ported" (title in the section red, status in the text grey)
-    let red = px.count(inX: 100..<800, y: top..<(top + got)) { r, g, b in
-      abs(r - 233) < 60 && abs(g - 69) < 50 && abs(b - 96) < 50
-    }
-    let grey = px.count(inX: 100..<800, y: top..<(top + got)) { r, g, b in
-      abs(r - 136) < 40 && abs(g - 153) < 40 && abs(b - 170) < 40
-    }
-    #expect(red > 20, "\(kind): title drawn (\(red))")
-    #expect(grey > 60, "\(kind): status lines drawn (\(grey))")
-    // away from the text the body is the plain scope background
-    #expect(px.near(20, top + got / 2, bg, tol: 2) && px.near(880, top + 20, bg, tol: 2))
-  }
-
   @Test func theKindPickerHighlightsTheSelectedView() throws {
     let rig = try ScopeViewRig()
     defer { rig.stop() }
