@@ -31,7 +31,7 @@ struct StageSoloLayer: View {
 
   var body: some View {
     let paint = context.isSolo ? model.paint(context) : .none
-    Canvas { gc, _ in
+    StageCanvas { gc, _ in
       StageSoloPainter.draw(&gc, paint: paint)
     }
     .allowsHitTesting(false)

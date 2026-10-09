@@ -84,6 +84,15 @@ struct StageChrome: View {
           .allowsHitTesting(false)
       }
 
+      // What auto mode did to the visuals (SPEC mode 27), and the way back: monitor.js' toast, at
+      // the bottom centre, above the stats pill it would otherwise sit on. Nothing while there is
+      // no notice; the quality choice itself is in the toolbar.
+      VStack {
+        Spacer(minLength: 0)
+        VizNoticeView(perf: model.hub.perf)
+          .padding(.bottom, 54)
+      }
+
       if helpOpen { StageHelpView(close: { helpOpen = false }) }
     }
   }
@@ -143,6 +152,8 @@ struct StageToolbar: View {
           selection: Binding(get: { settings.scale }, set: { settings.scale = $0 }),
           help: "Panel scale")
       }
+      // The adaptive visual level (SPEC mode 27): Auto, or pin Full / Reduced / Minimal / Paused.
+      VizQualityMenu(perf: model.hub.perf, onDark: true)
     }
     .padding(4)
     .background(Capsule().fill(Color.black.opacity(0.35)))

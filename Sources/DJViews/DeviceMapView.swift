@@ -101,6 +101,8 @@ public struct DeviceMapView: View {
   /// The LEDs of each attached controller, by profile name.
   public var lights: [String: DeviceLights]
   @State private var selected: String
+  /// The blink never runs faster than the visual level allows (SPEC mode 27).
+  @Environment(\.scopeHub) private var hub
 
   public init(
     maps: [(name: String, rows: [DeviceMapRow])],
@@ -122,7 +124,11 @@ public struct DeviceMapView: View {
       if let m = maps.first(where: { $0.name == selected }) {
         let mine = lights[m.name]
         // the clock only runs while an LED blinks
-        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: !(mine?.anyBlinking ?? false))) {
+        TimelineView(
+          .animation(
+            minimumInterval: hub?.interval(cappedAt: 1.0 / 15) ?? 1.0 / 15,
+            paused: !(mine?.anyBlinking ?? false))
+        ) {
           timeline in
           ScrollView {
             DeviceMapList(

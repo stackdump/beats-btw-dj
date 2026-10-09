@@ -16,7 +16,7 @@ struct StagePulseLayer: View {
   let model: StagePulseModel
 
   var body: some View {
-    Canvas { gc, _ in
+    StageCanvas { gc, _ in
       StagePulsePainter.draw(&gc, dots: model.dots(nowMs: context.nowMs))
     }
     .allowsHitTesting(false)

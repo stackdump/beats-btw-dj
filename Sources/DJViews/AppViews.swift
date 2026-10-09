@@ -87,17 +87,24 @@ public final class AppModel {
   /// Per net deck, the macro chase over its role toggles, and when it was last advanced.
   @ObservationIgnored private var chaseBoards: [String: MacroChaseBoard] = [:]
   @ObservationIgnored private var chaseClock: [String: Double] = [:]
+  /// How often the rings' snapshot is rebuilt at the current visual level (SPEC mode 27).
+  @ObservationIgnored private var ringGate = RingRenderGate()
 
   /// `engine`: drive this engine instead of building the real one (tests, previews). No
-  /// controllers are opened and nothing is polled until `poll()` is called.
-  public init(engine: DJEngine? = nil) { injected = engine }
+  /// controllers are opened and nothing is polled until `poll()` is called. `perf`: the visual
+  /// quality monitor for an injected engine (a test's own clock); the default is a plain one.
+  public init(engine: DJEngine? = nil, perf: PerfMonitor? = nil) {
+    injected = engine
+    injectedPerf = perf
+  }
   private let injected: DJEngine?
+  private let injectedPerf: PerfMonitor?
 
   public func start() {
     guard dj == nil else { return }
     if let injected {
       dj = injected
-      scopeHub = ScopeHub(engine: injected)
+      scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
       stageModel = scopeHub.map { StageModel(hub: $0) }
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
@@ -121,7 +128,10 @@ public final class AppModel {
       try hub.start()
       self.dj = dj
       self.hub = hub
-      scopeHub = ScopeHub(engine: dj)
+      // The adaptive visual level (SPEC mode 27): a 60 Hz heartbeat on the main run loop while a
+      // deck plays, and the quality choice remembered between runs.
+      scopeHub = ScopeHub(
+        engine: dj, perf: PerfMonitor(store: .userDefaults(), heartbeatInterval: 1.0 / 60))
       stageModel = scopeHub.map { StageModel(hub: $0) }
       status = "\(Int(dj.sampleRate)) Hz"
       let t = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
@@ -177,6 +187,7 @@ public final class AppModel {
   }
 
   public func stop() {
+    scopeHub?.perf.stop()
     hub?.stop()
     dj?.stop()
   }
@@ -186,6 +197,10 @@ public final class AppModel {
     guard let dj else { return }
     let now = uptime()
     let router = hub?.router ?? injectedRouter
+    // The perf monitor measures while something plays; the rings are rebuilt less often at the
+    // reduced levels (backend/index.js `onStateSync`).
+    scopeHub?.perf.setRunning(dj.decks.values.contains { $0.playing })
+    let ringsDue = ringGate.due(now: now, level: scopeHub?.vizLevel ?? 0)
     devices = hub?.devices ?? []
     crossfader = dj.crossfader
     master = dj.master
@@ -206,6 +221,10 @@ public final class AppModel {
     if mirrored != deviceLights { deviceLights = mirrored }
     for (name, d) in dj.decks {
       let adapter = router?.jogAdapters.first { $0.deck == name }
+      let previous = decks[name]
+      // A held back poll keeps the last snapshot, unless there is none to keep or the deck has
+      // another track.
+      let refreshRings = ringsDue || previous?.snapshot == nil || previous?.title != d.title
       var state = DeckState(
         title: d.title, playing: d.playing, platterSeconds: d.platterSeconds,
         positionSeconds: d.positionSeconds,
@@ -219,12 +238,14 @@ public final class AppModel {
         nextComposing: d.nextComposing != nil,
         quantize: d.quantize == .off ? "off" : (d.quantize == .beat ? "beat" : "bar"),
         scrubbing: d.wave.isScrubbing, pfl: d.pfl, overview: d.waveform,
-        overlay: d.waveformOverlay, snapshot: d.netSnapshot, timeline: d.sectionTimeline)
+        overlay: d.waveformOverlay, snapshot: refreshRings ? d.netSnapshot : previous?.snapshot,
+        timeline: d.sectionTimeline)
       if d.mode == .net {
         var spin = ringSpins[name] ?? RingSpin()
         spin.observe(advances: d.advances, at: now)
         ringSpins[name] = spin
-        state.ringArcs = spin.arcs(playing: d.playing, at: now)
+        let arcs = spin.arcs(playing: d.playing, at: now)
+        state.ringArcs = refreshRings ? arcs : (previous?.ringArcs ?? arcs)
         var board = chaseBoards[name] ?? MacroChaseBoard()
         board.update(d.macroActivity, dt: now - (chaseClock[name] ?? now))
         chaseBoards[name] = board
@@ -542,6 +563,16 @@ public struct ContentView: View {
     .padding()
     .background {
       if model.showScopes { ScreenHeightReader { model.scopeWindowHeight = $0 } }
+    }
+    // the rings and the small animations pace themselves by the hub's visual level
+    .environment(\.scopeHub, model.scopeHub)
+    // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
+    // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
+    // bar, which are full at the window's minimum width
+    .overlay(alignment: .bottom) {
+      if let scopes = model.scopeHub {
+        VizNoticeView(perf: scopes.perf).padding(.bottom, 64)
+      }
     }
   }
 }

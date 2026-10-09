@@ -42,7 +42,7 @@ struct StagePanelsLayer: View {
   let context: StageContext
 
   var body: some View {
-    Canvas { gc, size in
+    StageCanvas { gc, size in
       StagePanelPainter.draw(&gc, context: context)
     }
     .allowsHitTesting(false)

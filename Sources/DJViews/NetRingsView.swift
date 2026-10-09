@@ -39,6 +39,8 @@ public struct RingNetView: View {
   public var ring: RingView
   public var tint: Color
   public var arcs: RingArcs?
+  /// The app's hub, for the perf monitor (SPEC mode 27): the draw is timed as the `ring` path.
+  @Environment(\.scopeHub) private var hub
 
   public init(ring: RingView, tint: Color, arcs: RingArcs? = nil) {
     self.ring = ring
@@ -47,7 +49,10 @@ public struct RingNetView: View {
   }
 
   public var body: some View {
+    let hub = hub
     Canvas { ctx, size in
+      let span = VizSpan(hub, .ring)
+      defer { span.end() }
       let s = min(size.width, size.height)
       let n = ring.size
       let dim = ring.muted ? 0.35 : 1.0

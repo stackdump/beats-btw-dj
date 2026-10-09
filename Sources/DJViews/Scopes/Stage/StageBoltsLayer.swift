@@ -29,7 +29,7 @@ struct StageBoltsLayer: View {
 
   var body: some View {
     let scale = displayScale
-    Canvas { gc, _ in
+    StageCanvas { gc, _ in
       StageBoltsPainter.draw(
         &gc, strokes: model.strokes(in: context), seeds: model.seedDots(in: context),
         halo: model.halo(in: context), displayScale: scale)

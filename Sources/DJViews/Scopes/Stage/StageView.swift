@@ -53,9 +53,13 @@ public struct StageView: View {
   public var body: some View {
     GeometryReader { geo in
       TimelineView(.animation(minimumInterval: interval > 0 ? interval : nil)) { timeline in
-        let ctx = model.frame(
-          now: timeline.date.timeIntervalSinceReferenceDate, width: geo.size.width,
-          height: geo.size.height)
+        // The model's frame is the first part of the Stage's time as the perf monitor counts it
+        // (SPEC mode 27); the layers' draws are the rest (`StageCanvas`, set up by `StageScene`).
+        let ctx = model.hub.timed(.stage) {
+          model.frame(
+            now: timeline.date.timeIntervalSinceReferenceDate, width: geo.size.width,
+            height: geo.size.height)
+        }
         StageScene(model: model, context: ctx, helpOpen: $helpOpen)
           .onChange(of: ctx.vizLevel) { interval = model.minFrameInterval }
       }
@@ -104,6 +108,8 @@ struct StageScene: View {
       StageChrome(model: model, context: context, helpOpen: $helpOpen)
     }
     .clipped()
+    // the layers book their draws to the perf monitor (`StageCanvas`)
+    .environment(\.scopeHub, model.hub)
   }
 }
 

@@ -10,7 +10,7 @@ struct StageEmptyLayer: View {
   let context: StageContext
 
   var body: some View {
-    Canvas { gc, size in
+    StageCanvas { gc, size in
       StageEmptyPainter.draw(&gc, context: context)
     }
     .allowsHitTesting(false)

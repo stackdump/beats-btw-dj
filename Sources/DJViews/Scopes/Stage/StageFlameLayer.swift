@@ -23,7 +23,7 @@ struct StageFlameLayer: View {
   let model: StageFlameModel
 
   var body: some View {
-    Canvas { gc, _ in
+    StageCanvas { gc, _ in
       StageFlamePainter.draw(&gc, beams: model.beams(in: context))
     }
     .allowsHitTesting(false)

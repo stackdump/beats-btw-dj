@@ -12,8 +12,10 @@
 // call from every Canvas in a frame (a second call finds at most the render cycles that ran in
 // between; see the ScopeFeed header), and a hub with no subscribed feed does no work at all.
 //
-// `vizLevel` (0...3) is the quality level the perf monitor (a later mode) will drive; the
-// frame pacer turns it into 30 / 15 / 8 / 4 draws per second (`ScopeFramePacer`).
+// `vizLevel` (0...3) is the quality level the perf monitor (`hub.perf`, SPEC mode 27) drives; the
+// frame pacer turns it into 30 / 15 / 8 / 4 draws per second (`ScopeFramePacer`). The monitor is the
+// level's writer: it is wired to `vizLevel` here, and visual drivers report the time they spend
+// drawing through `timed(_:_:)`.
 
 import Foundation
 
@@ -24,8 +26,17 @@ public final class ScopeHub {
   public private(set) var pacer = ScopeFramePacer()
   /// Number of `pump()` calls that had a subscribed feed to drain.
   public private(set) var pumpCount = 0
+  /// The adaptive visual-quality monitor; the writer of `vizLevel` (see `PerfMonitor`).
+  public let perf: PerfMonitor
 
-  public init(engine: DJEngine) { self.engine = engine }
+  /// `perf`: the monitor to wire to the level. The default measures nothing until `start()` and
+  /// forgets its preference; the app passes one with a heartbeat and a stored preference.
+  public init(engine: DJEngine, perf: PerfMonitor = PerfMonitor()) {
+    self.engine = engine
+    self.perf = perf
+    pacer.level = perf.level
+    perf.onLevelChange = { [weak self] level in self?.pacer.level = level }
+  }
 
   /// The feed for a source: the same object every time.
   public func feed(_ source: ScopeSource) -> ScopeFeed {
@@ -70,4 +81,21 @@ public final class ScopeHub {
 
   /// For a loop that ticks faster than `minFrameInterval`: is a draw due at `now` (seconds)?
   public func shouldDraw(now: Double) -> Bool { pacer.shouldDraw(now: now) }
+
+  /// Seconds between frames for an animation with its own rate (`cap`, seconds): never faster
+  /// than the level allows (`VizPacing.interval`). A view that asks for it while building its
+  /// `body` is rebuilt when the monitor changes the level: it reads `perf.level`, which is
+  /// observable (`vizLevel` itself is a plain property), so SwiftUI tracks that.
+  public func interval(cappedAt cap: Double) -> Double {
+    _ = perf.level
+    return VizPacing.interval(level: vizLevel, cappedAt: cap)
+  }
+
+  /// Run a draw and report its time to the monitor as path `kind` (monitor.js `vizBegin` /
+  /// `vizEnd`). Costs two clock reads; nothing is recorded while the monitor is not running.
+  public func timed<T>(_ kind: VizKind, _ body: () -> T) -> T {
+    let t0 = perf.vizBegin()
+    defer { perf.vizEnd(kind, t0) }
+    return body()
+  }
 }

@@ -122,28 +122,53 @@ struct ScopePanelView: View {
   }
 
   private var header: some View {
+    ScopePanelHeader(
+      hub: hub, kind: $kind, source: $source, measured: $measured,
+      status: statusLine.text ?? feed.statusText)
+  }
+}
+
+/// The panel's header row: the view picker, the source picker, the "measured" toggle, the quality
+/// menu and the status line. The pills never shrink; the status line, the one thing that can be
+/// cut, is what gives way when the window is narrow (the main window is at least 720 pt wide).
+struct ScopePanelHeader: View {
+  let hub: ScopeHub
+  @Binding var kind: ScopeKind
+  @Binding var source: ScopeSource
+  @Binding var measured: Bool
+  let status: String
+
+  var body: some View {
     HStack(spacing: 6) {
-      ForEach(ScopeKind.allCases) { k in
-        pill(k.title, on: kind == k, help: k.help) { kind = k }
-      }
-      Spacer().frame(width: 10)
-      ForEach(hub.sources, id: \.self) { s in
-        pill(sourceTitle(s), on: source == s, help: "Show \(s.label)") { source = s }
-      }
-      if kind.supportsMeasured {
+      HStack(spacing: 6) {
+        ForEach(ScopeKind.allCases) { k in
+          pill(k.title, on: kind == k, help: k.help) { kind = k }
+        }
         Spacer().frame(width: 10)
-        pill(
-          measured ? "✓ measured" : "measured", on: measured,
-          help:
-            "Also read the audio through an analyser: measured bands / spectrogram beside the model"
-        ) { measured.toggle() }
+        ForEach(hub.sources, id: \.self) { s in
+          pill(sourceTitle(s), on: source == s, help: "Show \(s.label)") { source = s }
+        }
+        if kind.supportsMeasured {
+          Spacer().frame(width: 10)
+          pill(
+            measured ? "✓ measured" : "measured", on: measured,
+            help:
+              "Also read the audio through an analyser: measured bands / spectrogram beside the model"
+          ) { measured.toggle() }
+        }
+        // The adaptive visual level (SPEC mode 27).
+        Spacer().frame(width: 10)
+        VizQualityMenu(perf: hub.perf)
       }
-      Spacer()
+      .fixedSize(horizontal: true, vertical: false)
+      Spacer(minLength: 8)
       // On the window's own background, not the scope's: a scheme-aware colour.
-      Text(statusLine.text ?? feed.statusText)
+      Text(status)
         .font(.system(size: 10, design: .monospaced))
         .foregroundStyle(.secondary)
         .lineLimit(1)
+        .truncationMode(.tail)
+        .layoutPriority(-1)
     }
   }
 

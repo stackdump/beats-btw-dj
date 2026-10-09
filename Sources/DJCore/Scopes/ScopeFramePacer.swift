@@ -1,6 +1,7 @@
 // Frame pacing for the scope views: scope.js `VIZ_MIN_FRAME_MS` and the `el._vizLevel` check in
-// its rAF loop. The perf monitor that raises the level when drawing gets expensive is a later
-// mode (SPEC 27); this is the pure pacer it will drive, and the hub's `vizLevel` property.
+// its rAF loop. The perf monitor that raises the level when drawing gets expensive is
+// `PerfMonitor` (SPEC 27, `hub.perf`); this is the pure pacer it drives through the hub's
+// `vizLevel` property.
 
 /// "Is it time to draw again?" at one of four quality levels.
 public struct ScopeFramePacer: Equatable, Sendable {

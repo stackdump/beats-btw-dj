@@ -17,7 +17,7 @@ struct StageMetaLayer: View {
   let context: StageContext
 
   var body: some View {
-    Canvas { gc, _ in
+    StageCanvas { gc, _ in
       StageMetaPainter.draw(&gc, layout: context.layout)
     }
     .allowsHitTesting(false)

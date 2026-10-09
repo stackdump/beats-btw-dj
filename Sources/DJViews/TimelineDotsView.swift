@@ -62,7 +62,7 @@ struct TimelineDotsView: View {
     // in a light window too); stopped, the strip is just empty space.
     Group {
       if active {
-        ScopeCanvas(hub: hub, fillsBackground: false) { ctx, size in
+        ScopeCanvas(hub: hub, kind: .timeline, fillsBackground: false) { ctx, size in
           model.update(from: feed)
           let t = feed.clock
           guard t.transport == .playing || t.transport == .scrubbing else { return }

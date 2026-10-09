@@ -54,6 +54,8 @@ struct MacroButton: View {
   let running: Bool
   var time: Double?
   let fire: () -> Void
+  /// The glow breathes at 30 fps, never faster than the visual level allows (SPEC mode 27).
+  @Environment(\.scopeHub) private var hub
 
   init(macro: NetMacro, running: Bool, time: Double? = nil, fire: @escaping () -> Void) {
     self.macro = macro
@@ -67,7 +69,8 @@ struct MacroButton: View {
       if let time {
         runningButton(at: time)
       } else {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
+        TimelineView(.animation(minimumInterval: hub?.interval(cappedAt: 1.0 / 30) ?? 1.0 / 30)) {
+          tl in
           runningButton(at: tl.date.timeIntervalSinceReferenceDate)
         }
       }

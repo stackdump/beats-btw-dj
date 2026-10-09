@@ -45,6 +45,9 @@ public final class StageModel {
   public private(set) var spin = StageSpin()
   /// Bumps whenever the panels are rebuilt.
   public private(set) var epoch = 0
+  /// Frames advanced (`advance` calls): how many frames the host drew, for tests and the perf
+  /// monitor's pacing checks.
+  public private(set) var advances = 0
   /// Extra models advanced after the registry's, and cleared on a rebuild like the pulse, flame
   /// and bolts models (tests and tools that want to watch the frames).
   public var observers: [any StageLayerModel] = []
@@ -145,6 +148,7 @@ public final class StageModel {
 
   /// One frame. `dt` is clamped to 0.1 s (`Math.min(100, now - lastTime)`).
   public func advance(now: Double, dt rawDt: Double, width: Double, height: Double) {
+    advances += 1
     let dt = min(0.1, max(0, rawDt.isFinite ? rawDt : 0))
     lastNow = now
     lastSize = (width, height)

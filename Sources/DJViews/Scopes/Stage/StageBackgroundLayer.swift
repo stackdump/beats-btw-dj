@@ -28,7 +28,7 @@ struct StageBackgroundLayer: View {
   }
 
   var body: some View {
-    Canvas { gc, _ in
+    StageCanvas { gc, _ in
       StageBackdropPainter.draw(
         &gc, context: context, model: model, scale: displayScale, cache: cache)
     }
