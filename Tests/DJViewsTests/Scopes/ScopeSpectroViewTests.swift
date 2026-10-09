@@ -165,6 +165,62 @@ struct ScopeSpectroViewTests {
     #expect(lit(px, 1..<29, 160..<200, textGrey, tol: 50) == 0)
   }
 
+  @Test func aFirstColumnThatStartsLeftOfThePlotIsClippedAtTheGutter() throws {
+    // half a step on (10.0625 s): the image starts 6 px left of the plot (x 23.98), the way it
+    // does at almost every moment of a live window. The gutter is background all the same.
+    let ax = ScopeTimeAxis(
+      tickSec: 0.125, tNow: 10.0625,
+      anchor: ScopeAnchor(time: 8, frame: 0, step: 32, tempo: 120, generation: 1), x0: 30, w: 770)
+    let scene = SpectroScene.make(
+      width: 800, height: 330, input: SpectroScene.Input(axis: ax, columns: handColumns()))
+    let image = try #require(scene.model?.imageRect)
+    #expect(image.x < 29 && image.x > 23, "the image reaches into the gutter: \(image.x)")
+    let px = try #require(renderPixels(SceneOnly(scene: scene), width: 800, height: 330))
+    // y 100 is between the 4k and 1k labels
+    for x in [0, 8, 24, 26, 29] {
+      #expect(px.near(x, 100, bg, tol: 2), "x \(x): \(px.color(x, 100))")
+    }
+    // and the plot starts at 30 with the first (empty) column
+    for x in [30, 31, 35] {
+      #expect(px.near(x, 100, magma0, tol: 2), "x \(x): \(px.color(x, 100))")
+    }
+  }
+
+  @Test func theFxPointLineIsReadableOverTheWarmestCells() throws {
+    // every step final and at full scale: pale yellow everywhere, as under a loud passage
+    var loud = SpectroColumns.empty
+    for st in 0..<80 {
+      loud.step[st] = Int32(st)
+      for j in 0..<28 { loud.col[st * 28 + j] = 1 }
+    }
+    loud.cur = 80
+    let scene = SpectroScene.make(
+      width: 800, height: 330,
+      input: SpectroScene.Input(
+        axis: handAxis, columns: loud, fxLabel: "pre-fader tap"))
+    let view = SceneOnly(scene: scene)
+    savePNG(view, width: 800, height: 330, name: "scope-spectro-note-plate")
+    let px = try #require(renderPixels(view, width: 800, height: 330))
+    let m = try #require(scene.model)
+    let plate = try #require(m.notePlate)
+    // away from grid lines: the yellow outside the plate, the dimmed one inside it
+    let gridXs = Set(m.grid.lines.map { Int($0.rect.x) })
+    let free = (680...760).first { x in
+      (x - 1...x + 1).allSatisfy { !gridXs.contains($0) } && Double(x) < plate.x - 2
+    }
+    let outside = try #require(free)
+    #expect(px.near(outside, 20, (252, 253, 191), tol: 3), "\(px.color(outside, 20))")
+    // the background at 60% over (252, 253, 191): 0.4 * 252 + 0.6 * 5 = 104, 107, 88
+    // (the first row of the plate, above the glyphs, right of the 'model' title)
+    let inside = (735...Int(plate.x + plate.w - 1)).first { x in
+      (x - 1...x + 1).allSatisfy { !gridXs.contains($0) }
+    }
+    let ix = try #require(inside)
+    #expect(px.near(ix, 13, (104, 107, 88), tol: 6), "plate at \(ix): \(px.color(ix, 13))")
+    // the text is on top of it
+    #expect(lit(px, 688..<770, 14..<26, textGrey, tol: 50) > 15, "pre-fader tap")
+  }
+
   @Test func theGridIsDrawnOverTheImageAndTheBarNumbersUnderIt() throws {
     let scene = handScene(sections: [ScopeSection(step: 24, name: "chorus")])
     let px = try #require(renderPixels(SceneOnly(scene: scene), width: 800, height: 330))
@@ -311,8 +367,14 @@ struct ScopeSpectroEngineViewTests {
         let (x, yy) = cellPixel(block, c, y)
         if gridXs.contains(x) || gridXs.contains(x - 1) || gridXs.contains(x + 1) { continue }
         if Double(x) < r.x || x >= 800 { continue }
-        // titles and labels sit in the top right and the gutter: not cell colours
+        // titles and labels sit in the top right and the gutter: not cell colours, and the
+        // plate behind the fx point dims what is under it
         if y < 4 && x > 680 { continue }
+        if let p = block.notePlate, Double(x) >= p.x, Double(x) <= p.x + p.w, Double(yy) >= p.y,
+          Double(yy) <= p.y + p.h
+        {
+          continue
+        }
         tried += 1
         if px.near(x, yy, magma(img.level(c, y)), tol: 6) { ok += 1 }
       }
@@ -425,6 +487,7 @@ struct ScopeSpectroEngineViewTests {
     let model = ModelEngine.start(for: feed, engine: rig.dj)
     model.waitForKernels()
     try rig.run(seconds: 7)  // the hub keeps the model consuming
+    var titles: [Bool: Int] = [:]
     for measured in [false, true] {
       let panel = VStack(spacing: 0) {
         ScopePanelView(
@@ -438,10 +501,15 @@ struct ScopeSpectroEngineViewTests {
       let px = try #require(renderPixels(panel, width: 900, height: 700))
       let warm = px.count(inX: 0..<900, y: 20..<700) { r, g, b in r > 200 && g > 90 && b < 160 }
       #expect(warm > 2000, "magma pixels in the body (measured \(measured)): \(warm)")
-      // the title of the second block is only there when measured is on
-      let title = lit(px, 790..<860, 20..<700, textGrey, tol: 40)
-      #expect(title > 20, "titles drawn: \(title)")
+      // text in the title column: 'model' and the fx point, and 'measured' only when it is on
+      titles[measured] = lit(px, 790..<860, 20..<700, textGrey, tol: 40)
     }
+    let off = try #require(titles[false])
+    let on = try #require(titles[true])
+    #expect(off > 20, "titles drawn: \(off)")
+    #expect(
+      on > off + 20, "'measured' reaches the body only when the panel's flag is on: \(on) vs \(off)"
+    )
   }
 
   @Test func theViewOutlivesNothingItNeedsToKeep() throws {

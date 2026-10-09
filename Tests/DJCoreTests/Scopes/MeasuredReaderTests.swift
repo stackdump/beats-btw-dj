@@ -238,15 +238,42 @@ struct MeasuredReaderIngestTests {
     #expect(r.frames.count == 5 && r.reads == 5)
   }
 
-  @Test func silenceIsMinusTwoHundredDecibelsInEveryRow() {
+  @Test func digitalSilenceIsNotAFrameButStillARead() {
     let r = MeasuredReader()
     r.ingest(
       window: [Float](repeating: 0, count: 4096), sampleRate: 44100, time: 10, anchor: anchor(),
       tickSec: 0.125)
-    #expect(r.power.allSatisfy { $0 == 0 })
-    for j in 0..<28 { #expect(r.frames.value(newest: 1, row: j) == -200, "10 log10(1e-20)") }
+    #expect(r.power.allSatisfy { $0 == 0 }, "no energy in any row")
+    // 10 log10(0 + 1e-20) = -200 dB in every row would be a frame that the autoscale turns into
+    // the maximum colour; nothing sounded, so there is none
+    #expect(r.reads == 1 && r.frames.isEmpty)
     #expect(r.measCnt[2] == 1, "the read still counts for its bar (step 36)")
     #expect(r.measDb(bar: 2, row: 5) == nil, "but has no level")
+  }
+
+  @Test func aConstantIsNoSignalEither() {
+    // a paused sample deck holds its last sample: a window of one value. The analyser reports
+    // float noise around -190 dB in the rows (the energy is in bins 0 ... 2)
+    let r = MeasuredReader()
+    r.ingest(
+      window: [Float](repeating: 0.0213649, count: 4096), sampleRate: 22050, time: 10,
+      anchor: nil, tickSec: 0.125)
+    let loudest = (0..<28).map { 10 * log10(Double(r.power[5 + $0]) + 1e-20) }.max()!
+    #expect(loudest < -150 && loudest > -200, "noise: \(loudest) dB")
+    #expect(r.frames.isEmpty && r.reads == 1)
+  }
+
+  @Test func theSilenceFloorIsAboveFloatNoiseAndBelowAnyAudibleSine() {
+    // the row of a sine of amplitude A is about (A/2)^2 * 0.3046: 1e-3 is -71 dB, 1e-4 -91 dB,
+    // 1e-6 -131 dB (below 16-bit noise)
+    for (amp, kept) in [(1e-3, true), (1e-4, true), (1e-6, false), (1e-7, false)] {
+      let r = MeasuredReader()
+      r.ingest(
+        window: sineWindow(hz: 1000, rate: 44100, amp: amp), sampleRate: 44100, time: 10,
+        anchor: nil, tickSec: 0.125)
+      #expect(r.frames.count == (kept ? 1 : 0), "amplitude \(amp)")
+    }
+    #expect(MeasuredReader.silenceDb == -120)
   }
 
   @Test func aShortWindowIsPaddedAtTheFrontLikeAnUnderfilledAnalyser() {
@@ -315,6 +342,34 @@ struct MeasuredReaderFeedTests {
     }
   }
 
+  /// The image the Spectro mode draws from the reader's frames, over the feed's own window.
+  private func image(_ feed: ScopeFeed, _ reader: MeasuredReader) -> SpectroBitmap {
+    let axis = feed.timeAxis(x0: 0, w: 100)
+    return SpectroImage.measured(frames: reader.frames, t0: axis.t0, win: axis.win)
+  }
+
+  /// The 1 kHz row is the loudest cell of the newest slice, and nothing three octaves away shows.
+  private func expectTheSineAtItsRow(_ img: SpectroBitmap, _ what: String) {
+    let row = spectroRow(containing: 1000)
+    let c = 159  // tc = tNow: the frame read at the last update
+    #expect(img.peakDb.isFinite, "\(what): something sounded")
+    // the loudest cell of the window is in this row (another frame may be a fraction of a dB
+    // above the newest one: 240 is within 3 dB of the top)
+    #expect(
+      img.level(c, 27 - row) >= 240,
+      "\(what): the 1 kHz row is the loudest cell: \(img.level(c, 27 - row))")
+    #expect(
+      (0..<28).allSatisfy { img.level(c, 27 - $0) <= img.level(c, 27 - row) },
+      "\(what): and no other row is above it")
+    for j in 0..<28 where ModelGrid.specEdges[j + 1] <= 125 || ModelGrid.specEdges[j] >= 8000 {
+      #expect(
+        img.level(c, 27 - j) == 0,
+        "\(what): row \(j) (\(Int(ModelGrid.specEdges[j])) Hz) is black")
+    }
+    // the neighbours fall off with the Blackman skirt, within a couple of rows
+    #expect(img.level(c, 27 - row - 3) < 100 && img.level(c, 27 - row + 3) < 100, "\(what)")
+  }
+
   @Test func aSineThroughADeckLightsTheRowWithItsFrequencyAndNothingThreeOctavesAway() throws {
     let rig = try sineRig()
     defer { rig.stop() }
@@ -323,36 +378,17 @@ struct MeasuredReaderFeedTests {
     let reader = MeasuredReader()
     run(rig, feed, reader, seconds: 2)
     #expect(reader.reads >= 15, "a read for every step that had new audio: \(reader.reads)")
-    // the image the Spectro mode draws from these frames, at its last slice (the newest frame)
-    let axis = feed.timeAxis(x0: 0, w: 100)
-    let img = SpectroImage.measured(frames: reader.frames, t0: axis.t0, win: axis.win)
-    #expect(img.peakDb.isFinite)
-    let row = spectroRow(containing: 1000)
-    let c = 159  // tc = tNow: the frame read at the last update
-    // the loudest cell of the window is in this row (another frame may be a fraction of a dB
-    // above the newest one: 240 is within 3 dB of the top)
-    #expect(
-      img.level(c, 27 - row) >= 240, "the 1 kHz row is the loudest cell: \(img.level(c, 27 - row))"
-    )
-    #expect(
-      (0..<28).allSatisfy { img.level(c, 27 - $0) <= img.level(c, 27 - row) },
-      "and no other row is above it")
-    for j in 0..<28 where ModelGrid.specEdges[j + 1] <= 125 || ModelGrid.specEdges[j] >= 8000 {
-      #expect(img.level(c, 27 - j) == 0, "row \(j) (\(Int(ModelGrid.specEdges[j])) Hz) is black")
-    }
-    // the neighbours fall off with the Blackman skirt, within a couple of rows
-    #expect(img.level(c, 27 - row - 3) < 100 && img.level(c, 27 - row + 3) < 100)
+    expectTheSineAtItsRow(image(feed, reader), "deck")
   }
 
-  @Test func theMasterTapMeasuresTheSameSine() throws {
+  @Test func theMasterTapMeasuresTheSameSineAndNothingElse() throws {
     let rig = try sineRig()
     defer { rig.stop() }
     let feed = rig.hub.feed(.master)
     feed.acquire()
     let reader = MeasuredReader()
     run(rig, feed, reader, seconds: 2)
-    let frame = (0..<28).map { reader.frames.value(newest: 1, row: $0) }
-    #expect(frame.indices.max { frame[$0] < frame[$1] } == 15, "\(frame)")
+    expectTheSineAtItsRow(image(feed, reader), "master")
   }
 
   @Test func notMeasuredMeansNoFftNoRingNoReads() throws {
@@ -450,6 +486,206 @@ struct MeasuredReaderFeedTests {
     let now = try #require(feed.stepAt(feed.nowTime))
     #expect(abs(reader.measAt - now) < 1.5, "measAt \(reader.measAt) vs step now \(now)")
     #expect(reader.measFrom < 16)
+  }
+
+  // MARK: silence and the transport
+
+  @Test func anIdleDeckMeasuresNothingAndTheBlockStaysBlack() throws {
+    // a deck that never plays: the engine clock runs, the window is all zeros. Every read is
+    // -200 dB in every row, which the autoscale (floor = max - 50) would turn into a block of
+    // the brightest colour
+    let rig = try ScopeRig(net: [], samples: ["A"], play: false)
+    defer { rig.stop() }
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let reader = MeasuredReader()
+    run(rig, feed, reader, seconds: 4)
+    #expect(reader.reads >= 30, "the reader did run: \(reader.reads)")
+    #expect(reader.frames.isEmpty)
+    let img = image(feed, reader)
+    #expect(img.levels.allSatisfy { $0 == 0 } && img.peakDb == -.infinity)
+  }
+
+  @Test func aStoppedDeckGoesBlackOnceItsLastSoundLeavesTheWindow() throws {
+    // the sine plays for 3 s and the deck is paused: it then holds one sample value, a constant
+    // (float noise around -190 dB in the rows). As the loud frames scroll out of the 8 s window
+    // the quiet ones used to be stretched to the maximum colour
+    let rig = try sineRig()
+    defer { rig.stop() }
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let reader = MeasuredReader()
+    run(rig, feed, reader, seconds: 3)
+    #expect(image(feed, reader).levels.contains { $0 >= 240 }, "playing: the picture is lit")
+    rig.dj["A"]!.setPlaying(false)
+    run(rig, feed, reader, seconds: 1)
+    // one window length (8 s) plus the quarter second a slice may lean on its frame
+    run(rig, feed, reader, seconds: 8)
+    let img = image(feed, reader)
+    #expect(img.levels.allSatisfy { $0 == 0 }, "\(img.levels.filter { $0 != 0 }.count) lit cells")
+    #expect(img.peakDb == -.infinity)
+  }
+
+  @Test func aStoppedLeadAddsNothingToTheBarsAndResumingDoesNotDiluteThem() throws {
+    let rig = try ScopeRig(net: ["A"], genre: "techno", seed: 42, tempo: 300)
+    defer { rig.stop() }
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let reader = MeasuredReader()
+    run(rig, feed, reader, seconds: 3)
+    let maxBar = reader.maxBar
+    let measAt = reader.measAt
+    let reads = reader.measCnt.reduce(0, +)
+    #expect(maxBar >= 2 && reads > 20)
+    // paused for a second (20 steps at 300 BPM): the step at "now" would run on past the song
+    rig.dj["A"]!.setPlaying(false)
+    run(rig, feed, reader, seconds: 1)
+    #expect(feed.clock.transport == .stopped)
+    #expect(reader.maxBar == maxBar && reader.measAt == measAt, "bar \(reader.maxBar)")
+    #expect(reader.measCnt.reduce(0, +) <= reads + 1, "at most the read in flight at the stop")
+    // and on: every bar is read at the playing rate (8 per bar at 10 reads a second and 0.8 s
+    // a bar), the one the pause fell in included, none was skipped
+    rig.dj["A"]!.setPlaying(true)
+    for _ in 0..<30 {
+      // from the first read on, the bars are where the song is, not where the clock ran to
+      rig.render(seconds: 0.1)
+      rig.hub.pump()
+      reader.update(feed: feed, enabled: true)
+      let sounding = Double(feed.clock.tick - 1) + feed.clock.tickPhase
+      #expect(reader.measAt <= sounding + 3, "measAt \(reader.measAt) vs step \(sounding)")
+      #expect(reader.maxBar <= Int((sounding + 3) / 16), "bar \(reader.maxBar) vs \(sounding)")
+    }
+    #expect(reader.maxBar > maxBar)
+    for bar in 1..<reader.maxBar {
+      #expect(
+        reader.measCnt[bar] >= 5 && reader.measCnt[bar] <= 9, "bar \(bar): \(reader.measCnt[bar])")
+    }
+    let sounding = Double(feed.clock.tick - 1) + feed.clock.tickPhase
+    #expect(abs(reader.measAt - sounding) < 2.5, "measAt \(reader.measAt) vs step \(sounding)")
+  }
+
+  @Test func aLongPauseBetweenReadsRestartsTheCoverageWindowAShortOneDoesNot() throws {
+    let rig = try ScopeRig(net: ["A"], genre: "techno", seed: 42, tempo: 300)
+    defer { rig.stop() }
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let reader = MeasuredReader()
+    run(rig, feed, reader, seconds: 2)
+    let first = reader.measFrom
+    #expect(first < 40 && reader.maxBar >= 1)
+    // half a second of another view: the next read just continues
+    rig.render(seconds: 0.5)
+    rig.hub.pump()
+    reader.update(feed: feed, enabled: true)
+    #expect(reader.measFrom == first)
+    // two seconds (40 steps): the bars on either side of the hole are not one covered stretch,
+    // the window restarts at the read that ends it. What was read stays.
+    let bars = reader.maxBar
+    rig.render(seconds: 2)
+    rig.hub.pump()
+    reader.update(feed: feed, enabled: true)
+    #expect(reader.measFrom == reader.measAt && reader.measFrom > first + 40)
+    #expect(reader.maxBar >= bars && reader.measCnt[1] > 0, "the bars are kept")
+  }
+
+  @Test func aLeadThatChangesOnAMasterStartsTheBarsOverAndKeepsTheFrames() throws {
+    let rig = try ScopeRig(
+      net: ["A", "B"], genre: "techno", seed: 42, tempo: 300, play: false)
+    defer { rig.stop() }
+    rig.dj["A"]!.setPlaying(true)
+    let master = rig.hub.feed(.master)
+    master.acquire()
+    let deckA = rig.hub.feed(.deck("A"))
+    deckA.acquire()
+    let reader = MeasuredReader()
+    let onA = MeasuredReader()
+    for _ in 0..<30 {
+      rig.render(seconds: 0.1)
+      rig.hub.pump()
+      reader.update(feed: master, enabled: true)
+      onA.update(feed: deckA, enabled: true)
+    }
+    #expect(master.leadDeck == "A")
+    let aReads = onA.measCnt.reduce(0, +)
+    #expect(aReads > 20)
+    let reads = reader.measCnt.reduce(0, +)
+    let frames = reader.frames.count
+    let maxBar = reader.maxBar
+    #expect(reads > 20 && frames > 20 && maxBar >= 2)
+    // B takes the lead: its song is another axis (steps and bars), A's bars mean nothing to it
+    rig.dj["A"]!.setPlaying(false)
+    rig.dj["B"]!.setPlaying(true)
+    rig.render(seconds: 0.2)
+    rig.hub.pump()
+    #expect(master.leadDeck == "B")
+    reader.update(feed: master, enabled: true)
+    #expect(
+      reader.measCnt.reduce(0, +) <= 1, "the bars were emptied: \(reader.measCnt.reduce(0, +))")
+    #expect(reader.maxBar < maxBar && reader.measFrom >= reader.measAt)
+    #expect(reader.frames.count >= frames, "measured audio stays")
+    // the deck feed of A is not a master: its bars are A's whoever leads
+    onA.update(feed: deckA, enabled: true)
+    #expect(onA.measCnt.reduce(0, +) >= aReads && onA.maxBar == maxBar, "A's own bars stay")
+  }
+
+  // MARK: which audio
+
+  @Test func aFrameIsTheAudioThatEndsAtItsTimeStamp() throws {
+    // 5 s of silence, then 1 kHz: the first frame with a tone in it is the one whose window ends
+    // after the onset, and it holds exactly the part of the tone that came before its stamp
+    let rig = try ScopeRig(net: [], samples: ["A"], play: false)
+    defer { rig.stop() }
+    let rate = 22050
+    let onset = rate * 5
+    func tone(_ i: Int) -> Float {
+      i < onset ? 0 : Float(0.5 * sin(2 * Double.pi * 1000 * Double(i - onset) / Double(rate)))
+    }
+    rig.dj["A"]!.load(
+      SampleBuffer(left: (0..<rate * 20).map(tone), sampleRate: Double(rate)), title: "burst")
+    rig.dj["A"]!.setPlaying(true)
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let reader = MeasuredReader()
+    var offset: Int?  // the deck frame at which buffer sample 0 was rendered
+    var firstLit: Double?
+    var compared = 0
+    for _ in 0..<80 {
+      rig.render(seconds: 0.1)
+      rig.hub.pump()
+      let before = reader.frames.count
+      reader.update(feed: feed, enabled: true)
+      guard reader.frames.count > before else { continue }
+      #expect(reader.frames.time(newest: 1) == feed.nowTime, "a frame is stamped with 'now'")
+      let end = feed.nowFrame
+      if offset == nil {
+        var w = [Float](repeating: 0, count: 4096)
+        w.withUnsafeMutableBufferPointer { feed.history.copyWindow(into: $0, endingAt: end) }
+        let at = try #require(w.firstIndex { abs($0) > 1e-3 })
+        offset = end - 4096 + at - (onset + 1)  // the tone's first non-zero sample is index +1
+        firstLit = feed.nowTime
+        #expect(offset! >= 0 && offset! < 4096, "deck offset \(offset!)")
+      }
+      // the same window cut from the signal by hand: [end - 4096, end) at the deck's offset
+      let ref = MeasuredReader()
+      ref.ingest(
+        window: (0..<4096).map { tone(end - 4096 + $0 - offset!) }, sampleRate: Double(rate),
+        time: feed.nowTime, anchor: nil, tickSec: 0.125)
+      let row = spectroRow(containing: 1000)
+      // (the deck's pass-through is a few hundredths of a dB off the buffer, and the rows that
+      // are float leakage, below -60 dB, are noise: compare what is signal)
+      for j in (row - 2)...(row + 2) {
+        let got = reader.frames.value(newest: 1, row: j)
+        let want = ref.frames.value(newest: 1, row: j)
+        if want > -60 {
+          #expect(abs(got - want) < 0.3, "frame at \(feed.nowTime) row \(j): \(got) vs \(want) dB")
+        }
+      }
+      compared += 1
+    }
+    // nothing before the onset is a frame; the first one is within a read of it
+    let lit = try #require(firstLit)
+    #expect(lit > 5 && lit < 5.25, "first frame with a tone: \(lit) s")
+    #expect(compared > 30, "frames compared: \(compared)")
   }
 
   @Test func oneReaderPerFeedInTheStore() throws {

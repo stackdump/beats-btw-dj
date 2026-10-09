@@ -18,7 +18,8 @@
 //     `measBars / measCnt` (`measDb(bar:row:)`). All of them are indexed by SONG STEP/BAR of the
 //     feed's lead deck, the same axis as `ModelEngine.modelBars`, and reset together with it.
 //   * FRAMES (mode 3): `10·log10(p[5 + j] + 1e-20)` of the 28 spectrogram rows, with the time of
-//     the read, into a ring of 512 frames (`frames`).
+//     the read, into a ring of 512 frames (`frames`). A read with no signal in it (its loudest row
+//     below `silenceDb`) is not a frame: see SILENCE AND THE TRANSPORT.
 //
 // UNITS. `p` is a sum of squared NORMALISED magnitudes, `|X_k|/N` (the dB of an analyser bin is
 // `20·log10` of that), not the Σx² of the time signal that `ModelEngine` speaks: a unit sine of
@@ -26,6 +27,26 @@
 // window), the same sine is `N·A²/2` in Σx². The two sides therefore differ by a per-band offset
 // (and by the analyser's window and the master's tanh) that a comparison removes by taking each
 // side's mean per band, as the JS residual does; do not compare their levels directly.
+//
+// SILENCE AND THE TRANSPORT. scope.js reads only while its loop runs, which is only while the
+// transport plays, so the JS never analyses a stopped deck. Here the engine clock runs on whatever
+// the transport does, and a stopped or idle deck is analysed like any other: digital silence reads
+// 0 power (-200 dB in a frame), and a paused sample deck holds its last sample, a constant that
+// the analyser reports as float noise around -190 dB. With the spectrogram's autoscale
+// (`floor = mx - 50`) such frames would fill the window with the maximum colour. Two rules keep
+// the picture honest, both listed as deviations in the mode's report:
+//   * a frame whose loudest row is at or below `silenceDb` (-120 dB, in the unit above: the
+//     quantisation noise of 16-bit audio is -142 per bin, about -122 for the widest row) is not
+//     pushed; the 0.25 s rule then draws black where nothing sounded;
+//   * the bars take a read only while the lead deck's transport plays (`feed.clock.playing`;
+//     a scratch freezes the net clock, so its extrapolated step would be a phantom too).
+//     Otherwise the step at "now" runs on past the song, each stopped read adds a zero to a
+//     phantom bar and dilutes the means.
+//
+// GAPS. Only the mode that is drawing reads, so a stretch in another view (or a stalled UI) leaves
+// no reads. A pause of more than `gapSeconds` between two reads restarts the coverage window
+// (`measFrom = Infinity`) exactly like a re-enable, so a bar on either side of a hole is not
+// presented as covered. The frames show the hole as black slices (the 0.25 s rule).
 //
 // Row bin ranges (`MeasuredBins`) come from the edges and the SAMPLE RATE of the feed:
 // `df = sr / 4096`, `a = max(1, round(lo / df))`, `hi = min(2048, max(a + 1, round(hi / df)))`
@@ -39,7 +60,7 @@
 //     ring writes), as the JS stops reading when "measured" is unticked. Unlike the JS, which
 //     reads in `frame()` whichever view is open, only the mode that is drawing reads: a stretch
 //     spent in Scope/Live or Raster leaves a gap in the bars (and in the frames, which draw as
-//     black slices after the 0.25 s rule).
+//     black slices after the 0.25 s rule); see GAPS.
 //   * Cadence. `analyse` is called once per `update` that finds new audio, at the drawn-frame
 //     rate (<= 30 Hz through the pacer). Smoothing is 0, so there is no cadence-dependent state; a
 //     second `update` in the same frame (no new audio since: `feed.nowFrame` is the guard) is
@@ -60,6 +81,7 @@
 // would blank the master's spectrogram whenever the other deck loads a track; mode 1 keeps its
 // waveform ring for the same reason). A gap in time (re-acquire) shows as black slices.
 // Re-enabling `measured` restarts the coverage window (`measFrom = Infinity`), as the JS does.
+// A stopped lead transport adds nothing to the bars (see SILENCE AND THE TRANSPORT).
 
 import Foundation
 
@@ -177,6 +199,12 @@ public struct MeasuredFrameRing: Sendable {
 public final class MeasuredReader {
   public static let rows = ModelGrid.rows
   public static let maxBars = ModelGrid.maxBars
+  /// A frame whose loudest spectrogram row is at or below this many dB is silence and is not
+  /// kept (see the header). Not in scope.js, which does not read a stopped transport.
+  public static let silenceDb: Float = -120
+  /// A pause between two reads longer than this many seconds of engine time restarts the
+  /// coverage window (see the header).
+  public static let gapSeconds = 1.0
 
   /// The analyser: fftSize 4096, smoothing 0.
   public let analyser = AnalyserFFT(
@@ -199,7 +227,7 @@ public final class MeasuredReader {
   public private(set) var measFrom = Double.infinity
   /// The latest (fractional) step read; -1 for none.
   public private(set) var measAt = -1.0
-  /// Reads done (frames pushed), never reset.
+  /// Reads done (analyses), never reset. `frames.count` is lower where reads were silent.
   public private(set) var reads = 0
 
   private var window = [Float](repeating: 0, count: MeasuredBins.fftSize)
@@ -208,6 +236,7 @@ public final class MeasuredReader {
   private var binsFor = 44100.0
   private var wasEnabled = false
   private var lastFrame = -1
+  private var lastReadTime = -Double.infinity
   private var generation = 0
   private var leadKey: LeadKey?
 
@@ -222,8 +251,9 @@ public final class MeasuredReader {
 
   /// One drawn frame. `enabled` is the panel's "measured" flag: false does nothing at all (and
   /// the next true starts a fresh coverage window). True: forget the bars if the feed's
-  /// generation (or a master's lead) changed, then read the newest 4096 samples if the engine
-  /// has moved since the last read. Idempotent within a frame.
+  /// generation (or a master's lead) changed, restart the coverage window after a gap, then read
+  /// the newest 4096 samples if the engine has moved since the last read. The read counts for a
+  /// bar only while the lead transport plays. Idempotent within a frame.
   public func update(feed: ScopeFeed, enabled: Bool) {
     guard enabled else {
       wasEnabled = false
@@ -247,18 +277,21 @@ public final class MeasuredReader {
     let end = feed.nowFrame
     guard end != lastFrame else { return }
     lastFrame = end
+    let now = feed.nowTime
+    if now - lastReadTime > Self.gapSeconds { measFrom = .infinity }
+    lastReadTime = now
     window.withUnsafeMutableBufferPointer {
       feed.history.copyWindow(into: $0, endingAt: end)
     }
     ingest(
-      window: window, sampleRate: feed.sampleRate, time: feed.nowTime,
-      anchor: feed.anchorAt(feed.nowTime), tickSec: feed.tickSec)
+      window: window, sampleRate: feed.sampleRate, time: now,
+      anchor: feed.clock.playing ? feed.anchorAt(now) : nil, tickSec: feed.tickSec)
   }
 
   /// scope.js `readMeasured` on a window of samples the caller cut: analyse it (the newest 4096
   /// are used, a shorter window is zero-padded at the front), sum the rows, add the read to its
-  /// bar and push the frame. `time` is the audio time of the window's last sample; `anchor` the
-  /// step anchor at or before it (nil: no bars, as the JS without one).
+  /// bar and push the frame (unless it is silence). `time` is the audio time of the window's last
+  /// sample; `anchor` the step anchor at or before it (nil: no bars, as the JS without one).
   public func ingest(
     window samples: [Float], sampleRate: Double, time tNow: Double, anchor: ScopeAnchor?,
     tickSec: Double
@@ -293,11 +326,14 @@ public final class MeasuredReader {
         measAt = step
       }
     }
-    // the frame: 10·log10(p + 1e-20) of the spectrogram rows, as float
+    // the frame: 10·log10(p + 1e-20) of the spectrogram rows, as float, unless nothing sounded
+    var loudest = -Float.infinity
     for j in 0..<ModelGrid.ns {
-      frameValues[j] = Float(10 * log10(Double(power[ModelGrid.nb + j]) + 1e-20))
+      let v = Float(10 * log10(Double(power[ModelGrid.nb + j]) + 1e-20))
+      frameValues[j] = v
+      if v > loudest { loudest = v }
     }
-    frames.push(time: tNow, values: frameValues)
+    if loudest > Self.silenceDb { frames.push(time: tNow, values: frameValues) }
     reads += 1
   }
 
@@ -327,6 +363,7 @@ public final class MeasuredReader {
     frames.removeAll()
     analyser.reset()
     lastFrame = -1
+    lastReadTime = -.infinity
     wasEnabled = false
   }
 }

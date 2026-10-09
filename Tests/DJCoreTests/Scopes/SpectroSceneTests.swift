@@ -142,6 +142,19 @@ struct SpectroSceneTests {
     #expect(scene().model?.note == nil)
   }
 
+  @Test func theFxPointLineSitsOnAPlateJustWideEnoughForItsText() throws {
+    // 10 pt monospaced is 6 px a character: 13 characters + 7 = 85 from 3 left of the text
+    let p = try #require(scene(fx: "pre-fader tap").model?.notePlate)
+    #expect(p == LiveScopeRect(x: 687, y: 13, w: 85, h: 13))
+    #expect(try #require(scene(fx: "master").model?.notePlate).w == 43)
+    // never wider than the canvas leaves room for
+    let narrow = try #require(scene(width: 700, fx: "pre-fader tap").model?.notePlate)
+    #expect(narrow.x == 587 && narrow.x + narrow.w <= 700)
+    // no note, no plate
+    #expect(scene().model?.notePlate == nil)
+    #expect(scene(axis: axis(anchor: false), hasNet: false, fx: "master").model?.notePlate == nil)
+  }
+
   // MARK: labels
 
   @Test func frequencyLabelsSitOnTheLogAxisInTheGutter() {
@@ -234,5 +247,38 @@ struct SpectroSceneTests {
     let secs = [ScopeSection(step: 40, name: "later")]
     #expect(try #require(scene(sections: secs, running: false).model).grid.sections.isEmpty)
     #expect(try #require(scene(sections: secs, running: true).model).grid.sections.count == 1)
+  }
+
+  // MARK: the same drawGrid as the live scope's
+
+  @Test func theGridIsTheOneTheLiveScopeDraws() {
+    // LiveScopeScene (mode 1) keeps its own copy of scope.js drawGrid; the two must stay equal
+    let secs = [
+      ScopeSection(step: -20, name: "intro"), ScopeSection(step: 24, name: "chorus"),
+      ScopeSection(step: 47, name: "late"),
+    ]
+    for (tNow, running) in [
+      (10.0, true), (10.0625, true), (10.0, false), (23.3, true), (4.0, true),
+    ] {
+      for anchored in [true, false] {
+        let ax = ScopeTimeAxis(
+          tickSec: 0.125, tNow: tNow,
+          anchor: anchored
+            ? ScopeAnchor(time: 8, frame: 0, step: 32, tempo: 120, generation: 1) : nil,
+          x0: 0, w: 800)
+        let live = LiveScopeScene.make(
+          width: 800, height: 300, axis: ax, columns: LiveScopeColumns(),
+          gain: LiveScopeGain(peak: 0.5, disp: 0.5), lanes: [], fires: ScopeFireLog(),
+          sections: secs, hasBlocks: true, running: running)
+        let mine = SpectroGrid.make(
+          axis: ax, y0: 0, y1: 300 - LiveScopeScene.axisHeight, labels: true, sections: secs,
+          running: running)
+        let what = "tNow \(tNow) running \(running) anchored \(anchored)"
+        #expect(live.gridLines == mine.lines, "\(what)")
+        #expect(live.barLabels == mine.barLabels, "\(what)")
+        #expect(live.sections == mine.sections, "\(what)")
+        if anchored { #expect(!mine.lines.isEmpty, "\(what)") }
+      }
+    }
   }
 }

@@ -146,6 +146,51 @@ struct SpectroControllerTests {
     #expect(reader.reads == reads)
   }
 
+  @Test func turningMeasuredOffAndOnAgainStartsAFreshCoverageWindow() throws {
+    let rig = try ScopeRig(net: ["A"], genre: "techno", seed: 42, structure: "loop", tempo: 300)
+    defer { rig.stop() }
+    let cache = warmedCache([("techno", 42, "loop", 300)])
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let s = spectro(cache)
+    // 0.1 s frames, so that a few off frames are far less than the reader's own gap rule
+    func frames(_ n: Int, measured: Bool) {
+      for _ in 0..<n {
+        rig.render(seconds: 0.1)
+        rig.hub.pump()
+        s.update(feed: feed, engine: rig.dj, measured: measured)
+      }
+    }
+    frames(30, measured: true)
+    let reader = try #require(s.reader)
+    let first = reader.measFrom
+    #expect(first < 40 && reader.maxBar >= 2)
+    frames(4, measured: false)  // 0.28 s, 5 steps
+    frames(2, measured: true)
+    #expect(
+      reader.measFrom > first + 40,
+      "the controller told the reader it was off: the window restarts at \(reader.measFrom)")
+    #expect(reader.measAt >= reader.measFrom)
+  }
+
+  @Test func theStatusLineSaysWhenTheTransportIsNotPlaying() throws {
+    let rig = try ScopeRig(net: ["A"], genre: "techno", seed: 42, structure: "loop", tempo: 300)
+    defer { rig.stop() }
+    let cache = warmedCache([("techno", 42, "loop", 300)])
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let s = spectro(cache)
+    run(rig, feed, s, seconds: 2)
+    let playing = s.statusText(feed: feed)
+    #expect(playing.hasSuffix(" · pre-fader tap"), "\(playing)")
+    rig.dj["A"]!.setPlaying(false)
+    run(rig, feed, s, seconds: 1)
+    #expect(s.statusText(feed: feed) == playing + " · stopped")
+    rig.dj["A"]!.setPlaying(true)
+    run(rig, feed, s, seconds: 1)
+    #expect(s.statusText(feed: feed) == playing)
+  }
+
   @Test func aSampleDeckHasNoModelButItsAudioIsMeasured() throws {
     let rig = try ScopeRig(net: [], samples: ["A"])
     defer { rig.stop() }

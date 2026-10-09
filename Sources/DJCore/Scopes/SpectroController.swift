@@ -65,15 +65,18 @@ public final class SpectroController {
       axis: feed.timeAxis(x0: gutter, w: width - gutter), sections: feed.sections,
       running: feed.clock.playing, hasNet: feed.hasNet, hasTables: model?.hasTables ?? false,
       columns: model?.spectroColumns ?? .empty, fxLabel: model?.fxPointLabel,
-      noNetText: feed.source == .master ? "no net deck" : "needs a net deck")
+      noNetText: feed.hasNet ? "" : feed.statusText)  // without a net that text IS the message
     if measured { input.measured = reader?.frames ?? MeasuredFrameRing() }
     return SpectroScene.make(width: width, height: height, input: input)
   }
 
-  /// The panel header's line (scope.js `updateStatus`: the kernel status), with what the model's
-  /// FX are taken at. Without a net deck there is no model to report: the feed's own text.
+  /// The panel header's line (scope.js `updateStatus`: the kernel status, and "paused" while the
+  /// loop is not running), with what the model's FX are taken at and the transport when it is not
+  /// playing. Without a net deck there is no model to report: the feed's own text.
   public func statusText(feed: ScopeFeed) -> String {
     guard feed.hasNet, let model else { return feed.statusText }
-    return "\(model.status) · \(model.fxPointLabel)"
+    var text = "\(model.status) · \(model.fxPointLabel)"
+    if let note = feed.clock.transport.statusNote { text += " · \(note)" }
+    return text
   }
 }

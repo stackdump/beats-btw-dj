@@ -244,6 +244,18 @@ struct SpectroImageTests {
     #expect(k(2.375) == nil, "0.375 s after the newest")
   }
 
+  @Test func theQuarterSecondIsNotAFuzzyLimit() {
+    // window 0 ..< 20 s: slice 9 is at tc = 1.25 s. A frame 0.24 s before it shows, one 0.26 s
+    // before it does not (a limit of 0.275 or 0.225 would get one of them wrong)
+    func shown(_ t: Double) -> Bool {
+      SpectroImage.measuredFrame(forSlice: 9, t0: 0, win: 20, in: ring([t])) != nil
+    }
+    #expect(shown(1.01), "0.24 s old")
+    #expect(!shown(0.99), "0.26 s old")
+    #expect(shown(1.25) && shown(1.0), "no age and exactly a quarter second")
+    #expect(!shown(1.2501), "a frame after the slice is never shown")
+  }
+
   @Test func sliceTimesAreTheWindowCutIntoOneHundredAndSixty() {
     // win 16: slices are 0.1 s apart, tc = (c + 1) / 10; the frame at 2.0 is shown from tc = 2.0
     // (c = 19) while it is at most 0.25 s old: tc 2.1 and 2.2, not 2.3

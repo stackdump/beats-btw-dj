@@ -52,6 +52,10 @@ struct ScopeSpectroView: View {
 
 /// Scene -> Canvas calls.
 enum SpectroPainter {
+  /// How much of the scope background the plate behind the model's FX-point line lays over the
+  /// image.
+  static let notePlateOpacity = 0.6
+
   static func paint(_ scene: SpectroScene, in ctx: inout GraphicsContext) {
     guard scene.ok else { return }
     for block in [scene.model, scene.measured].compactMap({ $0 }) { paint(block, in: &ctx) }
@@ -85,7 +89,14 @@ enum SpectroPainter {
     }
     for l in block.freqLabels { text(l, ScopeColors.text, in: &ctx) }
     text(block.title, ScopeColors.text, in: &ctx)
-    if let note = block.note { text(note, ScopeColors.text, in: &ctx) }
+    if let note = block.note {
+      if let plate = block.notePlate {
+        ctx.fill(
+          Path(LiveScopePainter.rect(plate)),
+          with: .color(ScopeColors.background.color.opacity(notePlateOpacity)))
+      }
+      text(note, ScopeColors.text, in: &ctx)
+    }
     if let message = block.message { text(message, ScopeColors.text, in: &ctx) }
   }
 

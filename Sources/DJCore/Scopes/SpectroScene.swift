@@ -29,6 +29,9 @@
 import Foundation
 
 /// The shared grid of the time-based views (scope.js `drawGrid`) for a block from `y0` to `y1`.
+/// `LiveScopeScene`'s private `addGrid` is the same function for the live scope (mode 1's file);
+/// `SpectroSceneTests` pins the two to each other on several axes, so a fix to one that misses
+/// the other fails there.
 public enum SpectroGrid {
   public struct Lines: Equatable, Sendable {
     public var lines: [LiveScopeScene.GridLine] = []
@@ -87,6 +90,8 @@ public struct SpectroScene: Sendable {
   public static let blockGap = 6.0
   /// Where the titles sit: `W - 110`.
   public static let titleInset = 110.0
+  /// The model block's second line, under the title.
+  public static let noteY = 14.0
   /// scope.js `freqLabels`: the labelled frequencies.
   public static let labelledFrequencies: [(hz: Double, text: String)] = [
     (50, "50"), (200, "200"), (1000, "1k"), (4000, "4k"), (12000, "12k"),
@@ -108,6 +113,9 @@ public struct SpectroScene: Sendable {
     public var title: LiveScopeText
     /// A second line under the title (the model's FX point).
     public var note: LiveScopeText?
+    /// A scope-background plate behind `note` (drawn translucent), so the line stays legible over
+    /// the warm cells of a loud passage. Not in the JS, like the note.
+    public var notePlate: LiveScopeRect?
     /// A line of explanation in the block (no net deck).
     public var message: LiveScopeText?
   }
@@ -208,7 +216,12 @@ public struct SpectroScene: Sendable {
       running: input.running)
     model.freqLabels = frequencyLabels(x: 2, y0: 0, h: bh)
     if input.hasNet, let label = input.fxLabel {
-      model.note = LiveScopeText(label, x: titleX, y: 14)
+      model.note = LiveScopeText(label, x: titleX, y: Self.noteY)
+      // 10 pt monospaced: 6 px a character, 12 a line
+      let x = titleX - 3
+      model.notePlate = LiveScopeRect(
+        x: x, y: Self.noteY - 1, w: Swift.min(Double(label.count) * 6 + 7, Swift.max(0, width - x)),
+        h: 13)
     }
     if !input.hasNet { model.message = LiveScopeText(input.noNetText, x: gutter + 8, y: 8) }
     s.model = model
