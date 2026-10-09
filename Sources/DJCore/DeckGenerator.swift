@@ -59,7 +59,9 @@ public final class PreparedTrack: @unchecked Sendable {
   public init(spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended) {
     self.spec = spec
     project = compose(genre: spec.genre, overrides: spec.overrides)
-    prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: opts)
+    var o = opts
+    o.voicingSeed = spec.seed
+    prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: o)
   }
 }
 

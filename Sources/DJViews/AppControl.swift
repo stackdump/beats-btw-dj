@@ -128,15 +128,17 @@ extension AppModel {
     return names.sorted()
   }
 
-  /// What an instrument sounds like here: its engine, or the wavetable family it folds into.
-  /// A sampled one lists what it tries, in order ("sampler exs:… → gm:25 → pluck").
+  /// What an instrument can sound like here: its category and how many sampled sounds this
+  /// Mac has for it (a track picks one by seed), or just its synth voice.
   static func soundOf(_ name: String) -> String {
     if name.hasPrefix("drums") { return "drum kit" }
     let v = InstrumentTable.shared.voice(instrument: name, group: "melody")
     let synth = v.engine == "table" ? "table:\(v.wave)" : v.engine
-    guard let s = InstrumentTable.shared.sampler(for: name) else { return synth }
-    let tried = s.sources.filter(\.isAvailable).map(\.description)
-    return (["sampler"] + [(tried + [synth]).joined(separator: " → ")]).joined(separator: " ")
+    let catalog = VoiceCatalog.shared
+    guard let category = catalog.categoryOf[name] else { return synth }
+    let n = catalog.pool(category).count
+    let keeps = catalog.keepSynth.contains(category)
+    return "\(category): \(n) sampled" + (keeps ? " or \(synth)" : n == 0 ? ", GM" : "")
   }
 
   /// Render a short phrase on one instrument, save it as a WAV and play it on the Mac's
@@ -163,9 +165,18 @@ extension AppModel {
     let voice = InstrumentTable.shared.voice(instrument: name, group: "melody")
     var sampler: (bank: SamplerBank, slot: Int)?
     var plays = voice.engine == "table" ? "table:\(voice.wave)" : voice.engine
-    if let s = InstrumentTable.shared.sampler(for: name),
-      let slot = auditionBank.slot(for: s.sources, gain: s.gain)
-    {
+    let catalog = VoiceCatalog.shared
+    var sources = catalog.sources(instrument: name, role: "melody", seed: p["seed"]?.double ?? 0)
+    if let sound = p["sound"]?.string {
+      let pool = catalog.categoryOf[name].map { catalog.pool($0) } ?? []
+      guard let s = pool.first(where: { $0.name.lowercased() == sound.lowercased() }) else {
+        throw ControlRequestError.bad(
+          "no sound \"\(sound)\" for \(name) (its pool: \(pool.map(\.name).joined(separator: ", ")))"
+        )
+      }
+      sources = [s.source]
+    }
+    if let sources, let slot = auditionBank.slot(for: sources) {
       sampler = (auditionBank, slot)
       plays = auditionBank.source(of: slot)?.description ?? plays
     }
@@ -309,6 +320,11 @@ extension AppModel {
     o["decks"] = .array((engine?.decks.keys.sorted() ?? []).map { .string($0) })
     o["genres"] = .array(BeatsTables.shared.genres.keys.sorted().map { .string($0) })
     o["structures"] = .array(Self.structures.map { .string($0) })
+    o["voices"] = .object(
+      JSONObject(
+        VoiceCatalog.shared.sounds.keys.sorted().map { c in
+          (c, .array(VoiceCatalog.shared.pool(c).map { .string($0.name) }))
+        }))
     o["instruments"] = .array(
       Self.allInstruments.map {
         .object(JSONObject([("name", .string($0)), ("sound", .string(Self.soundOf($0)))]))

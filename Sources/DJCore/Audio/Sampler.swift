@@ -51,7 +51,8 @@ public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
 /// audio thread makes; neither allocates.
 public final class SamplerInstrument: @unchecked Sendable {
   public let source: SamplerSource
-  public let gain: Double
+  /// Output gain; `normalize` sets it before the instrument is published.
+  public private(set) var gain: Double
   static let maxFrames = 4096
   /// Held while any sampler is set up or torn down, across every bank: CoreAudio traps when
   /// one AUSampler initialises while another uninitialises (and patched EXS copies share a
@@ -96,6 +97,45 @@ public final class SamplerInstrument: @unchecked Sendable {
     right = .allocate(capacity: Self.maxFrames)
     abl = AudioBufferList.allocate(maximumBuffers: 2)
     timestamp.mFlags = .sampleTimeValid
+  }
+
+  /// The phrase levels are measured on: a strummed C chord, then single notes (the same
+  /// one the synth voices are calibrated against).
+  static let referencePhrase: [(note: Int, at: Double, seconds: Double)] = [
+    (48, 0, 0.5), (52, 0.02, 0.5), (55, 0.04, 0.5), (60, 0.06, 0.5), (64, 0.5, 0.25),
+    (67, 0.75, 0.25), (72, 1.0, 0.5),
+  ]
+  /// RMS of the lead synth voice on `referencePhrase`: what every sampled instrument is
+  /// brought to, so a pick from any pool sits in the mix.
+  public static let targetRMSdB = -27.5
+
+  /// Off the audio thread, before publishing: play the reference phrase, measure it, set
+  /// `gain` to land on `targetRMSdB`, then silence and reset the unit.
+  func normalize(sampleRate sr: Double) {
+    gain = 1
+    let total = Int(2 * sr)
+    let block = 512
+    var buf = [Float](repeating: 0, count: block)
+    var sum = 0.0
+    var t = 0
+    let ons = Self.referencePhrase.map { Int(($0.at * sr).rounded()) }
+    let offs = Self.referencePhrase.map { Int((($0.at + $0.seconds) * sr).rounded()) }
+    while t < total {
+      let n = min(block, total - t)
+      for (k, p) in Self.referencePhrase.enumerated() {
+        if ons[k] >= t && ons[k] < t + n { send(0x90, UInt8(p.note), 100, at: ons[k] - t) }
+        if offs[k] >= t && offs[k] < t + n { send(0x80, UInt8(p.note), 0, at: offs[k] - t) }
+      }
+      for i in 0..<n { buf[i] = 0 }
+      buf.withUnsafeMutableBufferPointer { renderAdding(frames: n, $0.baseAddress!, nil) }
+      for i in 0..<n { sum += Double(buf[i]) * Double(buf[i]) }
+      t += n
+    }
+    let rms = 10 * log10(max(sum / Double(total), 1e-20))
+    gain = min(20, max(0.02, pow(10, (Self.targetRMSdB - rms) / 20)))
+    send(0xB0, 123, 0, at: 0)
+    au.reset()
+    timestamp.mSampleTime = 0
   }
 
   deinit {
@@ -170,9 +210,10 @@ public final class SamplerBank: @unchecked Sendable {
     slots.deallocate()
   }
 
-  /// Off the audio thread: the slot playing the first of `sources` that loads, loading it if
-  /// needed. nil when none loads or the bank is full (the caller falls back to a synth voice).
-  public func slot(for sources: [SamplerSource], gain: Double) -> Int? {
+  /// Off the audio thread: the slot playing the first of `sources` that loads, loading (and
+  /// level-normalising) it if needed. nil when none loads or the bank is full (the caller
+  /// falls back to a synth voice).
+  public func slot(for sources: [SamplerSource]) -> Int? {
     lock.lock()
     defer { lock.unlock() }
     for s in sources {
@@ -181,12 +222,13 @@ public final class SamplerBank: @unchecked Sendable {
       let n = published.load(ordering: .relaxed)
       guard n < Self.capacity else { return nil }
       let loaded = SamplerInstrument.lifecycle.withLock {
-        try? SamplerInstrument(source: s, sampleRate: sampleRate, gain: gain)
+        try? SamplerInstrument(source: s, sampleRate: sampleRate)
       }
       guard let inst = loaded else {
         unloadable.insert(s)
         continue
       }
+      inst.normalize(sampleRate: sampleRate)
       slots[n] = Unmanaged.passRetained(inst)
       published.store(n + 1, ordering: .releasing)
       bySource[s] = n

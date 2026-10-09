@@ -42,18 +42,6 @@ public final class InstrumentTable: @unchecked Sendable {
 
   public var names: [String] { entries.keys.sorted() }
 
-  /// A sampled instrument for `name`, if its entry has one: the sources to try in order (a
-  /// local EXS, then a General MIDI program) and the gain to play it at. When none loads,
-  /// the instrument keeps its synth voice.
-  public func sampler(for name: String?) -> (sources: [SamplerSource], gain: Double)? {
-    guard let name, let s = entries[name]?["sampler"] else { return nil }
-    var sources: [SamplerSource] = []
-    if let exs = s["exs"]?.string { sources.append(.exs(named: exs)) }
-    for e in s["exs"]?.array ?? [] { if let x = e.string { sources.append(.exs(named: x)) } }
-    if let gm = s["gm"]?.int { sources.append(.gm(gm)) }
-    return sources.isEmpty ? nil : (sources, s["gain"]?.double ?? 1)
-  }
-
   /// The voice for an instrument: its family voice, overlaid by its entry if it has one.
   public func voice(instrument: String?, group: String?) -> VoiceSpec {
     var v = tonalVoice(instrument: instrument, group: group)
@@ -89,11 +77,13 @@ extension WaveOptions {
   /// What the app plays: beats' wave engine plus the instrument table.
   public static var extended: WaveOptions { extended(samplers: nil) }
 
-  /// The app's options for one deck: its sampler bank plays the sampled instruments.
-  public static func extended(samplers: SamplerBank?) -> WaveOptions {
+  /// The app's options for one deck: its sampler bank plays the sampled instruments, voiced
+  /// by `seed` (the track's).
+  public static func extended(samplers: SamplerBank?, seed: Double = 0) -> WaveOptions {
     var o = WaveOptions()
     o.instruments = .shared
     o.samplers = samplers
+    o.voicingSeed = seed
     return o
   }
 }

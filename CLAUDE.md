@@ -77,12 +77,21 @@ its copy; the two are now independent. Rules inherited from that split:
 - `InstrumentTableTests` hold each entry to: in tune (fundamental partial < 5 cents), rings
   and decays, and within 3 dB of the lead voice — re-run it when adding or retuning one.
   `dj_audition` (or `djctl ctl audition '{"instrument":…}'`) plays one on the Mac's output.
-- **Sampled instruments** (`"sampler": {exs, gm, gain}` in an entry): Logic/GarageBand EXS
-  instruments on this Mac, then a General MIDI program from macOS's `gs_instruments.dls`,
-  then the synth voice. Each deck owns a `SamplerBank` (`WaveDeckSource.samplers`); its
+- **Voicing / sampled instruments** (`VoiceCatalog`, `Resources/voices/categories.json`): the
+  Logic/GarageBand EXS instruments installed on this Mac are scanned and sorted into
+  categories by name rules (bass.electric, guitar.acoustic, keys.epiano, brass, synth.lead…;
+  articulation and iOS copies count once). beats' composer still picks its instrument names
+  — tracks stay beats-identical — and each name maps to a category; a role (all its riff
+  variants) plays a pick from that category's pool seeded by the track seed + role, then the
+  rest of the pool, then the category's General MIDI programs (`gs_instruments.dls`), then
+  its synth voice. `keepSynth` categories offer the synth voice in the pool too. New content
+  joins the pools when installed — no code change; picks move when the pool does. Every
+  sampler is level-normalised on load (`normalize`, to the lead voice's −27.5 dB on the
+  reference phrase), so no per-instrument gains. Each deck owns a `SamplerBank` (`WaveDeckSource.samplers`); its
   AUSamplers are rendered by hand inside the deck's callback (not engine nodes), so MIDI is
   sample-exact and offline rendering works. Compile with the deck's options
-  (`Deck.waveOptions` / `.extended(samplers:)`) or the instrument stays a synth voice.
+  (`Deck.waveOptions` / `.extended(samplers:seed:)`, seed = the track's) or the instrument
+  stays a synth voice; a recompile without the seed (section jumps!) would change the picks.
 - Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
   `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
   uninitialises). Old EXS files with 31-char truncated sample names are patched into

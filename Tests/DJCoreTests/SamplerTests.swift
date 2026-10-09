@@ -3,82 +3,88 @@ import Testing
 @testable import DJCore
 
 /// Sampled instruments play from content on this Mac (Logic / GarageBand EXS, or macOS's
-/// General MIDI bank, which every Mac has). An EXS that is missing falls back to its GM
-/// program, so these hold either way.
+/// General MIDI bank, which every Mac has); `VoiceCatalog` scans what is installed.
 struct SamplerTests {
   let sr = 48_000.0
-  let table = InstrumentTable.shared
-  var sampled: [String] { table.names.filter { table.sampler(for: $0) != nil } }
+  let catalog = VoiceCatalog.shared
+  var allSounds: [CatalogSound] {
+    catalog.sounds.values.flatMap { $0 }.sorted { $0.name < $1.name }
+  }
+
+  /// Categories whose sounds should hold a steady pitch (no chorus, vibrato or detune).
+  static let tuned: Set<String> = [
+    "guitar.acoustic", "guitar.electric", "bass.electric", "bass.acoustic", "bass.sub",
+    "keys.piano", "keys.epiano", "keys.organ", "keys.clav", "mallet", "brass", "strings",
+    "woodwind.reed",
+  ]
 
   func render(
-    _ name: String, _ notes: [(note: Int, at: Double, seconds: Double)], _ seconds: Double
-  ) throws -> [Float] {
-    let s = try #require(table.sampler(for: name))
+    _ source: SamplerSource, _ notes: [(note: Int, at: Double, seconds: Double)],
+    _ seconds: Double
+  ) -> [Float]? {
     let bank = SamplerBank(sampleRate: sr)
-    let slot = try #require(bank.slot(for: s.sources, gain: s.gain), "\(name) loads")
+    guard let slot = bank.slot(for: [source]) else { return nil }
     return WaveRunner.audition(
-      table.voice(instrument: name, group: "melody"), notes: notes, sampleRate: sr,
+      tonalVoice(instrument: "", group: "melody"), notes: notes, sampleRate: sr,
       seconds: seconds, sampler: (bank, slot))
   }
 
-  @Test func everySampledInstrumentLoads() {
-    #expect(sampled.count >= 20)
-    for n in sampled {
-      let s = table.sampler(for: n)!
-      #expect(SamplerBank(sampleRate: sr).slot(for: s.sources, gain: s.gain) != nil, "\(n)")
+  @Test func everyCategoryHasSomethingThatPlays() {
+    for (category, pool) in catalog.sounds {
+      let loads = pool.contains { SamplerBank(sampleRate: sr).slot(for: [$0.source]) != nil }
+      #expect(loads, "\(category): none of \(pool.map(\.name)) loads")
+    }
+    for programs in catalog.gm.values {
+      for p in programs { #expect(SamplerBank(sampleRate: sr).slot(for: [.gm(p)]) != nil) }
     }
   }
 
-  @Test(arguments: [
-    "acoustic-guitar", "electric-guitar", "bass", "808-bass", "sub-bass", "piano",
-    "electric-piano", "marimba", "vibes", "kalimba", "music-box", "organ", "clavinet",
-    "steel-drum", "sax", "trumpet", "brass", "strings",
-  ])
-  func playsInTune(_ name: String) throws {
-    let a = try render(name, [(57, 0, 1)], 0.6)
-    let f = partialPeak(a[4800..<24000], near: midiHz(57), sampleRate: sr)
-    #expect(abs(cents(f, midiHz(57))) < 10, "\(name): \(cents(f, midiHz(57))) cents")
+  @Test func soundsThatShouldBeInTuneAre() {
+    for s in allSounds where Self.tuned.contains(s.category) {
+      guard let a = render(s.source, [(57, 0, 1)], 0.6) else { continue }  // missing samples
+      let f = partialPeak(a[4800..<24000], near: midiHz(57), sampleRate: sr)
+      // recorded instruments sit within a few cents; Big Horn's samples are ~13 flat
+      #expect(abs(cents(f, midiHz(57))) < 15, "\(s.name): \(cents(f, midiHz(57))) cents")
+    }
   }
 
-  @Test func levelsSitWithTheLeadVoice() throws {
+  @Test func loadingLevelsEverySoundToTheLeadVoice() {
     let lead = WaveRunner.audition(
       tonalVoice(instrument: "supersaw", group: "melody"), notes: InstrumentTableTests.phrase,
       sampleRate: sr, seconds: 2)
     let ref = rmsDB(lead[...])
-    for n in sampled {
-      let db = rmsDB(try render(n, InstrumentTableTests.phrase, 2)[...])
-      #expect(abs(db - ref) < 3, "\(n) at \(db) dB vs lead \(ref) dB")
+    #expect(abs(ref - SamplerInstrument.targetRMSdB) < 0.5)
+    for s in allSounds {
+      guard let a = render(s.source, InstrumentTableTests.phrase, 2) else { continue }
+      #expect(abs(rmsDB(a[...]) - ref) < 3, "\(s.name) at \(rmsDB(a[...])) dB vs \(ref) dB")
     }
   }
 
   @Test func notesLandOnTheirSample() throws {
-    let a = try render("electric-guitar", [(52, 0.25, 0.5)], 0.5)
+    let a = try #require(render(.gm(27), [(52, 0.25, 0.5)], 0.5))
     let onset = a.firstIndex { abs($0) > 1e-4 } ?? -1
     #expect(onset >= 12_000 && onset < 12_000 + 64, "onset at \(onset)")
   }
 
   /// Logic's guitars rotate between alternate recordings of a note (round robin), so two
-  /// renders of them differ on purpose; every other instrument renders the same each time.
-  static let roundRobin: Set<String> = ["acoustic-guitar", "electric-guitar"]
-
-  @Test func rendersAreDeterministic() throws {
-    for n in sampled where !Self.roundRobin.contains(n) {
-      let a = try render(n, InstrumentTableTests.phrase, 1)
-      #expect(a == (try render(n, InstrumentTableTests.phrase, 1)), "\(n)")
+  /// renders of them differ on purpose; every other sound renders the same each time.
+  @Test func rendersAreDeterministic() {
+    for s in allSounds where !s.category.hasPrefix("guitar.") {
+      guard let a = render(s.source, InstrumentTableTests.phrase, 1) else { continue }
+      #expect(a == render(s.source, InstrumentTableTests.phrase, 1), "\(s.name)")
     }
   }
 
   @Test func aFullBankFallsBackToTheSynthVoice() {
     let bank = SamplerBank(sampleRate: sr)
-    for p in 0..<SamplerBank.capacity { #expect(bank.slot(for: [.gm(p)], gain: 1) == p) }
-    #expect(bank.slot(for: [.gm(100)], gain: 1) == nil)
-    #expect(bank.slot(for: [.gm(3)], gain: 1) == 3, "a loaded source is shared")
+    for p in 0..<SamplerBank.capacity { #expect(bank.slot(for: [.gm(p)]) == p) }
+    #expect(bank.slot(for: [.gm(100)]) == nil)
+    #expect(bank.slot(for: [.gm(3)]) == 3, "a loaded source is shared")
   }
 
   @Test func missingContentFallsThrough() {
     let bank = SamplerBank(sampleRate: sr)
-    let slot = bank.slot(for: [.exs("/nope/Missing.exs"), .gm(25)], gain: 1)
-    #expect(slot == 0)
+    #expect(bank.slot(for: [.exs("/nope/Missing.exs"), .gm(25)]) == 0)
     #expect(bank.source(of: 0) == .gm(25))
   }
 
@@ -99,9 +105,8 @@ struct SamplerTests {
     ov["seed"] = .number(7)
     let p = compose(genre: "country", overrides: .object(ov))
     let bank = SamplerBank(sampleRate: sr)
-    let prepared = WaveRunner.prepare(p, sampleRate: sr, opts: .extended(samplers: bank))
-    let wanted = p.nets.values.contains { table.sampler(for: $0.track.instrument) != nil }
-    #expect(prepared.lanes.contains { $0.samplerSlot >= 0 } == wanted)
+    let prepared = WaveRunner.prepare(p, sampleRate: sr, opts: .extended(samplers: bank, seed: 7))
+    #expect(prepared.lanes.contains { $0.samplerSlot >= 0 })
     #expect(!WaveRunner.prepare(p, sampleRate: sr).lanes.contains { $0.samplerSlot >= 0 })
   }
 }

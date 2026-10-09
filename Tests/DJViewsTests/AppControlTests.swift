@@ -99,11 +99,12 @@ struct AppControlTests {
       uniqueKeysWithValues: (c["instruments"]?.array ?? []).compactMap { e in
         e["name"]?.string.map { ($0, e["sound"]?.string ?? "") }
       })
-    #expect(sounds["distorted-guitar"] == "pluck")
-    // sampled where this Mac has it, falling back to its plucked string
-    #expect(sounds["acoustic-guitar"]?.hasPrefix("sampler ") == true)
-    #expect(sounds["acoustic-guitar"]?.hasSuffix("→ pluck") == true)
-    #expect(sounds["supersaw"] == "table:saw")
+    // each instrument names its category and what this Mac has for it
+    #expect(sounds["acoustic-guitar"]?.hasPrefix("guitar.acoustic: ") == true)
+    #expect(sounds["supersaw"]?.hasSuffix("or table:saw") == true)
+    #expect(sounds["distorted-guitar"]?.hasSuffix("or pluck") == true)
+    #expect(c["voices"]?["bass.electric"]?.array?.isEmpty == false)
+
     #expect(sounds["drums-808"] == "drum kit")
   }
 
@@ -112,7 +113,7 @@ struct AppControlTests {
     let before = try await call(m, "state")
     let a = try await call(
       m, "audition", #"{"instrument":"electric-guitar","notes":[40,45,50],"play":false}"#)
-    #expect(a["sound"]?.string?.hasSuffix("pluck") == true)
+    #expect(a["sound"]?.string?.hasPrefix("guitar.electric") == true)
     let plays = a["plays"]?.string ?? ""
     #expect(plays.hasPrefix("exs:") || plays.hasPrefix("gm:"), "played \(plays)")
     #expect((a["rmsDB"]?.double ?? -200) > -40)
@@ -120,6 +121,9 @@ struct AppControlTests {
     #expect(try await call(m, "state") == before)
     await #expect(throws: (any Error).self) {
       try await call(m, "audition", #"{"instrument":"kazoo","play":false}"#)
+    }
+    await #expect(throws: (any Error).self) {
+      try await call(m, "audition", #"{"instrument":"bass","sound":"tuba","play":false}"#)
     }
   }
 }

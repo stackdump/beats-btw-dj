@@ -64,6 +64,9 @@ public struct WaveOptions {
   public var instruments: InstrumentTable?
   /// Where sampled instruments play (a deck's bank). nil = synth voices only.
   public var samplers: SamplerBank?
+  /// Seeds which sampled instrument each role gets (`VoiceCatalog`): the track's seed, so a
+  /// track keeps its instruments across section jumps and replays.
+  public var voicingSeed = 0.0
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -231,7 +234,7 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
             ?? tonalVoice(instrument: tr.instrument, group: tr.group)
           lane = tonalLane(
             voice, sr, tr.group == "harmony" ? 6 : 4, tables: &tables, seed: lanes.count)
-          bindSampler(lane, tr.instrument, opts)
+          bindSampler(lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts)
         } else {
           lane = gateLane(drumVoice(kind: key, instrument: tr.instrument), sr, lanes.count)
         }
@@ -266,7 +269,7 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
     opts.instruments?.voice(instrument: liveInstrument, group: "melody")
     ?? tonalVoice(instrument: liveInstrument, group: "melody")
   let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
-  bindSampler(live, liveInstrument, opts)
+  bindSampler(live, liveInstrument, "melody", opts)
   live.netId = "<live>"
   let liveIndex = lanes.count
   lanes.append(live)
@@ -274,11 +277,13 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex)
 }
 
-/// Play `instrument` on the deck's sampler when it has one that loads (off the audio thread:
-/// this may load an EXS from disk).
-private func bindSampler(_ lane: Lane, _ instrument: String, _ opts: WaveOptions) {
-  guard let bank = opts.samplers, let s = opts.instruments?.sampler(for: instrument),
-    let slot = bank.slot(for: s.sources, gain: s.gain)
+/// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
+/// role and one loads (off the audio thread: this may load an EXS from disk).
+private func bindSampler(_ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions) {
+  guard let bank = opts.samplers, opts.instruments != nil,
+    let sources = VoiceCatalog.shared.sources(
+      instrument: instrument, role: role.isEmpty ? "melody" : role, seed: opts.voicingSeed),
+    let slot = bank.slot(for: sources)
   else { return }
   lane.samplerSlot = slot
 }

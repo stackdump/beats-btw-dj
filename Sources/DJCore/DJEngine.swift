@@ -277,7 +277,9 @@ public final class Deck: JogClock {
   public static let pitchRange = 0.08
 
   /// How this deck compiles nets: the instrument table, with its own sampler bank.
-  public var waveOptions: WaveOptions { .extended(samplers: wave.samplers) }
+  public var waveOptions: WaveOptions {
+    .extended(samplers: wave.samplers, seed: currentSpec?.seed ?? 0)
+  }
 
   init(name: String, sampleRate: Double, format: AVAudioFormat) {
     self.name = name

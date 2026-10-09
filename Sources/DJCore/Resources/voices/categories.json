@@ -1,0 +1,69 @@
+{
+  "comment": "Voicing (VoiceCatalog): sampled instruments installed on this Mac are scanned and sorted into categories by `rules` (first match wins; `any` = one of these words in the folder/name, `not` = none of these). Each beats instrument name maps to a category in `instruments`; a net plays a seeded pick from that category's pool (by track seed + role), then the rest of the pool, then `gm` (General MIDI programs, 0-based), then its synth voice. Categories in `keepSynth` also offer the original synth voice in the pool. A category no instrument maps to (fx.*: singing bowls are pitched ~50 cents off) is catalogued but never picked. Nothing here is a sample: the content stays on this Mac.",
+  "rules": [
+    { "category": "skip", "any": ["drums & percussion", "drum kit", "ultrabeat"] },
+    { "category": "bass.acoustic", "any": ["upright", "acoustic bass"] },
+    { "category": "bass.sub", "any": ["808 bass", "sub tone", "sub bass"] },
+    { "category": "bass.electric", "any": ["fingerstyle", "picked rock", "liverpool", "muted electric bass", "stinger bass", "electric bass", "solid soul electric bass"] },
+    { "category": "bass.synth", "any": [" bass"] },
+    { "category": "guitar.acoustic", "any": ["acoustic guitar", "nylon", "steel string"] },
+    { "category": "guitar.distorted", "any": ["distort", "overdrive", "crunch"] },
+    { "category": "guitar.electric", "any": ["strat", "electric guitar", "clean guitar", "jazz guitar"] },
+    { "category": "keys.epiano", "any": ["electric piano", "wurli", "rhodes", "mellowed out keys", "warbly keys"] },
+    { "category": "keys.piano", "any": ["piano", "steinway"] },
+    { "category": "keys.organ", "any": ["organ"] },
+    { "category": "keys.clav", "any": ["clav"] },
+    { "category": "keys.harpsichord", "any": ["harpsichord"] },
+    { "category": "vocal", "any": ["choir", "voices", "vocal", "voice"] },
+    { "category": "woodwind.flute", "any": ["flute", "piccolo", "recorder"] },
+    { "category": "woodwind.reed", "any": ["sax", "clarinet", "oboe", "bassoon"] },
+    { "category": "brass", "any": ["horn", "brass", "trumpet", "trombone", "tuba", "flugel"] },
+    { "category": "strings", "any": ["string", "violin", "viola", "cello"] },
+    { "category": "pad", "any": [" pad", "swirls", "texture"] },
+    { "category": "fx.bowl", "any": ["bowl"] },
+    { "category": "mallet", "any": ["marimba", "vibraphone", "xylophone", "kalimba", "music box", "glockenspiel", "steel drum"] },
+    { "category": "synth.bell", "any": ["bell", "chime"] },
+    { "category": "synth.pluck", "any": ["pluck"] },
+    { "category": "synth.lead", "any": [" lead", "wobble", "synth"] }
+  ],
+  "keepSynth": [
+    "synth.lead", "synth.pluck", "synth.bell", "synth.stab", "bass.synth", "pad", "ethnic",
+    "guitar.distorted", "keys.harpsichord"
+  ],
+  "pools": {
+    "synth.stab": ["synth.lead"]
+  },
+  "gm": {
+    "guitar.acoustic": [25, 24], "guitar.electric": [27, 26], "guitar.distorted": [30, 29],
+    "bass.electric": [33, 34], "bass.acoustic": [32], "bass.sub": [38], "bass.synth": [38, 39],
+    "keys.piano": [0, 1], "keys.epiano": [4, 5], "keys.organ": [16, 17], "keys.clav": [7],
+    "keys.harpsichord": [6],
+    "mallet": [12, 11, 108, 10, 114], "synth.bell": [14, 98],
+    "strings": [48, 49], "brass": [61, 56], "woodwind.flute": [73], "woodwind.reed": [65, 71],
+    "vocal": [52, 53], "pad": [88, 89, 91], "synth.lead": [81, 80], "synth.pluck": [84],
+    "synth.stab": [62], "ethnic": [104]
+  },
+  "instruments": {
+    "acoustic-guitar": "guitar.acoustic", "electric-guitar": "guitar.electric",
+    "distorted-guitar": "guitar.distorted",
+    "bass": "bass.electric", "808-bass": "bass.sub", "sub-bass": "bass.sub",
+    "acid": "bass.synth", "reese": "bass.synth", "fm-bass": "bass.synth", "drop-bass": "bass.synth",
+    "duo-bass": "bass.synth", "rubber-bass": "bass.synth", "wobble-bass": "bass.synth",
+    "piano": "keys.piano", "electric-piano": "keys.epiano", "organ": "keys.organ",
+    "rave-organ": "keys.organ", "clavinet": "keys.clav", "harpsichord": "keys.harpsichord",
+    "marimba": "mallet", "vibes": "mallet", "kalimba": "mallet", "music-box": "mallet",
+    "steel-drum": "mallet", "am-bell": "synth.bell", "fm-bell": "synth.bell",
+    "strings": "strings", "brass": "brass", "trumpet": "brass", "flute": "woodwind.flute",
+    "sax": "woodwind.reed", "choir": "vocal", "talkbox": "vocal",
+    "pad": "pad", "warm-pad": "pad", "dark-pad": "pad", "glass-pad": "pad", "am-pad": "pad",
+    "supersaw": "synth.lead", "big-saw": "synth.lead", "lead": "synth.lead",
+    "square-lead": "synth.lead", "pwm-lead": "synth.lead", "sync-lead": "synth.lead",
+    "trance-lead": "synth.lead", "tape-lead": "synth.lead", "detuned-saw": "synth.lead",
+    "duo-lead": "synth.lead", "scream-lead": "synth.lead", "screech": "synth.lead",
+    "hoover": "synth.lead", "wobble-lead": "synth.lead", "distorted-lead": "synth.lead",
+    "chiptune": "synth.lead", "laser": "synth.lead",
+    "pluck": "synth.pluck", "bright-pluck": "synth.pluck", "muted-pluck": "synth.pluck",
+    "edm-pluck": "synth.pluck", "edm-stab": "synth.stab", "rave-stab": "synth.stab",
+    "sitar": "ethnic"
+  }
+}

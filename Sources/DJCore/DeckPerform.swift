@@ -35,11 +35,13 @@ extension Deck {
     guard secs.indices.contains(index), let project = netProject else { return false }
     let sr = wave.sampleRate
     let bank = wave.samplers
+    let seed = currentSpec?.seed ?? 0
     let start = secs[index].startTick
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, opts: .extended(samplers: bank), startTick: start)
+      WaveRunner.prepare(
+        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed), startTick: start)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
@@ -90,11 +92,13 @@ extension Deck {
     guard mode == .net, let project = netProject else { return false }
     let sr = wave.sampleRate
     let bank = wave.samplers
+    let seed = currentSpec?.seed ?? 0
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
       WaveRunner.prepare(
-        project, sampleRate: sr, opts: .extended(samplers: bank), startTick: max(0, tick))
+        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed),
+        startTick: max(0, tick))
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
