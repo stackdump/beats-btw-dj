@@ -1,3 +1,4 @@
+import Synchronization
 import Testing
 
 @testable import DJCore
@@ -116,8 +117,49 @@ struct WaveRunnerRealTimeTests {
     }
     #expect(report.allocations == 0, "render allocated \(report.allocations) times")
     #expect(report.frees == 0, "render freed \(report.frees) times")
+
+    // Eviction while rendering: fill the bank with unreferenced GM programs (each renders
+    // every block), then load one more on another thread while this one renders. The
+    // evicted AUSampler is freed on the loading thread; render stays allocation-free.
+    let bank = src.samplers
+    let used = Set(prepared.lanes.map(\.samplerSlot).filter { $0 >= 0 })
+    var p = 0
+    while bank.count < SamplerBank.capacity && p < 127 {
+      if let s = bank.slot(for: [.gm(p)], gain: 1) { bank.release(s) }
+      p += 1
+    }
+    #expect(bank.count == SamplerBank.capacity, "a full bank")
+    let result = EvictionResult()
+    // Started here (spawning a task allocates), loading only once the measured renders run.
+    Task.detached {
+      while !result.go.load(ordering: .acquiring) { await Task.yield() }
+      result.slot.store(bank.slot(for: [.gm(127)], gain: 1) ?? -1, ordering: .releasing)
+    }
+    run(10)
+    let evicting = countAllocations {
+      result.go.store(true, ordering: .releasing)
+      var blocks = 0
+      while result.slot.load(ordering: .acquiring) == -2 && blocks < 100_000 {
+        run(1)
+        blocks += 1
+      }
+      run(200)
+    }
+    let slot = result.slot.load(ordering: .acquiring)
+    #expect(slot >= 0, "the load evicted a slot")
+    #expect(!used.contains(slot), "never one the playing project references")
+    #expect(bank.source(of: slot) == .gm(127))
+    #expect(evicting.allocations == 0, "render allocated \(evicting.allocations) times")
+    #expect(evicting.frees == 0, "render freed \(evicting.frees) times")
+    bank.release(slot)
     src.drainRetired()
   }
+}
+
+private final class EvictionResult: Sendable {
+  /// -2 while loading; then the slot, or -1 for none.
+  let slot = Atomic<Int>(-2)
+  let go = Atomic<Bool>(false)
 }
 
 private func renderBlocks(_ src: WaveDeckSource, blocks: Int) -> [Float] {

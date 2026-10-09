@@ -68,11 +68,65 @@ struct SamplerTests {
     }
   }
 
-  @Test func aFullBankFallsBackToTheSynthVoice() {
+  @Test func aBankFullOfReferencedSlotsFallsBackToTheSynthVoice() {
     let bank = SamplerBank(sampleRate: sr)
     for p in 0..<SamplerBank.capacity { #expect(bank.slot(for: [.gm(p)], gain: 1) == p) }
     #expect(bank.slot(for: [.gm(100)], gain: 1) == nil)
     #expect(bank.slot(for: [.gm(3)], gain: 1) == 3, "a loaded source is shared")
+    #expect(bank.references(of: 3) == 2)
+  }
+
+  @Test func aFullBankEvictsTheLeastRecentlyUsedUnreferencedSlot() {
+    let bank = SamplerBank(sampleRate: sr)
+    for p in 0..<SamplerBank.capacity { #expect(bank.slot(for: [.gm(p)], gain: 1) == p) }
+    // Give back 5, then 9, then 17 (taking 9 once more in between): 5 is least recently used.
+    bank.release(5)
+    bank.release(9)
+    bank.release(17)
+    #expect(bank.slot(for: [.gm(9)], gain: 1) == 9, "still loaded: shared, not reloaded")
+    bank.release(9)
+    #expect(bank.slot(for: [.gm(100)], gain: 1) == 5)
+    #expect(bank.source(of: 5) == .gm(100))
+    #expect(bank.slot(for: [.gm(101)], gain: 1) == 17)
+    #expect(bank.slot(for: [.gm(102)], gain: 1) == 9)
+    #expect(bank.slot(for: [.gm(103)], gain: 1) == nil, "everything left is referenced")
+    for p in 0..<SamplerBank.capacity where ![5, 9, 17].contains(p) {
+      #expect(bank.source(of: p) == .gm(p), "referenced slot \(p) kept")
+    }
+    // An evicted source comes back by loading again, into whatever slot frees up.
+    bank.release(0)
+    #expect(bank.slot(for: [.gm(5)], gain: 1) == 0)
+  }
+
+  @Test func projectsHoldTheirSlotsUntilFreed() throws {
+    var ov = JSONObject()
+    ov["seed"] = .number(7)
+    let bank = SamplerBank(sampleRate: sr)
+    var prepared: WaveProject? = WaveRunner.prepare(
+      compose(genre: "country", overrides: .object(ov)), sampleRate: sr,
+      opts: .extended(samplers: bank))
+    let used = Set(prepared!.lanes.map(\.samplerSlot).filter { $0 >= 0 })
+    try #require(!used.isEmpty, "a sampled lane to hold")
+    let held = Dictionary(uniqueKeysWithValues: used.map { ($0, bank.source(of: $0)) })
+    // Fill the bank, then churn through more programs than it holds: only the slots no
+    // project references are ever reused.
+    for p in 0..<64 {
+      guard let s = bank.slot(for: [.gm(p)], gain: 1) else { continue }
+      bank.release(s)
+    }
+    for s in used {
+      #expect(bank.source(of: s) == held[s]!, "slot \(s) kept while its project lives")
+      #expect(bank.references(of: s) > 0)
+    }
+    #expect(
+      (0..<SamplerBank.capacity).allSatisfy { used.contains($0) || bank.references(of: $0) == 0 })
+    prepared = nil
+    for s in used { #expect(bank.references(of: s) == 0, "freed project gave slot \(s) back") }
+    for p in 64..<(64 + SamplerBank.capacity) { #expect(bank.slot(for: [.gm(p)], gain: 1) != nil) }
+    #expect(
+      (0..<SamplerBank.capacity).allSatisfy {
+        bank.source(of: $0)?.description.hasPrefix("gm:") == true
+      })
   }
 
   @Test func missingContentFallsThrough() {

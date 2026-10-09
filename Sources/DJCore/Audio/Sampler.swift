@@ -147,17 +147,41 @@ public final class SamplerInstrument: @unchecked Sendable {
   }
 }
 
-/// A deck's samplers. Loaded off the audio thread (`slot(for:)`), published with a release
-/// store; the audio thread sees slots `0..<count` and nothing is ever replaced or removed
-/// while the bank lives, so it never races a load.
+/// A deck's samplers: `capacity` slots, loaded off the audio thread (`slot(for:)`).
+///
+/// References: `slot(for:)` takes one on the slot it returns and `release` gives it back.
+/// A `WaveProject` holds one per sampled lane until it is freed, which happens off the audio
+/// thread (the deck's retire ring), so a slot that no live project — current, pending or
+/// fading — plays has no references.
+///
+/// Eviction: a full bank reuses the least recently used slot with no references, in two
+/// phases. Its bit in `active` is cleared, so the audio thread neither sends it MIDI nor
+/// renders it; the loader then waits until no block that could have seen the bit set is
+/// still running (`epoch` is odd while one is), and only then frees the old AUSampler and
+/// publishes the new one in its place. The audio thread never frees, locks or waits.
 public final class SamplerBank: @unchecked Sendable {
   public static let capacity = 24
   public let sampleRate: Double
   private let slots: UnsafeMutablePointer<Unmanaged<SamplerInstrument>?>
-  private let published = Atomic<Int>(0)
+  /// Bit i: slot i holds an instrument the audio thread may play.
+  private let active = Atomic<UInt64>(0)
+  /// Bumped as the audio thread starts and ends a block: odd while one is in flight.
+  private let epoch = Atomic<UInt64>(0)
+  /// Serialises loads and evictions (held across a load, never by the audio thread).
   private let lock = NSLock()
   private var bySource: [SamplerSource: Int] = [:]
   private var unloadable: Set<SamplerSource> = []
+  private var filled = 0
+  private var lastUsed = [UInt64](repeating: 0, count: capacity)
+  private var uses: UInt64 = 0
+  /// References and what each slot plays, behind their own short lock: releasing a project
+  /// or asking what a slot plays never waits behind a load.
+  private let table = Mutex(Table())
+
+  private struct Table {
+    var refs = [Int](repeating: 0, count: SamplerBank.capacity)
+    var sources = [SamplerSource?](repeating: nil, count: SamplerBank.capacity)
+  }
 
   public init(sampleRate: Double) {
     self.sampleRate = sampleRate
@@ -166,20 +190,25 @@ public final class SamplerBank: @unchecked Sendable {
   }
 
   deinit {
-    for i in 0..<published.load(ordering: .acquiring) { slots[i]?.release() }
+    for i in 0..<Self.capacity { slots[i]?.release() }
     slots.deallocate()
   }
 
   /// Off the audio thread: the slot playing the first of `sources` that loads, loading it if
-  /// needed. nil when none loads or the bank is full (the caller falls back to a synth voice).
+  /// needed (evicting an unreferenced slot when the bank is full), with one reference taken
+  /// on it for the caller to `release`. nil when none loads or every slot is referenced (the
+  /// caller falls back to a synth voice).
   public func slot(for sources: [SamplerSource], gain: Double) -> Int? {
     lock.lock()
     defer { lock.unlock() }
     for s in sources {
-      if let i = bySource[s] { return i }
+      if let i = bySource[s] {
+        acquire(i)
+        return i
+      }
       if unloadable.contains(s) || !s.isAvailable { continue }
-      let n = published.load(ordering: .relaxed)
-      guard n < Self.capacity else { return nil }
+      guard let target = freeSlot() else { return nil }
+      // Load first, so a source that fails to load costs nothing already playing.
       let loaded = SamplerInstrument.lifecycle.withLock {
         try? SamplerInstrument(source: s, sampleRate: sampleRate, gain: gain)
       }
@@ -187,23 +216,90 @@ public final class SamplerBank: @unchecked Sendable {
         unloadable.insert(s)
         continue
       }
-      slots[n] = Unmanaged.passRetained(inst)
-      published.store(n + 1, ordering: .releasing)
-      bySource[s] = n
-      return n
+      if target < filled { evict(target) } else { filled += 1 }
+      slots[target] = Unmanaged.passRetained(inst)
+      bySource[s] = target
+      table.withLock { $0.sources[target] = s }
+      acquire(target)
+      active.bitwiseOr(1 << UInt64(target), ordering: .releasing)
+      return target
     }
     return nil
   }
 
-  /// What a slot plays (main thread; for display and tests).
-  public func source(of slot: Int) -> SamplerSource? {
-    guard slot < count else { return nil }
-    return slots[slot]!.takeUnretainedValue().source
+  /// Off the audio thread: give back a reference `slot(for:)` took.
+  public func release(_ slot: Int) {
+    table.withLock {
+      assert($0.refs[slot] > 0, "sampler slot \(slot) released more than taken")
+      $0.refs[slot] -= 1
+    }
   }
 
-  /// Audio thread: loaded slots.
-  @inline(__always) var count: Int { published.load(ordering: .acquiring) }
+  /// What a slot plays (any thread but the audio thread; for display and tests).
+  public func source(of slot: Int) -> SamplerSource? {
+    guard slot >= 0, slot < Self.capacity else { return nil }
+    return table.withLock { $0.sources[slot] }
+  }
 
+  /// References held on a slot (tests).
+  func references(of slot: Int) -> Int { table.withLock { $0.refs[slot] } }
+
+  // lock held
+  private func acquire(_ i: Int) {
+    table.withLock { $0.refs[i] += 1 }
+    uses += 1
+    lastUsed[i] = uses
+  }
+
+  // lock held: a never-used slot, else the least recently used one nothing references.
+  private func freeSlot() -> Int? {
+    if filled < Self.capacity { return filled }
+    let refs = table.withLock { $0.refs }
+    var best: Int?
+    for i in 0..<Self.capacity where refs[i] == 0 {
+      if best == nil || lastUsed[i] < lastUsed[best!] { best = i }
+    }
+    return best
+  }
+
+  // lock held, slot unreferenced: take it from the audio thread, then free what it played.
+  private func evict(_ i: Int) {
+    active.bitwiseAnd(~(1 << UInt64(i)), ordering: .sequentiallyConsistent)
+    // A block that started before the bit cleared may still be using the slot; one that
+    // starts after cannot (both sides are sequentially consistent). Wait out the former.
+    let e = epoch.load(ordering: .sequentiallyConsistent)
+    if e & 1 == 1 {
+      while epoch.load(ordering: .acquiring) == e { usleep(100) }
+    }
+    if let old = table.withLock({ t -> SamplerSource? in
+      defer { t.sources[i] = nil }
+      return t.sources[i]
+    }) {
+      bySource[old] = nil
+    }
+    let inst = slots[i]
+    slots[i] = nil
+    inst?.release()  // tears down under `SamplerInstrument.lifecycle` (its deinit)
+  }
+
+  /// One past the highest slot the audio thread may play.
+  @inline(__always) var count: Int {
+    64 - active.load(ordering: .acquiring).leadingZeroBitCount
+  }
+
+  /// Audio thread: start a block. Returns the slots it may send to and render (bit i =
+  /// slot i); pass that to `send` and `renderAll`, then call `endBlock`.
+  @inline(__always)
+  func beginBlock() -> UInt64 {
+    epoch.wrappingAdd(1, ordering: .sequentiallyConsistent)
+    return active.load(ordering: .sequentiallyConsistent)
+  }
+
+  @inline(__always)
+  func endBlock() { epoch.wrappingAdd(1, ordering: .releasing) }
+
+  /// Audio thread, inside a block, `slot` active in it (or an offline caller holding a
+  /// reference on `slot`).
   @inline(__always)
   func send(_ slot: Int, _ status: UInt8, _ d1: UInt8, _ d2: UInt8, at offset: Int) {
     slots[slot]!._withUnsafeGuaranteedRef { $0.send(status, d1, d2, at: offset) }
@@ -211,9 +307,13 @@ public final class SamplerBank: @unchecked Sendable {
 
   @inline(__always)
   func renderAll(
-    frames: Int, _ out: UnsafeMutablePointer<Float>, _ outR: UnsafeMutablePointer<Float>?
+    _ live: UInt64, frames: Int, _ out: UnsafeMutablePointer<Float>,
+    _ outR: UnsafeMutablePointer<Float>?
   ) {
-    for i in 0..<count {
+    var m = live
+    while m != 0 {
+      let i = m.trailingZeroBitCount
+      m &= m - 1
       slots[i]!._withUnsafeGuaranteedRef { $0.renderAdding(frames: frames, out, outR) }
     }
   }
