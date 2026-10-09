@@ -12,7 +12,8 @@ state. **Not merged, not pushed: for review.**
 
 ## Try it
 
-`make run-app`, load or generate a track on a deck, press play. (Nothing in this branch has been
+`make run-app-release` (optimized; `make run-app` is a debug build whose audio thread allocates and
+can glitch), load or generate a track on a deck, press play. (Nothing in this branch has been
 run in a real window — see "Needs a person".)
 
 * **Scopes** toggle (under the decks) → the panel: **Scope / Spectro / Bands / Raster**, source
@@ -189,6 +190,13 @@ bar boundaries, macros, scrubbing, ring overflow, the analyser, the measured rea
 kernel lookup, the raster-at-start — all `allocations == 0 && frees == 0` with the rings proven
 to have received data. Audio output with taps on equals taps off bit for bit (tested on a deck,
 the engine and the master).
+
+**Why only release.** The same tests forced on in a debug build (what `make run-app` produces,
+`-Onone`) fail by design: unoptimised Swift boxes, retains and copies on the render path, and the
+counters read 256 000 mallocs for 1 000 analyser calls and tens of millions for a few thousand
+`WaveDeckSource.process` blocks, against 0 in release. A zero is unreachable there, so the check
+would say nothing about the code. What the debug app costs is audible headroom, not correctness:
+use `make run-app-release` (same bundle, `-c release`) to listen or run the hardware check.
 
 ## Oracles
 

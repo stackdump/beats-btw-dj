@@ -33,7 +33,8 @@ make swift-test                           # swift-testing suite (DJCore)
 make djctl ARGS=ports                     # Swift CoreMIDI: list sources/destinations
 make djctl ARGS="monitor"                 # raw bytes, decoded per device profile
 make djctl ARGS="play a.wav b.mp3"        # headless: two decks + every controller (demo loop if no file)
-make run-app                              # build build/DJApp.app (ad-hoc signed) and open it
+make run-app                              # build build/DJApp.app (DEBUG, ad-hoc signed) and open it
+make run-app-release                      # the same, optimized: use this to listen / judge the audio
 make fmt lint                             # swift format (bundled with the toolchain)
 
 make build && ./dj-vevr-se ports          # Go CLI: list MIDI ins/outs
