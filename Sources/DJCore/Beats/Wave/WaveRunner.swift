@@ -251,6 +251,8 @@ public final class WaveRunner {
   /// Set when a stop-transport control fires.
   public private(set) var stopped = false
   private var acc = 0.0
+  /// Index of the sample being rendered in the current block (for event frames).
+  private var blockIndex = 0
   private var scrubbing = false
   private var scrubPos = 0.0
   private var scrubTarget = 0.0
@@ -681,6 +683,7 @@ public final class WaveRunner {
       return
     }
     let lanes = proj.lanes
+    if let sink = g.fireSink { sink.frame = sink.frameBase + blockIndex }
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 { self.hit(lanes[li], n, t) }
@@ -701,6 +704,7 @@ public final class WaveRunner {
     serviceTempoFx()
     let gain = masterGain
     for i in 0..<frames {
+      blockIndex = i
       if scrubbing {
         scrubSample()
       } else if playing {

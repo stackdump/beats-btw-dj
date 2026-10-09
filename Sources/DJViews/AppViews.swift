@@ -53,6 +53,10 @@ public final class AppModel {
   var padPort: String?
   var showPads = false
   var showMap = false
+  /// Scope feeds by source ("A", "B", "master"); built once the engine exists.
+  var feeds: [String: ScopeFeed] = [:]
+  /// Which scope panels are open. All closed by default: the layout is unchanged.
+  var scopesOpen: Set<String> = []
   var walk: ControlWalk?
   var walkReportPath: String?
   var lastControl: (device: String, group: String, index: Int, at: Date)?
@@ -154,6 +158,9 @@ public final class AppModel {
   /// Refresh the display state from the engine (30 Hz in the app).
   public func poll() {
     guard let dj else { return }
+    if feeds.isEmpty { feeds = ScopeFeed.feeds(for: dj) }
+    let now = Date().timeIntervalSinceReferenceDate
+    for key in scopesOpen { feeds[key]?.update(now: now) }
     let router = hub?.router ?? injectedRouter
     devices = hub?.devices ?? []
     crossfader = dj.crossfader
@@ -435,6 +442,15 @@ public struct ContentView: View {
         ) { model.pressPad($0, $1) }
         .frame(width: 300, height: 300)
       }
+      if !model.scopesOpen.isEmpty {
+        HStack(alignment: .top, spacing: 12) {
+          ForEach(["A", "master", "B"], id: \.self) { key in
+            if model.scopesOpen.contains(key), let feed = model.feeds[key] {
+              ScopePanel(feed: feed) { model.scopesOpen.remove(key) }
+            }
+          }
+        }
+      }
       Divider()
       HStack {
         VStack(alignment: .leading, spacing: 2) {
@@ -456,6 +472,18 @@ public struct ContentView: View {
             }
           }
           .disabled(model.devices.isEmpty)
+          ForEach(["A", "master", "B"], id: \.self) { key in
+            Toggle(
+              "Scope \(key == "master" ? "M" : key)",
+              isOn: Binding(
+                get: { model.scopesOpen.contains(key) },
+                set: { on in
+                  if on { model.scopesOpen.insert(key) } else { model.scopesOpen.remove(key) }
+                  model.poll()
+                })
+            )
+            .toggleStyle(.button)
+          }
           Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
             .toggleStyle(.button)
           Toggle(

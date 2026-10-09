@@ -44,6 +44,8 @@ public final class WaveDeckSource: @unchecked Sendable {
 
   private let commands = SPSCRing<WaveCommand>(capacity: 512)
   private let retired = SPSCRing<UnsafeMutableRawPointer>(capacity: 32)
+  /// Every transition the net fires, for the scope views (drain on the main thread).
+  public let events = FireEventSink()
   private let runner: WaveRunner
 
   // Audio → main mirrors.
@@ -98,6 +100,7 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// Hand a compiled project to the audio thread: immediately when stopped, at the next
   /// bar when playing.
   public func load(_ prepared: WaveProject) {
+    prepared.graph.fireSink = events
     let p = Unmanaged.passRetained(prepared).toOpaque()
     drainRetired()
     if commands.push(.load(p)) {
@@ -187,8 +190,10 @@ public final class WaveDeckSource: @unchecked Sendable {
 
   /// Fill `frames` samples of `left` (and `right` if given). Real-time safe.
   public func render(
-    frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
+    frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
+    tapFrame: Int = 0
   ) {
+    events.beginBlock(frame: tapFrame)
     while let c = commands.pop() { apply(c) }
     runner.process(left, right, frames: frames)
     tickAtomic.store(runner.graph?.tick ?? 0, ordering: .relaxed)

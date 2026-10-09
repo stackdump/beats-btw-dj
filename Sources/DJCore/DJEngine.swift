@@ -51,6 +51,10 @@ public final class DJEngine {
   let cueSum = AVAudioMixerNode()
   let headMaster = AVAudioMixerNode()
   let headBus = AVAudioMixerNode()
+  /// The master (post-mix, post-master-gain) for the scope views.
+  public let masterTap = AudioTap()
+  /// Pass-through between the main mixer and the output that fills `masterTap`.
+  let masterTapNode: AVAudioUnitEffect
   var channelRouter: AVAudioUnit?
   var _headphoneMix = 0.0
   var _headphoneLevel = 0.7
@@ -68,6 +72,7 @@ public final class DJEngine {
     decks names: [String] = ["A", "B"], offline: Bool = false,
     sampleRate offlineRate: Double = 48_000, outputChannels: Int = 2
   ) throws {
+    masterTapNode = try MasterTapAU.makeNode(tap: masterTap, sampleRate: offlineRate)
     if offline {
       sampleRate = offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: offlineRate, channels: 2)!
@@ -85,6 +90,7 @@ public final class DJEngine {
       sampleRate = hw > 0 ? hw : offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
+    engine.attach(masterTapNode)
     engine.attach(cueSum)
     engine.attach(headMaster)
     engine.attach(headBus)
@@ -102,6 +108,8 @@ public final class DJEngine {
     }
     engine.attach(clockNode)
     engine.connect(clockNode, to: engine.mainMixerNode, format: format)
+    engine.connect(engine.mainMixerNode, to: masterTapNode, format: format)
+    engine.connect(masterTapNode, to: engine.outputNode, format: format)
     for name in names {
       let deck = Deck(name: name, sampleRate: sampleRate, format: format)
       engine.attach(deck.node)
@@ -167,6 +175,8 @@ public final class Deck: JogClock {
   /// The live-net source. Only one of `turntable` / `wave` is rendered at a time.
   public let wave: WaveDeckSource
   public let node: AVAudioSourceNode
+  /// This deck's own output (before EQ and the fader), for the scope views.
+  public let tap = AudioTap()
   /// Band 0 low-pass, 1 high-pass (see `filter`); 2 low shelf, 3 mid peak,
   /// 4 high shelf (see `eqLow` / `eqMid` / `eqHigh`).
   public let filterNode = AVAudioUnitEQ(numberOfBands: 5)
@@ -276,6 +286,21 @@ public final class Deck: JogClock {
   }
   public static let pitchRange = 0.08
 
+  /// What the deck's source node does for one block, on the audio thread: render the
+  /// active source, then copy the result into the scope tap. Shared with the real-time
+  /// tests so they measure exactly this path.
+  static func renderBlock(
+    wave: WaveDeckSource, turntable: Turntable, tap: AudioTap, frames: Int,
+    left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
+  ) {
+    if wave.isActive {
+      wave.render(frames: frames, left: left, right: right, tapFrame: tap.framesWritten)
+    } else {
+      turntable.render(frames: frames, left: left, right: right)
+    }
+    tap.write(left, right, frames: frames)
+  }
+
   init(name: String, sampleRate: Double, format: AVAudioFormat) {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
@@ -283,15 +308,12 @@ public final class Deck: JogClock {
     cueSend.outputVolume = 0
     turntable = tt
     wave = wv
+    let tap = tap
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
       let list = UnsafeMutableAudioBufferListPointer(abl)
       guard let l = list[0].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
       let r = list.count > 1 ? list[1].mData?.assumingMemoryBound(to: Float.self) : nil
-      if wv.isActive {
-        wv.render(frames: Int(frames), left: l, right: r)
-      } else {
-        tt.render(frames: Int(frames), left: l, right: r)
-      }
+      Deck.renderBlock(wave: wv, turntable: tt, tap: tap, frames: Int(frames), left: l, right: r)
       return noErr
     }
     let types: [AVAudioUnitEQFilterType] = [

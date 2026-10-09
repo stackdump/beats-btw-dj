@@ -205,6 +205,9 @@ public final class WaveGraph {
   public var controls = [Int32](repeating: 0, count: 1024)
   public var controlCount = 0
   public var overflow = 0
+  /// Where every fired transition is also reported (see `FireEventSink`). Set on the
+  /// main thread before the graph is handed to the audio thread.
+  public var fireSink: FireEventSink?
 
   // Live-performance state (not in the JS executor: see WaveMacros.swift).
   /// Per net: drum channel / control net. Computed once at compile time.
@@ -433,7 +436,18 @@ public final class WaveGraph {
         fire(n, t)
         logFire(ni, t)
         if n.action[t] != .none { applyControl(n, t) }
-        if n.midi[t] && muted[ni] == 0 && mutedNotes[ni * 128 + (n.note[t] & 127)] == 0 {
+        let audible = n.midi[t] && muted[ni] == 0 && mutedNotes[ni * 128 + (n.note[t] & 127)] == 0
+        if let sink = fireSink {
+          sink.push(
+            FireEvent(
+              net: Int16(truncatingIfNeeded: ni), transition: Int16(truncatingIfNeeded: t),
+              note: n.midi[t] ? Int16(truncatingIfNeeded: n.note[t] & 127) : -1,
+              velocity: UInt8(truncatingIfNeeded: max(0, min(127, n.vel[t]))),
+              flags: (audible ? FireEvent.audibleFlag : 0)
+                | (n.action[t] != .none ? FireEvent.controlFlag : 0),
+              tick: Int32(truncatingIfNeeded: tick), frame: sink.frame))
+        }
+        if audible {
           if firedCount + 2 <= fired.count {
             fired[firedCount] = Int32(ni)
             fired[firedCount + 1] = Int32(t)
