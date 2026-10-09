@@ -214,6 +214,10 @@ public final class Deck: JogClock {
   public private(set) var netBaseBPM = 120.0
   /// What `generate` / `advanceToNext` last loaded.
   public internal(set) var currentSpec: TrackSpec?
+  /// How many times the deck has handed over to its pre-composed next track (`advanceToNext`:
+  /// the song ended with `autoAdvance` on, or the Next button). A display that reacts to a
+  /// hand-over (the ring's Auto-DJ swing) watches this move.
+  public internal(set) var advances = 0
   /// When a song ends (its `stop-transport` fires), start the pre-composed next one.
   public var autoAdvance = false
   /// Called whenever no next track is composed or composing: keeps one coming.

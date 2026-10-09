@@ -35,6 +35,8 @@ struct DeckState: Equatable {
   var overlay: WaveformOverlay?
   var snapshot: NetSnapshot?
   var timeline: SectionTimeline?
+  /// The ring's arc layer: dimmed while playing, turned by the Auto-DJ swing (SPEC 22).
+  var ringArcs = RingArcs()
 }
 
 @MainActor @Observable
@@ -71,6 +73,11 @@ public final class AppModel {
   private var hub: ControllerHub?
   private var refresh: Timer?
   private var injectedRouter: ControllerRouter?
+  /// Seconds on a steadily increasing clock: the time base of display animations (the ring
+  /// swing). Tests inject their own.
+  @ObservationIgnored var uptime: () -> Double = { ProcessInfo.processInfo.systemUptime }
+  /// Per net deck, the Auto-DJ swing of its ring.
+  @ObservationIgnored private var ringSpins: [String: RingSpin] = [:]
 
   /// `engine`: drive this engine instead of building the real one (tests, previews). No
   /// controllers are opened and nothing is polled until `poll()` is called.
@@ -166,6 +173,7 @@ public final class AppModel {
   /// Refresh the display state from the engine (30 Hz in the app).
   public func poll() {
     guard let dj else { return }
+    let now = uptime()
     let router = hub?.router ?? injectedRouter
     devices = hub?.devices ?? []
     crossfader = dj.crossfader
@@ -197,6 +205,10 @@ public final class AppModel {
         scrubbing: d.wave.isScrubbing, pfl: d.pfl, overview: d.waveform,
         overlay: d.waveformOverlay, snapshot: d.netSnapshot, timeline: d.sectionTimeline)
       if d.mode == .net {
+        var spin = ringSpins[name] ?? RingSpin()
+        spin.observe(advances: d.advances, at: now)
+        ringSpins[name] = spin
+        state.ringArcs = spin.arcs(playing: d.playing, at: now)
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
@@ -567,7 +579,7 @@ struct DeckView: View {
       if state.isNet {
         SectionTimelineView(timeline: state.timeline) { model.launchSection(name, $0) }
           .frame(height: 26)
-        NetRingsView(snapshot: state.snapshot, tint: tint)
+        NetRingsView(snapshot: state.snapshot, tint: tint, arcs: state.ringArcs)
         NetPanel(name: name, state: state, model: model, tint: tint)
       }
       LabeledSlider(
