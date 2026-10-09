@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 // Port of beats' wave-engine/runner.js: the net executor and the synthesis, sample by
 // sample. Per sample: advance the tick clock; at a tick boundary fire the net and add
@@ -148,13 +149,20 @@ private func tonalLane(
 /// audio thread (`WaveRunner.prepare`) and handed over whole. Reference-counted so the
 /// runner can pass it to a retire hook instead of freeing it on the audio thread.
 public final class WaveProject: @unchecked Sendable {
+  /// Process-wide, 1-based, increasing in the order projects are prepared. Stamped on every
+  /// `FireEvent`, `TickAnchor` and marking snapshot so a consumer knows which project's net
+  /// and place indices they refer to, across swaps at a bar boundary.
+  public let generation: Int32
   public let graph: WaveGraph
   let lanes: [Lane]
   let byNet: [String: [Int]]
   let sources: [Lane]
   /// Index in `lanes` of the pooled voice that MIDI keys play.
   let liveLane: Int
+  private static let generations = Atomic<Int>(0)
+
   init(graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int) {
+    generation = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     self.liveLane = liveLane
     self.graph = graph
     self.lanes = lanes
@@ -244,6 +252,20 @@ public final class WaveRunner {
   /// Called instead of dropping a project on the calling thread, so a real-time
   /// caller can hand it to another thread to free. Default: just drop.
   public var onRetire: ((WaveProject) -> Void)?
+  /// Where audible net fires are reported, or nil (the default: offline renders and sessions
+  /// play exactly as before). Set once, before the first `process`, by the owner; the runner
+  /// is the only producer. Never written by silent replays or scrubs, only by the tick clock.
+  public var fireRing: LatestRing<FireEvent>?
+  /// Where every tick of the net clock is reported, or nil. Same rules as `fireRing`.
+  public var anchorRing: LatestRing<TickAnchor>?
+  // What the last anchor said, to flag the next one that does not follow on from it.
+  private var lastAnchorTick: Int32 = -1
+  private var lastAnchorGeneration: Int32 = 0
+  /// The tick clock was started, stopped, realigned or scratched since the last anchor.
+  private var clockBroken = true
+  /// Deck frame of the sample being rendered when a tick lands (set by `process` right
+  /// before `doTick`): start-of-block frame + offset inside the block.
+  private var tickFrame: Int64 = 0
   public var graph: WaveGraph? { current?.graph }
   public private(set) var playing = false
   private var clock = [Double](repeating: 0, count: 4)
@@ -324,6 +346,7 @@ public final class WaveRunner {
     guard current != nil, !playing else { return }
     playing = true
     stopped = false
+    clockBroken = true
     clock[clkTickPos] = clock[clkSpt] - 1  // first tick lands on the next sample
   }
 
@@ -331,6 +354,7 @@ public final class WaveRunner {
 
   public func stop() {
     playing = false
+    clockBroken = true
     graph?.reset()
   }
 
@@ -365,6 +389,7 @@ public final class WaveRunner {
   public func freeze() {
     guard graph != nil, !scrubbing else { return }
     scrubbing = true
+    clockBroken = true
     scrubPos = Double(graph!.tick) + tickPhase
     scrubTarget = scrubPos
     scrubRate = 0
@@ -377,6 +402,7 @@ public final class WaveRunner {
   public func release() {
     guard scrubbing else { return }
     scrubbing = false
+    clockBroken = true
     scrubRate = 0
     clock[clkTickPos] = (scrubPos - scrubPos.rounded(.down)) * clock[clkSpt]
   }
@@ -435,6 +461,7 @@ public final class WaveRunner {
   /// tick boundary. Negative holds the clock back (the next tick comes later).
   public func align(ticks: Double) {
     guard let g = graph else { return }
+    clockBroken = true
     if ticks < 0 {
       clock[clkTickPos] += ticks * clock[clkSpt]
       return
@@ -546,6 +573,10 @@ public final class WaveRunner {
     case .tempoAnchor: beginTempoFx(.hold, target: max(20, g.project.tempo), ticks: ticks)
     }
   }
+
+  /// Is a macro in effect right now: a pending mute restore, a running beat repeat or a tempo
+  /// effect (half time, tape stop, tempo anchor)? Allocation-free.
+  public var macroActive: Bool { (graph?.hasActiveMacros ?? false) || tempoFx != .none }
 
   /// Restore every pending macro effect now.
   public func panic() {
@@ -678,13 +709,23 @@ public final class WaveRunner {
       pending = nil
       install(next)
       ticksInBlock += 1
+      anchor(next, tick: next.graph.tick, swap: true)
       return
     }
     let lanes = proj.lanes
+    let ring = fireRing
+    let macro = ring != nil && (g.hasActiveMacros || tempoFx != .none)
+    // The tick's anchor goes out before its fires (`advance` is exactly one tick): a reader
+    // that looks at the fires first and the anchors second finds the anchor of every fire.
+    anchor(proj, tick: g.tick + 1, swap: false)
     g.advance { n, t in
       let li = n.lane[t]
-      if li >= 0 { self.hit(lanes[li], n, t) }
+      if li >= 0 {
+        self.hit(lanes[li], n, t)
+        if let ring { self.report(ring, proj, lanes[li], n, t, macro: macro) }
+      }
     }
+    assert(Int(lastAnchorTick) == g.tick, "advance moved the tick by exactly one")
     ticksInBlock += 1
     opts.onTick?(self)
     if g.stopRequested {
@@ -693,9 +734,49 @@ public final class WaveRunner {
     }
   }
 
-  /// Render `frames` samples into `left` (and `right`, if given).
+  /// One audible hit, into the fire ring. Allocation-free; a full ring overwrites its oldest.
+  private func report(
+    _ ring: LatestRing<FireEvent>, _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int,
+    macro: Bool
+  ) {
+    let steps = n.durSteps[t]
+    let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
+    var flags: FireFlags = lane.isTonal ? [] : .drum
+    if proj.graph.isStingerNet[n.index] { flags.insert(.stinger) }
+    if macro { flags.insert(.macro) }
+    ring.write(
+      FireEvent(
+        frame: tickFrame, tick: Int32(truncatingIfNeeded: proj.graph.tick),
+        generation: proj.generation, net: Int32(truncatingIfNeeded: n.index),
+        transition: Int32(truncatingIfNeeded: t), note: Int16(truncatingIfNeeded: n.note[t]),
+        velocity: UInt8(clamping: n.vel[t]), channel: n.channel[t], durSteps: Float(steps),
+        durMs: Float(durMs), flags: flags))
+  }
+
+  /// This tick of the net clock, into the anchor ring. `tick` is the graph's counter after the
+  /// tick; the flags say how it relates to the anchor before it.
+  private func anchor(_ proj: WaveProject, tick: Int, swap: Bool) {
+    let t = Int32(truncatingIfNeeded: tick)
+    var flags: TickAnchorFlags = swap ? .swap : []
+    if clockBroken
+      || (!swap && (proj.generation != lastAnchorGeneration || t != lastAnchorTick &+ 1))
+    {
+      flags.insert(.discontinuity)
+    }
+    clockBroken = false
+    lastAnchorGeneration = proj.generation
+    lastAnchorTick = t
+    anchorRing?.write(
+      TickAnchor(
+        frame: tickFrame, tick: t, generation: proj.generation, tempo: Float(clock[clkTempo]),
+        flags: flags))
+  }
+
+  /// Render `frames` samples into `left` (and `right`, if given). `startFrame` is the deck
+  /// frame of the first sample, the base of every `FireEvent` / `TickAnchor` stamp.
   public func process(
-    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int,
+    startFrame: Int = 0
   ) {
     ticksInBlock = 0
     serviceTempoFx()
@@ -707,6 +788,7 @@ public final class WaveRunner {
         clock[clkTickPos] += 1
         if clock[clkTickPos] >= clock[clkSpt] {
           clock[clkTickPos] -= clock[clkSpt]
+          tickFrame = Int64(startFrame) &+ Int64(i)
           doTick()
         }
       }

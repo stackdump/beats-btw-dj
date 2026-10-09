@@ -139,6 +139,47 @@ struct MasterTapTests {
     #expect(masterFrame == deckFrame, "no node between the source and the mixer delays anything")
   }
 
+  @Test func aFireIsLocatedInTheMasterTapByItsDeckFrame() throws {
+    // A net deck, silent until it is started. The first audible fire is stamped with the
+    // deck frame its tick began on; the master tap must be silent up to the sample before
+    // that frame and sounding on it: the deck time base reaches the master stream exactly.
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: rate)
+    let deck = try #require(dj["A"])
+    deck.loadNet(project("techno", 42))
+    deck.wave.setTempo(240)
+    dj.masterTap.acquire()
+    defer { dj.masterTap.release() }
+    try dj.start()
+    defer { dj.stop() }
+    _ = try renderOffline(dj, frames: 8192)
+    deck.setPlaying(true)
+    let total = 8192 + Int(rate) * 2
+    _ = try renderOffline(dj, frames: total - 8192)
+    var events: [FireEvent] = []
+    var cursor = 0
+    deck.wave.fires.drain(from: &cursor, into: &events)
+    let first = try #require(events.first)
+    let f = Int(first.frame)
+    #expect(f == 8192, "the play command lands at the next render cycle")
+    let tap = dj.masterTap
+    let before = tapped(tap, from: f - 512, to: f)
+    let after = tapped(tap, from: f, to: f + 256)
+    #expect(before.count == 512 && after.count == 256)
+    #expect(before.allSatisfy { $0 == 0 }, "silent right up to the frame before the fire")
+    // (a tonal voice's envelope rises from zero, so the first non-zero sample is a few in)
+    let onset = try #require(after.firstIndex { $0 != 0 })
+    #expect(onset < 16, "sounding within a few samples of the fire's own frame (onset \(onset))")
+    #expect(after.contains { abs($0) > 0.01 })
+    // every fire is followed by sound just after its frame (the tap is the post-master mix)
+    let covered = events.filter { Int($0.frame) + 1024 <= tap.endFrame }
+    #expect(covered.count > 20 && covered.count >= events.count - 8, "the tap has every fire")
+    let silent = covered.filter { e in
+      let w = tapped(tap, from: Int(e.frame), to: Int(e.frame) + 1024)
+      return !w.contains { abs($0) > 1e-5 }
+    }
+    #expect(silent.isEmpty, "\(silent.count) fires with nothing in the master tap after them")
+  }
+
   @Test func theMasterTapHasNoLatencyAfterAnyCycle() throws {
     let dj = try makeEngine()
     dj.masterTap.acquire()

@@ -196,6 +196,13 @@ extension WaveGraph {
     repeatRemaining = 0
   }
 
+  /// Is any macro in effect: a pending restore or a running beat repeat? Allocation-free.
+  var hasActiveMacros: Bool {
+    if repeatRemaining > 0 { return true }
+    for i in 0..<Self.timerCapacity where timerKind[i] != 0 { return true }
+    return false
+  }
+
   /// Number of pending tick-locked restores (UI / tests).
   public var pendingMacroTimers: Int { timerKind.reduce(0) { $0 + ($1 != 0 ? 1 : 0) } }
 

@@ -49,7 +49,7 @@ final class DeckRenderer: @unchecked Sendable {
   ) {
     let start = renderedFramesAtomic.load(ordering: .relaxed)  // only this thread writes it
     if wave.isActive {
-      wave.render(frames: frames, left: left, right: right)
+      wave.render(frames: frames, left: left, right: right, startFrame: start)
     } else {
       turntable.render(frames: frames, left: left, right: right)
     }
