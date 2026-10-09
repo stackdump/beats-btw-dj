@@ -7,13 +7,23 @@ extension Deck {
     public var name: String
     public var startTick: Int
     public var steps: Int
+    /// How many phrases the section is cut into: the longest phrase list of any role (1 when
+    /// no role has one). canvas.js `renderTimeline`: `Math.max(...phraseLists.map(p => p.length))`.
+    public var phraseCount = 1
+    /// The phrase letters of the section's first role ("A", "B", "A", "C"), as the timeline
+    /// prints them; empty when the section has no phrase data.
+    public var phrasePattern: [String] = []
 
     /// The sections of a project's structure, in order, with their start ticks.
     public static func sections(of project: Project) -> [SectionInfo] {
       var start = 0
       var out: [SectionInfo] = []
       for sec in project.structure {
-        out.append(SectionInfo(name: sec.name, startTick: start, steps: sec.steps))
+        let lists = sec.phrases.values
+        out.append(
+          SectionInfo(
+            name: sec.name, startTick: start, steps: sec.steps,
+            phraseCount: lists.map(\.count).max() ?? 1, phrasePattern: lists.first ?? []))
         start += sec.steps
       }
       return out
