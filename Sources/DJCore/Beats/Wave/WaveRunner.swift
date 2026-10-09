@@ -60,6 +60,8 @@ public struct WaveOptions {
   public var masterGain = 0.8
   public var voices: [String: VoiceSpec] = [:]
   public var mods: [WaveMod] = []
+  /// Per-instrument voices (`InstrumentTable`); nil = beats' families only (parity).
+  public var instruments: InstrumentTable?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -90,6 +92,23 @@ final class Lane {
   /// Live keys: a held voice does not decay until released.
   var hold: [Bool] = []
   var heldNote: [Int] = []
+  // pluck engine: one delay line of `dmax` samples per voice, all in `dl` (allocated at
+  // prepare; the audio thread only reads and writes it)
+  var isPluck = false
+  var dl: [Float] = []
+  var dmax = 0
+  var dw: [Int] = []
+  var dlen: [Double] = []
+  var lp: [Double] = []
+  var fb: [Double] = []
+  var excite: [Int] = []
+  var pluckA = 0.0
+  var vibPhase = 0.0
+  var vibInc = 0.0
+  // post chain on the voice sum: lowpass biquad, then distortion
+  var post: [Double] = []
+  var pz1 = 0.0
+  var pz2 = 0.0
 
   init(voice: VoiceSpec, sr: Double, tonal: Bool) {
     self.voice = voice
@@ -125,11 +144,25 @@ private func gateLane(_ voice: VoiceSpec, _ sr: Double, _ seed: Int) -> Lane {
 }
 
 private func tonalLane(
-  _ voice: VoiceSpec, _ sr: Double, _ poly: Int, tables: inout [String: [Float]]
+  _ voice: VoiceSpec, _ sr: Double, _ poly: Int, tables: inout [String: [Float]], seed: Int = 0
 )
   -> Lane
 {
   let lane = Lane(voice: voice, sr: sr, tonal: true)
+  lane.rng = noiseSeed(seed)
+  if voice.engine == "pluck" {
+    lane.isPluck = true
+    lane.dmax = Int(sr / 16) + 2  // down to ~16 Hz
+    lane.dl = [Float](repeating: 0, count: poly * lane.dmax)
+    lane.dw = [Int](repeating: 0, count: poly)
+    lane.dlen = [Double](repeating: 1, count: poly)
+    lane.lp = [Double](repeating: 0, count: poly)
+    lane.fb = [Double](repeating: 0, count: poly)
+    lane.excite = [Int](repeating: 0, count: poly)
+    lane.pluckA = 1 - exp(-2 * Double.pi * min(voice.dampening, sr * 0.45) / sr)
+  }
+  lane.vibInc = voice.vibratoRate / sr
+  if voice.lowpass > 0 { lane.post = biquad(type: "lowpass", fc: voice.lowpass, q: 1, sr: sr) }
   lane.st[slotAttMul] = exp(-1 / (voice.attack * sr))
   if tables[voice.wave] == nil { tables[voice.wave] = buildTable(voice.wave) }
   lane.table = tables[voice.wave]!
@@ -184,9 +217,11 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
             override.kind == "tonal"
             ? tonalLane(override, sr, 4, tables: &tables) : gateLane(override, sr, lanes.count)
         } else if key == "tonal" {
+          let voice =
+            opts.instruments?.voice(instrument: tr.instrument, group: tr.group)
+            ?? tonalVoice(instrument: tr.instrument, group: tr.group)
           lane = tonalLane(
-            tonalVoice(instrument: tr.instrument, group: tr.group), sr,
-            tr.group == "harmony" ? 6 : 4, tables: &tables)
+            voice, sr, tr.group == "harmony" ? 6 : 4, tables: &tables, seed: lanes.count)
         } else {
           lane = gateLane(drumVoice(kind: key, instrument: tr.instrument), sr, lanes.count)
         }
@@ -216,9 +251,11 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
   }
   // Live keys: one extra pooled voice, shaped like the melody net's instrument.
   let melody = g.nets.first { $0.bundle.riffGroup == "melody" || $0.id == "melody" }
-  let liveVoice = tonalVoice(
-    instrument: melody?.bundle.track.instrument ?? "", group: "melody")
-  let live = tonalLane(liveVoice, sr, 8, tables: &tables)
+  let liveInstrument = melody?.bundle.track.instrument ?? ""
+  let liveVoice =
+    opts.instruments?.voice(instrument: liveInstrument, group: "melody")
+    ?? tonalVoice(instrument: liveInstrument, group: "melody")
+  let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
   live.netId = "<live>"
   let liveIndex = lanes.count
   lanes.append(live)
@@ -468,7 +505,7 @@ public final class WaveRunner {
       }
     }
     let cur = lane.sd[v] + lane.sa[v]
-    lane.inc[v] = 440 * pow(2, (Double(note) - 69) / 12) * lane.st[slotInvSr]
+    strike(lane, v, note: note)
     lane.md[v] = exp(-lane.st[slotInvSr] / 0.3)  // release time constant, used after noteOff
     lane.hold[v] = true
     lane.heldNote[v] = note
@@ -568,7 +605,13 @@ public final class WaveRunner {
     }
     let steps = n.durSteps[t]
     let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
-    // Steal the quietest voice (deterministic), continuing from its current level.
+    trigger(lane, note: n.note[t], w: w, durMs: durMs)
+  }
+
+  /// Start a note on a tonal lane: steal the quietest voice (deterministic), continuing from
+  /// its current level, and decay over the note's length.
+  fileprivate func trigger(_ lane: Lane, note: Int, w: Double, durMs: Double) {
+    lane.active = true
     var v = 0
     var best = Double.infinity
     for k in 0..<lane.poly {
@@ -579,12 +622,33 @@ public final class WaveRunner {
       }
     }
     let cur = lane.sd[v] + lane.sa[v]
-    lane.inc[v] = 440 * pow(2, (Double(n.note[t]) - 69) / 12) * lane.st[slotInvSr]
+    strike(lane, v, note: note)
     var tau = (durMs > 0 ? durMs : 100) / 1000 * lane.voice.decayScale
     tau = tau < 0.03 ? 0.03 : (tau > lane.voice.maxDecay ? lane.voice.maxDecay : tau)
     lane.md[v] = exp(-lane.st[slotInvSr] / tau)
     lane.sd[v] = w
     lane.sa[v] = cur - w
+  }
+
+  /// Tune voice `v` to `note`; a string is damped and plucked again.
+  private func strike(_ lane: Lane, _ v: Int, note: Int) {
+    lane.inc[v] = 440 * pow(2, (Double(note) - 69) / 12) * lane.st[slotInvSr]
+    guard lane.isPluck else { return }
+    let period = 1 / lane.inc[v]
+    // The loop lowpass delays the note by its phase delay at f0: take that off the line
+    // so the string plays in tune.
+    let w = 2 * Double.pi * lane.inc[v]
+    let b = 1 - lane.pluckA
+    let lpDelay = atan2(b * sin(w), 1 - b * cos(w)) / w
+    let len = min(Double(lane.dmax - 2), max(2, period - lpDelay))
+    lane.dlen[v] = len
+    // `resonance` is the feedback per period of a 220 Hz string; scaled so every pitch
+    // rings for the same time (per period alone, high notes die in milliseconds).
+    lane.fb[v] = pow(lane.voice.resonance, 220 * lane.st[slotInvSr] * period)
+    let base = v * lane.dmax
+    for i in base..<(base + lane.dmax) { lane.dl[i] = 0 }
+    lane.lp[v] = 0
+    lane.excite[v] = max(1, Int(lane.voice.attackNoise * len))
   }
 
   // MARK: per-sample
@@ -643,6 +707,13 @@ public final class WaveRunner {
     var live = false
     let fmk = lane.fm != nil ? 1 + lane.st[slotFmDepth] * lane.fm!.st[slotPrev] : 1
     let am = lane.st[slotAttMul]
+    var vib = 1.0
+    if lane.vibInc > 0 {
+      var vp = lane.vibPhase + lane.vibInc
+      vp -= vp.rounded(.down)
+      lane.vibPhase = vp
+      vib = 1 + lane.voice.vibratoDepth * sin(2 * Double.pi * vp)
+    }
     for k in 0..<lane.poly {
       let sd = lane.sd[k]
       let sa = lane.sa[k]
@@ -652,7 +723,11 @@ public final class WaveRunner {
       envSum += env
       lane.sd[k] = sd * (lane.hold[k] ? 1.0 : lane.md[k])
       lane.sa[k] = sa * am
-      var ph = lane.phase[k] + lane.inc[k] * fmk
+      if lane.isPluck {
+        out += env * pluckSample(lane, k, rate: fmk * vib)
+        continue
+      }
+      var ph = lane.phase[k] + lane.inc[k] * fmk * vib
       ph -= ph.rounded(.down)
       lane.phase[k] = ph
       let x = ph * Double(waveTableSize)
@@ -664,11 +739,48 @@ public final class WaveRunner {
     }
     lane.st[slotEnv] = envSum
     if !live { lane.active = false }
+    if !lane.post.isEmpty {
+      let b = lane.post
+      let y = b[0] * out + lane.pz1
+      lane.pz1 = b[1] * out - b[3] * y + lane.pz2
+      lane.pz2 = b[2] * out - b[4] * y
+      out = y
+    }
+    if lane.voice.distortion > 0 { out = toneDistortion(out, amount: lane.voice.distortion) }
     out *= lane.st[slotLevel]
     if let amod = lane.am {
       out *= 1 - lane.st[slotAmDepth] + lane.st[slotAmDepth] * amod.st[slotPrev]
     }
     acc += out
+  }
+
+  /// One sample of string `k` (Karplus-Strong: a delay of one period, a lowpass and
+  /// feedback in the loop, excited by a noise burst). `rate` bends the pitch (fm, vibrato).
+  @inline(__always)
+  private func pluckSample(_ lane: Lane, _ k: Int, rate: Double) -> Double {
+    let base = k * lane.dmax
+    let d = min(Double(lane.dmax - 2), lane.dlen[k] / rate)
+    var rp = Double(lane.dw[k]) - d
+    if rp < 0 { rp += Double(lane.dmax) }
+    let i0 = Int(rp)
+    let fr = rp - Double(i0)
+    let i1 = i0 + 1 == lane.dmax ? 0 : i0 + 1
+    let a = Double(lane.dl[base + i0])
+    let y = a + (Double(lane.dl[base + i1]) - a) * fr
+    lane.lp[k] += lane.pluckA * (y - lane.lp[k])
+    var input = 0.0
+    if lane.excite[k] > 0 {
+      var x = lane.rng
+      x ^= x &<< 13
+      x ^= Int32(bitPattern: UInt32(bitPattern: x) >> 17)
+      x ^= x &<< 5
+      lane.rng = x
+      input = Double(x) / 2_147_483_648
+      lane.excite[k] -= 1
+    }
+    lane.dl[base + lane.dw[k]] = Float(input + lane.lp[k] * lane.fb[k])
+    lane.dw[k] = lane.dw[k] + 1 == lane.dmax ? 0 : lane.dw[k] + 1
+    return y
   }
 
   private func doTick() {
@@ -691,6 +803,29 @@ public final class WaveRunner {
       stopped = true
       stop()
     }
+  }
+
+  /// Play `notes` on one voice, offline (instrument auditions, tests): mono, through the
+  /// master curve. Not for the audio thread.
+  public static func audition(
+    _ voice: VoiceSpec, notes: [(note: Int, at: Double, seconds: Double)], sampleRate: Double,
+    seconds: Double, velocity: Int = 100
+  ) -> [Float] {
+    let r = WaveRunner(sampleRate: sampleRate)
+    var tables: [String: [Float]] = [:]
+    let lane = tonalLane(voice, sampleRate, 6, tables: &tables, seed: 1)
+    let starts = notes.map { Int(($0.at * sampleRate).rounded()) }
+    let w = Double(max(1, min(127, velocity))) / 127
+    var out = [Float](repeating: 0, count: Int(seconds * sampleRate))
+    for i in 0..<out.count {
+      for (j, n) in notes.enumerated() where starts[j] == i {
+        r.trigger(lane, note: n.note, w: w, durMs: n.seconds * 1000)
+      }
+      r.acc = 0
+      if lane.active { r.laneSample(lane) }
+      out[i] = Float(tanh(r.acc * r.masterGain))
+    }
+    return out
   }
 
   /// Render `frames` samples into `left` (and `right`, if given).

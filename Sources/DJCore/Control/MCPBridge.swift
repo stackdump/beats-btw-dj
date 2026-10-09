@@ -18,6 +18,7 @@ public struct MCPBridge {
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
+    "dj_audition": "audition",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -167,6 +168,23 @@ public struct MCPBridge {
         "index": prop("integer", "Pad index within the group"),
       ],
       required: ["group", "index"]),
+    tool(
+      "dj_audition",
+      "Play one instrument on the Mac's output, outside the decks: a strummed chord and a few "
+        + "notes, or the MIDI notes you give. Also saved as a WAV; returns its path, level and "
+        + "which sound it uses (pluck, or the wavetable family it folds into).",
+      [
+        "instrument": prop("string", "An instrument name from dj_catalog, e.g. acoustic-guitar"),
+        "notes": obj([
+          ("type", .string("array")), ("items", obj([("type", .string("integer"))])),
+          (
+            "description",
+            .string("Optional MIDI notes, played 0.3 s apart (e.g. [40, 45, 50, 55])")
+          ),
+        ]),
+        "play": prop("boolean", "false to only render the WAV (default true)"),
+      ],
+      required: ["instrument"]),
     tool(
       "dj_screenshot",
       "Capture the live DJApp window (decks, net rings, timeline, pads) and return it as a PNG "

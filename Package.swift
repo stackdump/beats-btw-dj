@@ -14,7 +14,9 @@ let package = Package(
     // Device profiles, jog parsing, CoreMIDI input. No UI, no audio graph yet.
     .target(
       name: "DJCore",
-      resources: [.copy("Resources/profiles"), .copy("Resources/beats")]
+      resources: [
+        .copy("Resources/profiles"), .copy("Resources/beats"), .copy("Resources/voices"),
+      ]
     ),
     // CLI: ports / monitor — the Swift twin of the Go tool, for hardware checks.
     .executableTarget(name: "djctl", dependencies: ["DJCore"]),

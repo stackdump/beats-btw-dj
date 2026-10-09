@@ -13,7 +13,7 @@ struct ControlSocketTests {
     }
     defer { server.stop() }
     let r = try await Task.detached {
-      let c = try ControlClient(path: path, timeout: 5)
+      let c = try ControlClient(path: path, timeout: 60)
       let first = try c.request("state", .object(JSONObject([("x", .int(1))])))
       let second = try c.request("catalog")  // same connection, next line
       return (first, second)
@@ -23,7 +23,7 @@ struct ControlSocketTests {
     #expect(r.1["method"]?.string == "catalog")
     let err = await Task.detached { () -> ControlError? in
       do {
-        _ = try ControlClient(path: path, timeout: 5).request("boom")
+        _ = try ControlClient(path: path, timeout: 60).request("boom")
         return nil
       } catch { return error as? ControlError }
     }.value

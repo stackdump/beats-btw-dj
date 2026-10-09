@@ -52,6 +52,38 @@ struct WaveRunnerRealTimeTests {
     #expect(runner.graph!.tick > 100, "the run must cross many ticks")
     #expect(report.allocations == 0, "process allocated \(report.allocations) times")
   }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func pluckedStringsDoNotAllocate() {
+    let sr = 48_000.0
+    let runner = WaveRunner(sampleRate: sr, opts: .extended)
+    // country plays guitars; check this seed really got a string before trusting the result
+    let prepared = WaveRunner.prepare(
+      project("country", 7, "minimal"), sampleRate: sr, opts: .extended)
+    #expect(prepared.lanes.contains { $0.isPluck }, "a plucked lane to measure")
+    runner.load(prepared: prepared)
+    runner.setTempo(480)
+    runner.play()
+    var l = [Float](repeating: 0, count: 128)
+    var r = [Float](repeating: 0, count: 128)
+    func run(_ n: Int) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n { runner.process(lp.baseAddress!, rp.baseAddress!, frames: 128) }
+        }
+      }
+    }
+    run(200)
+    let report = countAllocations {
+      run(3000)
+      runner.noteOn(52, velocity: 100)  // live keys strike a string too
+      runner.noteOn(40, velocity: 90)
+      run(200)
+      runner.allNotesOff()
+      run(100)
+    }
+    #expect(report.allocations == 0, "process allocated \(report.allocations) times")
+  }
 }
 
 private func renderBlocks(_ src: WaveDeckSource, blocks: Int) -> [Float] {

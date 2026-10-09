@@ -98,6 +98,9 @@ extension AppModel {
       poll()
       return controlState()
 
+    case "audition":
+      return try audition(p)
+
     case "screenshot":
       return try screenshot(to: p["path"]?.string)
 
@@ -115,6 +118,71 @@ extension AppModel {
   }
 
   static let structures = ["minimal", "standard", "extended"]
+
+  /// Every instrument beats' generator can pick, sorted.
+  static var allInstruments: [String] {
+    var names = Set<String>()
+    for set in BeatsTables.shared.instrumentSets.values {
+      for pool in set.values { names.formUnion(pool) }
+    }
+    return names.sorted()
+  }
+
+  /// What an instrument sounds like here: its engine, or the wavetable family it folds into.
+  static func soundOf(_ name: String) -> String {
+    if name.hasPrefix("drums") { return "drum kit" }
+    let v = InstrumentTable.shared.voice(instrument: name, group: "melody")
+    return v.engine == "table" ? "table:\(v.wave)" : v.engine
+  }
+
+  /// Render a short phrase on one instrument, save it as a WAV and play it on the Mac's
+  /// output (outside the decks, so nothing on them changes).
+  func audition(_ p: JSONValue) throws -> JSONValue {
+    guard let name = p["instrument"]?.string, Self.allInstruments.contains(name) else {
+      throw ControlRequestError.bad("unknown instrument (dj_catalog lists them)")
+    }
+    guard !name.hasPrefix("drums") else {
+      throw ControlRequestError.bad("drum kits are not tonal; generate a track to hear one")
+    }
+    let sr = engine?.sampleRate ?? 48_000
+    let notes: [(note: Int, at: Double, seconds: Double)]
+    if let given = p["notes"]?.array?.compactMap(\.int), !given.isEmpty {
+      notes = given.enumerated().map { (min(108, max(21, $1)), Double($0) * 0.3, 0.3) }
+    } else {
+      // a strummed C chord, then a few single notes
+      notes = [
+        (48, 0, 0.6), (52, 0.02, 0.6), (55, 0.04, 0.6), (60, 0.06, 0.6), (64, 0.08, 0.6),
+        (60, 0.8, 0.25), (64, 1.05, 0.25), (67, 1.3, 0.25), (72, 1.55, 0.8),
+      ]
+    }
+    let seconds = p["seconds"]?.double ?? max(2.5, (notes.map { $0.at }.max() ?? 0) + 1.5)
+    let voice = InstrumentTable.shared.voice(instrument: name, group: "melody")
+    let audio = WaveRunner.audition(
+      voice, notes: notes, sampleRate: sr, seconds: min(10, max(0.5, seconds)))
+    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("DJApp/auditions", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("\(name).wav")
+    let wav = WAV.encode(RenderedAudio(sampleRate: sr, left: audio, right: audio))
+    try wav.write(to: url)
+    let peak = audio.reduce(Float(0)) { max($0, abs($1)) }
+    let rms = (audio.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(max(1, audio.count)))
+      .squareRoot()
+    if p["play"]?.bool ?? true {
+      auditionSound?.stop()
+      let sound = NSSound(data: wav)
+      sound?.volume = Float(master)
+      sound?.play()
+      auditionSound = sound
+    }
+    return .object(
+      JSONObject([
+        ("instrument", .string(name)), ("sound", .string(Self.soundOf(name))),
+        ("path", .string(url.path)), ("seconds", .number(Double(audio.count) / sr)),
+        ("peakDB", .number((20 * log10(max(Double(peak), 1e-9)) * 10).rounded() / 10)),
+        ("rmsDB", .number((20 * log10(max(rms, 1e-9)) * 10).rounded() / 10)),
+      ]))
+  }
 
   /// The app's own window as a PNG (no Screen Recording permission: it is our window).
   /// Default path: `~/Library/Application Support/DJApp/shots/<time>.png`.
@@ -218,6 +286,10 @@ extension AppModel {
     o["decks"] = .array((engine?.decks.keys.sorted() ?? []).map { .string($0) })
     o["genres"] = .array(BeatsTables.shared.genres.keys.sorted().map { .string($0) })
     o["structures"] = .array(Self.structures.map { .string($0) })
+    o["instruments"] = .array(
+      Self.allInstruments.map {
+        .object(JSONObject([("name", .string($0)), ("sound", .string(Self.soundOf($0)))]))
+      })
     o["macros"] = .array(
       NetMacro.allCases.map {
         .object(JSONObject([("id", .string($0.id)), ("label", .string($0.label))]))

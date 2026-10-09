@@ -92,4 +92,29 @@ struct AppControlTests {
       try await call(m, "pad", #"{"group":"pads","index":99}"#)
     }
   }
+
+  @Test func catalogSaysWhatEachInstrumentSoundsLike() async throws {
+    let c = try await call(try model(), "catalog")
+    let sounds = Dictionary(
+      uniqueKeysWithValues: (c["instruments"]?.array ?? []).compactMap { e in
+        e["name"]?.string.map { ($0, e["sound"]?.string ?? "") }
+      })
+    #expect(sounds["acoustic-guitar"] == "pluck")
+    #expect(sounds["supersaw"] == "table:saw")
+    #expect(sounds["drums-808"] == "drum kit")
+  }
+
+  @Test func auditionRendersAnInstrumentWithoutTouchingTheDecks() async throws {
+    let m = try model()
+    let before = try await call(m, "state")
+    let a = try await call(
+      m, "audition", #"{"instrument":"electric-guitar","notes":[40,45,50],"play":false}"#)
+    #expect(a["sound"]?.string == "pluck")
+    #expect((a["rmsDB"]?.double ?? -200) > -40)
+    #expect(a["path"]?.string?.hasSuffix("electric-guitar.wav") == true)
+    #expect(try await call(m, "state") == before)
+    await #expect(throws: (any Error).self) {
+      try await call(m, "audition", #"{"instrument":"kazoo","play":false}"#)
+    }
+  }
 }

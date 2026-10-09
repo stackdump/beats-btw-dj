@@ -35,6 +35,22 @@ public struct VoiceSpec: Equatable {
   public var attack = 0.0
   public var decayScale = 0.0
   public var maxDecay = 0.0
+  // Beyond beats' wave engine (InstrumentTable; defaults leave a voice exactly as beats has it).
+  /// "table" (wavetable) | "pluck" (Karplus-Strong string, as Tone's PluckSynth).
+  public var engine = "table"
+  /// pluck: noise burst length in periods of the note.
+  public var attackNoise = 1.0
+  /// pluck: lowpass cutoff inside the string loop, Hz.
+  public var dampening = 4000.0
+  /// pluck: loop feedback, 0…1.
+  public var resonance = 0.9
+  /// Pitch vibrato: rate in Hz, depth as a fraction of the frequency.
+  public var vibratoRate = 0.0
+  public var vibratoDepth = 0.0
+  /// Post lowpass on the voice sum, Hz (0 = off).
+  public var lowpass = 0.0
+  /// Tone.Distortion amount after the lowpass (0 = off).
+  public var distortion = 0.0
 
   public init(kind: String, carrier: String) {
     self.kind = kind
@@ -52,6 +68,7 @@ public struct VoiceSpec: Equatable {
     q = v["q"]?.double ?? 0
     tone = v["tone"]?.double ?? 0
     toneMix = v["toneMix"]?.double ?? 0
+    applyExtended(v)
     if let p = v["pulse"] {
       pulse = Pulse(
         alpha: (p["alpha"]?.array ?? []).compactMap(\.double),

@@ -63,6 +63,21 @@ its copy; the two are now independent. Rules inherited from that split:
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 
+## Instruments beyond beats' wave engine
+
+- beats' wave engine folds every tonal instrument into 7 wavetable families (`tonalVoice`).
+  `Resources/voices/instruments.json` (`InstrumentTable`) gives an instrument its own voice,
+  overlaying its family: `engine: "pluck"` (Karplus-Strong), `lowpass`, `distortion`,
+  `vibrato*`. Engine values come from beats' Tone.js presets (`public/audio/tone-engine.js`).
+- The parity path ignores it: `WaveOptions()` is beats exactly (what the fixtures run); the
+  app prepares with `WaveOptions.extended`. Keep both true — new call sites pass `.extended`.
+- `resonance` is the loop feedback per period *at 220 Hz*, scaled per note so every pitch rings
+  equally long; the loop lowpass's phase delay is taken off the delay line so strings play in
+  tune. String delay lines are allocated at prepare (`pluckedStringsDoNotAllocate`).
+- `InstrumentTableTests` hold each entry to: in tune (fundamental partial < 5 cents), rings
+  and decays, and within 3 dB of the lead voice — re-run it when adding or retuning one.
+  `dj_audition` (or `djctl ctl audition '{"instrument":…}'`) plays one on the Mac's output.
+
 ## Visuals (Phase 5)
 
 - SwiftUI lives only in `Sources/DJViews` (and the `DJApp` shell). DJCore has models

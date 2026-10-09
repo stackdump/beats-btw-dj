@@ -438,7 +438,8 @@ public final class Deck: JogClock {
   /// next bar; a stopped one switches at once.
   public func loadNet(_ project: Project, title: String? = nil) {
     loadNet(
-      WaveRunner.prepare(project, sampleRate: wave.sampleRate), project: project, title: title)
+      WaveRunner.prepare(project, sampleRate: wave.sampleRate, opts: .extended), project: project,
+      title: title)
   }
 
   /// Hand over a project compiled elsewhere (`WaveRunner.prepare`).

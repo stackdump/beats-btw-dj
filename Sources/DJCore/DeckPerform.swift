@@ -38,7 +38,7 @@ extension Deck {
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, startTick: start)
+      WaveRunner.prepare(project, sampleRate: sr, opts: .extended, startTick: start)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
@@ -51,7 +51,9 @@ extension Deck {
   public func relocate(toTick tick: Int) {
     guard mode == .net, let project = netProject else { return }
     if deterministic {
-      wave.load(WaveRunner.prepare(project, sampleRate: wave.sampleRate, startTick: max(0, tick)))
+      wave.load(
+        WaveRunner.prepare(
+          project, sampleRate: wave.sampleRate, opts: .extended, startTick: max(0, tick)))
       applyNetTempo()
     } else {
       Task { @MainActor in await self.jumpToTick(tick) }
@@ -89,7 +91,7 @@ extension Deck {
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, startTick: max(0, tick))
+      WaveRunner.prepare(project, sampleRate: sr, opts: .extended, startTick: max(0, tick))
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)

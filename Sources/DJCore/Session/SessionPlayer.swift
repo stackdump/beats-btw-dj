@@ -54,6 +54,11 @@ public struct RenderedAudio: Sendable {
   public var left: [Float]
   public var right: [Float]
   public var frames: Int { left.count }
+  public init(sampleRate: Double, left: [Float], right: [Float]) {
+    self.sampleRate = sampleRate
+    self.left = left
+    self.right = right
+  }
 }
 
 /// Re-renders a `Session` offline: the same engine, the same inputs at the same frames.

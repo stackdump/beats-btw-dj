@@ -1,0 +1,13 @@
+{
+  "comment": "Per-instrument voices for the app (InstrumentTable). Each entry overlays the instrument's wave-engine family voice. Engine params are beats' Tone.js presets (public/audio/tone-engine.js); level is calibrated by InstrumentTableTests to sit with the family voices.",
+  "instruments": {
+    "pluck":            { "engine": "pluck", "attackNoise": 1,   "dampening": 4000, "resonance": 0.90, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.89 },
+    "bright-pluck":     { "engine": "pluck", "attackNoise": 2,   "dampening": 8000, "resonance": 0.95, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.473 },
+    "muted-pluck":      { "engine": "pluck", "attackNoise": 0.5, "dampening": 2000, "resonance": 0.70, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 1.509 },
+    "acoustic-guitar":  { "engine": "pluck", "attackNoise": 2,   "dampening": 3000, "resonance": 0.96, "lowpass": 4000, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.709 },
+    "electric-guitar":  { "engine": "pluck", "attackNoise": 3,   "dampening": 5000, "resonance": 0.98, "lowpass": 6000, "distortion": 0.3, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.43 },
+    "distorted-guitar": { "engine": "pluck", "attackNoise": 4,   "dampening": 6000, "resonance": 0.99, "lowpass": 5000, "distortion": 0.8, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.265 },
+    "sitar":            { "engine": "pluck", "attackNoise": 3,   "dampening": 3000, "resonance": 0.98, "vibratoRate": 6, "vibratoDepth": 0.019, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.456 },
+    "harpsichord":      { "engine": "pluck", "attackNoise": 4,   "dampening": 1500, "resonance": 0.85, "lowpass": 6000, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.732 }
+  }
+}

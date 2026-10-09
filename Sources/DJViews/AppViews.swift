@@ -62,6 +62,8 @@ public final class AppModel {
   private var refresh: Timer?
   private var injectedRouter: ControllerRouter?
   @ObservationIgnored var controlServer: ControlServer?
+  /// The audition playing now (held so it isn't freed mid-sound).
+  @ObservationIgnored var auditionSound: NSSound?
 
   /// The engine and router the UI drives (nil until `start`).
   var engine: DJEngine? { dj }

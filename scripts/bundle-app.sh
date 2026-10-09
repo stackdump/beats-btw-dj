@@ -16,6 +16,7 @@ cp "$bin/DJApp" "$app/Contents/MacOS/DJApp"
 # which codesign rejects.
 cp -R Sources/DJCore/Resources/profiles "$app/Contents/Resources/profiles"
 cp -R Sources/DJCore/Resources/beats "$app/Contents/Resources/beats"
+cp -R Sources/DJCore/Resources/voices "$app/Contents/Resources/voices"
 
 cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
