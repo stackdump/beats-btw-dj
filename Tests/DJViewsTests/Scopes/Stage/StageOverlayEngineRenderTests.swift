@@ -131,4 +131,84 @@ struct StageOverlayEngineRenderTests {
     let ty = Int((c.y + tipD * sin(top.theta)).rounded())
     #expect(with.color(tx, ty).r < px.r, "the tip is dimmer")
   }
+
+  @Test func aMacroOnARealDeckThrowsBoltsThatSparkTheDarkPlanetAndLightTheHalo() throws {
+    let rig = try StageViewRig()
+    defer { rig.stop() }
+    let bolts = rig.model.layers.bolts
+    try rig.run(seconds: 0.5)
+    #expect(bolts.bolts.isEmpty && bolts.seeds.isEmpty, "quiet before the macro")
+    #expect(!rig.model.context.macroRunning)
+    rig.dj["A"]!.fire(.beatRepeat, duration: 1)  // one bar, 0.8 s
+    var frames = 0
+    while (bolts.bolts.count < 3 || bolts.seeds.isEmpty) && frames < 40 {
+      try rig.run(seconds: 0.05)
+      frames += 1
+    }
+    let ctx = rig.model.context
+    #expect(ctx.macroRunning, "the engine says a macro is in effect")
+    #expect(
+      bolts.bolts.count >= 3 && !bolts.seeds.isEmpty, "bolts and sparks (\(bolts.bolts.count))")
+    let strokes = bolts.strokes(in: ctx)
+    let glow = StageBolts.glow(energy: bolts.energy)
+    let with = try render(rig)
+    savePNG(rig.scene(), width: 1000, height: 800, name: "stage-bolts-engine")
+    let seedDots = bolts.seedDots(in: ctx)
+    bolts.reset()
+    let without = try render(rig)
+    // The bolts' paint is the difference: plenty of it, and bright blue-white.
+    let changed = OverlaySwatch.changed(without, with, tol: 32)
+    #expect(changed.count > 200, "bolts are drawn (\(changed.count) changed pixels)")
+    let brightBlue = changed.filter { $0.color.b > 180 && $0.color.b > $0.color.r + 10 }.count
+    #expect(brightBlue >= 40, "bright blue-white pixels (\(brightBlue))")
+    // every bolt's polyline is on the bright line at most of its vertices (panels draw over some)
+    for stroke in strokes where stroke.alpha > 0.5 {
+      let lit = stroke.points.dropFirst().dropLast().filter { p in
+        let x = Int(p.x.rounded())
+        let y = Int(p.y.rounded())
+        return Sw.anyNear(with, x, y, r: 1, (200, 225, 255), tol: 70)
+          && with.color(x, y).b > without.color(x, y).b + 30
+      }.count
+      #expect(lit >= 6, "a bolt at alpha \(stroke.alpha) is on its line (\(lit) of 11 vertices)")
+    }
+    // the halo condenses over the planet, in the strength the bolts' energy sets
+    let c = Sw.ipt(ctx.ringCenter)
+    let base = without.color(c.0, c.1)
+    let want = OverlaySwatch.over((150, 190, 255), 0.22 * glow, (base.r, base.g, base.b))
+    #expect(glow > 0.5)
+    #expect(
+      with.near(c.0, c.1, want, tol: 10), "halo at the centre: \(with.color(c.0, c.1)) vs \(want)")
+    // and a spark is warm white where a fresh one sits on the planet's surface
+    var warm = 0
+    for d in seedDots where d.alpha > 0.5 {
+      let p = Sw.ipt(StagePoint(x: d.x, y: d.y))
+      let px = with.color(p.0, p.1)
+      if px.r > 170 && px.r >= px.b { warm += 1 }
+    }
+    #expect(warm >= 1, "a warm spark (\(warm) of \(seedDots.count))")
+  }
+
+  @Test func whenTheMacroEndsTheBoltsTheSparksAndTheHaloAreGone() throws {
+    let rig = try StageViewRig()
+    defer { rig.stop() }
+    // Only what bolts need (they are thrown inside the flame branch): the pulse dots of the song's
+    // own hits converge on the very pixel probed below.
+    rig.model.settings.overlays = [.flame, .bolts]
+    let bolts = rig.model.layers.bolts
+    try rig.run(seconds: 0.4)
+    rig.dj["A"]!.fire(.beatRepeat, duration: 1)
+    try rig.run(seconds: 0.6)
+    #expect(!bolts.bolts.isEmpty)
+    try rig.run(seconds: 2.5)  // the macro ends at 0.8 s; bolts live 480 ms, sparks 1100 ms
+    #expect(!rig.model.context.macroRunning)
+    #expect(bolts.bolts.isEmpty && bolts.seeds.isEmpty && bolts.energy == 0)
+    let px = try render(rig)
+    let c = Sw.ipt(rig.model.context.ringCenter)
+    #expect(px.near(c.0, c.1, Sw.background, tol: 5), "no halo: \(px.color(c.0, c.1))")
+    // without a macro running at all no bolts were thrown in the quiet stretch either
+    let other = try StageViewRig()
+    defer { other.stop() }
+    try other.run(seconds: 2)
+    #expect(other.model.layers.bolts.bolts.isEmpty)
+  }
 }

@@ -23,7 +23,7 @@ struct OverlayStage {
 
   init(
     panels count: Int = 4, overlays: Set<StageOverlay> = StageOverlay.defaults,
-    metaRotation: Double = 0, meta: Bool = false, visibleNets: Bool = false,
+    metaRotation: Double = 0, meta: Bool = false, visibleNets: Bool = false, now: Double = 10,
     models: StageLayerModels = StageLayerModels()
   ) throws {
     let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 22_050)
@@ -46,7 +46,7 @@ struct OverlayStage {
     }
     context = StageContext(
       width: Double(Self.width), height: Double(Self.height), layout: layout, panels: panels,
-      now: 10, dt: 0, audioNow: 10, metaRotation: metaRotation, overlays: overlays)
+      now: now, dt: 0, audioNow: now, metaRotation: metaRotation, overlays: overlays)
   }
 
   var layers: StageLayerModels { model.layers }
