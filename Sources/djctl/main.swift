@@ -123,6 +123,23 @@ case "cue-test":
       try await dj.enableCueOutput(device: device)
       try dj.start()
       dj["A"]!.setPlaying(true)
+      var hub: ControllerHub?
+      if CommandLine.arguments.contains("--live") {
+        // Controller input drives the engine; print each control and the value it produced.
+        let h = ControllerHub(engine: dj)
+        h.onControl = { _, group, index in
+          DispatchQueue.main.async {
+            stderr(
+              "control \(group)[\(index)] · master \(String(format: "%.2f", dj.master))"
+                + " · headphoneLevel \(String(format: "%.2f", dj.headphoneLevel))"
+                + " · headphoneMix \(String(format: "%.2f", dj.headphoneMix))")
+          }
+        }
+        try h.start()
+        hub = h
+        stderr("live: move the master and headphone faders now")
+      }
+      defer { hub?.stop() }
       let out = dj.engine.outputNode.outputFormat(forBus: 0)
       stderr(
         "routed: \(device.name) · output format \(out.channelCount) ch @ \(Int(out.sampleRate)) Hz")
