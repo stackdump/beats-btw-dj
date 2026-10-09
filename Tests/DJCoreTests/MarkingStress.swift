@@ -40,7 +40,6 @@ func stressMirror(publishes: Int, preemptReader: Bool) -> MirrorStressReport {
   let project = WaveRunner.prepare(
     compose(genre: "techno", overrides: .object(ov)), sampleRate: 8000)
   let mirror = project.marking
-  let g = project.graph
   // A reader that is descheduled halfway through its copy while the writer laps the buffer.
   if preemptReader {
     let calls = Box(0)
@@ -52,6 +51,7 @@ func stressMirror(publishes: Int, preemptReader: Bool) -> MirrorStressReport {
   let done = Flag()
   let count = Box(0)
   Thread.detachNewThread {
+    let g = project.graph  // WaveProject is Sendable, its graph is not: reach it from the thread
     for i in 1...publishes {
       for n in g.nets { for p in 0..<n.nPlaces { n.state[p] = Double(i) } }
       for k in 0..<g.muted.count { g.muted[k] = UInt8(i & 1) }
