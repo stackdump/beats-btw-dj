@@ -83,13 +83,16 @@
 //   BOTH             `status` (scope.js kernelStatus), `kernelCount`, `kernelMs`, `lanes`,
 //                    `laneTables`, `fx` (the response rows currently applied).
 //
-// FX. `fxPoint` says what the model is compared with. A DECK feed's samples are the deck tap,
-// which is PRE-EQ and PRE-fader, so by default (`.matchTap`) a deck feed's model has no deck
-// FX, only the source gain: model and measured then agree whatever the faders do. A MASTER
-// feed's samples are post-everything: each deck's DJ filter, EQ and gain (trim x volume x
-// crossfader x master) are in its response, per deck, refreshed at most every 200 ms. Set
-// `fxPoint = .deckOutput` on a deck feed to show what the performer hears of that deck.
-// `fxPointLabel` says which of the two a feed's model is ("pre-fader tap" / "deck output" /
+// FX. `fxPoint` says what the model is compared with. By default (`.deckOutput`, the beats chain
+// of scope-model.js `fxResponse`) every feed's model is what the performer HEARS of its decks: each
+// deck's DJ filter, EQ and gain (trim x volume x crossfader x master, squared), per deck, refreshed
+// at most every 200 ms. A MASTER feed's samples are post-everything, so that is exactly what it
+// is compared with. A DECK feed's samples are the deck tap, which is PRE-EQ and PRE-fader: with
+// the default its measured half does not move with the deck's filter, EQ or fader while the model
+// does, which the residual then shows (a decision taken on the product side: the model answers
+// "what do I hear", not "what does the tap carry"). Set `fxPoint = .matchTap` on a deck feed for
+// the other reading: the model gets the source gain only, so model and measured agree whatever
+// the faders do. `fxPointLabel` says which a feed's model is ("deck output" / "pre-fader tap" /
 // "master"): a mode should show it, so the reader knows what a fader or the filter will do.
 //
 // BAND ROWS UNDER A STRONG FILTER. The response of a row is the mean of |H|² at 4 probe
@@ -175,7 +178,8 @@ public enum ModelGrid {
 public enum ModelFxPoint: Sendable {
   /// Match the tap: a deck's samples are pre-EQ and pre-fader, so only the source gain applies.
   case matchTap
-  /// The deck's output as the performer hears it: DJ filter, EQ, trim x volume x crossfader x master.
+  /// The deck's output as the performer hears it: DJ filter, EQ, trim x volume x crossfader x
+  /// master. The default.
   case deckOutput
 }
 
@@ -192,9 +196,9 @@ public final class ModelEngine {
   /// The engine whose decks' filters, EQ and faders the FX response reads. Nil: no FX (all 1).
   public let engine: DJEngine?
   public let cache: ModelKernelCache
-  public var fxPoint: ModelFxPoint = .matchTap
-  /// What the FX are taken at, for a mode to show: `pre-fader tap` (a deck feed, `.matchTap`),
-  /// `deck output` (a deck feed, `.deckOutput`) or `master`.
+  public var fxPoint: ModelFxPoint = .deckOutput
+  /// What the FX are taken at, for a mode to show: `deck output` (a deck feed, `.deckOutput`, the
+  /// default), `pre-fader tap` (a deck feed, `.matchTap`) or `master`.
   public var fxPointLabel: String {
     switch source {
     case .some(.deck): fxPoint == .matchTap ? "pre-fader tap" : "deck output"

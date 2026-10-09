@@ -68,8 +68,8 @@ struct SpectroControllerTests {
     let kick = (0..<66).map { Int(img.level($0, 25)) }
     #expect(kick.max()! >= 240 && kick.contains { $0 < 200 }, "a kick row pulses: \(kick)")
     // and the title is plain 'model': the kernels are in the cache
-    #expect(m.title.text == "model" && m.note?.text == "pre-fader tap")
-    #expect(s.statusText(feed: feed) == "model · \(s.model!.kernelCount) kernels · pre-fader tap")
+    #expect(m.title.text == "model" && m.note?.text == "deck output")
+    #expect(s.statusText(feed: feed) == "model · \(s.model!.kernelCount) kernels · deck output")
   }
 
   @Test func theColumnsAreFinalUpToTheSoundingStep() throws {
@@ -182,7 +182,7 @@ struct SpectroControllerTests {
     let s = spectro(cache)
     run(rig, feed, s, seconds: 2)
     let playing = s.statusText(feed: feed)
-    #expect(playing.hasSuffix(" · pre-fader tap"), "\(playing)")
+    #expect(playing.hasSuffix(" · deck output"), "\(playing)")
     rig.dj["A"]!.setPlaying(false)
     run(rig, feed, s, seconds: 1)
     #expect(s.statusText(feed: feed) == playing + " · stopped")

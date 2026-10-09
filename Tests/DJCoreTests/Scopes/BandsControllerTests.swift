@@ -210,7 +210,7 @@ struct BandsControllerTests {
     let n = controller(clock, cache: cache)
     #expect(n.scene(feed: net, width: 800, measured: false).message?.text == BandsScene.waitingText)
     n.update(feed: net, engine: rig.dj, measured: false)
-    #expect(n.statusText(feed: net).hasSuffix(" · pre-fader tap"), "\(n.statusText(feed: net))")
+    #expect(n.statusText(feed: net).hasSuffix(" · deck output"), "\(n.statusText(feed: net))")
   }
 
   @Test func aNetDeckThatBecomesASampleDeckDropsTheOldSongsMeasuredBars() throws {

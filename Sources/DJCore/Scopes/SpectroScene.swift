@@ -18,7 +18,7 @@
 //
 // Additions to the JS, for the app:
 //   * `note` under the model block's title: what the model's FX are taken at
-//     (`ModelEngine.fxPointLabel`: "pre-fader tap" / "deck output" / "master"). The model's FX
+//     (`ModelEngine.fxPointLabel`: "deck output" / "pre-fader tap" / "master"). The model's FX
 //     point is a documented product decision; the reader should be able to see it.
 //   * `message` in the model block when there is no net deck behind the source ("needs a net
 //     deck" / "no net deck"): the model has nothing to model there; the measured block still

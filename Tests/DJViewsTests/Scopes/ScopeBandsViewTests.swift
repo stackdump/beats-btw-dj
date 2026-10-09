@@ -443,7 +443,7 @@ struct ScopeBandsEngineViewTests {
     #expect(sub.filter { $0.index != nil }.count >= l.shown - 2)
     #expect(lit(px, 44..<500, 0..<12, textGrey, tol: 50) > 150, "title")
     let text = try #require(line.text)
-    #expect(text.hasPrefix("model · ") && text.hasSuffix(" · pre-fader tap"), "\(text)")
+    #expect(text.hasPrefix("model · ") && text.hasSuffix(" · deck output"), "\(text)")
   }
 
   @Test func theMasterShowsItToo() throws {
@@ -601,11 +601,11 @@ struct ScopeBandsEngineViewTests {
     host.settle(0.6)
     let spoken = try #require(
       line.text, "the Bands view speaks in the header while it is on screen")
-    #expect(spoken.hasPrefix("model · ") && spoken.contains(" · pre-fader tap"), "\(spoken)")
+    #expect(spoken.hasPrefix("model · ") && spoken.contains(" · deck output"), "\(spoken)")
     host.replace(panel(.live))
     host.settle(0.6)
     #expect(
-      !(line.text ?? "").contains("pre-fader tap"), "Bands' text is gone: \(line.text ?? "nil")")
+      !(line.text ?? "").contains("deck output"), "Bands' text is gone: \(line.text ?? "nil")")
     host.unmount()
     host.settle()
   }

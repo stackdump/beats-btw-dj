@@ -123,9 +123,11 @@ struct ModelEngineFxStateTests {
     let m = ModelEngine(engine: rig.dj, cache: cache)
     d.consume(deckFeed)
     m.consume(masterFeed)
-    #expect(d.fxPointLabel == "pre-fader tap" && m.fxPointLabel == "master")
-    d.fxPoint = .deckOutput
-    #expect(d.fxPointLabel == "deck output")
+    // the default is what the performer hears (Matt's call; beats' scope-model.js fxResponse chain)
+    #expect(d.fxPoint == .deckOutput && m.fxPoint == .deckOutput)
+    #expect(d.fxPointLabel == "deck output" && m.fxPointLabel == "master")
+    d.fxPoint = .matchTap
+    #expect(d.fxPointLabel == "pre-fader tap")
     m.fxPoint = .matchTap
     #expect(m.fxPointLabel == "master", "a master feed always has the deck chain")
   }

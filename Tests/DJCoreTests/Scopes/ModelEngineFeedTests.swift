@@ -52,6 +52,7 @@ struct ModelEngineFeedTests {
     let feed = rig.hub.feed(.deck("A"))
     feed.acquire()
     let model = ModelEngine(engine: rig.dj, cache: cache)
+    model.fxPoint = .matchTap  // compared with the deck TAP's energy: before the EQ and the fader
     let meter = EnergyMeter(feed)
     play(rig, model, feed, seconds: 7, meter: meter)
 
@@ -251,7 +252,7 @@ struct ModelEngineMasterTests {
       model.status.hasPrefix("model · ") && model.status.hasSuffix(" kernels"), "\(model.status)")
   }
 
-  @Test func aDeckFeedMatchesItsPreFaderTapUnlessAskedOtherwise() throws {
+  @Test func aDeckFeedFollowsWhatIsHeardOfItsDeckUnlessAskedToMatchTheTap() throws {
     let rig = try ScopeRig(net: ["A"], genre: "techno", seed: 42, tempo: 300)
     defer { rig.stop() }
     let cache = warmedCache([("techno", 42, "loop", 300)])
@@ -263,10 +264,9 @@ struct ModelEngineMasterTests {
     deck.filter = 0.1
     deck.eqLow = 0
     play(rig, model, feed, seconds: 1)
-    model.refreshFx()
-    // the deck tap is before the EQ and the fader: only the wave engine's soft master (0.8²)
-    #expect(model.fxRow(forLane: 0).allSatisfy { abs(Double($0) - 0.64) < 1e-6 })
-    model.fxPoint = .deckOutput  // what the performer hears of this deck
+    // the default is the deck's output, what the performer hears of it (scope-model.js
+    // `fxResponse`: strip volume², its filters and the master's)
+    #expect(model.fxPoint == .deckOutput)
     model.refreshFx()
     let heard = Array(model.fxRow(forLane: 0))
     let gain = 0.8 * deck.trim * deck.volume * rig.dj.crossfadeGain("A") * rig.dj.master
@@ -275,6 +275,11 @@ struct ModelEngineMasterTests {
     #expect(
       heard[4] < 0.01 * heard[1] && heard[0] < 0.5 * heard[1], "low-pass and -24 dB bass shelf")
     #expect(Double(heard[1]) < gain * gain, "and every row is under the plain gain")
+    // asked to match the tap, which is before the EQ and the fader: only the wave engine's soft
+    // master (0.8²)
+    model.fxPoint = .matchTap
+    model.refreshFx()
+    #expect(model.fxRow(forLane: 0).allSatisfy { abs(Double($0) - 0.64) < 1e-6 })
   }
 
   @Test func aSecondDeckIsPlacedOnTheLeadsStepAxisByTime() throws {
@@ -290,6 +295,7 @@ struct ModelEngineMasterTests {
     let cache = warmedCache([("techno", 42, "loop", 150), ("techno", 43, "loop", 300)])
     let model = ModelEngine(engine: rig.dj, cache: cache)
     let alone = ModelEngine(engine: rig.dj, cache: cache)
+    alone.fxPoint = .matchTap  // "deck-tap gain" below
     rig.render(seconds: 0.1)  // the lanes appear with the first anchor
     rig.hub.pump()
     model.consume(feed)

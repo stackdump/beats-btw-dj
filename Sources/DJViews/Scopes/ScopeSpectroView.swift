@@ -9,7 +9,8 @@ import SwiftUI
 // its part's bins (velocity^2 x the instrument's kernel x the FX response), decaying with the
 // kernel's own decay time; one column per song step, MAGMA coloured over a 50 dB range below the
 // loudest visible cell. The whole thing is `ModelEngine` (DJCore); a deck feed's model is taken
-// at the deck's pre-fader tap, which the second line under "model" says.
+// at the deck's output (filter, EQ, faders) unless it is set to the pre-fader tap, which the
+// second line under "model" says.
 // MEASURED block (the panel's "measured" toggle): the same axes from an FFT of the master (or
 // deck) audio, 160 time slices, below the model one, so the two can be compared by eye.
 //

@@ -26,6 +26,8 @@ struct ModelEngineEnergyTests {
     let feed = rig.hub.feed(.deck("A"))
     feed.acquire()
     let model = ModelEngine(engine: rig.dj, cache: cache)
+    // the energy of the deck TAP, which is before the deck's EQ and fader
+    model.fxPoint = .matchTap
     let rec = SampleRecorder(feed)
     for _ in 0..<24 {  // 12 s: six bars at 2 s
       rig.render(seconds: 0.5)

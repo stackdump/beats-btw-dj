@@ -406,7 +406,7 @@ struct ScopeSpectroEngineViewTests {
     #expect(lit(px, 688..<770, 14..<26, textGrey, tol: 60) > 15, "pre-fader tap")
     // and the panel header's line is the kernel status with the same fx point
     let text = try #require(line.text)
-    #expect(text.hasPrefix("model · ") && text.hasSuffix(" · pre-fader tap"), "\(text)")
+    #expect(text.hasPrefix("model · ") && text.hasSuffix(" · deck output"), "\(text)")
     // bar numbers in the strip under the block
     #expect(lit(px, 30..<800, 319..<330, textGrey, tol: 60) > 6, "bar numbers")
   }
