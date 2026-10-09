@@ -228,7 +228,7 @@ public final class MarkingMirror: @unchecked Sendable {
   /// block that ends at `endFrame`, if it differs from what is already published. Returns
   /// whether it published. Allocation-free.
   @discardableResult
-  public func publish(_ graph: WaveGraph, endFrame: Int) -> Bool {
+  func publish(_ graph: WaveGraph, endFrame: Int) -> Bool {
     let cur = newest.load(ordering: .relaxed)  // only this thread writes it
     if cur >= 0 && unchanged(graph, against: cur) { return false }
     let w = cur == 0 ? 1 : 0

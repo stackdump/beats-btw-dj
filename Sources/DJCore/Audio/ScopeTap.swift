@@ -111,7 +111,7 @@ public final class ScopeTap: @unchecked Sendable {
   /// elements between a channel's consecutive samples: 1 for one buffer per channel, the
   /// channel count for interleaved audio. Allocates nothing, takes no lock; chunked through a
   /// preallocated scratch buffer. Call only when `isEnabled`.
-  public func push(
+  func push(
     left: UnsafePointer<Float>, right: UnsafePointer<Float>?, frames n: Int, startFrame: Int,
     stride: Int = 1
   ) {
@@ -140,7 +140,7 @@ public final class ScopeTap: @unchecked Sendable {
   }
 
   /// Append already-mono samples that start at engine frame `startFrame`.
-  public func push(mono: UnsafeBufferPointer<Float>, startFrame: Int) {
+  func push(mono: UnsafeBufferPointer<Float>, startFrame: Int) {
     guard !mono.isEmpty else { return }
     align(to: startFrame)
     ring.write(contentsOf: mono)
