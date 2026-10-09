@@ -52,6 +52,31 @@ public struct NetInfo: Sendable {
   public let placeY: [Double]
   public let transitionX: [Double]
   public let transitionY: [Double]
+  /// Per transition (the order of `transitionIds`): does it carry a note (a MIDI binding)? The
+  /// stage draws those with a split fill (`.pn-transition.has-midi`).
+  public let transitionHasMidi: [Bool]
+  /// The net's arcs as the stage draws them: from the centre of the source node to the centre of
+  /// the target node, in the net's own coordinates. An arc with an endpoint that has no
+  /// coordinates is left out (stage.js `drawPanel` skips it too). Empty for a control net: the
+  /// stage never draws one (two thirds of a techno song's arcs are control arcs, ~390 KB a layout).
+  public let arcs: [NetArcGeometry]
+  /// How many arcs the net has, drawn or not (the stage's stats line counts them all).
+  public let arcCount: Int
+
+  /// One arc of a net, end to end, in the net's coordinates.
+  public struct NetArcGeometry: Equatable, Sendable {
+    public let x1: Double
+    public let y1: Double
+    public let x2: Double
+    public let y2: Double
+
+    public init(x1: Double, y1: Double, x2: Double, y2: Double) {
+      self.x1 = x1
+      self.y1 = y1
+      self.x2 = x2
+      self.y2 = y2
+    }
+  }
 
   init(_ n: CompiledNet, isStinger: Bool, geometry: NetBundle?) {
     id = n.id
@@ -76,6 +101,22 @@ public struct NetInfo: Sendable {
     placeY = n.placeIds.map { geometry?.places[$0]?.y ?? 0 }
     transitionX = n.transIds.map { geometry?.transitions[$0]?.x ?? 0 }
     transitionY = n.transIds.map { geometry?.transitions[$0]?.y ?? 0 }
+    transitionHasMidi = n.midi
+    var drawn: [NetArcGeometry] = []
+    if let geometry, n.bundle.role != "control" {
+      // stage.js: `net.places[arc.source] || net.transitions[arc.source]`.
+      func point(_ id: String) -> (x: Double, y: Double)? {
+        if let p = geometry.places[id] { return (p.x, p.y) }
+        if let t = geometry.transitions[id] { return (t.x, t.y) }
+        return nil
+      }
+      for arc in geometry.arcs {
+        guard let a = point(arc.source), let b = point(arc.target) else { continue }
+        drawn.append(NetArcGeometry(x1: a.x, y1: a.y, x2: b.x, y2: b.y))
+      }
+    }
+    arcs = drawn
+    arcCount = geometry?.arcs.count ?? n.bundle.arcs.count
   }
 }
 
@@ -101,6 +142,9 @@ public final class MarkingLayout: Sendable {
   public let placeIds: [[String]]
   /// `placeOffsets[i]..<placeOffsets[i + 1]` are net `i`'s slots in the flat token array.
   public let placeOffsets: [Int]
+  /// The project's length in bars as the composer recorded it (0 when it did not): the stage's
+  /// stats line (`el._project.bars || 0`).
+  public let bars: Int
 
   public var netCount: Int { netIds.count }
   /// Total places over all nets: the length of a snapshot's `tokens`.
@@ -115,6 +159,7 @@ public final class MarkingLayout: Sendable {
       NetInfo($0, isStinger: graph.isStingerNet[$0.index], geometry: geometry.nets[$0.id])
     }
     sections = Deck.SectionInfo.sections(of: geometry)
+    bars = geometry.bars ?? 0
     placeIds = graph.nets.map(\.placeIds)
     var offsets = [0]
     for n in graph.nets { offsets.append(offsets.last! + n.nPlaces) }

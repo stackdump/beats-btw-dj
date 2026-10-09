@@ -69,6 +69,8 @@ public final class AppModel {
   var scopeWindowHeight = 800.0
   /// Hands out the scope feeds; made once the engine exists (`start()`).
   private(set) var scopeHub: ScopeHub?
+  /// The Stage window's model (SPEC modes 7…21); made with the hub.
+  public private(set) var stageModel: StageModel?
   var walk: ControlWalk?
   var walkReportPath: String?
   var lastControl: (device: String, group: String, index: Int, at: Date)?
@@ -96,6 +98,7 @@ public final class AppModel {
     if let injected {
       dj = injected
       scopeHub = ScopeHub(engine: injected)
+      stageModel = scopeHub.map { StageModel(hub: $0) }
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
       poll()
@@ -119,6 +122,7 @@ public final class AppModel {
       self.dj = dj
       self.hub = hub
       scopeHub = ScopeHub(engine: dj)
+      stageModel = scopeHub.map { StageModel(hub: $0) }
       status = "\(Int(dj.sampleRate)) Hz"
       let t = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
         MainActor.assumeIsolated { [weak self] in self?.poll() }
@@ -445,6 +449,7 @@ public final class AppModel {
 
 public struct ContentView: View {
   let model: AppModel
+  @Environment(\.openWindow) private var openWindow
 
   public init(model: AppModel) { self.model = model }
 
@@ -510,8 +515,9 @@ public struct ContentView: View {
             .toggleStyle(.button)
           Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
             .toggleStyle(.button)
-          // STAGE extension point: the stage (SPEC S0) adds its own toggle here and a full-window
-          // overlay of its own; it is deliberately not a ScopeKind (see ScopePanelView.swift).
+          // The Stage (SPEC modes 7…21) is not a ScopeKind: it has a window of its own.
+          Button(StageWindow.title) { openWindow(id: StageWindow.id) }
+            .disabled(!StageWindow.canOpen(model))
           Toggle(
             model.isRecording ? "● REC" : "Record",
             isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })
