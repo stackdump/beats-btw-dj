@@ -52,6 +52,8 @@ public final class AppModel {
   var inpulseOutput: AudioOutputDevice?
   var inpulseRouted = false
   var padLights: [String: [PadLight]] = [:]
+  /// Every attached controller's LEDs by profile name, for the device map (SPEC 25).
+  var deviceLights: [String: DeviceLights] = [:]
   var padPort: String?
   var showPads = false
   var showMap = false
@@ -188,6 +190,11 @@ public final class AppModel {
       padPort = nil
       padLights = [:]
     }
+    var mirrored: [String: DeviceLights] = [:]
+    for p in SurfaceProfile.all where p.leds != nil {
+      if let l = router?.deviceLights(profileName: p.name) { mirrored[p.name] = l }
+    }
+    if mirrored != deviceLights { deviceLights = mirrored }
     for (name, d) in dj.decks {
       let adapter = router?.jogAdapters.first { $0.deck == name }
       var state = DeckState(
@@ -449,7 +456,8 @@ public struct ContentView: View {
           maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
           highlight: model.lastControl.flatMap {
             Date().timeIntervalSince($0.at) < 1.5 ? ($0.device, $0.group, $0.index) : nil
-          }
+          },
+          lights: model.deviceLights
         )
         .frame(height: 240)
       }

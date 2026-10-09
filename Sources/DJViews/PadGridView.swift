@@ -1,21 +1,13 @@
 import DJCore
 import SwiftUI
 
-/// The APC mini mk2's colour for a palette index. Only the indices this app sends are
-/// exact (0 off, 5 red, 9 orange, 37 cyan); the rest are a hue guess so a stray index still
-/// shows something rather than nothing.
+/// The APC mini mk2's colour for a palette index: device-map.js's `PALETTE` for the indices
+/// beats draws (`APCPalette`, in DJCore, pinned there), and a hue guess for any other so a
+/// stray index still shows something rather than nothing.
 public enum AkaiPalette {
   public static func rgb(_ index: UInt8) -> (r: Double, g: Double, b: Double) {
-    switch index {
-    case 0: return (0, 0, 0)
-    case 5: return (1.0, 0.1, 0.1)
-    case 9: return (1.0, 0.55, 0.05)
-    case 37: return (0.1, 0.8, 1.0)
-    default:
-      let c = Color(hue: Double(index % 64) / 64, saturation: 0.8, brightness: 0.9)
-      let ns = NSColor(c).usingColorSpace(.deviceRGB) ?? .gray
-      return (Double(ns.redComponent), Double(ns.greenComponent), Double(ns.blueComponent))
-    }
+    let c = APCPalette.color(index)
+    return (c.r, c.g, c.b)
   }
 }
 
