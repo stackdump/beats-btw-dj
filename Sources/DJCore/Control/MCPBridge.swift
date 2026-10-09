@@ -17,7 +17,7 @@ public struct MCPBridge {
   static let methods: [String: String] = [
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_press_pad": "pad",
-    "dj_record": "record",
+    "dj_record": "record", "dj_screenshot": "screenshot",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -50,6 +50,26 @@ public struct MCPBridge {
       }
       do {
         let out = try call(target, args)
+        // A screenshot comes back as the image itself (the app wrote it on this machine).
+        if name == "dj_screenshot", let path = out["path"]?.string,
+          let png = FileManager.default.contents(atPath: path)
+        {
+          return result(
+            id,
+            obj([
+              (
+                "content",
+                .array([
+                  obj([
+                    ("type", .string("image")), ("data", .string(png.base64EncodedString())),
+                    ("mimeType", .string("image/png")),
+                  ]),
+                  obj([("type", .string("text")), ("text", .string(out.jsStringified))]),
+                ])
+              ),
+              ("isError", .bool(false)),
+            ]))
+        }
         return result(id, content(out.jsStringified, isError: false))
       } catch {
         return result(id, content("\(error)", isError: true))
@@ -147,6 +167,14 @@ public struct MCPBridge {
         "index": prop("integer", "Pad index within the group"),
       ],
       required: ["group", "index"]),
+    tool(
+      "dj_screenshot",
+      "Capture the live DJApp window (decks, net rings, timeline, pads) and return it as a PNG "
+        + "image. Also saved to disk; the path is in the text part.",
+      [
+        "path": prop(
+          "string", "Where to save the PNG (default: ~/Library/Application Support/DJApp/shots/)")
+      ]),
     tool(
       "dj_record",
       "Start (on: true) or stop (on: false) recording a session. Stopping saves it locally and "

@@ -1,3 +1,4 @@
+import AppKit
 import DJCore
 import Foundation
 
@@ -97,6 +98,9 @@ extension AppModel {
       poll()
       return controlState()
 
+    case "screenshot":
+      return try screenshot(to: p["path"]?.string)
+
     case "record":
       let on = p["on"]?.bool ?? false
       if on != isRecording { toggleRecording() }
@@ -111,6 +115,41 @@ extension AppModel {
   }
 
   static let structures = ["minimal", "standard", "extended"]
+
+  /// The app's own window as a PNG (no Screen Recording permission: it is our window).
+  /// Default path: `~/Library/Application Support/DJApp/shots/<time>.png`.
+  func screenshot(to path: String?) throws -> JSONValue {
+    poll()
+    guard
+      let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+      let view = window.contentView
+    else { throw ControlRequestError.bad("no visible DJApp window") }
+    view.layoutSubtreeIfNeeded()
+    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+      throw ControlRequestError.bad("could not allocate a bitmap for the window")
+    }
+    view.cacheDisplay(in: view.bounds, to: rep)
+    guard let png = rep.representation(using: .png, properties: [:]) else {
+      throw ControlRequestError.bad("could not encode PNG")
+    }
+    let url: URL
+    if let path {
+      url = URL(fileURLWithPath: path)
+    } else {
+      let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(
+        of: ":", with: "")
+      url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("DJApp/shots/\(stamp).png")
+    }
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try png.write(to: url)
+    return .object(
+      JSONObject([
+        ("path", .string(url.path)), ("width", .int(rep.pixelsWide)),
+        ("height", .int(rep.pixelsHigh)),
+      ]))
+  }
 
   private func requireDeck(_ name: String) throws -> Deck {
     guard let d = engine?[name] else {
