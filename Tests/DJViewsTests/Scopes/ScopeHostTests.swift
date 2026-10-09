@@ -32,7 +32,9 @@ struct ScopeHostTests {
     return n
   }
 
-  @Test(arguments: ScopeKind.allCases) func everyPlaceholderRendersLabelledNotBlank(
+  // (a mode that has been ported draws itself and has its own tests: it leaves this list)
+  @Test(arguments: ScopeKind.allCases.filter { $0 != .live })
+  func everyPlaceholderRendersLabelledNotBlank(
     _ kind: ScopeKind
   ) throws {
     let rig = try ScopeViewRig()
@@ -102,7 +104,8 @@ struct ScopeHostTests {
     func lit(_ k: ScopeKind, _ measured: Bool) throws -> Int {
       let px = try #require(
         renderPixels(panel(rig, kind: k, measured: measured), width: 900, height: 700))
-      return px.count(inX: 0..<900, y: 0..<26) { r, g, b in r + g + b > 150 }
+      // the header only: the body starts at about y = 24, and a ported mode draws there
+      return px.count(inX: 0..<900, y: 0..<22) { r, g, b in r + g + b > 150 }
     }
     let live = try lit(.live, false)
     let raster = try lit(.raster, false)
