@@ -52,6 +52,15 @@ func onInterrupt(_ body: @escaping @Sendable () -> Void) -> DispatchSourceSignal
   return s
 }
 
+/// `--store DIR` (default: the app's session directory); the pair is removed from `positional`.
+@MainActor func storeOption() -> SessionStore {
+  guard let i = positional.firstIndex(of: "--store"), positional.indices.contains(i + 1) else {
+    return SessionStore()
+  }
+  defer { positional.removeSubrange(i...(i + 1)) }
+  return SessionStore(directory: URL(fileURLWithPath: positional[i + 1], isDirectory: true))
+}
+
 /// `--name value` as a number; the pair is removed from `positional`.
 var positional = Array(args.dropFirst())
 @MainActor func option(_ name: String) -> Double? {
@@ -156,6 +165,91 @@ case "cue-test":
   }
   RunLoop.main.run()
 
+case "demo-session":
+  // Write a tiny hand-built session (no audio) to --store DIR, to try publishing on.
+  func dirOption() -> URL? {
+    guard let i = positional.firstIndex(of: "--store"), positional.indices.contains(i + 1) else {
+      return nil
+    }
+    defer { positional.removeSubrange(i...(i + 1)) }
+    return URL(fileURLWithPath: positional[i + 1], isDirectory: true)
+  }
+  guard let dir = dirOption() else {
+    stderr("usage: djctl demo-session --store DIR")
+    exit(2)
+  }
+  let demo = Session(
+    sampleRate: 44100, frames: 44100 * 4,
+    decks: ["A": .net(TrackSpec(genre: "techno", seed: 42, structure: "standard"))],
+    params: ["A": DeckParams()], crossfader: 0.5, master: 0.8,
+    events: [SessionEvent(frame: 4410, kind: .action(.play(deck: "A", on: true)))])
+  let saved = try SessionStore(directory: dir).save(demo)
+  print(saved.cid)
+
+case "sessions":
+  let store = storeOption()
+  for cid in store.list() {
+    if let s = try? store.load(cid: cid) {
+      print(
+        "\(cid)  \(String(format: "%.0f", s.duration)) s  \(s.decks.count) decks  \(s.events.count) events"
+      )
+    }
+  }
+
+case "publish":
+  // djctl publish <cid> [--audio FILE.wav] [--title T] [--draft] [--host H] [--blobs DIR]
+  //                     [--no-reload] [--mirror] [--dry-run]
+  // Stages the set into the CDN master's blob tree on valoper (as the render farm does) and
+  // reloads its index. Only --mirror makes it public (runs mirror-push.sh -> pflow.dev).
+  func flag(_ n: String) -> Bool {
+    guard let i = positional.firstIndex(of: n) else { return false }
+    positional.remove(at: i)
+    return true
+  }
+  func value(_ n: String) -> String? {
+    guard let i = positional.firstIndex(of: n), positional.indices.contains(i + 1) else {
+      return nil
+    }
+    defer { positional.removeSubrange(i...(i + 1)) }
+    return positional[i + 1]
+  }
+  let store = storeOption()
+  let dry = flag("--dry-run")
+  let mirror = flag("--mirror")
+  let draft = flag("--draft")
+  let noReload = flag("--no-reload")
+  let audio = value("--audio")
+  let title = value("--title")
+  let host = value("--host") ?? "valoper.local"
+  let blobs = value("--blobs")
+  guard let cid = positional.first else {
+    stderr(
+      "usage: djctl publish <cid> [--audio f.wav] [--title T] [--draft] [--host H] [--blobs DIR] [--no-reload] [--mirror] [--dry-run]   (djctl sessions lists cids)"
+    )
+    exit(2)
+  }
+  do {
+    let session = try store.load(cid: cid)
+    let wav = try audio.map { [UInt8](try Data(contentsOf: URL(fileURLWithPath: $0))) }
+    let stamp = ISO8601DateFormatter().string(from: Date())
+    let bundle = try SessionBundle(
+      session: session, title: title, audioWAV: wav, renderedAt: stamp, draft: draft)
+    for f in bundle.files { print("  \(f.name)  \(f.data.count) bytes") }
+    print("public URL (once mirrored): \(bundle.publicURL)")
+    if dry { exit(0) }
+    var t = SSHTransport(host: host)
+    if let blobs { t.blobsDir = blobs }
+    if noReload { t.reloadURL = "http://127.0.0.1:1/none" }
+    let r = try publishSession(bundle, via: t, mirror: mirror)
+    print(
+      "staged on \(host) · index reload \(noReload ? "skipped" : (r.reloaded ? "ok" : "FAILED"))")
+    print(
+      mirror ? "mirror-push started — public at \(r.url)" : "not public yet: re-run with --mirror")
+  } catch {
+    stderr("publish failed: \(error)")
+    exit(1)
+  }
+
 case "play":
   let seconds = option("--seconds")
   let volume = option("--volume")
@@ -197,7 +291,7 @@ case "play":
 
 default:
   stderr(
-    "usage: djctl ports | audio | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1]"
+    "usage: djctl ports | audio | sessions | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1]"
   )
   exit(2)
 }

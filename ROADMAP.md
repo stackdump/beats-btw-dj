@@ -150,7 +150,7 @@ canonical JSON → CID.
 determinism test (two renders, same bytes).
 4.4 **(done in software; hardware unverified — see below)** Cue/headphone output through the Inpulse's built-in audio interface
 (pre-listen mix on outputs 3/4).
-4.5 **(local part done: `SessionStore`, Record/Export in the app; publishing needs a decision)** Optional: publish sessions to the beats share store / CDN.
+4.5 **(done — `SessionBundle`/`SSHTransport`/`publishSession`, `djctl publish`, app “Publish…”)** Publish sessions to cdn.stackdump.com the way beats-builder's `publish.cdn.publish_to_cdn` does: stage `blobs/<cid>/{session.json,audio.wav,index.md}` on the CDN master (valoper, over ssh — no new credentials), `POST /admin/reload?cid=`, and only with `--mirror` run `mirror-push.sh` (the step that makes it public). The directory name is the session CID; `index.md` is written last. Verified against the CDN's own indexer (`cdn-stackdump-cli index` on a scratch tree: 1 indexed, 0 errors). No real set has been published yet.
 
 ## Phase 5 — Visuals
 

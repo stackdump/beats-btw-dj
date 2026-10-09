@@ -321,6 +321,7 @@ public final class AppModel {
   // Session recording
   var isRecording = false
   var lastSession: String?
+  var publishedURL: String?
   private var recorder: SessionRecorder?
   private var lastSessionValue: Session?
 
@@ -346,6 +347,37 @@ public final class AppModel {
         status = "recording"
       } catch {
         status = "can't record yet: \(error)"
+      }
+    }
+  }
+
+  /// Publish the last recorded set to cdn.stackdump.com: render its WAV, stage both on valoper
+  /// (as the render farm does), reload the CDN index and mirror to pflow.dev. Asks first —
+  /// this one is public.
+  func publishLastSession() {
+    guard let session = lastSessionValue, let dj else { return }
+    let alert = NSAlert()
+    alert.messageText = "Publish this set to cdn.stackdump.com?"
+    alert.informativeText =
+      "Uploads the session and a WAV render, content-addressed as \(session.cid). It becomes public."
+    alert.addButton(withTitle: "Publish")
+    alert.addButton(withTitle: "Cancel")
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+    let library = dj.sampleLibrary
+    let stamp = ISO8601DateFormatter().string(from: Date())
+    status = "publishing…"
+    Task.detached {
+      do {
+        let audio = try SessionPlayer(session: session, samples: { library[$0] }).render()
+        let wav = [UInt8](try WAV.encode(audio, float32: false))
+        let bundle = try SessionBundle(session: session, audioWAV: wav, renderedAt: stamp)
+        let r = try publishSession(bundle, via: SSHTransport(), mirror: true)
+        await MainActor.run {
+          self.publishedURL = r.url
+          self.status = "published " + (r.reloaded ? "" : "(index reload failed) ") + r.url
+        }
+      } catch {
+        await MainActor.run { self.status = "publish failed: \(error)" }
       }
     }
   }
@@ -432,6 +464,8 @@ public struct ContentView: View {
           )
           .toggleStyle(.button).tint(.red)
           Button("Export WAV…") { model.exportLastSession() }
+            .disabled(model.lastSession == nil || model.isRecording)
+          Button("Publish…") { model.publishLastSession() }
             .disabled(model.lastSession == nil || model.isRecording)
         }
         VStack(alignment: .trailing, spacing: 2) {
