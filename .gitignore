@@ -7,3 +7,4 @@
 /build/
 .swiftpm/
 /tracks/
+.claude/worktrees/
