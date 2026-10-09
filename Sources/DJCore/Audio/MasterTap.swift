@@ -38,6 +38,9 @@ import Synchronization
 /// output unit once (main thread) and called on the render thread for every cycle.
 final class MasterTapProbe: @unchecked Sendable {
   private let tap: ScopeTap
+  /// The left channel of the master pair alone (the stage's corona), fed by the same
+  /// notification and stamped the same way.
+  private let leftTap: ScopeTap
   private let clock: FrameClock
   /// First channel of the master pair among the output's channels: 0 on a plain stereo path,
   /// `masterPair` when the channel router is in.
@@ -45,8 +48,12 @@ final class MasterTapProbe: @unchecked Sendable {
   /// Address of the output unit the notification is registered on (0: not yet).
   private let registered = Mutex<UInt>(0)
 
-  init(tap: ScopeTap, clock: FrameClock) {
+  init(
+    tap: ScopeTap, leftTap: ScopeTap = ScopeTap(capacity: ScopeTap.leftCapacity),
+    clock: FrameClock
+  ) {
     self.tap = tap
+    self.leftTap = leftTap
     self.clock = clock
   }
 
@@ -84,7 +91,9 @@ final class MasterTapProbe: @unchecked Sendable {
 
   /// Render thread. The output unit finished a cycle of `n` frames; `data` is what it produced.
   func rendered(_ data: UnsafeMutablePointer<AudioBufferList>, frames n: Int) {
-    guard tap.isEnabled, n > 0 else { return }
+    let wantsMono = tap.isEnabled
+    let wantsLeft = leftTap.isEnabled
+    guard wantsMono || wantsLeft, n > 0 else { return }
     let buffers = UnsafeMutableAudioBufferListPointer(data)
     let first = firstChannel.load(ordering: .relaxed)
     // The clock node has counted this cycle already (see the header): it began n frames ago.
@@ -95,9 +104,14 @@ final class MasterTapProbe: @unchecked Sendable {
       guard first < k, let base = buffers[0].mData?.assumingMemoryBound(to: Float.self) else {
         return
       }
-      tap.push(
-        left: base + first, right: first + 1 < k ? base + first + 1 : nil, frames: n,
-        startFrame: start, stride: k)
+      if wantsMono {
+        tap.push(
+          left: base + first, right: first + 1 < k ? base + first + 1 : nil, frames: n,
+          startFrame: start, stride: k)
+      }
+      if wantsLeft {
+        leftTap.push(left: base + first, right: nil, frames: n, startFrame: start, stride: k)
+      }
     } else {
       // one buffer per channel
       guard first < buffers.count,
@@ -106,7 +120,8 @@ final class MasterTapProbe: @unchecked Sendable {
       let right =
         first + 1 < buffers.count
         ? buffers[first + 1].mData?.assumingMemoryBound(to: Float.self) : nil
-      tap.push(left: left, right: right, frames: n, startFrame: start)
+      if wantsMono { tap.push(left: left, right: right, frames: n, startFrame: start) }
+      if wantsLeft { leftTap.push(left: left, right: nil, frames: n, startFrame: start) }
     }
   }
 }

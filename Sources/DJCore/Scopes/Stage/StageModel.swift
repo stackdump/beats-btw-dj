@@ -94,6 +94,7 @@ public final class StageModel {
   /// Stop listening; the last release switches the taps off. Safe to repeat.
   public func detach() {
     attached = false
+    layers.solo.rest()  // a lease on the feed (the corona's left channel) is not the window's own
     subscription.release()
   }
 
@@ -189,6 +190,8 @@ public final class StageModel {
     context = ctx
     for layer in layers.all { layer.advance(ctx) }
     for layer in observers { layer.advance(ctx) }
+    // A frame that outlives `detach()` (or comes before `attach()`) holds nothing on the feed.
+    if !attached { layers.solo.rest() }
   }
 
   // MARK: engine reads

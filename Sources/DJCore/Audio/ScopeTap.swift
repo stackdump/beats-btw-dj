@@ -24,6 +24,10 @@ public final class ScopeTap: @unchecked Sendable {
   /// 64 K samples: 1.4 s at 48 kHz, comfortably more than a scope's window needs between frames.
   public static let defaultCapacity = 1 << 16
 
+  /// A tap that only ever serves the newest few hundred samples (the stage's corona reads 256 per
+  /// frame) needs no more than this: 8 K samples, 0.17 s at 48 kHz.
+  public static let leftCapacity = 1 << 13
+
   /// The mono samples. Pull from it with `read(from:into:)`.
   public let ring: LatestRing<Float>
 

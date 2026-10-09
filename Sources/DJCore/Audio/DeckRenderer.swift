@@ -5,7 +5,8 @@ import Synchronization
 /// capturing the `Deck` (no retain cycle, nothing but plain references on the audio thread).
 ///
 /// Per render call it renders whichever source is active, counts the frames, and, only while a
-/// scope has subscribed, pushes the mono mixdown into the deck's `ScopeTap`.
+/// scope has subscribed, pushes the mono mixdown into the deck's `ScopeTap` (and, only while the
+/// stage's corona has subscribed, the LEFT channel alone into `leftTap`).
 ///
 /// Threading: `renderBlock` is the audio thread's. Everything else here is read-only or an
 /// atomic read, from any thread.
@@ -14,6 +15,10 @@ final class DeckRenderer: @unchecked Sendable {
   let wave: WaveDeckSource
   /// Pre-EQ, pre-fader mono mixdown of this deck, on the engine's frame time base.
   let tap = ScopeTap()
+  /// Pre-EQ, pre-fader LEFT channel of this deck, for the stage's corona (see
+  /// `ScopeFeed.setLeftChannelWanted`). Off unless someone subscribed; a small ring, because the
+  /// reader only ever wants the newest few hundred samples.
+  let leftTap = ScopeTap(capacity: ScopeTap.leftCapacity)
   private let renderedFramesAtomic = Atomic<Int>(0)
 
   init(turntable: Turntable, wave: WaveDeckSource) {
@@ -55,6 +60,9 @@ final class DeckRenderer: @unchecked Sendable {
     }
     if tap.isEnabled {
       tap.push(left: left, right: right, frames: frames, startFrame: start)
+    }
+    if leftTap.isEnabled {
+      leftTap.push(left: left, right: nil, frames: frames, startFrame: start)
     }
     renderedFramesAtomic.store(start + frames, ordering: .releasing)
   }

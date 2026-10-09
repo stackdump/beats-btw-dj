@@ -244,6 +244,8 @@ public final class ScopeFeed {
   private var acquiredFrame = 0
   private var scratch = [Float](repeating: 0, count: 8192)
   private var stamp = 0  // pump calls, for per-pump caches
+  private var leftHeld = false  // this feed holds a subscription on the source's left-channel tap
+  private var leftSince = 0  // the left tap's `frames` when the lease began: nothing older is its
 
   private var historyTap: ScopeTap {
     switch source {
@@ -304,7 +306,74 @@ public final class ScopeFeed {
   public func release() {
     guard refs > 0 else { return }
     refs -= 1
-    if refs == 0, hasHistorySource { historyTap.release() }
+    if refs == 0 {
+      if hasHistorySource { historyTap.release() }
+      setLeftChannelWanted(false)  // a lease: it ends with the last subscriber
+    }
+  }
+
+  // MARK: left channel
+
+  // The stage's corona analyses the LEFT channel (Tone's Analyser is Gain -> ChannelSplitter(1) ->
+  // AnalyserNode, see the header of AnalyserFFT), while `history` is the (L+R)/2 down-mix every
+  // other mode wants. The left channel therefore has its own tap, per deck and for the master,
+  // which costs the audio thread one atomic load per block while nobody wants it. It is a
+  // LEASE, not a subscription: the stage asks for it every frame it shows the corona
+  // (`setLeftChannelWanted(true)` is idempotent), hands it back when the corona stops showing
+  // and when the Stage closes (`StageModel.detach()`), and it ends by itself with the feed's
+  // last `release()`: a closed Stage window cannot leave a tap running, whatever else holds the
+  // feed. It carries no history: `copyNewestLeftSamples` hands out the newest samples of THIS
+  // lease at the moment of the call, like an AnalyserNode that is read now. A tap that was
+  // switched off keeps its old samples in the ring, so a window that reached back past the
+  // start of the lease would hear the audio of a previous session as if it were current: the
+  // lease starts at the tap's sequence number of that moment, and nothing older is returned.
+
+  private var leftTap: ScopeTap? {
+    switch source {
+    case .master: engine.masterLeftTap
+    case .deck(let n): engine.decks[n]?.leftTap
+    }
+  }
+
+  /// Is the left channel being collected for this feed?
+  public var leftChannelWanted: Bool { leftHeld }
+
+  /// Start or stop collecting the source's left channel (pre-EQ, pre-fader for a deck, the master
+  /// pair's for the master). Only meaningful while the feed is acquired: asking before `acquire()`
+  /// is ignored, and the last `release()` switches it off. Idempotent.
+  public func setLeftChannelWanted(_ on: Bool) {
+    if on {
+      guard refs > 0, !leftHeld, let tap = leftTap else { return }
+      leftSince = tap.frames  // before the tap is switched on: everything after it is the lease's
+      tap.acquire()
+      leftHeld = true
+    } else if leftHeld {
+      leftTap?.release()
+      leftHeld = false
+    }
+  }
+
+  /// The newest `out.count` samples of the left channel, oldest first, zero-padded at the front
+  /// while fewer have been collected SINCE THE LEASE BEGAN. Returns false (and zeroes `out`)
+  /// when the channel is not wanted or nothing has arrived yet. Allocation-free.
+  @discardableResult
+  public func copyNewestLeftSamples(into out: UnsafeMutableBufferPointer<Float>) -> Bool {
+    guard !out.isEmpty else { return false }
+    out.update(repeating: 0)
+    guard leftHeld, let tap = leftTap else { return false }
+    let end = tap.frames  // one snapshot: the window and the read agree on where "now" is
+    let have = min(out.count, end - leftSince, tap.ring.capacity)
+    guard have > 0 else { return false }
+    let tail = UnsafeMutableBufferPointer(rebasing: out[(out.count - have)...])
+    let r = tap.read(from: end - have, into: tail)
+    // A lap of the reader by the producer DURING the copy shows as `count < have` (the torn prefix
+    // is dropped); `lost` also covers a lap before it began. Either way the samples are not the
+    // newest `have`: count them as silence.
+    guard r.count == have, r.lost == 0 else {
+      out.update(repeating: 0)
+      return false
+    }
+    return true
   }
 
   // MARK: pumping

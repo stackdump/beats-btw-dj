@@ -312,9 +312,15 @@ struct StageRenderTests {
       px.count(inX: 0..<1000, y: 0..<56) { r, g, b in r + g + b > 220 }
     }
     #expect(bar(solo) < bar(grid) - 300, "\(bar(solo)) < \(bar(grid))")
-    // the placeholder says what is showing and that it is not ported
-    let label = solo.count(inX: 300..<700, y: 380..<420) { r, g, b in r > 90 && g > 90 && b > 90 }
-    #expect(label > 40, "labelled placeholder (\(label))")
+    // the corona (SPEC mode 9) has taken the placeholder's place: bars round the ring's centre
+    // and an empty middle
+    try rig.run(seconds: 0.5)
+    let corona = try render(rig)
+    let bars = corona.count(inX: 300..<700, y: 150..<650) { r, g, b in
+      abs(r - 10) + abs(g - 10) + abs(b - 26) > 40
+    }
+    #expect(bars > 300, "the corona is drawn (\(bars) lit pixels)")
+    #expect(corona.near(500, 400, Sw.background, tol: 8))
   }
 
   @Test func withoutANetDeckTheStageSaysSo() throws {

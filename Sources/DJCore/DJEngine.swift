@@ -50,6 +50,11 @@ public final class DJEngine {
   /// scope calls `masterTap.acquire()`. Fed once per render cycle, with no latency: after every
   /// cycle `masterTap.endFrame == frame`. See MasterTap.swift.
   public let masterTap = ScopeTap()
+  /// The LEFT channel of the master mix (the master pair's left when cue routing is on), for the
+  /// stage's corona: Tone's analyser hears the left channel only, `masterTap` the (L+R)/2
+  /// down-mix. Off unless someone subscribed (`ScopeFeed.setLeftChannelWanted`); fed from the same
+  /// render notification as `masterTap`, so the two always cover the same frames.
+  public let masterLeftTap = ScopeTap(capacity: ScopeTap.leftCapacity)
   let masterProbe: MasterTapProbe
   // Headphone cue: pre-fader sends → cueSum ─┐
   //                master mix → headMaster ──┴→ headBus (→ the cue pair, once routed)
@@ -73,7 +78,7 @@ public final class DJEngine {
     decks names: [String] = ["A", "B"], offline: Bool = false,
     sampleRate offlineRate: Double = 48_000, outputChannels: Int = 2
   ) throws {
-    masterProbe = MasterTapProbe(tap: masterTap, clock: frameClock)
+    masterProbe = MasterTapProbe(tap: masterTap, leftTap: masterLeftTap, clock: frameClock)
     if offline {
       sampleRate = offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: offlineRate, channels: 2)!
@@ -183,6 +188,9 @@ public final class Deck: JogClock {
   /// Mono history of this deck's output (the source node's mixdown, before the EQ and the
   /// fader), for the scopes. Off until a scope calls `tap.acquire()`.
   public var tap: ScopeTap { renderer.tap }
+  /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
+  /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
+  public var leftTap: ScopeTap { renderer.leftTap }
   /// Frames this deck's source node has rendered, in both source modes (sample and net): the
   /// common time base of `tap`, the deck's fire events and its tick anchors. Monotonic;
   /// readable from any thread. Everything stamped below the value you read is already
