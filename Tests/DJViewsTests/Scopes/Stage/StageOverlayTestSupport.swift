@@ -4,7 +4,7 @@ import Testing
 
 @testable import DJViews
 
-/// A stage of N invisible panels (no net is drawn in them) over the real layer stack, so the only
+/// A stage of N invisible panels (no net is drawn in them unless `visibleNets`) over the real layer stack, so the only
 /// things on the black are the overlay layers under test: pulse, flame, bolts, seeds and halo.
 /// The layer models are advanced by hand, frame by frame, with the context the test builds, so a
 /// particle's age and a beam's energy are exactly what the test says.
@@ -23,7 +23,8 @@ struct OverlayStage {
 
   init(
     panels count: Int = 4, overlays: Set<StageOverlay> = StageOverlay.defaults,
-    metaRotation: Double = 0, meta: Bool = false, models: StageLayerModels = StageLayerModels()
+    metaRotation: Double = 0, meta: Bool = false, visibleNets: Bool = false,
+    models: StageLayerModels = StageLayerModels()
   ) throws {
     let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 22_050)
     model = StageModel(hub: ScopeHub(engine: dj), layers: models)
@@ -33,12 +34,15 @@ struct OverlayStage {
     let shape = StageNetShape(
       netId: "n", placeIds: ["p"], placeX: [0], placeY: [0], transitionIds: ["t"],
       transitionX: [60], transitionY: [0])
+    let content = StagePanelView.contentSize(side: layout.side)
     let panels = (0..<count).map { i in
       let center = i < layout.panelCenters.count ? layout.panelCenters[i] : layout.center
       return StagePanel(
         id: "A/n\(i)", deck: "A", netId: "n\(i)", label: "n\(i)", channel: 1, riffGroup: "",
         center: center, ring: layout.hasRing ? center : nil, side: layout.side, angle: 0,
-        view: nil, muted: false, opacity: 1, shape: shape, tokens: [0], firedAt: [-.infinity])
+        view: visibleNets
+          ? StagePanelView.fit(bounds: shape.bounds!, width: content, height: content) : nil,
+        muted: false, opacity: 1, shape: shape, tokens: [0], firedAt: [-.infinity])
     }
     context = StageContext(
       width: Double(Self.width), height: Double(Self.height), layout: layout, panels: panels,
