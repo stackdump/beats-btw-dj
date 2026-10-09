@@ -8,15 +8,18 @@ public struct DeviceMapList: View {
   public var rows: [DeviceMapRow]
   public var highlight: (group: String, index: Int)?
   public var tint: Color
+  /// A leading mark per control, keyed `group[index]` (the control walk's ✓ / ✗).
+  public var marks: [String: String]
 
   public init(
     title: String, rows: [DeviceMapRow], highlight: (group: String, index: Int)? = nil,
-    tint: Color = .orange
+    tint: Color = .orange, marks: [String: String] = [:]
   ) {
     self.title = title
     self.rows = rows
     self.highlight = highlight
     self.tint = tint
+    self.marks = marks
   }
 
   /// Rows by group, in the order the profile lists the groups.
@@ -38,6 +41,7 @@ public struct DeviceMapList: View {
         ForEach(g.rows, id: \.index) { r in
           let hot = highlight?.group == r.group && highlight?.index == r.index
           HStack(spacing: 6) {
+            Text(marks[ControlWalk.key(r.group, r.index)] ?? " ").frame(width: 14)
             Text(r.control).frame(width: 90, alignment: .leading)
             Text(r.number.map(String.init) ?? "").foregroundStyle(.secondary).frame(
               width: 28, alignment: .trailing)
@@ -50,6 +54,7 @@ public struct DeviceMapList: View {
           .font(.system(size: 10, design: .monospaced))
           .padding(.horizontal, 4)
           .background(hot ? tint.opacity(0.8) : Color.clear)
+          .id(ControlWalk.key(r.group, r.index))
         }
       }
     }

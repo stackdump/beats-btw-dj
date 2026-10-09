@@ -53,6 +53,8 @@ public final class AppModel {
   var padPort: String?
   var showPads = false
   var showMap = false
+  var walk: ControlWalk?
+  var walkReportPath: String?
   var lastControl: (device: String, group: String, index: Int, at: Date)?
 
   private var dj: DJEngine?
@@ -86,6 +88,7 @@ public final class AppModel {
       hub.onControl = { [weak self] port, group, index in
         let dev = hub.router.profileName(for: port) ?? port
         self?.lastControl = (dev, group, index, Date())
+        self?.walkFeed(device: dev, group: group, index: index)
       }
       try hub.start()
       self.dj = dj
@@ -99,6 +102,48 @@ public final class AppModel {
     } catch {
       status = "audio/MIDI error: \(error)"
     }
+  }
+
+  /// Start the guided check of a connected device's controls (a `SurfaceProfile` name).
+  public func startWalk(device: String) {
+    guard let p = SurfaceProfile.all.first(where: { $0.name == device }) else { return }
+    walkReportPath = nil
+    walk = ControlWalk(device: device, rows: p.deviceMap())
+  }
+
+  public func stopWalk() {
+    walk = nil
+    walkReportPath = nil
+  }
+
+  public func walkSkip() {
+    walk?.skip()
+    finishWalkIfDone()
+  }
+
+  public func walkBack() {
+    walk?.back()
+    walkReportPath = nil
+  }
+
+  /// A control fired (device = profile name). Public so tests can drive the walk.
+  public func walkFeed(device: String, group: String, index: Int) {
+    guard walk?.device == device else { return }
+    walk?.feed(group: group, index: index)
+    finishWalkIfDone()
+  }
+
+  private func finishWalkIfDone() {
+    guard let w = walk, w.isDone, walkReportPath == nil else { return }
+    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("DJApp", isDirectory: true)
+    let file = dir.appendingPathComponent(
+      "walk-\(w.device.replacingOccurrences(of: " ", with: "-")).txt")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    do {
+      try w.report.write(to: file, atomically: true, encoding: .utf8)
+      walkReportPath = file.path
+    } catch { walkReportPath = "(could not write: \(error))" }
   }
 
   public func stop() {
@@ -337,7 +382,13 @@ public struct ContentView: View {
         MixerView(model: model)
         DeckView(name: "B", model: model, tint: .cyan)
       }
-      if model.showMap {
+      if let w = model.walk {
+        WalkPanel(
+          walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
+          back: { model.walkBack() }, stop: { model.stopWalk() }
+        )
+        .frame(height: 300)
+      } else if model.showMap {
         DeviceMapView(
           maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
           highlight: model.lastControl.flatMap {
@@ -367,6 +418,12 @@ public struct ContentView: View {
         HStack {
           Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
             .toggleStyle(.button)
+          Menu("Check controls") {
+            ForEach(model.devices, id: \.port) { d in
+              Button(d.profile) { model.startWalk(device: d.profile) }
+            }
+          }
+          .disabled(model.devices.isEmpty)
           Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
             .toggleStyle(.button)
           Toggle(
