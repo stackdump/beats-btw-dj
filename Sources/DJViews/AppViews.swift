@@ -579,6 +579,10 @@ struct DeckView: View {
       if state.isNet {
         SectionTimelineView(timeline: state.timeline) { model.launchSection(name, $0) }
           .frame(height: 26)
+        if let scopes = model.scopeHub {
+          TimelineDotsView(
+            feed: scopes.feed(.deck(name)), hub: scopes, active: state.playing || state.scrubbing)
+        }
         NetRingsView(snapshot: state.snapshot, tint: tint, arcs: state.ringArcs)
         NetPanel(name: name, state: state, model: model, tint: tint)
       }
