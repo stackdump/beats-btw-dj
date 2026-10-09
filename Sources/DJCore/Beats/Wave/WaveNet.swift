@@ -458,7 +458,9 @@ public final class WaveGraph {
     endTickRecord()
   }
 
-  /// Plain marking `{netId: {place: tokens}}` — for the UI, allocates.
+  /// Plain marking `{netId: {place: tokens}}` — allocates dictionaries, so only for a graph no
+  /// other thread is running (tests, a stopped runner). Never call it on a deck that plays:
+  /// read the published copy with `WaveDeckSource.readMarking` instead.
   public func marking() -> [String: [String: Double]] {
     var out: [String: [String: Double]] = [:]
     for n in nets {

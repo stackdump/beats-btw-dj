@@ -295,6 +295,40 @@ struct DeckPerformTests {
     #expect(deck.currentSectionIndex == target)
   }
 
+  @Test func aSectionLaunchIsTheSameSongAndANewTrackIsNot() async throws {
+    let dj = try DJEngine(decks: ["A"], offline: true)
+    let deck = try #require(dj["A"])
+    await deck.generate(TrackSpec(genre: "techno", seed: 42, structure: "standard"))
+    let song = try #require(deck.wave.latest)
+    let secs = deck.sections
+    #expect(secs.count >= 5)
+    // jumping around inside the song: a new project each time (the marking and the tick
+    // numbering start over), but the same song
+    #expect(await deck.jumpToSection(3))
+    let launched = try #require(deck.wave.latest)
+    #expect(launched.generation > song.generation)
+    #expect(launched.trackSerial == song.trackSerial, "a section launch is not a new track")
+    #expect(launched.startTick == secs[3].startTick && song.startTick == 0)
+    #expect(launched.marking.layout.trackSerial == song.marking.layout.trackSerial)
+    #expect(launched.marking.layout.startTick == secs[3].startTick)
+    #expect(await deck.jumpToTick(100))
+    let jumped = try #require(deck.wave.latest)
+    #expect(jumped.trackSerial == song.trackSerial && jumped.startTick == 100)
+    dj.deterministic = true  // replay mode: relocation completes inline
+    deck.relocate(toTick: 40)
+    let relocated = try #require(deck.wave.latest)
+    #expect(relocated.generation > jumped.generation && relocated.trackSerial == song.trackSerial)
+    #expect(relocated.startTick == 40)
+    // a new track, generated or handed over: a new serial
+    await deck.generate(TrackSpec(genre: "techno", seed: 43, structure: "standard"))
+    let next = try #require(deck.wave.latest)
+    #expect(next.trackSerial != song.trackSerial && next.startTick == 0)
+    #expect(await deck.jumpToSection(2))
+    #expect(deck.wave.latest?.trackSerial == next.trackSerial, "and sections of it keep its serial")
+    deck.loadNet(try #require(deck.netProject))
+    #expect(deck.wave.latest?.trackSerial != next.trackSerial, "loading a project afresh restarts")
+  }
+
   @Test func rolesFollowTheNet() async throws {
     let dj = try DJEngine(decks: ["A"], offline: true)
     let deck = try #require(dj["A"])

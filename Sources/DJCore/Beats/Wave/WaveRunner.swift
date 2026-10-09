@@ -153,16 +153,39 @@ public final class WaveProject: @unchecked Sendable {
   /// `FireEvent`, `TickAnchor` and marking snapshot so a consumer knows which project's net
   /// and place indices they refer to, across swaps at a bar boundary.
   public let generation: Int32
+  /// Which song this project plays. A new track gets a new serial; relaunching the same song
+  /// (a section launch, a jump to a tick: `Deck.jumpToSection`, `relocate`) prepares a new
+  /// project, with a new `generation` because its tick numbering and marking start over, but
+  /// keeps the song's serial. A scope keeps its history across generations of one serial.
+  public let trackSerial: Int32
+  /// The tick the graph was seeded at before it started (`prepare(startTick:)`); 0 from the top.
+  public let startTick: Int
   public let graph: WaveGraph
+  /// The published copy of this project's marking, with the layout that explains it. Created
+  /// at prepare time on the preparing thread; the audio thread writes only into the mirror of
+  /// the project it is running.
+  public let marking: MarkingMirror
   let lanes: [Lane]
   let byNet: [String: [Int]]
   let sources: [Lane]
   /// Index in `lanes` of the pooled voice that MIDI keys play.
   let liveLane: Int
   private static let generations = Atomic<Int>(0)
+  private static let tracks = Atomic<Int>(0)
 
-  init(graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int) {
-    generation = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
+  init(
+    graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
+    trackSerial: Int32? = nil, startTick: Int = 0, geometry: Project? = nil
+  ) {
+    let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
+    let track =
+      trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
+    generation = gen
+    self.trackSerial = track
+    self.startTick = startTick
+    marking = MarkingMirror(
+      generation: gen, trackSerial: track, startTick: startTick, graph: graph,
+      geometry: geometry ?? graph.project)
     self.liveLane = liveLane
     self.graph = graph
     self.lanes = lanes
@@ -171,7 +194,10 @@ public final class WaveProject: @unchecked Sendable {
   }
 }
 
-private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> WaveProject {
+private func buildLanes(
+  _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
+  geometry: Project? = nil
+) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
@@ -231,7 +257,8 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
   let liveIndex = lanes.count
   lanes.append(live)
   return WaveProject(
-    graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex)
+    graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
+    trackSerial: trackSerial, startTick: startTick, geometry: geometry)
 }
 
 // clock slots
@@ -267,6 +294,16 @@ public final class WaveRunner {
   /// before `doTick`): start-of-block frame + offset inside the block.
   private var tickFrame: Int64 = 0
   public var graph: WaveGraph? { current?.graph }
+  /// `WaveProject.generation` of the project the clock is running (0: none).
+  public var generation: Int32 { current?.generation ?? 0 }
+  /// Generation of the project queued behind it, waiting for the next bar (0: none).
+  public var pendingGeneration: Int32 { pending?.generation ?? 0 }
+
+  /// Publish the running project's marking to its mirror (no-op when unchanged), as the state
+  /// at the end of the block that ends at deck frame `endFrame`. Allocation-free.
+  func publishMarking(endFrame: Int) {
+    if let proj = current { proj.marking.publish(proj.graph, endFrame: endFrame) }
+  }
   public private(set) var playing = false
   private var clock = [Double](repeating: 0, count: 4)
   public private(set) var ticksInBlock = 0
@@ -295,13 +332,20 @@ public final class WaveRunner {
   private func spt(_ bpm: Double) -> Double { sampleRate * 60 / (bpm * ppq) }
 
   /// Compile everything off the audio thread. Hand the result to `load(prepared:)`.
-  /// `startTick` replays the net silently to that tick first (a section launch).
+  /// `startTick` replays the net silently to that tick first (a section launch). `trackSerial`
+  /// says this is another start of a song that was prepared before (pass that project's
+  /// `trackSerial`); omitted, the project is a new track.
   public static func prepare(
-    _ project: Project, sampleRate: Double, opts: WaveOptions = WaveOptions(), startTick: Int = 0
+    _ project: Project, sampleRate: Double, opts: WaveOptions = WaveOptions(), startTick: Int = 0,
+    trackSerial: Int32? = nil
   ) -> WaveProject {
     let g = WaveGraph(project: project)
     if startTick > 0 { g.fastForward(to: startTick) }
-    return buildLanes(g, sampleRate, opts)
+    // (the compiled graph is built from the project's JSON, which has no coordinates: the
+    // layout takes the net positions from the project itself)
+    return buildLanes(
+      g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
+      geometry: project)
   }
 
   public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())

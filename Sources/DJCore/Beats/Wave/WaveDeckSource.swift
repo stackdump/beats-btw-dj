@@ -86,6 +86,17 @@ public final class WaveDeckSource: @unchecked Sendable {
 
   /// Main-thread only: the last project handed over, to resolve net ids.
   public private(set) var latest: WaveProject?
+  /// `WaveProject.generation` of the project the audio thread is running (0: none yet).
+  private let activeGenerationAtomic = Atomic<Int32>(0)
+  /// The project queued behind it, waiting for a bar (0: none).
+  private let pendingGenerationAtomic = Atomic<Int32>(0)
+  /// Main-thread only: the mirrors (with their layouts) of recently loaded projects, oldest
+  /// first, so a snapshot or an event can be matched to the layout of the project that
+  /// produced it even after newer projects have been loaded. Not the projects themselves
+  /// (about 6 MB each for a big song): a mirror with its layout is about 0.35 MB (measured,
+  /// 6000-place techno), 8 of them a few MB per deck.
+  private var mirrors: [MarkingMirror] = []
+  private static let mirrorsKept = 8
 
   /// `fireCapacity` / `anchorCapacity` size the event rings (rounded up to a power of two). A
   /// ring that fills overwrites its oldest records; a reader that was a whole ring behind is
@@ -135,6 +146,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     drainRetired()
     if commands.push(.load(p)) {
       latest = prepared
+      remember(prepared.marking)
       // A stopped deck installs the project at once: show its starting mutes before the
       // first render publishes the real ones.
       if !isPlaying { publishMutes(prepared.graph.muted) }
@@ -232,7 +244,7 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// anchor before its fires, so every fire returned has its anchor (same `generation` and
   /// `tick`) in this call's `anchors` or an earlier one's, unless that anchor was lost.
   /// Records are stamped in the deck's frame time base and carry their project `generation`
-  /// (resolve it with `project(generation:)` / `markingLayout(generation:)`).
+  /// (resolve it with `markingLayout(generation:)`: which net, which lane, which song).
   ///
   /// Allocates only if the arrays have to grow, on the caller's thread.
   @discardableResult
@@ -247,6 +259,70 @@ public final class WaveDeckSource: @unchecked Sendable {
 
   public var fireCapacity: Int { fires.capacity }
   public var anchorCapacity: Int { anchors.capacity }
+
+  // MARK: marking mirror (main thread)
+
+  /// `WaveProject.generation` of the project the audio thread is running right now; 0 until
+  /// the first render after a load. Changes at the bar where a queued project takes over.
+  public var activeGeneration: Int32 { activeGenerationAtomic.load(ordering: .relaxed) }
+
+  /// The layout of the most recently loaded project: net ids, place ids and what each net is.
+  public var markingLayout: MarkingLayout? { latest?.marking.layout }
+
+  /// The layout of a recent project by generation (the active one, the latest, and a few
+  /// older), e.g. the generation stamped on a `FireEvent` or a `TickAnchor`. It says which net
+  /// an event's `net` index is (`nets[i]`: riff group, instrument, note range, positions), and
+  /// by `trackSerial` whether two generations are the same song (a section launch) or not.
+  /// Main thread.
+  public func markingLayout(generation: Int32) -> MarkingLayout? {
+    mirror(generation: generation)?.layout
+  }
+
+  /// Copy the marking of the project that is sounding into `snap`: every net's place tokens,
+  /// the mute flags, the tick, and which project (`snap.generation`, `snap.layout`) they are
+  /// from. Consistent (never a mix of two states), lock-free, and allocation-free once `snap`
+  /// is sized (it is resized when the project changes). On a deck that is not playing, a project
+  /// loaded since the last render is the one reported (its initial marking, or the one rebuilt
+  /// for a section launch) because it takes over at the next block; on a playing deck the old
+  /// project is reported until it hands over at the bar. False if nothing is loaded.
+  ///
+  /// Never touches the audio thread's graph: `WaveGraph.marking()` allocates and must not be
+  /// called from the main thread while the deck plays.
+  @discardableResult
+  public func readMarking(into snap: inout MarkingSnapshot) -> Bool {
+    let active = activeGeneration
+    var m = active != 0 ? mirror(generation: active) : nil
+    // A project the audio thread has not seen yet, on a deck that is not playing, is installed
+    // at once by the next block: it is the one to show. (One already queued for a bar is not.)
+    if let newest = latest, !isPlaying, newest.generation != active,
+      newest.generation != pendingGenerationAtomic.load(ordering: .relaxed)
+    {
+      m = newest.marking
+    }
+    guard let m = m ?? latest?.marking else { return false }
+    return m.read(into: &snap)
+  }
+
+  /// `readMarking(into:)` for a particular project (a recent generation). False if unknown.
+  @discardableResult
+  public func readMarking(generation: Int32, into snap: inout MarkingSnapshot) -> Bool {
+    guard let m = mirror(generation: generation) else { return false }
+    return m.read(into: &snap)
+  }
+
+  private func mirror(generation g: Int32) -> MarkingMirror? {
+    mirrors.last { $0.layout.generation == g }
+  }
+
+  private func remember(_ m: MarkingMirror) {
+    mirrors.append(m)
+    // Drop the oldest, but never the one the audio thread is running or the newest.
+    let active = activeGeneration
+    var i = 0
+    while mirrors.count > Self.mirrorsKept, i < mirrors.count - 1 {
+      if mirrors[i].layout.generation == active { i += 1 } else { mirrors.remove(at: i) }
+    }
+  }
 
   /// Free projects the audio thread has let go of. Called by `send`/`load`; call it
   /// from a timer too.
@@ -286,6 +362,9 @@ public final class WaveDeckSource: @unchecked Sendable {
   ) {
     while let c = commands.pop() { apply(c) }
     runner.process(left, right, frames: frames, startFrame: startFrame)
+    runner.publishMarking(endFrame: startFrame + frames)
+    activeGenerationAtomic.store(runner.generation, ordering: .relaxed)
+    pendingGenerationAtomic.store(runner.pendingGeneration, ordering: .relaxed)
     tickAtomic.store(runner.graph?.tick ?? 0, ordering: .relaxed)
     phaseBits.store(runner.tickPhase.bitPattern, ordering: .relaxed)
     tempoBits.store(runner.tempo.bitPattern, ordering: .relaxed)

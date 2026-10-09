@@ -7,18 +7,26 @@ extension Deck {
     public var name: String
     public var startTick: Int
     public var steps: Int
+
+    /// The sections of a project's structure, in order, with their start ticks.
+    public static func sections(of project: Project) -> [SectionInfo] {
+      var start = 0
+      var out: [SectionInfo] = []
+      for sec in project.structure {
+        out.append(SectionInfo(name: sec.name, startTick: start, steps: sec.steps))
+        start += sec.steps
+      }
+      return out
+    }
   }
 
-  /// The song's sections with their start ticks (empty for a loop or a sample deck).
+  /// The song's sections with their start ticks (empty for a loop or a sample deck). This is
+  /// the project the deck has *loaded*; a project queued behind a playing one only takes over
+  /// at the next bar. For the sections of the project that is sounding, read the layout of
+  /// `wave.activeGeneration` (`MarkingLayout.sections`).
   public var sections: [SectionInfo] {
     guard mode == .net, let p = netProject else { return [] }
-    var start = 0
-    var out: [SectionInfo] = []
-    for sec in p.structure {
-      out.append(SectionInfo(name: sec.name, startTick: start, steps: sec.steps))
-      start += sec.steps
-    }
-    return out
+    return SectionInfo.sections(of: p)
   }
 
   /// The section the net clock is in, or nil.
@@ -28,17 +36,19 @@ extension Deck {
   }
 
   /// Rebuild the net at the start of section `index` (silently replaying the control
-  /// nets) and swap it in at the next bar. Composes nothing: same project, new position.
+  /// nets) and swap it in at the next bar. Composes nothing: same project, new position (the
+  /// prepared project keeps the song's `trackSerial`, with a new `generation`).
   @MainActor @discardableResult
   public func jumpToSection(_ index: Int) async -> Bool {
     let secs = sections
     guard secs.indices.contains(index), let project = netProject else { return false }
     let sr = wave.sampleRate
     let start = secs[index].startTick
+    let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, startTick: start)
+      WaveRunner.prepare(project, sampleRate: sr, startTick: start, trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
@@ -51,7 +61,10 @@ extension Deck {
   public func relocate(toTick tick: Int) {
     guard mode == .net, let project = netProject else { return }
     if deterministic {
-      wave.load(WaveRunner.prepare(project, sampleRate: wave.sampleRate, startTick: max(0, tick)))
+      wave.load(
+        WaveRunner.prepare(
+          project, sampleRate: wave.sampleRate, startTick: max(0, tick),
+          trackSerial: wave.latest?.trackSerial))
       applyNetTempo()
     } else {
       Task { @MainActor in await self.jumpToTick(tick) }
@@ -86,10 +99,11 @@ extension Deck {
   public func jumpToTick(_ tick: Int) async -> Bool {
     guard mode == .net, let project = netProject else { return false }
     let sr = wave.sampleRate
+    let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, startTick: max(0, tick))
+      WaveRunner.prepare(project, sampleRate: sr, startTick: max(0, tick), trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
