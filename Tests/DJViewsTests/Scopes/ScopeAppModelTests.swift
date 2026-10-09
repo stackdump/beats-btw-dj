@@ -46,11 +46,17 @@ struct ScopeAppModelTests {
     let (m, _) = try model()
     m.start()
     m.poll()
+    // The master meter in the Mixer column (SPEC mode 28) is a 38 pt box of the same colour, as
+    // feed.html's flame canvas is: about 4.6 k pixels. The column is in the middle of the window
+    // (about x 470...630 at this width), so the count leaves out x 400...700 and the panel, which
+    // spans the window, is still counted where it is wide.
     func background(_ view: some View) throws -> Int {
       let px = try #require(renderPixels(view, width: 1100, height: 1500))
-      return px.count(inX: 0..<1100, y: 0..<1500) { r, g, b in
+      let isBackground: (Int, Int, Int) -> Bool = { r, g, b in
         abs(r - bg.0) <= 2 && abs(g - bg.1) <= 2 && abs(b - bg.2) <= 2
       }
+      return px.count(inX: 0..<400, y: 0..<1500, where: isBackground)
+        + px.count(inX: 700..<1100, y: 0..<1500, where: isBackground)
     }
     let off = try background(ContentView(model: m))
     m.showScopes = true

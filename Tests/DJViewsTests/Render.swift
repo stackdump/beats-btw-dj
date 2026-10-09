@@ -30,11 +30,11 @@ struct Pixels {
 }
 
 @MainActor
-func renderPixels<V: View>(_ view: V, width: Int, height: Int) -> Pixels? {
+func renderPixels<V: View>(_ view: V, width: Int, height: Int, scale: CGFloat = 1) -> Pixels? {
   let renderer = ImageRenderer(
     content: view.frame(width: CGFloat(width), height: CGFloat(height)).environment(
       \.colorScheme, .dark))
-  renderer.scale = 1
+  renderer.scale = scale
   guard let cg = renderer.cgImage else { return nil }
   let w = cg.width
   let h = cg.height

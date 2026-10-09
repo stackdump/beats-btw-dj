@@ -676,6 +676,12 @@ struct MixerView: View {
       LabeledSlider(
         label: "Master", value: Binding(get: { model.master }, set: { model.setMaster($0) }),
         range: 0...1)
+      // The master flame (SPEC mode 28): feed.html's equalizer bars over the master tap; the flat
+      // line while no deck plays.
+      if let scopes = model.scopeHub {
+        MasterFlameView(
+          hub: scopes, active: model.decks.values.contains { $0.playing || $0.scrubbing })
+      }
       LabeledSlider(
         label: "Phones",
         value: Binding(get: { model.headphoneLevel }, set: { model.setHeadphoneLevel($0) }),
