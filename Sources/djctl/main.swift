@@ -289,9 +289,35 @@ case "play":
   if let seconds { DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { finish() } }
   withExtendedLifetime((hub, sigint)) { RunLoop.main.run() }
 
+case "mcp":
+  // MCP over stdio for the running DJApp: each tool call is one request on its control
+  // socket, so the app can be started and restarted under a long-lived MCP session.
+  let bridge = MCPBridge { method, params in
+    try ControlClient().request(method, params)
+  }
+  while let line = readLine() {
+    guard let reply = bridge.handle(line) else { continue }
+    print(reply)
+    fflush(stdout)
+  }
+
+case "ctl":
+  // djctl ctl <method> ['{"json":"params"}'] — one raw control request, for debugging.
+  guard args.count >= 2 else {
+    stderr("usage: djctl ctl state|catalog|perform|generate|loadFile|pad|record ['{params}']")
+    exit(2)
+  }
+  do {
+    let params = args.count > 2 ? try JSONValue.parse(args[2]) : .object(JSONObject())
+    print(try ControlClient().request(args[1], params).jsStringified)
+  } catch {
+    stderr("\(error)")
+    exit(1)
+  }
+
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1]"
+    "usage: djctl ports | audio | sessions | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }

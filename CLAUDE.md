@@ -74,6 +74,17 @@ its copy; the two are now independent. Rules inherited from that split:
 - Anything the UI does to a deck goes through `DJEngine.perform` (recorded); on-screen pad
   presses go through `ControllerRouter.press` (recorded as MIDI).
 
+## Control socket and MCP
+
+- The running app listens on `~/Library/Application Support/DJApp/control.sock` (0600;
+  `$DJ_CONTROL_SOCKET` overrides): newline-delimited `{"id","method","params"}` →
+  `{"id","result"|"error"}`. Methods live in `Sources/DJViews/AppControl.swift` and only call
+  what the UI calls (`DJEngine.perform`, `ControllerRouter.press`, …), so they record the same.
+- `djctl mcp` is the stdio MCP server (`MCPBridge`): one socket request per tool call, so the
+  app can restart under a live MCP session. `make mcp-install` copies it to `build/mcp/` and
+  registers `dj-vevr-se` at user scope. `djctl ctl <method> [json]` sends one raw request.
+- Publishing is deliberately not a tool (it's public and asks in a modal).
+
 ## Hardware notes (macOS)
 
 - `./dj-vevr-se ports` is the native replacement for `amidi -l`;

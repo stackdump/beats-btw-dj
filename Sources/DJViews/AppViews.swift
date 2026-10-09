@@ -61,6 +61,11 @@ public final class AppModel {
   private var hub: ControllerHub?
   private var refresh: Timer?
   private var injectedRouter: ControllerRouter?
+  @ObservationIgnored var controlServer: ControlServer?
+
+  /// The engine and router the UI drives (nil until `start`).
+  var engine: DJEngine? { dj }
+  var router: ControllerRouter? { hub?.router ?? injectedRouter }
 
   /// `engine`: drive this engine instead of building the real one (tests, previews). No
   /// controllers are opened and nothing is polled until `poll()` is called.
@@ -93,6 +98,7 @@ public final class AppModel {
       try hub.start()
       self.dj = dj
       self.hub = hub
+      startControlServer()
       status = "\(Int(dj.sampleRate)) Hz"
       let t = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
         MainActor.assumeIsolated { [weak self] in self?.poll() }
@@ -147,6 +153,7 @@ public final class AppModel {
   }
 
   public func stop() {
+    controlServer?.stop()
     hub?.stop()
     dj?.stop()
   }
@@ -271,16 +278,18 @@ public final class AppModel {
 
   // Live nets
   func generate(_ deck: String, _ spec: TrackSpec) {
+    Task { @MainActor in await composeAndLoad(deck, spec) }
+  }
+  /// Compose off the main thread, then load; returns once the deck has the track.
+  func composeAndLoad(_ deck: String, _ spec: TrackSpec) async {
     guard let dj else { return }
     status = "composing \(spec.genre)…"
     let sr = dj.sampleRate
-    Task { @MainActor in
-      let track = await Task.detached(priority: .userInitiated) {
-        PreparedTrack(spec: spec, sampleRate: sr)
-      }.value
-      dj.perform(.load(deck: deck, source: .net(spec)), prepared: track)
-      status = "\(Int(dj.sampleRate)) Hz"
-    }
+    let track = await Task.detached(priority: .userInitiated) {
+      PreparedTrack(spec: spec, sampleRate: sr)
+    }.value
+    dj.perform(.load(deck: deck, source: .net(spec)), prepared: track)
+    status = "\(Int(dj.sampleRate)) Hz"
   }
   func queueNext(_ deck: String, _ spec: TrackSpec) {
     dj?.perform(.queueNext(deck: deck, spec: spec))
@@ -302,7 +311,8 @@ public final class AppModel {
     dj?.perform(.quantize(deck: deck, mode: next))
   }
 
-  func load(_ deck: String, url: URL) {
+  @discardableResult
+  func load(_ deck: String, url: URL) -> Bool {
     let access = url.startAccessingSecurityScopedResource()
     defer { if access { url.stopAccessingSecurityScopedResource() } }
     do {
@@ -313,8 +323,10 @@ public final class AppModel {
           source: .sample(
             id: "", title: url.deletingPathExtension().lastPathComponent, grid: nil)),
         buffer: buffer)
+      return true
     } catch {
       status = "\(error)"
+      return false
     }
   }
 

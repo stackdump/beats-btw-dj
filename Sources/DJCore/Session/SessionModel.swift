@@ -219,7 +219,7 @@ extension DeckParams {
 }
 
 extension DeckAction {
-  var json: JSONValue {
+  public var json: JSONValue {
     func o(_ op: String, _ rest: [(String, JSONValue)]) -> JSONValue {
       .object(JSONObject([("op", .string(op))] + rest))
     }
@@ -253,7 +253,7 @@ extension DeckAction {
     }
   }
 
-  init?(json v: JSONValue) {
+  public init?(json v: JSONValue) {
     guard let op = v["op"]?.string else { return nil }
     let deck = v["deck"]?.string ?? ""
     switch op {
