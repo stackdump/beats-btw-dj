@@ -43,10 +43,13 @@
 //     Otherwise the step at "now" runs on past the song, each stopped read adds a zero to a
 //     phantom bar and dilutes the means.
 //
-// GAPS. Only the mode that is drawing reads, so a stretch in another view (or a stalled UI) leaves
-// no reads. A pause of more than `gapSeconds` between two reads restarts the coverage window
-// (`measFrom = Infinity`) exactly like a re-enable, so a bar on either side of a hole is not
-// presented as covered. The frames show the hole as black slices (the 0.25 s rule).
+// GAPS. The hub reads the feed on every pump while "measured" is ticked, in whichever view is on
+// (`ScopeHub.setMeasured`), as scope.js `frame()` does, so a visit to Scope/Live or Raster leaves
+// no hole. A stalled UI (or a panel hidden with nothing else pumping) still does: a pause of more
+// than `gapSeconds` between two reads restarts the coverage window (`measFrom = Infinity`)
+// exactly like a re-enable, so a bar on either side of a hole is not presented as covered. The JS
+// has no such rule (its loop stops with the transport, and nothing else leaves a hole there).
+// The frames show a hole as black slices (the 0.25 s rule).
 //
 // Row bin ranges (`MeasuredBins`) come from the edges and the SAMPLE RATE of the feed:
 // `df = sr / 4096`, `a = max(1, round(lo / df))`, `hi = min(2048, max(a + 1, round(hi / df)))`
@@ -55,12 +58,12 @@
 // THE CONTRACT FOR A MODE.
 //   * One reader per feed: `MeasuredReaderStore.shared.reader(for: feed)`. It outlives the view
 //     (the host builds a new view for every switch of scope kind), so the bars and frames carry
-//     over a switch from Spectro to Bands. Both modes call `update(feed:enabled:)` every drawn
-//     frame with the panel's `measured` flag; when it is false the reader does NOTHING (no FFT, no
-//     ring writes), as the JS stops reading when "measured" is unticked. Unlike the JS, which
-//     reads in `frame()` whichever view is open, only the mode that is drawing reads: a stretch
-//     spent in Scope/Live or Raster leaves a gap in the bars (and in the frames, which draw as
-//     black slices after the 0.25 s rule); see GAPS.
+//     over a switch from Spectro to Bands. WHO CALLS `update(feed:enabled:)`: the hub, on every
+//     pump while the panel's `measured` is ticked (`ScopeHub.setMeasured`, kept by the host
+//     panel through `ScopeSubscription.syncMeasured`), in whichever view is open, as the JS reads
+//     in `frame()` once `s.measured` is on; the Spectro and Bands controllers also call it every
+//     drawn frame (a second call in the same frame is free). When the flag is false the reader
+//     does NOTHING (no FFT, no ring writes), as the JS stops reading when "measured" is unticked.
 //   * Cadence. `analyse` is called once per `update` that finds new audio, at the drawn-frame
 //     rate (<= 30 Hz through the pacer). Smoothing is 0, so there is no cadence-dependent state; a
 //     second `update` in the same frame (no new audio since: `feed.nowFrame` is the guard) is

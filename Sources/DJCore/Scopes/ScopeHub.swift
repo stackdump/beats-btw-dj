@@ -12,6 +12,14 @@
 // call from every Canvas in a frame (a second call finds at most the render cycles that ran in
 // between; see the ScopeFeed header), and a hub with no subscribed feed does no work at all.
 //
+// MEASURED. A feed the panel has ticked "measured" for (`setMeasured`) is read by its
+// `MeasuredReader` on every `pump()`, whichever view is on screen: scope.js `frame()` calls
+// `readMeasured` once `s.measured` is on, in every view and not only the ones that show the
+// measured half (a deviation of the first port, which read only in Spectro and Bands and so left
+// holes in `measBars` and restarted `measFrom` after a visit to Scope/Live or Raster). The host
+// panel sets it while it is on screen; the reader is idempotent within a frame, so the mode
+// controllers that also call `update(feed:enabled:)` read nothing twice.
+//
 // `vizLevel` (0...3) is the quality level the perf monitor (`hub.perf`, SPEC mode 27) drives; the
 // frame pacer turns it into 30 / 15 / 8 / 4 draws per second (`ScopeFramePacer`). The monitor is the
 // level's writer: it is wired to `vizLevel` here, and visual drivers report the time they spend
@@ -28,12 +36,21 @@ public final class ScopeHub {
   public private(set) var pumpCount = 0
   /// The adaptive visual-quality monitor; the writer of `vizLevel` (see `PerfMonitor`).
   public let perf: PerfMonitor
+  /// The readers `pump()` feeds for the feeds with "measured" on (the controllers of the measured
+  /// modes take theirs from the same store).
+  public let readers: MeasuredReaderStore
+  private var measured: Set<ObjectIdentifier> = []
 
   /// `perf`: the monitor to wire to the level. The default measures nothing until `start()` and
   /// forgets its preference; the app passes one with a heartbeat and a stored preference.
-  public init(engine: DJEngine, perf: PerfMonitor = PerfMonitor()) {
+  /// `readers`: the store of measured readers, the app-wide one unless a test brings its own.
+  public init(
+    engine: DJEngine, perf: PerfMonitor = PerfMonitor(),
+    readers: MeasuredReaderStore = .shared
+  ) {
     self.engine = engine
     self.perf = perf
+    self.readers = readers
     pacer.level = perf.level
     perf.onLevelChange = { [weak self] level in self?.pacer.level = level }
   }
@@ -56,7 +73,8 @@ public final class ScopeHub {
 
   /// Drain every subscribed feed. Once per UI frame; idempotent. A feed that has a model
   /// (`ModelEngine`) has it take in the new fires too, so the model's history does not depend on
-  /// which scope mode is on screen (scope.js deposits on every fire).
+  /// which scope mode is on screen (scope.js deposits on every fire), and a feed with "measured"
+  /// on is read by its `MeasuredReader` (see MEASURED in the header).
   public func pump() {
     let active = activeFeeds
     guard !active.isEmpty else { return }
@@ -64,8 +82,28 @@ public final class ScopeHub {
     for f in active {
       f.pump()
       ModelEngine.existing(for: f)?.consume(f)
+      if measured.contains(ObjectIdentifier(f)) {
+        readers.reader(for: f).update(feed: f, enabled: true)
+      }
     }
   }
+
+  // MARK: measured
+
+  /// The panel's "measured" flag for `feed` (scope.js `s.measured`). On: every `pump()` reads the
+  /// feed, in whichever view; turning it on starts a fresh coverage window (the reader's own
+  /// re-enable rule). Off: the reader is told so, and reads nothing until it is on again.
+  public func setMeasured(_ on: Bool, for feed: ScopeFeed) {
+    let id = ObjectIdentifier(feed)
+    if on {
+      measured.insert(id)
+    } else if measured.remove(id) != nil {
+      readers.reader(for: feed).update(feed: feed, enabled: false)
+    }
+  }
+
+  /// Is `feed` read on every pump?
+  public func isMeasured(_ feed: ScopeFeed) -> Bool { measured.contains(ObjectIdentifier(feed)) }
 
   // MARK: pacing
 

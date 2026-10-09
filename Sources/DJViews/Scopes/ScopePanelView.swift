@@ -102,9 +102,20 @@ struct ScopePanelView: View {
           .clipShape(RoundedRectangle(cornerRadius: 4))
       }
     }
-    .onAppear { subscription.move(to: feed) }
-    .onChange(of: source) { subscription.move(to: feed) }
-    .onDisappear { subscription.release() }
+    .onAppear { subscribe() }
+    .onChange(of: source) { subscribe() }
+    .onChange(of: measured) { subscription.syncMeasured(measured, hub: hub) }
+    .onDisappear {
+      subscription.syncMeasured(false, hub: hub)
+      subscription.release()
+    }
+  }
+
+  /// Hold the selected source's feed, and keep the hub reading it while "measured" is ticked,
+  /// whichever view is on (scope.js reads in `frame()` in every view once it is ticked).
+  private func subscribe() {
+    subscription.move(to: feed)
+    subscription.syncMeasured(measured, hub: hub)
   }
 
   @ViewBuilder private func body(for kind: ScopeKind) -> some View {

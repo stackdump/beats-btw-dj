@@ -15,10 +15,11 @@
 //
 // WHAT A FRAME DOES (scope.js `frame()` for the bands view)
 //   * the MODEL takes in the new fires (`consume`: deposits per bar), as for every mode;
-//   * the MEASURED side, only while the panel's "measured" is on and the source has a net: one
-//     `MeasuredReader.update` (one FFT of the newest 4096 samples). Nothing at all when it is off.
-//     This runs on EVERY drawn frame, as in the JS where `readMeasured` runs before the view's
-//     rate limit;
+//   * the MEASURED side, only while the panel's "measured" is on: one `MeasuredReader.update`
+//     (one FFT of the newest 4096 samples). Nothing at all when it is off. This runs on EVERY
+//     drawn frame, as in the JS where `readMeasured` runs before the view's rate limit; the hub
+//     (`ScopeHub.setMeasured`) makes the same call on every pump in every OTHER view too, so this
+//     one is the same read again (idempotent within a frame) when a hub drives it;
 //   * the PICTURE (`scene`) is rebuilt at most every `redrawInterval` = 250 ms of wall time
 //     (scope.js: `if (now - s.bandsAt < 250) return;` in front of `draw`, "4 Hz is plenty, and its
 //     per-cell text is the priciest draw here"), and in between the last scene is handed out
@@ -29,17 +30,20 @@
 //     generation (a new track) rebuilds at once.
 //
 // THE READER IS PART OF THE PICTURE ONLY WHILE IT IS READ: "measured" on and a source with a net.
-// A reader that stopped (measured unticked, or the deck now plays a sample) keeps the bars it had
-// until it is next enabled, and the picture must not show them: a model-only panel must not
+// (A source without a net is read all the same, as in the JS, which reads whatever it is given:
+// with no anchors there are no bars to add up, only spectrogram frames.) A reader that stopped
+// (measured unticked) or whose deck now plays a sample keeps the bars it had until the next net
+// song resets it, and the picture must not show them: a model-only panel must not
 // widen to them, and a deck that was a net deck must say "needs a net deck", not paint the old
 // song's measured block.
 //
-// A STRETCH IN ANOTHER VIEW leaves no reads (only the drawing mode reads; see MeasuredReader's
-// GAPS): after more than a second away the measured coverage window restarts, so the bars from
-// before the hole keep their measured digits but lose their residual cells, and the statistics
-// and the tilt line start over. scope.js reads in every view and restarts only when "measured"
-// is ticked again, so there the residual survives a visit to another view (a deviation, listed in
-// the mode's report).
+// A STRETCH IN ANOTHER VIEW leaves no hole: the hub reads the feed on every pump while the panel's
+// "measured" is ticked, in whichever view, exactly as scope.js `frame()` does, so the residual
+// survives a visit to Scope/Live or Raster. Only a stretch with NO pumps at all (a stalled UI, the
+// panel hidden with "measured" ticked and nothing else pumping) leaves one: after more than a
+// second without a read the coverage window restarts (`MeasuredReader.gapSeconds`, which the JS
+// does not have), so the bars before the hole lose their residual cells and the statistics start
+// over.
 //
 // The clock is injectable (`now`, seconds, monotonic) for tests.
 
@@ -90,7 +94,7 @@ public final class BandsController {
     let m = model ?? ModelEngine.start(for: feed, engine: engine, cache: cache)
     model = m
     m.consume(feed)
-    if measured && feed.hasNet {
+    if measured {
       let r = reader ?? readers.reader(for: feed)
       reader = r
       r.update(feed: feed, enabled: true)

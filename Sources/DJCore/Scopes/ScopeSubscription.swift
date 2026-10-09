@@ -7,7 +7,8 @@
 //
 //   let subscription = ScopeSubscription()
 //   subscription.move(to: hub.feed(source))   // appear, and on every source change
-//   subscription.release()                    // disappear
+//   subscription.syncMeasured(measured, hub: hub)   // appear, and on a change of source or flag
+//   subscription.release()                    // disappear (after syncMeasured(false, ...))
 //
 // It holds exactly one acquire at a time. It has no `deinit` release (a `@MainActor` class's
 // deinit cannot touch main-actor state): whoever owns it calls `release()` when it goes away.
@@ -16,8 +17,23 @@
 public final class ScopeSubscription {
   /// The feed currently held (acquired once by this subscription), if any.
   public private(set) var feed: ScopeFeed?
+  /// The feed the hub has been told to read for "measured" on this subscription's behalf.
+  public private(set) var measuredFeed: ScopeFeed?
 
   public init() {}
+
+  /// Make `hub` read the held feed on every pump exactly while `on` (the panel's "measured" flag),
+  /// in whichever view is showing: scope.js reads the analyser in `frame()` once `s.measured` is
+  /// ticked, not only in the views that draw the measured half. Follows the held feed when it
+  /// moves; call it after `move(to:)` and whenever the flag changes, and with `false` before
+  /// `release()` or when the panel goes away.
+  public func syncMeasured(_ on: Bool, hub: ScopeHub) {
+    let want = on ? feed : nil
+    if measuredFeed === want { return }
+    if let old = measuredFeed { hub.setMeasured(false, for: old) }
+    if let new = want { hub.setMeasured(true, for: new) }
+    measuredFeed = want
+  }
 
   /// Hold `new` instead of whatever is held: acquire it, then release the old one (so a tap the
   /// two share is never switched off and on). The same feed again does nothing; nil releases.

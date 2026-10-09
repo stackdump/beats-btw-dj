@@ -113,6 +113,12 @@ are the contracts.
   clock keeps running, so waveforms scroll as measured time and only the grid/bars stop at the
   song's last step; measured frames below −120 dB are "no data" (else an idle deck autoscales
   to solid yellow) and bar accumulation is gated on the lead transport.
+* **Measured reads** follow the JS: the hub reads the analyser on every pump while the panel's
+  measured box is ticked, in every view (`ScopeHub.setMeasured`, kept by the panel through
+  `ScopeSubscription.syncMeasured`), so a visit to Scope/Live or Raster leaves no hole in the
+  bars. What differs is a stalled UI: a >1 s pause between two reads restarts the coverage
+  window (`MeasuredReader.gapSeconds`; the JS has no such rule). A source without a net is
+  read too (spectrogram frames only, no bars), as the JS reads whatever it is given.
 * **Model FX point (decision for you)**: the deck tap is pre-EQ/pre-fader, so a *deck* feed's
   model defaults to `fxPoint = .matchTap` (blind to that deck's filter sweeps and fader);
   `.deckOutput` applies deck EQ + gain² as the task text says. A *master* feed always uses the
@@ -155,9 +161,7 @@ are the contracts.
   is the likely fix; same pre-existing layout style as Map and Pads).
 * The Stage window hint for Sonar/Petal on a deck without a net is blank (no empty-state text).
 
-**Product decisions** (each is small): the model FX point above; the 332 pt Bands height; whether
-`MeasuredReader` should be fed by the hub for every view (as the JS does) instead of only while
-Spectro/Bands draw (a >1 s hole restarts the coverage window); Bands residual steps ~4 dB per
+**Product decisions** (each is small): the model FX point above; the 332 pt Bands height; Bands residual steps ~4 dB per
 halving of tempo (JS parity kept); solid-red fire flash; token look; ring-dot fingerprint;
 whether the arc layer on the deck rings (22) stays (one argument turns it off).
 

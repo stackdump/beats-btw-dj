@@ -29,6 +29,8 @@ final class ScopeRig {
 
   let dj: DJEngine
   let hub: ScopeHub
+  /// The measured readers of this rig's hub (private, so tests do not share reads).
+  let readers = MeasuredReaderStore()
   private let buffer: AVAudioPCMBuffer
   /// Frames per render cycle (the engine's manual-rendering block).
   let block: Int
@@ -53,7 +55,7 @@ final class ScopeRig {
       d.loadDemo()
       if play { d.setPlaying(true) }
     }
-    hub = ScopeHub(engine: dj)
+    hub = ScopeHub(engine: dj, readers: readers)
     if start { try dj.start() }
   }
 

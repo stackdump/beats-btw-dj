@@ -164,7 +164,7 @@ struct BandsControllerTests {
     #expect(c.builds == 4)
   }
 
-  @Test func theReaderIsOnlyReadWhileMeasuredIsOnAndTheSourceHasANet() throws {
+  @Test func theReaderIsOnlyReadWhileMeasuredIsOn() throws {
     let rig = try rig(["A"], samples: ["B"])
     defer { rig.stop() }
     let cache = warmedCache([("techno", 42, "loop", 300)])
@@ -181,12 +181,14 @@ struct BandsControllerTests {
     let reads = reader.reads
     run(rig, c, net, seconds: 1, measured: false)
     #expect(reader.reads == reads)
-    // a sample deck has no net, no anchors, nothing for bars to be about: no reads either
+    // a sample deck has no net, no anchors, nothing for bars to be about: it is read all the
+    // same (scope.js reads whatever it is given) but adds up no bars
     let sample = rig.hub.feed(.deck("B"))
     sample.acquire()
     let s = controller(clock, cache: cache)
     run(rig, s, sample, seconds: 1, measured: true)
-    #expect(s.reader == nil)
+    let sampleReader = try #require(s.reader)
+    #expect(sampleReader.reads > 5 && sampleReader.maxBar == -1)
   }
 
   @Test func aSourceWithNoNetSaysSoAndABrandNewModelSaysItsStatus() throws {
@@ -312,12 +314,13 @@ struct BandsControllerTests {
     #expect(off.layout?.barCount == model.maxBar + 1 && off.blocks.map(\.kind) == [.model])
   }
 
-  @Test func aStretchWithoutReadsStartsTheMeasuredCoverageOver() throws {
-    // DEVIATION from scope.js, inherited from MeasuredReader (see its GAPS): only the mode that
-    // is drawing reads. After a stretch of more than a second with no update (another view was
-    // on screen) the coverage window restarts, so the bars before the hole stop being "full":
-    // their measured digits stay, but their residual cells go empty and the statistics start
-    // over. scope.js keeps them (it reads in every view and restarts only on re-ticking).
+  @Test func aStretchWithNoPumpsAtAllStartsTheMeasuredCoverageOver() throws {
+    // DEVIATION from scope.js (MeasuredReader.gapSeconds, see its GAPS): a stalled UI. After a
+    // stretch of more than a second with no read at all (here the hub is not told to read, as a
+    // hidden panel's would not be) the coverage window restarts, so the bars before the hole stop
+    // being "full": their measured digits stay, but their residual cells go empty and the
+    // statistics start over. A stretch in ANOTHER VIEW is not that: the hub keeps reading
+    // (`aStretchInAnotherViewKeepsTheMeasuredCoverage`).
     let rig = try rig()
     defer { rig.stop() }
     let cache = warmedCache([("techno", 42, "loop", 300)])
@@ -350,6 +353,48 @@ struct BandsControllerTests {
       #expect(res.cells[(b - first)].index == nil, "residual of bar \(b) is empty")
     }
     #expect(res.cells[0..<perRow].contains { $0.index != nil })
+  }
+
+  @Test func aStretchInAnotherViewKeepsTheMeasuredCoverage() throws {
+    // scope.js `frame()` calls readMeasured in EVERY view once "measured" is ticked, so a visit
+    // to Scope/Live or Raster leaves no hole in measBars and measFrom does not restart. Here the
+    // hub does the reading (`setMeasured`) while no Bands controller is drawing.
+    let rig = try rig()
+    defer { rig.stop() }
+    let cache = warmedCache([("techno", 42, "loop", 300)])
+    let feed = rig.hub.feed(.deck("A"))
+    feed.acquire()
+    let clock = BandsClock()
+    let c = BandsController(cache: cache, readers: rig.readers, now: { clock.read() })
+    rig.hub.setMeasured(true, for: feed)
+    run(rig, c, feed, seconds: 3, measured: true)
+    let model = try #require(c.model)
+    let reader = try #require(c.reader)
+    let from = reader.measFrom
+    #expect(from.isFinite && BandsModel(model: model, reader: reader).fullBar(1))
+    // three seconds in another view: no Bands controller draws, the canvas of the other view
+    // pumps the hub at the same rate
+    for _ in 0..<30 {
+      rig.render(seconds: 0.1)
+      rig.hub.pump()
+    }
+    #expect(reader.reads > 50, "the hub read through the stretch: \(reader.reads)")
+    #expect(reader.measFrom == from, "the coverage window did not restart: \(reader.measFrom)")
+    run(rig, c, feed, seconds: 3, measured: true)
+    #expect(reader.measFrom == from)
+    let after = BandsModel(model: model, reader: reader)
+    #expect(after.fullBar(1) && after.fullBar(2), "bars before the visit still have their residual")
+    // no bar between the first and the last read is empty, and none was read only half as often
+    let first = Int(from / 16)
+    for b in first..<reader.maxBar { #expect(reader.measCnt[b] > 0, "hole at bar \(b)") }
+    clock.t += 1
+    let scene = c.scene(feed: feed, width: 800, measured: true)
+    let res = scene.blocks[2]
+    let layoutFirst = try #require(scene.layout).first
+    #expect(res.cells[(1 - layoutFirst)...].contains { $0.index != nil })
+    for b in 1...2 where b >= layoutFirst {
+      #expect(res.cells[(b - layoutFirst)].index != nil, "residual of bar \(b) is kept")
+    }
   }
 
   @Test func aRealDeckFillsTheBarsInBothHalvesAndTheStatsAreThere() throws {

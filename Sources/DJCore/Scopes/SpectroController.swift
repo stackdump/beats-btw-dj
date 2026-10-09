@@ -18,7 +18,9 @@
 //     (`ModelEngine.finaliseColumns`; a step ahead of the last final one by 64 or more starts the
 //     columns over instead);
 //   * the MEASURED side, only when the panel's "measured" is on: one `MeasuredReader.update`
-//     (one FFT of the newest 4096 samples; nothing at all when it is off).
+//     (one FFT of the newest 4096 samples; nothing at all when it is off). The hub makes the same
+//     call on every pump while "measured" is ticked (`ScopeHub.setMeasured`), in every view, so
+//     this one is the same read again (idempotent within a frame) when a hub drives it.
 
 import Foundation
 
