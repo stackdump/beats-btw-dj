@@ -139,7 +139,8 @@ public struct ScopeClock: Equatable, Sendable {
   /// Fraction of the current tick elapsed.
   public var tickPhase: Double
   public var transport: ScopeTransport
-  /// A mute timer, beat repeat or tempo effect is running.
+  /// A macro is running on the lead deck: fired and not yet run out, a mute timer, a beat repeat
+  /// or a tempo effect (`WaveRunner.macroActive`).
   public var macroActive: Bool
 
   public var playing: Bool { transport == .playing }

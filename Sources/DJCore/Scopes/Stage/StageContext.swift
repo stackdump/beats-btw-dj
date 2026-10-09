@@ -116,7 +116,8 @@ public struct StageFire: Sendable {
   /// The channel that played it.
   public var channel: Int
   public var durSec: Double
-  /// A mute timer, beat repeat or tempo effect was in effect when it sounded (`el._runningMacro`).
+  /// A macro was running on the deck when it sounded (`el._runningMacro`): fired and not yet run
+  /// out, a mute timer, a beat repeat or a tempo effect (`WaveRunner.markMacroRunning`).
   public var macroRunning: Bool
   public var isDrum: Bool
   public var isStinger: Bool
@@ -353,7 +354,7 @@ public struct StageContext {
   public var fires: [StageFire]
 
   // Engine facts.
-  /// A mute timer, beat repeat or tempo effect is running on the lead deck.
+  /// A macro is running on the lead deck (`WaveRunner.macroActive`).
   public var macroRunning: Bool
   /// Is any net deck behind the source?
   public var hasNet: Bool

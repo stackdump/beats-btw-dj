@@ -419,6 +419,38 @@ struct StageBoltsEngineTests {
     #expect(h.model.layers.bolts.bolts.isEmpty, "all gone: \(h.model.layers.bolts.bolts.count)")
   }
 
+  @Test func aMacroThatChangedNothingStillThrowsBoltsSeedsAndAHalo() throws {
+    // stage.js keys on `el._runningMacro`, which beats sets for any fired macro. Here the macro
+    // (solo drums) finds every net it would mute already muted, so it leaves no mute timer behind;
+    // the drums go on and every hit of theirs during the macro still throws a bolt.
+    let h = try StageHarness()
+    defer { h.stop() }
+    for role in ["bass", "melody", "harmony", "arp"] { h.deck.setRole(role, on: false) }
+    h.run(0.4)
+    #expect(!h.frames.flatMap(\.fires).isEmpty && h.model.layers.bolts.bolts.isEmpty)
+    h.deck.fire(.soloDrums, duration: 1)  // one bar: 16 ticks of 50 ms
+    var thrown = 0
+    var energy = 0.0
+    var seeds = 0
+    for _ in 0..<24 {
+      h.step()
+      let c = h.ctx
+      thrown +=
+        c.fires.filter { f in
+          f.macroRunning && f.panel.map { c.panels[$0].ring != nil } == true && f.origin != nil
+        }.count
+      energy = max(energy, h.model.layers.bolts.energy)
+      seeds = max(seeds, h.model.layers.bolts.seeds.count)
+    }
+    #expect(h.deck.wave.latest?.graph.pendingMacroTimers == 0, "premise: it muted nothing")
+    #expect(thrown >= 6, "the drums' hits throw bolts (\(thrown))")
+    #expect(energy > 0 && seeds > 0, "and the planet glows and sparks: \(energy), \(seeds)")
+    var macroFires: [StageFire] = []
+    follow(h, frames: 12, macroFires: &macroFires)
+    #expect(!h.ctx.macroRunning)
+    #expect(h.model.layers.bolts.bolts.isEmpty, "all gone once the macro and the bolts are over")
+  }
+
   @Test func eachBoltDropsOneSeedOnThePlanetsSurface() throws {
     let h = try StageHarness()
     defer { h.stop() }

@@ -440,6 +440,73 @@ struct FireEventTests {
     #expect(report.fireWithoutAnchor == 0, "\(report.fireWithoutAnchor) fires without an anchor")
   }
 
+  @Test func aMacroThatChangedNothingIsStillRunningForExactlyItsDuration() {
+    // beats `markMacroRunning`: `el._runningMacro` is set for the macro's duration whatever the
+    // macro did. Here every net a "solo drums" would mute is already muted, so it sets no restore
+    // timer; the drums go on playing and their hits must carry the macro flag all the same.
+    let src = makeSource(project("techno", 42, "standard"))
+    let tape = Tape(src)
+    for role in ["bass", "melody", "harmony", "arp"] { src.setRoleMuted(role, true) }
+    var frame = run(src, from: 0, blocks: 60)
+    tape.flush()
+    frame = run(src, from: frame, blocks: 60)
+    #expect(!tape.fires().isEmpty && !src.isMacroActive, "the drums play, no macro")
+    let fired = src.tick  // the last tick before it: the macro covers the next 16
+    src.fire(.soloDrums, ticks: 16)
+    frame = run(src, from: frame, blocks: 1)
+    #expect(src.latest!.graph.pendingMacroTimers == 0, "premise: nothing to mute, no timer")
+    #expect(src.isMacroActive, "but a macro was fired")
+    _ = tape.fires()
+    frame = run(src, from: frame, blocks: 400)  // 16 ticks are ~140 blocks; this is ~46 ticks
+    let after = tape.fires()
+    #expect(!src.isMacroActive, "it ran out")
+    let flagged = after.filter { $0.flags.contains(.macro) }
+    let plain = after.filter { !$0.flags.contains(.macro) }
+    #expect(flagged.count >= 6, "the drums' hits during it: \(flagged.count)")
+    #expect(flagged.allSatisfy { Int($0.tick) > fired && Int($0.tick) <= fired + 16 })
+    #expect(plain.allSatisfy { Int($0.tick) <= fired || Int($0.tick) > fired + 16 })
+    #expect(plain.contains { Int($0.tick) > fired + 16 }, "and the drums go on after it")
+  }
+
+  @Test func everyMacroKindAndAStingerMarksItsDuration() {
+    // The one entry point every kind goes through: fire each net macro on a quiet deck, and a
+    // stinger on a net that does not exist (no restore timer either).
+    for macro in NetMacro.allCases {
+      let src = makeSource(project("techno", 42, "standard"))
+      run(src, from: 0, blocks: 10)
+      #expect(!src.isMacroActive)
+      src.fire(macro, ticks: 4)
+      run(src, from: 10 * 128, blocks: 2)
+      #expect(src.isMacroActive, "\(macro) marks itself running")
+      run(src, from: 12 * 128, blocks: 120)  // 4 ticks and a good margin
+      #expect(!src.isMacroActive, "\(macro) is over")
+    }
+    let src = makeSource(project("techno", 42, "standard"))
+    run(src, from: 0, blocks: 10)
+    src.fireStinger("no-such-net", ticks: 4)
+    run(src, from: 10 * 128, blocks: 2)
+    #expect(src.isMacroActive, "a stinger marks itself running")
+    run(src, from: 12 * 128, blocks: 120)
+    #expect(!src.isMacroActive)
+  }
+
+  @Test func panicAndStopClearTheMarkedMacro() {
+    let src = makeSource(project("techno", 42, "standard"))
+    var frame = run(src, from: 0, blocks: 10)
+    src.fireStinger("no-such-net", ticks: 64)
+    frame = run(src, from: frame, blocks: 2)
+    #expect(src.isMacroActive)
+    src.panic()
+    frame = run(src, from: frame, blocks: 2)
+    #expect(!src.isMacroActive, "panic: beats effects.js sets _runningMacro back to null")
+    src.fireStinger("no-such-net", ticks: 64)
+    frame = run(src, from: frame, blocks: 2)
+    #expect(src.isMacroActive)
+    src.stop()
+    frame = run(src, from: frame, blocks: 2)
+    #expect(!src.isMacroActive)
+  }
+
   @Test func theMacroFlagFollowsMuteTimersAndTempoEffects() {
     let src = makeSource(project("techno", 42, "standard"))
     var frame = run(src, from: 0, blocks: 50)

@@ -399,6 +399,7 @@ public final class WaveRunner {
   public func stop() {
     playing = false
     clockBroken = true
+    macroHoldTicks = 0
     graph?.reset()
   }
 
@@ -421,7 +422,10 @@ public final class WaveRunner {
 
   public func setRoleMuted(hash: Int32, _ muted: Bool) { graph?.setRoleMuted(hash: hash, muted) }
   public func activateSlot(hash: Int32) { graph?.activateSlot(hash: hash) }
-  public func fireStinger(hash: Int32, ticks: Int) { graph?.fireStinger(hash: hash, ticks: ticks) }
+  public func fireStinger(hash: Int32, ticks: Int) {
+    graph?.fireStinger(hash: hash, ticks: ticks)
+    markMacroRunning(ticks: ticks)
+  }
 
   public func setMute(_ netId: String, _ muted: Bool) {
     if let g = graph, let i = g.byId[netId] { g.muted[i] = muted ? 1 : 0 }
@@ -602,10 +606,26 @@ public final class WaveRunner {
     }
   }
 
+  /// Net ticks left of the latest macro fired (`markMacroRunning`).
+  private var macroHoldTicks = 0
+
+  /// beats `markMacroRunning` (macros/runtime.js): a macro of ANY kind is running for `ticks` net
+  /// ticks from its fire, whether or not it changed anything we can see (a mute that found every
+  /// net it targets already muted sets no restore timer; the catalog's FX, pan, shape, pitch,
+  /// feel and one-shot kinds drive a master chain this engine does not have and set none
+  /// either). It feeds `macroActive`, so the `FireFlags.macro` stamped on each hit, the per-deck
+  /// clock flag and everything keyed on them (the Stage's bolts, seeds and halo) follow the macro
+  /// that was fired, not the mutes it left behind. Every macro entry point calls it; a kind added
+  /// later calls it too. Allocation-free.
+  public func markMacroRunning(ticks: Int) {
+    macroHoldTicks = max(macroHoldTicks, max(1, ticks))
+  }
+
   /// Fire a net macro (`catalog.js`): mutes restore after `ticks` net ticks; tempo
   /// macros last `ticks` ticks of wall time at the tempo they were fired at.
   public func fireMacro(_ macro: NetMacro, ticks: Int) {
     guard let g = graph else { return }
+    markMacroRunning(ticks: ticks)
     switch macro {
     case .drop: g.fireMute(.nonDrums, ticks: ticks, macro: macro.tag)
     case .breakdown: g.fireMute(.drumsOnly, ticks: ticks, macro: macro.tag)
@@ -626,9 +646,12 @@ public final class WaveRunner {
     }
   }
 
-  /// Is a macro in effect right now: a pending mute restore, a running beat repeat or a tempo
-  /// effect (half time, tape stop, tempo anchor)? Allocation-free.
-  public var macroActive: Bool { (graph?.hasActiveMacros ?? false) || tempoFx != .none }
+  /// Is a macro in effect right now: one fired and not yet run out (`markMacroRunning`), a
+  /// pending mute restore, a running beat repeat or a tempo effect (half time, tape stop, tempo
+  /// anchor)? Allocation-free.
+  public var macroActive: Bool {
+    macroHoldTicks > 0 || (graph?.hasActiveMacros ?? false) || tempoFx != .none
+  }
 
   /// Which macros are in effect and which nets they hold muted (see `WaveGraph.macroSnapshot`),
   /// tempo macros included. Allocation-free.
@@ -642,6 +665,7 @@ public final class WaveRunner {
   /// Restore every pending macro effect now.
   public func panic() {
     graph?.cancelMacros()
+    macroHoldTicks = 0
     if tempoFx != .none {
       tempoFx = .none
       setTempo(fxStartBpm)
@@ -775,7 +799,7 @@ public final class WaveRunner {
     }
     let lanes = proj.lanes
     let ring = fireRing
-    let macro = ring != nil && (g.hasActiveMacros || tempoFx != .none)
+    let macro = ring != nil && macroActive
     // The tick's anchor goes out before its fires (`advance` is exactly one tick): a reader
     // that looks at the fires first and the anchors second finds the anchor of every fire.
     anchor(proj, tick: g.tick + 1, swap: false)
@@ -787,6 +811,7 @@ public final class WaveRunner {
       }
     }
     assert(Int(lastAnchorTick) == g.tick, "advance moved the tick by exactly one")
+    if macroHoldTicks > 0 { macroHoldTicks -= 1 }
     ticksInBlock += 1
     opts.onTick?(self)
     if g.stopRequested {

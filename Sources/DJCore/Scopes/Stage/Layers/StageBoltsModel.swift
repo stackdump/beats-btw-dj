@@ -26,9 +26,13 @@ import Foundation
 // THE MACRO SIGNAL. `el._runningMacro` is beats' macro runtime's UI bookkeeping: set by
 // `markMacroRunning` for the duration of any fired macro (mute, FX, pan, feel, tempo, beat repeat,
 // one-shots), cleared by a wall-clock timer. This app's engine has the net-native macros only
-// (`NetMacro`: mutes, beat repeat, tempo; and the stinger windows) and tells exactly when one is
-// in effect: a pending mute restore or stinger window, a running beat repeat or a tempo effect. The audio
-// thread stamps that on every hit it reports (`FireFlags.macro`), and the stage hands it on as
+// (`NetMacro`: mutes, beat repeat, tempo; and the stinger windows): the catalog's FX, pan, shape,
+// pitch, feel and one-shot kinds drive a master chain the wave engine does not have, so there is
+// nothing of theirs to signal yet. Every macro entry point of the runner goes through
+// `WaveRunner.markMacroRunning(ticks:)` (a kind added later calls it too), which keeps the deck
+// "macro running" for the macro's duration whether or not it left a mute timer or tempo effect
+// behind (a drop with nothing left to mute still counts, as in the JS). The audio thread stamps
+// that on every hit it reports (`FireFlags.macro`), and the stage hands it on as
 // `StageFire.macroRunning`. That is the flag a bolt keys on: per fire, per deck, so with two
 // decks a macro on A throws no bolts from B's hits. (The JS flag is global.)
 //

@@ -123,6 +123,13 @@ are the contracts.
   model defaults to `fxPoint = .matchTap` (blind to that deck's filter sweeps and fader);
   `.deckOutput` applies deck EQ + gain² as the task text says. A *master* feed always uses the
   full per-deck chain. The mode views print which one is in use.
+* **Macro running** (bolts, seeds, halo): the deck's flag follows every macro **fired** for its
+  whole duration (`WaveRunner.markMacroRunning`, called by `fireMacro` and `fireStinger`), not
+  only the mute timers / beat repeat / tempo effect it leaves behind, as beats' `_runningMacro`.
+  The catalog's FX, pan, shape, pitch, feel and one-shot kinds **do not exist in this engine**
+  (no master chain), so there is nothing of theirs to signal; a kind added later calls
+  `markMacroRunning` and bolts follow. The flag is per deck (with two decks a macro on A throws
+  no bolts from B's hits); the JS flag is global.
 * **Corona** hears the **left** channel (Tone's `Analyser` is `ChannelSplitter(1)` → analyser,
   checked in Chrome), so decks and the master got an optional left-channel tap; smoothing is
   compensated per frame (`τ' = τ^(dt·60)`) so 120 Hz screens look like 60 Hz.
