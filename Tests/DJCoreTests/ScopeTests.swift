@@ -13,13 +13,17 @@ struct AudioTapTests {
     var l = (0..<1000).map { Float($0) }
     var r = (0..<1000).map { Float(-$0) }
     l.withUnsafeMutableBufferPointer { lp in
-      r.withUnsafeMutableBufferPointer { rp in tap.write(lp.baseAddress!, rp.baseAddress!, frames: 1000) }
+      r.withUnsafeMutableBufferPointer { rp in
+        tap.write(lp.baseAddress!, rp.baseAddress!, frames: 1000)
+      }
     }
     #expect(tap.framesWritten == 1000)
     let got = tap.recent(10)
     #expect(got == [Float](repeating: 0, count: 10), "(l + r) / 2 of a mirrored pair is silence")
     var mono = [Float](repeating: 0, count: 1000)
-    let rd = mono.withUnsafeMutableBufferPointer { tap.read(from: 0, into: $0.baseAddress!, maxFrames: 1000) }
+    let rd = mono.withUnsafeMutableBufferPointer {
+      tap.read(from: 0, into: $0.baseAddress!, maxFrames: 1000)
+    }
     #expect(rd.start == 0 && rd.count == 1000 && rd.lost == 0)
   }
 
@@ -29,7 +33,9 @@ struct AudioTapTests {
     var x = (0..<(cap * 3 / 2)).map { Float($0) }
     x.withUnsafeMutableBufferPointer { tap.write($0.baseAddress!, nil, frames: $0.count) }
     var out = [Float](repeating: 0, count: cap)
-    let r = out.withUnsafeMutableBufferPointer { tap.read(from: 0, into: $0.baseAddress!, maxFrames: cap) }
+    let r = out.withUnsafeMutableBufferPointer {
+      tap.read(from: 0, into: $0.baseAddress!, maxFrames: cap)
+    }
     #expect(r.lost == cap / 2, "the first half-capacity was overwritten")
     #expect(r.start == cap / 2 && r.count == cap)
     #expect(out[0] == Float(cap / 2) && out[cap - 1] == Float(cap * 3 / 2 - 1))
@@ -61,7 +67,8 @@ struct TapReaderTests {
     let tap = AudioTap(minimumCapacity: 1 << 16)
     let r = TapReader(tap: tap, sampleRate: 48_000)
     // 1 s of a +-0.8 tone in the first half, +-0.2 in the second
-    var x = tone(24_000, bin: 100, size: 4096, amp: 0.8) + tone(24_000, bin: 100, size: 4096, amp: 0.2)
+    var x =
+      tone(24_000, bin: 100, size: 4096, amp: 0.8) + tone(24_000, bin: 100, size: 4096, amp: 0.2)
     // as the UI does: a little at a time
     for chunk in 0..<8 {
       x.withUnsafeMutableBufferPointer {

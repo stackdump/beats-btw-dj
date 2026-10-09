@@ -50,7 +50,8 @@ struct AppLayoutTests {
     let m = try await model()
     #expect(m.scopesOpen.isEmpty, "the default layout has no scope panels")
     let closed = try #require(renderPixels(ContentView(model: m), width: 1100, height: 1100))
-    let litClosed = closed.count(inX: 0..<1100, y: 0..<1100) { r, g, b in r > 60 || g > 60 || b > 60 }
+    let litClosed = closed.count(inX: 0..<1100, y: 0..<1100) { r, g, b in r > 60 || g > 60 || b > 60
+    }
 
     m.scopesOpen = ["A", "master", "B"]
     m.poll()  // creates the feeds' first readings
