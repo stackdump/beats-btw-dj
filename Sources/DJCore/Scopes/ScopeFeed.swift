@@ -156,6 +156,12 @@ public final class ScopeFeed {
 
   /// Bumped whenever a mode must reset (see the header).
   public private(set) var generation = 0
+  /// The fire number (`fireLog.total` at that moment) at which the current `generation` began:
+  /// fires numbered below it belong to the state a mode just reset. A mode that accumulates over
+  /// the fire log resets on a new `generation` and continues from here, so the fires that were
+  /// logged in the same pump after the reset (a restart's first step) are not lost and the ones
+  /// before it are not counted twice.
+  public private(set) var generationFireStart = 0
   /// Bumped by every pump that ingested anything or changed the clock: "is there something new
   /// to draw?".
   public private(set) var revision = 0
@@ -476,12 +482,14 @@ public final class ScopeFeed {
     lanes = all
     fireLog.removeAll()
     generation = ScopeGenerations.next()
+    generationFireStart = fireLog.total
   }
 
   private func resetHistory(_ ch: Channel) {
     ch.anchors.removeAll()
     ch.lastStep = -1
     generation = ScopeGenerations.next()
+    generationFireStart = fireLog.total
   }
 
   /// scope.js `resetHistory`'s trigger: the step counter went back by more than 32 steps and the
