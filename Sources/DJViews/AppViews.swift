@@ -37,6 +37,8 @@ struct DeckState: Equatable {
   var timeline: SectionTimeline?
   /// The ring's arc layer: dimmed while playing, turned by the Auto-DJ swing (SPEC 22).
   var ringArcs = RingArcs()
+  /// Running macros and the chase over the roles they hold muted (SPEC 26).
+  var macroPulse = MacroPulseState()
 }
 
 @MainActor @Observable
@@ -80,6 +82,9 @@ public final class AppModel {
   @ObservationIgnored var uptime: () -> Double = { ProcessInfo.processInfo.systemUptime }
   /// Per net deck, the Auto-DJ swing of its ring.
   @ObservationIgnored private var ringSpins: [String: RingSpin] = [:]
+  /// Per net deck, the macro chase over its role toggles, and when it was last advanced.
+  @ObservationIgnored private var chaseBoards: [String: MacroChaseBoard] = [:]
+  @ObservationIgnored private var chaseClock: [String: Double] = [:]
 
   /// `engine`: drive this engine instead of building the real one (tests, previews). No
   /// controllers are opened and nothing is polled until `poll()` is called.
@@ -216,6 +221,11 @@ public final class AppModel {
         spin.observe(advances: d.advances, at: now)
         ringSpins[name] = spin
         state.ringArcs = spin.arcs(playing: d.playing, at: now)
+        var board = chaseBoards[name] ?? MacroChaseBoard()
+        board.update(d.macroActivity, dt: now - (chaseClock[name] ?? now))
+        chaseBoards[name] = board
+        chaseClock[name] = now
+        state.macroPulse = board.state
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
@@ -692,11 +702,12 @@ struct NetPanel: View {
               get: { state.rolesOn.contains(r) }, set: { _ in model.toggleRole(name, r) })
           )
           .toggleStyle(.button).controlSize(.small).tint(tint)
+          .macroPulseGlow(state.macroPulse.level(of: r))
         }
       }
       FlowRow(spacing: 4) {
         ForEach(NetMacro.allCases, id: \.rawValue) { m in
-          Button(m.label) { model.fire(name, m) }.controlSize(.small)
+          MacroButton(macro: m, running: state.macroPulse.isRunning(m)) { model.fire(name, m) }
         }
         Button("Panic") { model.panic(name) }.controlSize(.small).tint(.red)
       }

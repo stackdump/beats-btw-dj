@@ -76,6 +76,11 @@ public final class WaveDeckSource: @unchecked Sendable {
   private let hasProjectAtomic = Atomic<Bool>(false)
   private let scrubbingAtomic = Atomic<Bool>(false)
   private let macroAtomic = Atomic<Bool>(false)
+  /// Which macros are in effect, which nets each holds muted, and for which project: one
+  /// consistent record per block (see MacroMirror.swift).
+  private let macroMirror = MacroMirror()
+  /// The last whole record a reader got (main thread): what it keeps if a writer is in the way.
+  private var macroLast = MacroMirror.Read()
   /// Whether the owning deck routes its output through this source.
   private let activeAtomic = Atomic<Bool>(false)
   /// Bit i of word i/64 = net i is muted (first 256 nets), refreshed every block.
@@ -343,6 +348,56 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// a tempo effect (half time, tape stop, tempo anchor). It does not say which, or for how long.
   public var isMacroActive: Bool { macroAtomic.load(ordering: .relaxed) }
 
+  /// The last whole macro record (main thread).
+  private func macroRead() -> MacroMirror.Read {
+    if let r = macroMirror.read() { macroLast = r }
+    return macroLast
+  }
+
+  /// The macros in effect right now, as of the last render block: a mute macro while the nets
+  /// it muted wait for their restore, the beat repeat while it runs, a tempo macro while its
+  /// tempo effect lasts. (A mute macro that found everything it targets already muted muted
+  /// nothing and is not in effect.) Main thread; allocates the array it returns.
+  public var activeMacros: [NetMacro] {
+    let m = macroRead().snapshot.mask
+    return NetMacro.allCases.filter { m & $0.bit != 0 }
+  }
+
+  public func isActive(_ macro: NetMacro) -> Bool {
+    macroRead().snapshot.mask & macro.bit != 0
+  }
+
+  /// Is net `index` of the project the audio thread runs held muted by a running macro (its
+  /// restore is pending)? As `isNetMuted`, from a per-block mirror. Main thread.
+  public func isNetHeldByMacro(index i: Int) -> Bool { macroRead().snapshot.isHeld(net: i) }
+
+  /// Of `roles` (riff-group or plain-net role names), those with a net that `macro` holds muted
+  /// (its own mutes: a net another macro muted first is not its) and that is still muted (a
+  /// role the performer switched back on during the macro is no longer held), in the order
+  /// given. Reads the
+  /// latest project's role table like `isRoleAudible`; allocates its result. Empty while the
+  /// record comes from another project than the latest one (a hand-over waiting for its bar):
+  /// the nets it names are the running graph's, the tables are the new one's. Main thread.
+  public func rolesHeld(by macro: NetMacro, among roles: [String]) -> [String] {
+    heldRoles(roles) { $0.isHeld(net: $1, by: macro) }
+  }
+
+  /// `rolesHeld(by:among:)` for any macro.
+  public func rolesHeldByMacros(_ roles: [String]) -> [String] {
+    heldRoles(roles) { $0.isHeld(net: $1) }
+  }
+
+  private func heldRoles(_ roles: [String], _ held: (MacroSnapshot, Int) -> Bool) -> [String] {
+    let read = macroRead()
+    guard let project = latest, project.generation == read.generation else { return [] }
+    let g = project.graph
+    return roles.filter { role in
+      guard let t = g.roleTargets[strHash(role)] else { return false }
+      let nets = t >= 0 ? g.groupNets[t] : [-t - 2]
+      return nets.contains { held(read.snapshot, $0) && isNetMuted(index: $0) }
+    }
+  }
+
   // MARK: audio-thread side
 
   /// Fill `frames` samples of `left` (and `right` if given). Real-time safe. Stamps fires
@@ -373,6 +428,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     hasProjectAtomic.store(runner.graph != nil, ordering: .relaxed)
     scrubbingAtomic.store(runner.isScrubbing, ordering: .relaxed)
     macroAtomic.store(runner.macroActive, ordering: .relaxed)
+    macroMirror.publish(runner.macroSnapshot(), generation: runner.generation)
     if let g = runner.graph { publishMutes(g.muted) }
   }
 

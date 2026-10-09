@@ -572,7 +572,13 @@ public final class WaveRunner {
   private var fxStartBpm = 120.0
   private var fxTarget = 120.0
 
-  private func beginTempoFx(_ kind: TempoFx, target: Double, ticks: Int) {
+  /// Bits (`NetMacro.bit`) of the tempo macros whose effect is running; meaningful while
+  /// `tempoFx != .none`, and started afresh by the first fire after it ended.
+  private var tempoFxMask: UInt32 = 0
+
+  private func beginTempoFx(_ kind: TempoFx, target: Double, ticks: Int, macro: NetMacro) {
+    if tempoFx == .none { tempoFxMask = 0 }
+    tempoFxMask |= macro.bit
     // A stacked fire restores to the tempo the first one started from, not its own peak.
     let start = tempoFx == .none ? clock[clkTempo] : fxStartBpm
     tempoFx = kind
@@ -601,26 +607,37 @@ public final class WaveRunner {
   public func fireMacro(_ macro: NetMacro, ticks: Int) {
     guard let g = graph else { return }
     switch macro {
-    case .drop: g.fireMute(.nonDrums, ticks: ticks)
-    case .breakdown: g.fireMute(.drumsOnly, ticks: ticks)
-    case .soloDrums: g.fireMute(.nonDrums, ticks: ticks)
-    case .cut: g.fireMute(.everything, ticks: ticks)
+    case .drop: g.fireMute(.nonDrums, ticks: ticks, macro: macro.tag)
+    case .breakdown: g.fireMute(.drumsOnly, ticks: ticks, macro: macro.tag)
+    case .soloDrums: g.fireMute(.nonDrums, ticks: ticks, macro: macro.tag)
+    case .cut: g.fireMute(.everything, ticks: ticks, macro: macro.tag)
     case .doubleDrop:
-      g.fireMute(.everything, ticks: 2)
+      g.fireMute(.everything, ticks: 2, macro: macro.tag)
       // the second half lands 260 ms later (a timer on the net clock, in ticks)
       let delay = max(1, Int((0.26 / (60 / (clock[clkTempo] * ppq))).rounded()))
-      g.scheduleMute(.nonDrums, after: delay, ticks: ticks)
+      g.scheduleMute(.nonDrums, after: delay, ticks: ticks, macro: macro.tag)
     case .beatRepeat: g.fireBeatRepeat(ticks: ticks)
     case .halfTime:
-      beginTempoFx(.hold, target: max(20, jsRound(clock[clkTempo] * 0.5)), ticks: ticks)
-    case .tapeStop: beginTempoFx(.sweep, target: 22, ticks: ticks)
-    case .tempoAnchor: beginTempoFx(.hold, target: max(20, g.project.tempo), ticks: ticks)
+      beginTempoFx(
+        .hold, target: max(20, jsRound(clock[clkTempo] * 0.5)), ticks: ticks, macro: macro)
+    case .tapeStop: beginTempoFx(.sweep, target: 22, ticks: ticks, macro: macro)
+    case .tempoAnchor:
+      beginTempoFx(.hold, target: max(20, g.project.tempo), ticks: ticks, macro: macro)
     }
   }
 
   /// Is a macro in effect right now: a pending mute restore, a running beat repeat or a tempo
   /// effect (half time, tape stop, tempo anchor)? Allocation-free.
   public var macroActive: Bool { (graph?.hasActiveMacros ?? false) || tempoFx != .none }
+
+  /// Which macros are in effect and which nets they hold muted (see `WaveGraph.macroSnapshot`),
+  /// tempo macros included. Allocation-free.
+  func macroSnapshot() -> MacroSnapshot {
+    guard let g = graph else { return MacroSnapshot() }
+    var s = g.hasActiveMacros ? g.macroSnapshot() : MacroSnapshot()
+    if tempoFx != .none { s.mask |= tempoFxMask }
+    return s
+  }
 
   /// Restore every pending macro effect now.
   public func panic() {
