@@ -118,6 +118,7 @@ func stressEngineMirror(projects: [WaveProject], rate: Double)
   src.play()
   let stop = Flag()
   let frames = Box(0)
+  let finished = DispatchSemaphore(value: 0)
   Thread.detachNewThread {
     var l = [Float](repeating: 0, count: 128)
     var r = [Float](repeating: 0, count: 128)
@@ -131,6 +132,7 @@ func stressEngineMirror(projects: [WaveProject], rate: Double)
       f += 128
     }
     frames.value = f
+    finished.signal()
   }
   var report = EngineMirrorReport()
   var snap = MarkingSnapshot()
@@ -169,7 +171,9 @@ func stressEngineMirror(projects: [WaveProject], rate: Double)
     seen.insert(h.generation)
   }
   stop.set()
-  Thread.sleep(forTimeInterval: 0.05)
+  // Join the render thread: it writes `frames` only as it leaves its loop, and on a loaded
+  // machine a fixed sleep here read 0 from a thread that had not been scheduled yet.
+  finished.wait()
   report.swapsSeen = seen.count
   report.framesRendered = frames.value
   return report
