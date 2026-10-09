@@ -86,4 +86,49 @@ struct StageOverlayEngineRenderTests {
     }
     #expect(probed >= 3, "several dots are in the open (\(probed))")
   }
+
+  @Test func engineFiresBecomeBeamsAmberAtTheBaseFromTheRingCentre() throws {
+    let rig = try StageViewRig()
+    defer { rig.stop() }
+    rig.model.settings.overlays = [.flame]
+    let ctxs = try frames(rig, seconds: 1.5)
+    let last = try #require(ctxs.last)
+    let flame = rig.model.layers.flame
+    let beams = flame.beams(in: last)
+    #expect(beams.count >= 2, "several panels are lit (\(beams.count))")
+    #expect(Set(beams.map(\.panelId)).isSubset(of: Set(last.panels.map(\.id))))
+    let with = try render(rig)
+    savePNG(rig.scene(), width: 1000, height: 800, name: "stage-flame-engine")
+    flame.reset()
+    let without = try render(rig)
+    let changed = OverlaySwatch.changed(without, with, tol: 32)
+    #expect(changed.count > 300, "beams are drawn (\(changed.count) changed pixels)")
+    // every changed pixel is inside a beam: close to its axis, between its base and its tip
+    let c = last.ringCenter
+    let inner = StageFlame.innerRadius(centre: c)
+    let strays = changed.filter { px in
+      let x = Double(px.x) + 0.5 - c.x
+      let y = Double(px.y) + 0.5 - c.y
+      return !beams.contains { b in
+        let along = x * cos(b.theta) + y * sin(b.theta)
+        let across = abs(-x * sin(b.theta) + y * cos(b.theta))
+        return along >= inner - 2 && along <= b.barLength + 2 && across <= 8
+      }
+    }
+    #expect(strays.isEmpty, "no changed pixel outside the beams (\(strays.count))")
+    // the brightest beam is amber just outside its base, where nothing else is drawn
+    let top = try #require(beams.max { $0.energy < $1.energy })
+    let d = inner + 6
+    let x = Int((c.x + d * cos(top.theta)).rounded())
+    let y = Int((c.y + d * sin(top.theta)).rounded())
+    let px = with.color(x, y)
+    let before = without.color(x, y)
+    #expect(
+      px.r > before.r + 40 && px.r > px.b + 40 && px.g > before.g + 15, "amber at the base: \(px)")
+    // and its tip end is nearly gone: dimmer than the base, the hue drifting toward blue
+    let tipD = top.barLength - 6
+    let tx = Int((c.x + tipD * cos(top.theta)).rounded())
+    let ty = Int((c.y + tipD * sin(top.theta)).rounded())
+    #expect(with.color(tx, ty).r < px.r, "the tip is dimmer")
+  }
 }

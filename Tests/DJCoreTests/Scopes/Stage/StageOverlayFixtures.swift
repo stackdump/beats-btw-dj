@@ -1,3 +1,5 @@
+import Foundation
+
 @testable import DJCore
 
 // Synthetic stage contexts for the overlay layers' unit tests (pulse, flame, tilt, bolts): a ring
@@ -6,7 +8,9 @@
 // layout (a 1000 x 800 stage with 4 panels: side 240, ring radius 256, centre (500, 400), panel
 // centres (500,144) (756,400) (500,656) (244,400), dark planet radius 56.8).
 //
-// (No Testing and no Foundation import here: see AllocationCounter.swift.)
+// (No Testing import here: Foundation lives in a file like this one, see AllocationCounter.swift.)
+
+func stageAtan2(_ y: Double, _ x: Double) -> Double { atan2(y, x) }
 
 enum OverlayFixture {
   static let width = 1000.0
