@@ -53,6 +53,16 @@ public final class AppModel {
   var padPort: String?
   var showPads = false
   var showMap = false
+  // Scopes (SPEC modes 1…6): the panel under the decks, and what it shows.
+  var showScopes = false
+  var scopeKind: ScopeKind = .live
+  var scopeSource: ScopeSource = .master
+  var scopeMeasured = false
+  /// What the panel's height rule (scope.js `viewHeight`) works from: the usable height of the
+  /// screen the window is on (not the window, which grows with the panel); 800 until known.
+  var scopeWindowHeight = 800.0
+  /// Hands out the scope feeds; made once the engine exists (`start()`).
+  private(set) var scopeHub: ScopeHub?
   var walk: ControlWalk?
   var walkReportPath: String?
   var lastControl: (device: String, group: String, index: Int, at: Date)?
@@ -71,6 +81,7 @@ public final class AppModel {
     guard dj == nil else { return }
     if let injected {
       dj = injected
+      scopeHub = ScopeHub(engine: injected)
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
       poll()
@@ -93,6 +104,7 @@ public final class AppModel {
       try hub.start()
       self.dj = dj
       self.hub = hub
+      scopeHub = ScopeHub(engine: dj)
       status = "\(Int(dj.sampleRate)) Hz"
       let t = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
         MainActor.assumeIsolated { [weak self] in self?.poll() }
@@ -435,6 +447,14 @@ public struct ContentView: View {
         ) { model.pressPad($0, $1) }
         .frame(width: 300, height: 300)
       }
+      if model.showScopes, let scopes = model.scopeHub {
+        ScopePanelView(
+          hub: scopes,
+          kind: Binding(get: { model.scopeKind }, set: { model.scopeKind = $0 }),
+          source: Binding(get: { model.scopeSource }, set: { model.scopeSource = $0 }),
+          measured: Binding(get: { model.scopeMeasured }, set: { model.scopeMeasured = $0 }),
+          windowHeight: model.scopeWindowHeight)
+      }
       Divider()
       HStack {
         VStack(alignment: .leading, spacing: 2) {
@@ -458,6 +478,10 @@ public struct ContentView: View {
           .disabled(model.devices.isEmpty)
           Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
             .toggleStyle(.button)
+          Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
+            .toggleStyle(.button)
+          // STAGE extension point: the stage (SPEC S0) adds its own toggle here and a full-window
+          // overlay of its own; it is deliberately not a ScopeKind (see ScopePanelView.swift).
           Toggle(
             model.isRecording ? "● REC" : "Record",
             isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })
@@ -480,6 +504,9 @@ public struct ContentView: View {
       }
     }
     .padding()
+    .background {
+      if model.showScopes { ScreenHeightReader { model.scopeWindowHeight = $0 } }
+    }
   }
 }
 
