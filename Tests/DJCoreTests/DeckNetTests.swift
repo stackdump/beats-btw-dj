@@ -37,9 +37,14 @@ struct DeckNetTests {
   @Test func theLatestGenerateWins() async throws {
     let dj = try DJEngine(decks: ["A"], offline: true)
     let deck = try #require(dj["A"])
-    async let first = deck.generate(TrackSpec(genre: "jazz", seed: 1, structure: "standard"))
-    async let second = deck.generate(TrackSpec(genre: "dnb", seed: 2))
-    let (a, b) = await (first, second)
+    // The first request must be REGISTERED before the second is made, or "latest" is whichever
+    // task the scheduler runs first (two `async let`s raced under a loaded machine).
+    let first = Task { @MainActor in
+      await deck.generate(TrackSpec(genre: "jazz", seed: 1, structure: "standard"))
+    }
+    while deck.generation < 1 { await Task.yield() }
+    let b = await deck.generate(TrackSpec(genre: "dnb", seed: 2))
+    let a = await first.value
     #expect(b)
     #expect(!a, "the first compose finished after the second was requested")
     #expect(deck.currentSpec?.genre == "dnb")
