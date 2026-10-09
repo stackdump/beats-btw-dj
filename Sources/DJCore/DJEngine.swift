@@ -276,6 +276,9 @@ public final class Deck: JogClock {
   }
   public static let pitchRange = 0.08
 
+  /// How this deck compiles nets: the instrument table, with its own sampler bank.
+  public var waveOptions: WaveOptions { .extended(samplers: wave.samplers) }
+
   init(name: String, sampleRate: Double, format: AVAudioFormat) {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
@@ -438,7 +441,7 @@ public final class Deck: JogClock {
   /// next bar; a stopped one switches at once.
   public func loadNet(_ project: Project, title: String? = nil) {
     loadNet(
-      WaveRunner.prepare(project, sampleRate: wave.sampleRate, opts: .extended), project: project,
+      WaveRunner.prepare(project, sampleRate: wave.sampleRate, opts: waveOptions), project: project,
       title: title)
   }
 

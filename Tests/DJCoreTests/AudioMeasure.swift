@@ -1,5 +1,7 @@
 import Foundation
 
+@testable import DJCore
+
 // Signal measurements for the instrument tests (Foundation kept out of files that
 // `import Testing`; see FixtureLoader.swift).
 
@@ -74,3 +76,6 @@ func partialPeak(_ x: ArraySlice<Float>, near: Double, sampleRate sr: Double) ->
   }
   return best
 }
+
+/// `ExsNames.patch` on raw bytes (Data stays out of the Testing files).
+func exsPatch(_ bytes: [UInt8]) -> [UInt8]? { ExsNames.patch(Data(bytes)).map { [UInt8]($0) } }

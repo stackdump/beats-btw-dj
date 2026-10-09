@@ -54,10 +54,12 @@ public final class PreparedTrack: @unchecked Sendable {
   public let project: Project
   public let prepared: WaveProject
 
-  public init(spec: TrackSpec, sampleRate: Double) {
+  /// `opts`: the deck's (`Deck.waveOptions`), so its sampled instruments load into that
+  /// deck's bank. `.extended` alone plays every instrument on a synth voice.
+  public init(spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended) {
     self.spec = spec
     project = compose(genre: spec.genre, overrides: spec.overrides)
-    prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: .extended)
+    prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: opts)
   }
 }
 
@@ -75,7 +77,7 @@ final class NextTrackSlot: Sendable {
   var isBusy: Bool { state.withLock { $0.ready != nil || $0.inFlight != nil } }
 
   /// Begin a background compose; a newer request supersedes an older one.
-  func request(_ spec: TrackSpec, sampleRate: Double) {
+  func request(_ spec: TrackSpec, sampleRate: Double, samplers: SamplerBank?) {
     let token = state.withLock { s -> Int in
       s.token += 1
       s.ready = nil
@@ -83,7 +85,8 @@ final class NextTrackSlot: Sendable {
       return s.token
     }
     DispatchQueue.global(qos: .userInitiated).async { [self] in
-      let track = PreparedTrack(spec: spec, sampleRate: sampleRate)
+      let track = PreparedTrack(
+        spec: spec, sampleRate: sampleRate, opts: .extended(samplers: samplers))
       state.withLock { s in
         guard s.token == token else { return }  // superseded or cancelled
         s.ready = track
@@ -93,8 +96,9 @@ final class NextTrackSlot: Sendable {
   }
 
   /// Compose on the calling thread (replay mode).
-  func requestSync(_ spec: TrackSpec, sampleRate: Double) {
-    let track = PreparedTrack(spec: spec, sampleRate: sampleRate)
+  func requestSync(_ spec: TrackSpec, sampleRate: Double, samplers: SamplerBank?) {
+    let track = PreparedTrack(
+      spec: spec, sampleRate: sampleRate, opts: .extended(samplers: samplers))
     state.withLock { s in
       s.token += 1
       s.ready = track
@@ -126,8 +130,9 @@ extension Deck {
     generation += 1
     let mine = generation
     let sr = wave.sampleRate
+    let bank = wave.samplers
     let track = await Task.detached(priority: .userInitiated) {
-      PreparedTrack(spec: spec, sampleRate: sr)
+      PreparedTrack(spec: spec, sampleRate: sr, opts: .extended(samplers: bank))
     }.value
     guard mine == generation else { return false }
     loadNet(track)
@@ -143,9 +148,9 @@ extension Deck {
   /// Start composing the next track in the background (cancels an earlier request).
   public func queueNext(_ spec: TrackSpec) {
     if deterministic {
-      next.requestSync(spec, sampleRate: wave.sampleRate)
+      next.requestSync(spec, sampleRate: wave.sampleRate, samplers: wave.samplers)
     } else {
-      next.request(spec, sampleRate: wave.sampleRate)
+      next.request(spec, sampleRate: wave.sampleRate, samplers: wave.samplers)
     }
   }
 

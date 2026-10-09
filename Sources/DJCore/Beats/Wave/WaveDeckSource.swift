@@ -65,9 +65,16 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// Main-thread only: the last project handed over, to resolve net ids.
   public private(set) var latest: WaveProject?
 
+  /// This deck's sampled instruments (rendered by `runner`, inside this deck's callback).
+  public let samplers: SamplerBank
+
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
-    runner = WaveRunner(sampleRate: sampleRate, opts: opts)
+    let bank = opts.samplers ?? SamplerBank(sampleRate: sampleRate)
+    samplers = bank
+    var o = opts
+    o.samplers = bank
+    runner = WaveRunner(sampleRate: sampleRate, opts: o)
     let ring = retired
     runner.onRetire = { project in
       // Retain into the ring *before* the runner drops its own reference, so the last

@@ -129,10 +129,14 @@ extension AppModel {
   }
 
   /// What an instrument sounds like here: its engine, or the wavetable family it folds into.
+  /// A sampled one lists what it tries, in order ("sampler exs:… → gm:25 → pluck").
   static func soundOf(_ name: String) -> String {
     if name.hasPrefix("drums") { return "drum kit" }
     let v = InstrumentTable.shared.voice(instrument: name, group: "melody")
-    return v.engine == "table" ? "table:\(v.wave)" : v.engine
+    let synth = v.engine == "table" ? "table:\(v.wave)" : v.engine
+    guard let s = InstrumentTable.shared.sampler(for: name) else { return synth }
+    let tried = s.sources.filter(\.isAvailable).map(\.description)
+    return (["sampler"] + [(tried + [synth]).joined(separator: " → ")]).joined(separator: " ")
   }
 
   /// Render a short phrase on one instrument, save it as a WAV and play it on the Mac's
@@ -157,8 +161,16 @@ extension AppModel {
     }
     let seconds = p["seconds"]?.double ?? max(2.5, (notes.map { $0.at }.max() ?? 0) + 1.5)
     let voice = InstrumentTable.shared.voice(instrument: name, group: "melody")
+    var sampler: (bank: SamplerBank, slot: Int)?
+    var plays = voice.engine == "table" ? "table:\(voice.wave)" : voice.engine
+    if let s = InstrumentTable.shared.sampler(for: name),
+      let slot = auditionBank.slot(for: s.sources, gain: s.gain)
+    {
+      sampler = (auditionBank, slot)
+      plays = auditionBank.source(of: slot)?.description ?? plays
+    }
     let audio = WaveRunner.audition(
-      voice, notes: notes, sampleRate: sr, seconds: min(10, max(0.5, seconds)))
+      voice, notes: notes, sampleRate: sr, seconds: min(10, max(0.5, seconds)), sampler: sampler)
     let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("DJApp/auditions", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -178,6 +190,7 @@ extension AppModel {
     return .object(
       JSONObject([
         ("instrument", .string(name)), ("sound", .string(Self.soundOf(name))),
+        ("plays", .string(plays)),
         ("path", .string(url.path)), ("seconds", .number(Double(audio.count) / sr)),
         ("peakDB", .number((20 * log10(max(Double(peak), 1e-9)) * 10).rounded() / 10)),
         ("rmsDB", .number((20 * log10(max(rms, 1e-9)) * 10).rounded() / 10)),
@@ -277,6 +290,16 @@ extension AppModel {
       o["roles"] = .object(JSONObject(s.roles.map { ($0, .bool(s.rolesOn.contains($0))) }))
       o["beatInBar"] = .int(s.beatInBar)
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
+      // role (riff variants `bass-0`, `bass-1`… folded together) → what it plays on
+      var sampled: [String: String] = [:]
+      for (net, src) in d.wave.sampledNets {
+        let role = net.split(separator: "-").dropLast().joined(separator: "-")
+        sampled[role.isEmpty ? net : role] = src
+      }
+      if !sampled.isEmpty {
+        o["sampled"] = .object(
+          JSONObject(sampled.sorted { $0.key < $1.key }.map { ($0.key, .string($0.value)) }))
+      }
     }
     return .object(o)
   }

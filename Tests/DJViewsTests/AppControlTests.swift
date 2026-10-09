@@ -99,7 +99,10 @@ struct AppControlTests {
       uniqueKeysWithValues: (c["instruments"]?.array ?? []).compactMap { e in
         e["name"]?.string.map { ($0, e["sound"]?.string ?? "") }
       })
-    #expect(sounds["acoustic-guitar"] == "pluck")
+    #expect(sounds["distorted-guitar"] == "pluck")
+    // sampled where this Mac has it, falling back to its plucked string
+    #expect(sounds["acoustic-guitar"]?.hasPrefix("sampler ") == true)
+    #expect(sounds["acoustic-guitar"]?.hasSuffix("→ pluck") == true)
     #expect(sounds["supersaw"] == "table:saw")
     #expect(sounds["drums-808"] == "drum kit")
   }
@@ -109,7 +112,9 @@ struct AppControlTests {
     let before = try await call(m, "state")
     let a = try await call(
       m, "audition", #"{"instrument":"electric-guitar","notes":[40,45,50],"play":false}"#)
-    #expect(a["sound"]?.string == "pluck")
+    #expect(a["sound"]?.string?.hasSuffix("pluck") == true)
+    let plays = a["plays"]?.string ?? ""
+    #expect(plays.hasPrefix("exs:") || plays.hasPrefix("gm:"), "played \(plays)")
     #expect((a["rmsDB"]?.double ?? -200) > -40)
     #expect(a["path"]?.string?.hasSuffix("electric-guitar.wav") == true)
     #expect(try await call(m, "state") == before)

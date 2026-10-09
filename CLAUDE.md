@@ -77,6 +77,20 @@ its copy; the two are now independent. Rules inherited from that split:
 - `InstrumentTableTests` hold each entry to: in tune (fundamental partial < 5 cents), rings
   and decays, and within 3 dB of the lead voice — re-run it when adding or retuning one.
   `dj_audition` (or `djctl ctl audition '{"instrument":…}'`) plays one on the Mac's output.
+- **Sampled instruments** (`"sampler": {exs, gm, gain}` in an entry): Logic/GarageBand EXS
+  instruments on this Mac, then a General MIDI program from macOS's `gs_instruments.dls`,
+  then the synth voice. Each deck owns a `SamplerBank` (`WaveDeckSource.samplers`); its
+  AUSamplers are rendered by hand inside the deck's callback (not engine nodes), so MIDI is
+  sample-exact and offline rendering works. Compile with the deck's options
+  (`Deck.waveOptions` / `.extended(samplers:)`) or the instrument stays a synth voice.
+- Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
+  `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
+  uninitialises). Old EXS files with 31-char truncated sample names are patched into
+  `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Banks hold 24 and never evict
+  yet; a full bank falls back to synth voices. Logic's guitars round-robin, so sessions with
+  them are not byte-identical on replay.
+- Sampled content never enters the repo or the CDN: Apple's licence covers playing it in
+  your music, not redistributing the samples. `SamplerTests` re-measure pitch and level.
 
 ## Visuals (Phase 5)
 

@@ -5,6 +5,10 @@ import Testing
 struct InstrumentTableTests {
   let sr = 48_000.0
   let table = InstrumentTable.shared
+  /// Entries with their own synth engine (the rest only add a sampler; SamplerTests).
+  var plucked: [String] {
+    table.names.filter { table.voice(instrument: $0, group: "melody").engine == "pluck" }
+  }
 
   /// A guitar-ish phrase: a strummed chord, then single notes.
   static let phrase: [(note: Int, at: Double, seconds: Double)] = [
@@ -24,7 +28,7 @@ struct InstrumentTableTests {
     for set in BeatsTables.shared.instrumentSets.values {
       for pool in set.values { used.formUnion(pool) }
     }
-    #expect(table.names.count >= 8)
+    #expect(plucked.count >= 8)
     for n in table.names {
       #expect(used.contains(n), "\(n) is an instrument beats' generator picks")
       #expect(["table", "pluck"].contains(table.voice(instrument: n, group: "melody").engine))
@@ -54,7 +58,7 @@ struct InstrumentTableTests {
   }
 
   @Test func stringsRingAndDie() {
-    for name in table.names {
+    for name in plucked {
       let a = render(name, [(57, 0, 2)], 3)
       let early = rmsDB(a[0..<2400])
       let late = rmsDB(a[(a.count - 4800)...])
@@ -77,7 +81,7 @@ struct InstrumentTableTests {
       tonalVoice(instrument: "supersaw", group: "melody"), notes: Self.phrase, sampleRate: sr,
       seconds: 2)
     let ref = rmsDB(lead[...])
-    for name in table.names {
+    for name in plucked {
       let db = rmsDB(render(name, Self.phrase, 2)[...])
       #expect(abs(db - ref) < 3, "\(name) at \(db) dB vs lead \(ref) dB")
     }

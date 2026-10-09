@@ -62,6 +62,8 @@ public struct WaveOptions {
   public var mods: [WaveMod] = []
   /// Per-instrument voices (`InstrumentTable`); nil = beats' families only (parity).
   public var instruments: InstrumentTable?
+  /// Where sampled instruments play (a deck's bank). nil = synth voices only.
+  public var samplers: SamplerBank?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -105,6 +107,13 @@ final class Lane {
   var pluckA = 0.0
   var vibPhase = 0.0
   var vibInc = 0.0
+  // sampled instrument: a slot in the deck's SamplerBank (-1 = synth voice); notes sound
+  // there and this lane only keeps their note-offs (sample time, fixed capacity)
+  var samplerSlot = -1
+  var offNote = [Int](repeating: 0, count: 64)
+  var offAt = [Double](repeating: 0, count: 64)
+  var offCount = 0
+  var nextOff = Double.infinity
   // post chain on the voice sum: lowpass biquad, then distortion
   var post: [Double] = []
   var pz1 = 0.0
@@ -222,6 +231,7 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
             ?? tonalVoice(instrument: tr.instrument, group: tr.group)
           lane = tonalLane(
             voice, sr, tr.group == "harmony" ? 6 : 4, tables: &tables, seed: lanes.count)
+          bindSampler(lane, tr.instrument, opts)
         } else {
           lane = gateLane(drumVoice(kind: key, instrument: tr.instrument), sr, lanes.count)
         }
@@ -256,11 +266,21 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
     opts.instruments?.voice(instrument: liveInstrument, group: "melody")
     ?? tonalVoice(instrument: liveInstrument, group: "melody")
   let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
+  bindSampler(live, liveInstrument, opts)
   live.netId = "<live>"
   let liveIndex = lanes.count
   lanes.append(live)
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex)
+}
+
+/// Play `instrument` on the deck's sampler when it has one that loads (off the audio thread:
+/// this may load an EXS from disk).
+private func bindSampler(_ lane: Lane, _ instrument: String, _ opts: WaveOptions) {
+  guard let bank = opts.samplers, let s = opts.instruments?.sampler(for: instrument),
+    let slot = bank.slot(for: s.sources, gain: s.gain)
+  else { return }
+  lane.samplerSlot = slot
 }
 
 // clock slots
@@ -295,9 +315,19 @@ public final class WaveRunner {
   private lazy var scrubChase = 0.035 * sampleRate
   private lazy var scrubSmooth = 1 - exp(-1 / (0.004 * sampleRate))
 
+  /// Sampled instruments: MIDI queued during a block, sent just before the bank renders it.
+  private let samplers: SamplerBank?
+  private var evSlot = [Int](repeating: 0, count: 1024)
+  private var evWord = [UInt32](repeating: 0, count: 1024)
+  private var evOffset = [Int](repeating: 0, count: 1024)
+  private var evCount = 0
+  /// Sample index within the block being rendered (0 between blocks).
+  private var blockOffset = 0
+
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
     self.opts = opts
+    samplers = opts.samplers
     masterGain = opts.masterGain
     linear = opts.master == "linear"
     clock[clkTempo] = 120
@@ -369,6 +399,7 @@ public final class WaveRunner {
   public func stop() {
     playing = false
     graph?.reset()
+    samplersAllOff()
   }
 
   public func setTempo(_ bpm: Double) {
@@ -492,6 +523,10 @@ public final class WaveRunner {
   public func noteOn(_ note: Int, velocity: Int) {
     guard let proj = current else { return }
     let lane = proj.lanes[proj.liveLane]
+    if lane.samplerSlot >= 0 {
+      queue(lane.samplerSlot, 0x90, note, max(1, min(127, velocity)))
+      return
+    }
     lane.active = true
     let w = Double(max(1, min(127, velocity))) / 127
     var v = 0
@@ -516,6 +551,10 @@ public final class WaveRunner {
   public func noteOff(_ note: Int) {
     guard let proj = current else { return }
     let lane = proj.lanes[proj.liveLane]
+    if lane.samplerSlot >= 0 {
+      queue(lane.samplerSlot, 0x80, note, 0)
+      return
+    }
     for k in 0..<lane.poly where lane.hold[k] && lane.heldNote[k] == note {
       lane.hold[k] = false
       lane.heldNote[k] = -1
@@ -525,6 +564,7 @@ public final class WaveRunner {
   public func allNotesOff() {
     guard let proj = current else { return }
     let lane = proj.lanes[proj.liveLane]
+    if lane.samplerSlot >= 0 { queue(lane.samplerSlot, 0xB0, 123, 0) }
     for k in 0..<lane.poly {
       lane.hold[k] = false
       lane.heldNote[k] = -1
@@ -587,6 +627,7 @@ public final class WaveRunner {
   /// Restore every pending macro effect now.
   public func panic() {
     graph?.cancelMacros()
+    samplersAllOff()
     if tempoFx != .none {
       tempoFx = .none
       setTempo(fxStartBpm)
@@ -612,6 +653,10 @@ public final class WaveRunner {
   /// its current level, and decay over the note's length.
   fileprivate func trigger(_ lane: Lane, note: Int, w: Double, durMs: Double) {
     lane.active = true
+    if lane.samplerSlot >= 0 {
+      samplerNote(lane, note: note, w: w, durMs: durMs)
+      return
+    }
     var v = 0
     var best = Double.infinity
     for k in 0..<lane.poly {
@@ -628,6 +673,93 @@ public final class WaveRunner {
     lane.md[v] = exp(-lane.st[slotInvSr] / tau)
     lane.sd[v] = w
     lane.sa[v] = cur - w
+  }
+
+  // MARK: sampled instruments
+
+  @inline(__always)
+  private func queue(_ slot: Int, _ status: UInt8, _ d1: Int, _ d2: Int) {
+    guard evCount < evSlot.count else { return }
+    evSlot[evCount] = slot
+    evWord[evCount] =
+      UInt32(status) | UInt32(UInt8(clamping: d1)) << 8 | UInt32(UInt8(clamping: d2)) << 16
+    evOffset[evCount] = blockOffset
+    evCount += 1
+  }
+
+  /// A net note on a sampled lane: note-on now, note-off after its length (at least 120 ms,
+  /// so one-step notes still speak). A note struck again while held is ended first.
+  private func samplerNote(_ lane: Lane, note: Int, w: Double, durMs: Double) {
+    let n = min(127, max(0, note))
+    for k in 0..<lane.offCount where lane.offNote[k] == n {
+      queue(lane.samplerSlot, 0x80, n, 0)
+      lane.offCount -= 1
+      lane.offNote[k] = lane.offNote[lane.offCount]
+      lane.offAt[k] = lane.offAt[lane.offCount]
+      break
+    }
+    queue(lane.samplerSlot, 0x90, n, max(1, Int((w * 127).rounded())))
+    guard lane.offCount < lane.offNote.count else { return }
+    let at = clock[clkSamples] + max(120, durMs > 0 ? durMs : 120) / 1000 * sampleRate
+    lane.offNote[lane.offCount] = n
+    lane.offAt[lane.offCount] = at
+    lane.offCount += 1
+    if at < lane.nextOff { lane.nextOff = at }
+  }
+
+  /// Send the note-offs that are due; the lane goes quiet once none are left.
+  @inline(__always)
+  private func serviceOffs(_ lane: Lane) {
+    let now = clock[clkSamples]
+    if now >= lane.nextOff {
+      var next = Double.infinity
+      var k = 0
+      while k < lane.offCount {
+        if lane.offAt[k] <= now {
+          queue(lane.samplerSlot, 0x80, lane.offNote[k], 0)
+          lane.offCount -= 1
+          lane.offNote[k] = lane.offNote[lane.offCount]
+          lane.offAt[k] = lane.offAt[lane.offCount]
+        } else {
+          next = min(next, lane.offAt[k])
+          k += 1
+        }
+      }
+      lane.nextOff = next
+    }
+    if lane.offCount == 0 { lane.active = false }
+  }
+
+  private func samplersAllOff() {
+    guard let bank = samplers else { return }
+    for slot in 0..<bank.count { queue(slot, 0xB0, 123, 0) }
+    clearOffs(current)
+    clearOffs(fading)
+    clearOffs(pending)
+  }
+
+  private func clearOffs(_ p: WaveProject?) {
+    guard let p else { return }
+    for lane in p.lanes where lane.samplerSlot >= 0 {
+      lane.offCount = 0
+      lane.nextOff = .infinity
+    }
+  }
+
+  /// End of a block: hand the queued MIDI to the samplers, then render them into it.
+  private func flushSamplers(
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
+  ) {
+    guard let bank = samplers else { return }
+    let loaded = bank.count
+    for e in 0..<evCount where evSlot[e] < loaded {
+      let w = evWord[e]
+      bank.send(
+        evSlot[e], UInt8(w & 0xFF), UInt8((w >> 8) & 0xFF), UInt8((w >> 16) & 0xFF),
+        at: min(evOffset[e], frames - 1))
+    }
+    evCount = 0
+    bank.renderAll(frames: frames, left, right)
   }
 
   /// Tune voice `v` to `note`; a string is damped and plucked again.
@@ -655,6 +787,10 @@ public final class WaveRunner {
 
   /// One sample of `lane`, added into `acc`.
   private func laneSample(_ lane: Lane) {
+    if lane.samplerSlot >= 0 {
+      serviceOffs(lane)
+      return
+    }
     if !lane.isTonal {
       var env = 0.0
       for e in 0..<lane.numExp {
@@ -809,22 +945,39 @@ public final class WaveRunner {
   /// master curve. Not for the audio thread.
   public static func audition(
     _ voice: VoiceSpec, notes: [(note: Int, at: Double, seconds: Double)], sampleRate: Double,
-    seconds: Double, velocity: Int = 100
+    seconds: Double, velocity: Int = 100, sampler: (bank: SamplerBank, slot: Int)? = nil
   ) -> [Float] {
-    let r = WaveRunner(sampleRate: sampleRate)
+    var o = WaveOptions()
+    o.samplers = sampler?.bank
+    let r = WaveRunner(sampleRate: sampleRate, opts: o)
     var tables: [String: [Float]] = [:]
     let lane = tonalLane(voice, sampleRate, 6, tables: &tables, seed: 1)
+    lane.samplerSlot = sampler?.slot ?? -1
     let starts = notes.map { Int(($0.at * sampleRate).rounded()) }
     let w = Double(max(1, min(127, velocity))) / 127
     var out = [Float](repeating: 0, count: Int(seconds * sampleRate))
-    for i in 0..<out.count {
-      for (j, n) in notes.enumerated() where starts[j] == i {
-        r.trigger(lane, note: n.note, w: w, durMs: n.seconds * 1000)
+    let block = 512
+    out.withUnsafeMutableBufferPointer { buf in
+      var b0 = 0
+      while b0 < buf.count {
+        let n = min(block, buf.count - b0)
+        for i in 0..<n {
+          r.blockOffset = i
+          let t = b0 + i
+          for (j, note) in notes.enumerated() where starts[j] == t {
+            r.trigger(lane, note: note.note, w: w, durMs: note.seconds * 1000)
+          }
+          r.acc = 0
+          if lane.active { r.laneSample(lane) }
+          buf[t] = Float(tanh(r.acc * r.masterGain))
+          r.clock[clkSamples] += 1
+        }
+        r.flushSamplers(buf.baseAddress! + b0, nil, frames: n)
+        b0 += n
       }
-      r.acc = 0
-      if lane.active { r.laneSample(lane) }
-      out[i] = Float(tanh(r.acc * r.masterGain))
     }
+    // a sampler with only one bank slot in play must not keep this lane's notes ringing
+    if let sampler { sampler.bank.send(sampler.slot, 0xB0, 123, 0, at: 0) }
     return out
   }
 
@@ -836,6 +989,7 @@ public final class WaveRunner {
     serviceTempoFx()
     let gain = masterGain
     for i in 0..<frames {
+      blockOffset = i
       if scrubbing {
         scrubSample()
       } else if playing {
@@ -862,6 +1016,8 @@ public final class WaveRunner {
       right?[i] = Float(y)
       clock[clkSamples] += 1
     }
+    flushSamplers(left, right, frames: frames)
+    blockOffset = 0
     if let f = fading, !f.lanes.contains(where: { $0.active }) {
       fading = nil
       retire(f)

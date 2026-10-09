@@ -170,7 +170,9 @@ extension DJEngine {
       guard let d = deck(n) else { break }
       switch source {
       case .none: break
-      case .net(let spec): d.loadNet(prepared ?? PreparedTrack(spec: spec, sampleRate: sampleRate))
+      case .net(let spec):
+        d.loadNet(
+          prepared ?? PreparedTrack(spec: spec, sampleRate: sampleRate, opts: d.waveOptions))
       case .sample(let id, let title, let grid):
         if id == DeckSourceDescriptor.demoID {
           d.loadDemo()

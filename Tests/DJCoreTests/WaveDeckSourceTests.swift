@@ -84,6 +84,40 @@ struct WaveRunnerRealTimeTests {
     }
     #expect(report.allocations == 0, "process allocated \(report.allocations) times")
   }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func sampledInstrumentsDoNotAllocate() {
+    let sr = 48_000.0
+    let src = WaveDeckSource(sampleRate: sr)
+    // country plays sampled guitars and bass; check this seed really got one
+    let prepared = WaveRunner.prepare(
+      project("country", 7, "minimal"), sampleRate: sr, opts: .extended(samplers: src.samplers))
+    #expect(prepared.lanes.contains { $0.samplerSlot >= 0 }, "a sampled lane to measure")
+    src.load(prepared)
+    src.setTempo(480)
+    src.play()
+    var l = [Float](repeating: 0, count: 512)
+    var r = [Float](repeating: 0, count: 512)
+    func run(_ n: Int) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n { src.render(frames: 512, left: lp.baseAddress!, right: rp.baseAddress!) }
+        }
+      }
+    }
+    run(100)
+    let report = countAllocations {
+      run(1000)
+      src.noteOn(52, velocity: 100)
+      run(50)
+      src.allNotesOff()
+      src.panic()
+      run(50)
+    }
+    #expect(report.allocations == 0, "render allocated \(report.allocations) times")
+    #expect(report.frees == 0, "render freed \(report.frees) times")
+    src.drainRetired()
+  }
 }
 
 private func renderBlocks(_ src: WaveDeckSource, blocks: Int) -> [Float] {

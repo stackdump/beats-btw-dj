@@ -34,11 +34,12 @@ extension Deck {
     let secs = sections
     guard secs.indices.contains(index), let project = netProject else { return false }
     let sr = wave.sampleRate
+    let bank = wave.samplers
     let start = secs[index].startTick
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, opts: .extended, startTick: start)
+      WaveRunner.prepare(project, sampleRate: sr, opts: .extended(samplers: bank), startTick: start)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
@@ -53,7 +54,7 @@ extension Deck {
     if deterministic {
       wave.load(
         WaveRunner.prepare(
-          project, sampleRate: wave.sampleRate, opts: .extended, startTick: max(0, tick)))
+          project, sampleRate: wave.sampleRate, opts: waveOptions, startTick: max(0, tick)))
       applyNetTempo()
     } else {
       Task { @MainActor in await self.jumpToTick(tick) }
@@ -88,10 +89,12 @@ extension Deck {
   public func jumpToTick(_ tick: Int) async -> Bool {
     guard mode == .net, let project = netProject else { return false }
     let sr = wave.sampleRate
+    let bank = wave.samplers
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(project, sampleRate: sr, opts: .extended, startTick: max(0, tick))
+      WaveRunner.prepare(
+        project, sampleRate: sr, opts: .extended(samplers: bank), startTick: max(0, tick))
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)

@@ -64,6 +64,8 @@ public final class AppModel {
   @ObservationIgnored var controlServer: ControlServer?
   /// The audition playing now (held so it isn't freed mid-sound).
   @ObservationIgnored var auditionSound: NSSound?
+  /// Samplers for auditions, apart from the decks' (a sampler renders on one thread only).
+  @ObservationIgnored lazy var auditionBank = SamplerBank(sampleRate: dj?.sampleRate ?? 48_000)
 
   /// The engine and router the UI drives (nil until `start`).
   var engine: DJEngine? { dj }
@@ -287,8 +289,9 @@ public final class AppModel {
     guard let dj else { return }
     status = "composing \(spec.genre)…"
     let sr = dj.sampleRate
+    let bank = dj[deck]?.wave.samplers
     let track = await Task.detached(priority: .userInitiated) {
-      PreparedTrack(spec: spec, sampleRate: sr)
+      PreparedTrack(spec: spec, sampleRate: sr, opts: .extended(samplers: bank))
     }.value
     dj.perform(.load(deck: deck, source: .net(spec)), prepared: track)
     status = "\(Int(dj.sampleRate)) Hz"
