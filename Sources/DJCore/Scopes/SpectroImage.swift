@@ -1,15 +1,17 @@
-// SpectroImage: the model image of the Spectro scope (SPEC mode 2), as numbers.
+// SpectroImage: the two images of the Spectro scope (SPEC modes 2 and 3), as numbers.
 // scope.js `drawSpectro` at beats-bitwrap-io 095d030, the part that fills `ImageData`:
 //
 //   MODEL     66 columns (64 + 2 steps) x 28 rows, one column per song step starting at
 //             `first = floor(stepOf(t0))`
+//   MEASURED  160 columns (time slices of the window) x 28 rows
 //
-// It is an image of LUT INDICES (0...255 into MAGMA) with row 0 on top: bin j (0 = lowest) is
+// Both are an image of LUT INDICES (0...255 into MAGMA) with row 0 on top: bin j (0 = lowest) is
 // row 27 - j, so low frequencies are at the bottom. A pixel is
 //
 //     li = trunc((dB - floor) / 50 * 255)  clamped to 0...255,    floor = mx - 50
 //
-// where `mx` is the loudest dB among the valid columns of this very image. Anything
+// where `mx` is the loudest dB among the cells that are going to be drawn (the model image: the
+// valid columns of this very image; the measured one: the frames inside the window). Anything
 // that is not a valid, finite cell is index 0 (MAGMA[0] = (0, 0, 4), near black), including the
 // whole image when `mx` is not finite (nothing to show).
 //
@@ -88,10 +90,14 @@ public enum SpectroImage {
   /// `WINDOW_STEPS + 2`: the steps the model image spans, so that its ends can slide out of the
   /// window instead of popping.
   public static let modelColumns = ScopeTimeAxis.windowSteps + 2
+  /// scope.js `COLS` of the measured block.
+  public static let measuredColumns = 160
   /// `NS`.
   public static let rows = ModelGrid.ns
   /// The dynamic range: `floor = mx - 50` dB.
   public static let rangeDb = 50.0
+  /// A measured frame counts for a slice if it is at most this old (seconds).
+  public static let maxFrameAge = 0.25
 
   /// The LUT index of a cell: scope.js `Math.max(0, Math.min(255, li | 0))` for
   /// `li = (dB - floor) / 50 * 255`. The `| 0` truncates toward zero; NaN and ±infinity are 0
@@ -141,6 +147,78 @@ public enum SpectroImage {
           let v = c.col[o + j]
           levels[(ns - 1 - j) * cols + col] =
             v > 0 ? level(db: 10 * log10(Double(v)), floor: floor) : 0
+        }
+      }
+    }
+    return SpectroBitmap(width: cols, height: ns, levels: levels, peakDb: mx)
+  }
+
+  // MARK: measured
+
+  /// Which frame supplies slice `slice` of the measured block, and whether it may be shown:
+  /// walk the ring oldest -> newest alongside the slices to the newest frame at or before the
+  /// slice's time `tc = t0 + (slice + 1) * win / 160`; it counts only if it is no later than
+  /// `tc` and no older than `tc - 0.25 s`. `k` is the frame's place counted from the newest
+  /// (1 = newest), nil when the ring is empty or the frame does not qualify.
+  public static func measuredFrame(
+    forSlice slice: Int, t0: Double, win: Double, in ring: MeasuredFrameRing
+  )
+    -> Int?
+  {
+    var walk = FrameWalk(ring: ring)
+    return walk.frame(forSlice: slice, t0: t0, win: win)
+  }
+
+  /// The ring walk of `drawSpectro`: `k` only ever moves toward the newest.
+  private struct FrameWalk {
+    let ring: MeasuredFrameRing
+    var k: Int
+
+    init(ring: MeasuredFrameRing) {
+      self.ring = ring
+      k = ring.count
+    }
+
+    /// Slices must be asked in increasing order.
+    mutating func frame(forSlice c: Int, t0: Double, win: Double) -> Int? {
+      guard ring.count > 0 else { return nil }
+      let tc = t0 + Double(c + 1) * win / Double(SpectroImage.measuredColumns)
+      while k > 1 {
+        if ring.time(newest: k - 1) <= tc { k -= 1 } else { break }
+      }
+      let t = ring.time(newest: k)
+      return t <= tc && t >= tc - SpectroImage.maxFrameAge ? k : nil
+    }
+  }
+
+  /// The measured image for the window `t0 ..< t0 + win` (seconds): 160 slices, each from the
+  /// newest frame at or before its time (see `measuredFrame`). `mx` is the loudest cell among
+  /// the frames inside the window (time >= t0), which is not the same set as the frames that
+  /// supply slices: a slice may show a frame older than `t0` brighter than `mx`, and clamps.
+  public static func measured(frames ring: MeasuredFrameRing, t0: Double, win: Double)
+    -> SpectroBitmap
+  {
+    let cols = measuredColumns
+    let ns = rows
+    var mx = -Double.infinity
+    var k = 1
+    while k <= ring.count {
+      if ring.time(newest: k) < t0 { break }
+      for j in 0..<ns {
+        let v = Double(ring.value(newest: k, row: j))
+        if v > mx { mx = v }
+      }
+      k += 1
+    }
+    let floor = mx - rangeDb
+    var levels = [UInt8](repeating: 0, count: cols * ns)
+    if mx.isFinite {
+      var walk = FrameWalk(ring: ring)
+      for c in 0..<cols {
+        guard let k = walk.frame(forSlice: c, t0: t0, win: win) else { continue }
+        for j in 0..<ns {
+          levels[(ns - 1 - j) * cols + c] = level(
+            db: Double(ring.value(newest: k, row: j)), floor: floor)
         }
       }
     }

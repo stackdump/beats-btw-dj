@@ -10,8 +10,8 @@ import SwiftUI
 // kernel's own decay time; one column per song step, MAGMA coloured over a 50 dB range below the
 // loudest visible cell. The whole thing is `ModelEngine` (DJCore); a deck feed's model is taken
 // at the deck's pre-fader tap, which the second line under "model" says.
-// (The panel's "measured" toggle, an FFT block below this one, is not wired yet: `measured`
-// means nothing to this view until it is.)
+// MEASURED block (the panel's "measured" toggle): the same axes from an FFT of the master (or
+// deck) audio, 160 time slices, below the model one, so the two can be compared by eye.
 //
 // All numbers come from `SpectroController` / `SpectroScene` (DJCore); this file paints them:
 // the image NEAREST-neighbour (imageSmoothingEnabled = false) stretched between the times of its
@@ -40,9 +40,10 @@ struct ScopeSpectroView: View {
 
   var body: some View {
     ScopeCanvas(hub: hub) { ctx, size in
-      controller.update(feed: feed, engine: hub.engine)
+      controller.update(feed: feed, engine: hub.engine, measured: measured)
       statusLine?.set(controller.statusText(feed: feed), owner: controller)
-      let scene = controller.scene(feed: feed, width: size.width, height: size.height)
+      let scene = controller.scene(
+        feed: feed, width: size.width, height: size.height, measured: measured)
       SpectroPainter.paint(scene, in: &ctx)
     }
     .onDisappear { statusLine?.clear(owner: controller) }
@@ -57,7 +58,7 @@ enum SpectroPainter {
 
   static func paint(_ scene: SpectroScene, in ctx: inout GraphicsContext) {
     guard scene.ok else { return }
-    if let block = scene.model { paint(block, in: &ctx) }
+    for block in [scene.model, scene.measured].compactMap({ $0 }) { paint(block, in: &ctx) }
   }
 
   private static func paint(_ block: SpectroScene.Block, in ctx: inout GraphicsContext) {

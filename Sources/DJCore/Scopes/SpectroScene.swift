@@ -1,15 +1,17 @@
-// SpectroScene: everything to paint in one frame of the Spectro scope (SPEC mode 2,
+// SpectroScene: everything to paint in one frame of the Spectro scope (SPEC modes 2 and 3,
 // scope.js `drawSpectro` / `freqLabels` / `drawGrid` at beats-bitwrap-io 095d030), as numbers.
 //
 // Layout (canvas points, y down). The window is `W x H`; `gutter` = 30 on the left holds the
-// frequency labels, `axisH` = 12 at the bottom the bar numbers; the one block is
-// `bh = H - 12` tall:
+// frequency labels, `axisH` = 12 at the bottom the bar numbers; `blocks` = 2 when "measured" is
+// on, else 1; each block is `bh = (H - 12 - (blocks - 1) * 6) / blocks` tall:
 //
 //   model block     y 0 ..< bh            the 66-column image stretched between the TIMES of its
 //                                         first and last column (so the columns scroll sub-step
-//                                         smoothly), clipped to x >= 30; grid with bar numbers;
-//                                         frequency labels 50 200 1k 4k 12k at x 2; "model" at
-//                                         (W - 110, 2)
+//                                         smoothly), clipped to x >= 30; grid with bar numbers
+//                                         only when it is the last block; frequency labels
+//                                         50 200 1k 4k 12k at x 2; "model" at (W - 110, 2)
+//   measured block  y bh + 6 ..< 2 bh + 6 the 160-slice image over the whole x 30 ..< W; grid with
+//                                         bar numbers; labels; "measured" at (W - 110, y0 + 2)
 //
 // Paint order inside a block: image, beat and bar lines (over the image), bar numbers, section
 // markers and their names, frequency labels, the block's title.
@@ -17,10 +19,10 @@
 // Additions to the JS, for the app:
 //   * `note` under the model block's title: what the model's FX are taken at
 //     (`ModelEngine.fxPointLabel`: "pre-fader tap" / "deck output" / "master"). The model's FX
-//     point is a documented product decision; the reader should be able to see it. It sits on
-//     a translucent plate (`notePlate`) so it stays legible over the warm cells of a loud passage.
+//     point is a documented product decision; the reader should be able to see it.
 //   * `message` in the model block when there is no net deck behind the source ("needs a net
-//     deck" / "no net deck"): the model has nothing to model there.
+//     deck" / "no net deck"): the model has nothing to model there; the measured block still
+//     works from the audio.
 //   * A stopped song's grid ends at its newest anchor's step (see LiveScopeScene's header): the
 //     engine's clock runs on after the song has stopped, the JS loop did not.
 
@@ -84,6 +86,8 @@ public enum SpectroGrid {
 public struct SpectroScene: Sendable {
   public static let gutter = 30.0
   public static let axisHeight = 12.0
+  /// The gap between the model and the measured block.
+  public static let blockGap = 6.0
   /// Where the titles sit: `W - 110`.
   public static let titleInset = 110.0
   /// The model block's second line, under the title.
@@ -105,7 +109,7 @@ public struct SpectroScene: Sendable {
     public var clip: LiveScopeRect
     public var grid = SpectroGrid.Lines()
     public var freqLabels: [LiveScopeText] = []
-    /// "model" / "model (warming up)", TEXT colour.
+    /// "model" / "model (warming up)" / "measured", TEXT colour.
     public var title: LiveScopeText
     /// A second line under the title (the model's FX point).
     public var note: LiveScopeText?
@@ -120,9 +124,10 @@ public struct SpectroScene: Sendable {
   public var height: Double
   /// Is there a usable time axis and room? When not, only the background is drawn.
   public var ok = false
-  /// The height of the block: `H - 12`.
+  /// The height of a block: `(H - 12 - (blocks - 1) * 6) / blocks`.
   public var blockHeight = 0.0
   public var model: Block?
+  public var measured: Block?
 
   public init(width: Double, height: Double) {
     self.width = width
@@ -139,6 +144,8 @@ public struct SpectroScene: Sendable {
     /// Any lane's kernels are in (else "model (warming up)").
     public var hasTables: Bool
     public var columns: SpectroColumns
+    /// The measured block exists and is built from these.
+    public var measured: MeasuredFrameRing?
     /// `ModelEngine.fxPointLabel`.
     public var fxLabel: String?
     /// The model block's message when `hasNet` is false.
@@ -147,7 +154,8 @@ public struct SpectroScene: Sendable {
     public init(
       axis: ScopeTimeAxis, sections: [ScopeSection] = [], running: Bool = true,
       hasNet: Bool = true, hasTables: Bool = true, columns: SpectroColumns = .empty,
-      fxLabel: String? = nil, noNetText: String = "needs a net deck"
+      measured: MeasuredFrameRing? = nil, fxLabel: String? = nil,
+      noNetText: String = "needs a net deck"
     ) {
       self.axis = axis
       self.sections = sections
@@ -155,6 +163,7 @@ public struct SpectroScene: Sendable {
       self.hasNet = hasNet
       self.hasTables = hasTables
       self.columns = columns
+      self.measured = measured
       self.fxLabel = fxLabel
       self.noNetText = noNetText
     }
@@ -177,7 +186,8 @@ public struct SpectroScene: Sendable {
     var s = SpectroScene(width: width, height: height)
     let ax = input.axis
     guard ax.ok else { return s }
-    let bh = height - axisHeight
+    let blocks = input.measured != nil ? 2.0 : 1.0
+    let bh = (height - axisHeight - (blocks - 1) * blockGap) / blocks
     guard bh.isFinite, bh > 0 else { return s }
     s.ok = true
     s.blockHeight = bh
@@ -202,7 +212,7 @@ public struct SpectroScene: Sendable {
       }
     }
     model.grid = SpectroGrid.make(
-      axis: ax, y0: 0, y1: bh, labels: true, sections: input.sections,
+      axis: ax, y0: 0, y1: bh, labels: input.measured == nil, sections: input.sections,
       running: input.running)
     model.freqLabels = frequencyLabels(x: 2, y0: 0, h: bh)
     if input.hasNet, let label = input.fxLabel {
@@ -216,6 +226,21 @@ public struct SpectroScene: Sendable {
     if !input.hasNet { model.message = LiveScopeText(input.noNetText, x: gutter + 8, y: 8) }
     s.model = model
 
+    // measured: COLS time slices
+    if let frames = input.measured {
+      let y0 = bh + blockGap
+      var block = Block(
+        y0: y0, height: bh,
+        clip: LiveScopeRect(x: gutter, y: y0, w: Swift.max(0, width - gutter), h: bh),
+        title: LiveScopeText("measured", x: titleX, y: y0 + 2))
+      block.bitmap = SpectroImage.measured(frames: frames, t0: ax.t0, win: ax.win)
+      block.imageRect = block.clip
+      block.grid = SpectroGrid.make(
+        axis: ax, y0: y0, y1: y0 + bh, labels: true, sections: input.sections,
+        running: input.running)
+      block.freqLabels = frequencyLabels(x: 2, y0: y0, h: bh)
+      s.measured = block
+    }
     return s
   }
 }

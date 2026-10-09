@@ -17,14 +17,14 @@ private func axis(tNow: Double = 10, anchor: Bool = true) -> ScopeTimeAxis {
 private func scene(
   width: Double = 800, height: Double = 330, axis ax: ScopeTimeAxis = axis(),
   sections: [ScopeSection] = [], running: Bool = true, hasNet: Bool = true,
-  hasTables: Bool = true, fx: String? = nil,
+  hasTables: Bool = true, measured: MeasuredFrameRing? = nil, fx: String? = nil,
   columns: SpectroColumns = oracleColumns()
 ) -> SpectroScene {
   SpectroScene.make(
     width: width, height: height,
     input: SpectroScene.Input(
       axis: ax, sections: sections, running: running, hasNet: hasNet, hasTables: hasTables,
-      columns: columns, fxLabel: fx))
+      columns: columns, measured: measured, fxLabel: fx))
 }
 
 struct SpectroSceneTests {
@@ -32,7 +32,7 @@ struct SpectroSceneTests {
 
   @Test func aModelOnlyFrameIsOneBlockOverTheAxisStrip() throws {
     let s = scene()
-    #expect(s.ok)
+    #expect(s.ok && s.measured == nil)
     #expect(s.blockHeight == 318, "330 - 12")
     let m = try #require(s.model)
     #expect(m.y0 == 0 && m.height == 318)
@@ -40,12 +40,26 @@ struct SpectroSceneTests {
     #expect(m.title == LiveScopeText("model", x: 690, y: 2), "W - 110, 2")
   }
 
+  @Test func measuredAddsASecondBlockSixPointsBelowAndHalvesBoth() throws {
+    let s = scene(measured: oracleFrames())
+    #expect(s.blockHeight == 156, "(330 - 12 - 6) / 2")
+    let m = try #require(s.model)
+    let x = try #require(s.measured)
+    #expect(m.height == 156 && m.clip == LiveScopeRect(x: 30, y: 0, w: 770, h: 156))
+    #expect(x.y0 == 162, "156 + 6")
+    #expect(x.clip == LiveScopeRect(x: 30, y: 162, w: 770, h: 156))
+    #expect(x.imageRect == x.clip, "160 slices over the whole plot")
+    #expect(x.title == LiveScopeText("measured", x: 690, y: 164), "(W - 110, y0 + 2)")
+    #expect(x.bitmap?.width == 160 && x.bitmap?.height == 28)
+  }
+
   @Test func withoutAUsableAxisOrRoomOnlyTheBackgroundIsLeft() {
     #expect(!scene(axis: axis(tNow: .nan)).ok, "no finite now")
     #expect(!scene(height: 12).ok && !scene(height: 5).ok, "no room for a block")
+    #expect(!scene(height: 18, measured: oracleFrames()).ok, "two blocks need 12 + 6 + 2 bh")
     #expect(scene(height: 13).ok, "one pixel high is still a block")
     let off = scene(axis: axis(tNow: .nan))
-    #expect(off.model == nil)
+    #expect(off.model == nil && off.measured == nil)
   }
 
   // MARK: the model image's stretch
@@ -85,20 +99,35 @@ struct SpectroSceneTests {
     #expect(late.model?.bitmap?.levels.contains { $0 != 0 } == true)
   }
 
-  @Test func withoutAnAnchorTheModelHasNoImageAndNoGrid() throws {
-    let s = scene(axis: axis(anchor: false))
+  @Test func theMeasuredBitmapIsTheMeasuredImageOfTheWindow() throws {
+    let ring = oracleFrames()
+    let ax = axis(tNow: 100 + 699.0 / 30 + 0.01)
+    let s = scene(axis: ax, measured: ring)
+    let x = try #require(s.measured)
+    #expect(x.bitmap == SpectroImage.measured(frames: ring, t0: ax.t0, win: ax.win))
+  }
+
+  @Test func withoutAnAnchorTheModelHasNoImageAndNoGridButTheMeasuredBlockStillWorks() throws {
+    let ring = oracleFrames()
+    let s = scene(axis: axis(anchor: false), measured: ring)
     let m = try #require(s.model)
     #expect(m.bitmap == nil && m.imageRect == nil)
     #expect(m.grid.lines.isEmpty && m.grid.barLabels.isEmpty)
     #expect(m.freqLabels.count == 5 && m.title.text == "model", "labels and title stay")
+    let x = try #require(s.measured)
+    #expect(x.bitmap != nil, "slices depend on time alone")
+    #expect(x.grid.lines.isEmpty)
   }
 
-  @Test func aSourceWithNoNetSaysSo() throws {
-    let s = scene(axis: axis(anchor: false), hasNet: false, hasTables: false, fx: "master")
+  @Test func aSourceWithNoNetSaysSoAndKeepsTheMeasuredHalf() throws {
+    let s = scene(
+      axis: axis(anchor: false), hasNet: false, hasTables: false,
+      measured: oracleFrames(), fx: "master")
     let m = try #require(s.model)
     #expect(m.message == LiveScopeText("needs a net deck", x: 38, y: 8))
     #expect(m.bitmap == nil && m.note == nil, "no FX point for a model that is not there")
     #expect(m.title.text == "model", "not 'warming up' forever on a sample deck")
+    #expect(s.measured?.bitmap != nil)
     // a net deck says nothing of the kind
     #expect(scene().model?.message == nil)
   }
@@ -154,6 +183,13 @@ struct SpectroSceneTests {
     #expect(small.last?.y == 0 && small.first?.y == 30)
   }
 
+  @Test func theLabelsOfBothBlocksAreAtX2() throws {
+    let s = scene(measured: oracleFrames())
+    #expect(try #require(s.model).freqLabels.allSatisfy { $0.x == 2 })
+    let x = try #require(s.measured)
+    #expect(x.freqLabels.count == 5 && x.freqLabels.allSatisfy { $0.x == 2 && $0.y >= 162 })
+  }
+
   // MARK: grid
 
   @Test func theGridIsABeatLineEveryFourStepsAndABarLineEverySixteen() throws {
@@ -170,12 +206,21 @@ struct SpectroSceneTests {
     #expect(g.lines[1].rect.x == 78 && !g.lines[1].bar)
   }
 
-  @Test func barNumbersAreUnderTheBlock() throws {
-    // under the model block, 1 pt below its bottom; bar k is `step / 16 + 1`
+  @Test func barNumbersAreUnderTheLastBlockOnly() throws {
+    // alone: under the model block, 1 pt below its bottom; bar k is `step / 16 + 1`
     let alone = try #require(scene().model).grid.barLabels
     #expect(alone.map(\.text) == ["1", "2", "3", "4"], "steps 0, 16, 32, 48 (not -16)")
     #expect(alone.map(\.y) == [319, 319, 319, 319], "bh + 1")
     #expect(alone.map(\.x) == [225.5, 418, 610.5, 803], "line x + 3 (unrounded)")
+    // with measured: none under the model block, they are under the second
+    let both = scene(measured: oracleFrames())
+    #expect(try #require(both.model).grid.barLabels.isEmpty)
+    let under = try #require(both.measured).grid.barLabels
+    #expect(under.map(\.text) == ["1", "2", "3", "4"])
+    #expect(under.allSatisfy { $0.y == 162 + 156 + 1 })
+    // and the measured block's lines run over its own rows
+    #expect(
+      try #require(both.measured).grid.lines.allSatisfy { $0.rect.y == 162 && $0.rect.h == 156 })
   }
 
   @Test func sectionsAreTwoPixelMarkersWithTheirNames() throws {
@@ -189,6 +234,9 @@ struct SpectroSceneTests {
     let m = g.sections[0]
     #expect(m.rect == LiveScopeRect(x: 510, y: 0, w: 2, h: 318), "round(511.25) - 1")
     #expect(m.name == LiveScopeText("chorus", x: 515.25, y: 2), "(x + 4, y0 + 2)")
+    // in the measured block they start at its top
+    let x = try #require(scene(sections: secs, measured: oracleFrames()).measured).grid
+    #expect(x.sections[0].rect.y == 162 && x.sections[0].name.y == 164)
   }
 
   @Test func aStoppedSongsGridEndsAtItsNewestAnchor() throws {
