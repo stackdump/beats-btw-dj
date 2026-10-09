@@ -199,12 +199,24 @@ public final class WaveProject: @unchecked Sendable {
   let sources: [Lane]
   /// Index in `lanes` of the pooled voice that MIDI keys play.
   let liveLane: Int
-  init(graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int) {
+  /// The bank its sampled lanes play from; each holds a reference on its slot until this
+  /// project is freed (off the audio thread), which is what keeps the slot from eviction.
+  let samplers: SamplerBank?
+  init(
+    graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
+    samplers: SamplerBank? = nil
+  ) {
     self.liveLane = liveLane
+    self.samplers = samplers
     self.graph = graph
     self.lanes = lanes
     self.byNet = byNet
     self.sources = sources
+  }
+
+  deinit {
+    guard let samplers else { return }
+    for lane in lanes where lane.samplerSlot >= 0 { samplers.release(lane.samplerSlot) }
   }
 }
 
@@ -274,11 +286,14 @@ private func buildLanes(_ g: WaveGraph, _ sr: Double, _ opts: WaveOptions) -> Wa
   let liveIndex = lanes.count
   lanes.append(live)
   return WaveProject(
-    graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex)
+    graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
+    samplers: opts.samplers)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
-/// role and one loads (off the audio thread: this may load an EXS from disk).
+/// role and one loads (off the audio thread: this may load an EXS from disk, or evict an
+/// unused one). The reference taken on the slot is the project's, given back in
+/// `WaveProject.deinit`.
 private func bindSampler(_ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions) {
   guard let bank = opts.samplers, opts.instruments != nil,
     let sources = VoiceCatalog.shared.sources(
@@ -756,15 +771,17 @@ public final class WaveRunner {
     _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
   ) {
     guard let bank = samplers else { return }
-    let loaded = bank.count
-    for e in 0..<evCount where evSlot[e] < loaded {
+    // A slot being evicted is off in `live`: its MIDI is dropped and it is not rendered.
+    let live = bank.beginBlock()
+    for e in 0..<evCount where live & (1 << UInt64(evSlot[e])) != 0 {
       let w = evWord[e]
       bank.send(
         evSlot[e], UInt8(w & 0xFF), UInt8((w >> 8) & 0xFF), UInt8((w >> 16) & 0xFF),
         at: min(evOffset[e], frames - 1))
     }
     evCount = 0
-    bank.renderAll(frames: frames, left, right)
+    bank.renderAll(live, frames: frames, left, right)
+    bank.endBlock()
   }
 
   /// Tune voice `v` to `note`; a string is damped and plucked again.

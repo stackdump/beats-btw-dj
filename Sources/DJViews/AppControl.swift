@@ -182,6 +182,7 @@ extension AppModel {
     }
     let audio = WaveRunner.audition(
       voice, notes: notes, sampleRate: sr, seconds: min(10, max(0.5, seconds)), sampler: sampler)
+    if let sampler { sampler.bank.release(sampler.slot) }
     let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("DJApp/auditions", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

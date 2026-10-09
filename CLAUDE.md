@@ -95,9 +95,19 @@ its copy; the two are now independent. Rules inherited from that split:
 - Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
   `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
   uninitialises). Old EXS files with 31-char truncated sample names are patched into
-  `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Banks hold 24 and never evict
-  yet; a full bank falls back to synth voices. Logic's guitars round-robin, so sessions with
-  them are not byte-identical on replay.
+  `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Logic's guitars round-robin, so
+  sessions with them are not byte-identical on replay.
+- Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
+  (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
+  which runs off the audio thread after the retire ring — so current, pending, fading and
+  not-yet-loaded projects all pin their slots. A full bank loads the new instrument first,
+  then reuses the least recently used slot with no references in two phases: clear its bit
+  in the `active` mask (the audio thread drops its MIDI and stops rendering it), wait out any
+  block in flight (`epoch` is odd during `beginBlock`…`endBlock`, both seq-cst), then free
+  the old AUSampler on the loading thread and publish the new one. Only when every slot is
+  referenced does an instrument fall back to its synth voice. Anything else that calls
+  `slot(for:)` (auditions, tests) must `release`. `sampledInstrumentsDoNotAllocate` measures
+  an eviction landing mid-render.
 - Sampled content never enters the repo or the CDN: Apple's licence covers playing it in
   your music, not redistributing the samples. `SamplerTests` re-measure pitch and level.
 
