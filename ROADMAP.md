@@ -189,8 +189,8 @@ display is the check that layout (sizes, spacing, the 3-way deck column) looks r
 
 - Inpulse 200 MK3 audio interface verified on hardware: one 4-channel output stream
   (Front L/R, Back L/R). `djctl audio` lists it; `djctl cue-test` routes master → 1/2 and
-  cue → 3/4 and the engine accepts it. Still `[UNVERIFIED]`: audibility on the headphone
-  jack and the headphone-fader mapping (needs ears/hands).
+  cue → 3/4 and the engine accepts it. Headphone jack audibility confirmed by ear (2026-10-08).
+  Still `[UNVERIFIED]`: the headphone-fader mapping.
 - Full-window layout is covered offscreen by `AppLayoutTests` (`app-full.png`,
   `app-default.png` in `DJ_SHOT_DIR`). `ImageRenderer` draws AppKit-backed controls
   (Slider/Toggle/Button) as yellow placeholders; that is a renderer limit, not a layout bug.
