@@ -94,6 +94,51 @@ case "monitor":
   let sigint = onInterrupt { exit(0) }
   withExtendedLifetime((midi, sigint)) { dispatchMain() }
 
+case "audio":
+  // Output devices CoreAudio offers, and whether one is the Inpulse's own interface.
+  for d in AudioDevices.outputs() {
+    print("\(d.outputChannels) ch  \(d.name)  [\(d.uid)]")
+  }
+  if let i = AudioDevices.inpulse() {
+    print("Inpulse interface: \(i.name) with \(i.outputChannels) output channels")
+  } else {
+    print("no Inpulse audio interface found")
+  }
+
+case "cue-test":
+  // Route master -> outputs 1/2 and the headphone cue -> 3/4 of the Inpulse's interface and
+  // play the demo loop quietly for a few seconds. Prints what the engine ended up with.
+  guard let device = AudioDevices.inpulse() else {
+    stderr("no Inpulse audio interface")
+    exit(1)
+  }
+  let seconds = option("--seconds") ?? 3
+  let dj = try DJEngine(decks: ["A"])
+  dj["A"]!.loadDemo()
+  dj["A"]!.pfl = true
+  dj.master = 0.15
+  dj.headphoneLevel = 0.25
+  Task { @MainActor in
+    do {
+      try await dj.enableCueOutput(device: device)
+      try dj.start()
+      dj["A"]!.setPlaying(true)
+      let out = dj.engine.outputNode.outputFormat(forBus: 0)
+      stderr(
+        "routed: \(device.name) · output format \(out.channelCount) ch @ \(Int(out.sampleRate)) Hz")
+      try await Task.sleep(for: .seconds(seconds))
+      stderr(
+        "engine running: \(dj.engine.isRunning) · deck A at \(String(format: "%.2f", dj["A"]!.positionSeconds)) s · frames rendered \(dj.frame)"
+      )
+      dj.stop()
+      exit(dj.frame > 0 ? 0 : 1)
+    } catch {
+      stderr("failed: \(error)")
+      exit(1)
+    }
+  }
+  RunLoop.main.run()
+
 case "play":
   let seconds = option("--seconds")
   let volume = option("--volume")
@@ -134,6 +179,8 @@ case "play":
   withExtendedLifetime((hub, sigint)) { RunLoop.main.run() }
 
 default:
-  stderr("usage: djctl ports | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1]")
+  stderr(
+    "usage: djctl ports | audio | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1]"
+  )
   exit(2)
 }

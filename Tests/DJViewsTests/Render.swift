@@ -1,4 +1,6 @@
+@preconcurrency import AVFoundation
 import AppKit
+import DJCore
 import SwiftUI
 
 /// Render a SwiftUI view to pixels, so layout and drawing can be asserted on instead of
@@ -74,4 +76,17 @@ func savePNG<V: View>(_ view: V, width: Int, height: Int, name: String) {
   do { try png.write(to: dir.appendingPathComponent("\(name).png")) } catch {
     print("SHOT: \(error)")
   }
+}
+
+/// Render audio frames through an offline engine (advances decks, clocks, meters).
+@discardableResult
+func renderOffline(_ dj: DJEngine, frames: Int) throws -> Int {
+  let out = AVAudioPCMBuffer(pcmFormat: dj.engine.manualRenderingFormat, frameCapacity: 4096)!
+  var done = 0
+  while done < frames {
+    let n = AVAudioFrameCount(min(4096, frames - done))
+    guard try dj.engine.renderOffline(n, to: out) == .success else { break }
+    done += Int(out.frameLength)
+  }
+  return done
 }
