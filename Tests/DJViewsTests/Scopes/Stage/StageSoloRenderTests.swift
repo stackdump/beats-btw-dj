@@ -293,3 +293,127 @@ struct StageCoronaRenderTests {
     #expect(rig.dj["A"]!.leftTap.subscribers == 1)
   }
 }
+
+// MARK: - sonar (mode 10)
+
+@MainActor
+struct StageSonarRenderTests {
+  private func fire(at wall: Double, channel: Int) -> StageFire {
+    StageFire(
+      time: 0, wallTime: wall, panel: nil, deck: "A", netId: "n", transitionId: "t",
+      transition: nil, origin: nil, note: 60, velocity: 100, channel: channel, durSec: 0.1,
+      macroRunning: false)
+  }
+
+  /// One frame of the solo layer at `now`, after the model saw `fires`.
+  private func frame(
+    _ model: StageSoloModel, now: Double, fires: [StageFire] = []
+  ) throws -> (Pixels, StageContext) {
+    let ctx = SoloSwatch.context(.sonar, fires: fires, now: now)
+    model.advance(ctx)
+    return (try #require(SoloSwatch.pixels(ctx, model)), ctx)
+  }
+
+  /// The brightest pixel within `r` points of (x, y).
+  private func brightest(_ px: Pixels, _ x: Int, _ y: Int, r: Int = 2) -> (
+    r: Int, g: Int, b: Int, a: Int
+  ) {
+    var best = px.color(x, y)
+    for yy in (y - r)...(y + r) {
+      for xx in (x - r)...(x + r)
+      where SoloSwatch.lift(px.color(xx, yy)) > SoloSwatch.lift(best) {
+        best = px.color(xx, yy)
+      }
+    }
+    return best
+  }
+
+  /// 800 x 600: ring centre (400, 300), maxR = 550.
+  @Test func aRingIsAtItsRadiusInItsChannelsHueCentredOnTheRing() throws {
+    let model = StageSoloModel()
+    // the fire was read 450 ms before the frame: born at 99.55 s, so t = 0.5
+    let (px, ctx) = try frame(model, now: 100, fires: [fire(at: 99.55, channel: 3)])
+    savePNG(SoloSwatch.scene(ctx, model), width: 800, height: 600, name: "sonar-one-ring")
+    #expect(ctx.ringCenter == StagePoint(x: 400, y: 300))
+    // radius 275, width 3, alpha 0.425, hsla(200, 95%, 60%): on the axes, four ways round
+    let want = Sw.blend(ScopeColor.hsla(200, 95, 60).rgb8, 0.425, over: Sw.background)
+    for (x, y) in [(675, 300), (125, 300), (400, 575), (400, 25)] {
+      let c = brightest(px, x, y)
+      let off: Int = abs(c.r - want.0) + abs(c.g - want.1) + abs(c.b - want.2)
+      #expect(off < 40, "(\(x), \(y)): \(c) vs \(want)")
+      let hue = try #require(SoloSwatch.hue(c))
+      #expect(SoloSwatch.hueGap(hue, 200) < 10, "channel 3 is hue 200: \(hue)")
+    }
+    // and nowhere else: inside the ring, just outside it, and the far corner
+    for (x, y) in [(400, 300), (500, 300), (660 - 40, 300), (700 + 30, 300), (5, 5), (795, 595)] {
+      #expect(SoloSwatch.lift(px.color(x, y)) < 12, "(\(x), \(y)): \(px.color(x, y))")
+    }
+    // the ring is 3 points wide: its stroke is gone 4 points to each side
+    #expect(SoloSwatch.lift(px.color(675 + 5, 300)) < SoloSwatch.lift(px.color(675, 300)) / 2)
+  }
+
+  @Test func theRingGrowsAndFadesBetweenTwoFrames() throws {
+    let model = StageSoloModel()
+    // born at 99.9 s
+    let (early, _) = try frame(model, now: 100.0, fires: [fire(at: 99.9, channel: 1)])
+    let (late, _) = try frame(model, now: 100.45)
+    // t = 0.111 -> radius 61.1, alpha 0.756, width 4.56;  t = 0.611 -> radius 336.1, alpha 0.331
+    let a = brightest(early, 400 + 61, 300)
+    let b = brightest(late, 400 + 336, 300)
+    #expect(SoloSwatch.lift(a) > 60, "early ring on the axis: \(a)")
+    #expect(SoloSwatch.lift(b) > 20, "late ring on the axis: \(b)")
+    #expect(
+      SoloSwatch.lift(a) > SoloSwatch.lift(b) + 30,
+      "it faded: \(SoloSwatch.lift(a)) -> \(SoloSwatch.lift(b))")
+    #expect(
+      SoloSwatch.lift(early.color(400 + 336, 300)) < 8, "the early frame has no ring out there")
+    #expect(SoloSwatch.lift(late.color(400 + 61, 300)) < 8, "the late frame has left the centre")
+    let hue = try #require(SoloSwatch.hue(a))
+    #expect(SoloSwatch.hueGap(hue, 50) < 12, "channel 1 is hue 50")
+  }
+
+  @Test func ringsOfDifferentChannelsHaveDifferentHuesAndTheOldestIsBiggest() throws {
+    let model = StageSoloModel()
+    let (px, ctx) = try frame(
+      model, now: 100,
+      fires: [fire(at: 99.55, channel: 2), fire(at: 99.8, channel: 5)])
+    savePNG(SoloSwatch.scene(ctx, model), width: 800, height: 600, name: "sonar-two-rings")
+    // 450 ms old: radius 275, hue 220;  200 ms old: radius 122.2, hue 320
+    let big = brightest(px, 400 + 275, 300)
+    let small = brightest(px, 400 + 122, 300)
+    let bigHue = try #require(SoloSwatch.hue(big))
+    let smallHue = try #require(SoloSwatch.hue(small))
+    #expect(SoloSwatch.hueGap(bigHue, 220) < 12 && SoloSwatch.hueGap(smallHue, 320) < 12)
+    #expect(SoloSwatch.lift(small) > SoloSwatch.lift(big), "the younger ring is stronger")
+  }
+
+  @Test func withoutFiresTheStageIsEmpty() throws {
+    let model = StageSoloModel()
+    let (px, _) = try frame(model, now: 100)
+    #expect(px.count(inX: 0..<800, y: 0..<600) { SoloSwatch.lift(($0, $1, $2, 255)) > 4 } == 0)
+  }
+
+  @Test func theStageOnARealDeckDrawsRingsOfItsFires() throws {
+    let rig = try StageViewRig()
+    defer { rig.stop() }
+    rig.model.settings.visualizer = .sonar
+    try rig.run(seconds: 2)
+    let solo = rig.model.layers.solo
+    #expect(solo.sonar.rings.count >= 2, "\(solo.sonar.rings.count) rings alive")
+    let px = try #require(renderPixels(rig.scene(), width: 1000, height: 800))
+    savePNG(rig.scene(), width: 1000, height: 800, name: "sonar-real-deck")
+    let ctx = rig.model.context
+    let c = ctx.ringCenter
+    // every ring is on screen at its radius, on the ring's centre
+    var seen = 0
+    for ring in solo.sonar.rings {
+      let arc = StageSonar.arc(
+        ring, nowMs: ctx.nowMs, center: c, width: ctx.width, height: ctx.height)
+      guard arc.stroke.a > 0.15, arc.radius > 5 else { continue }
+      let x = Int((c.x + arc.radius).rounded())
+      if x < 1000 - 3, SoloSwatch.lift(brightest(px, x, Int(c.y))) > 20 { seen += 1 }
+    }
+    #expect(seen >= 1, "a ring is drawn where the model says (\(seen))")
+    #expect(ctx.isSolo && ctx.visualizer == .sonar && ctx.panels.count > 1)
+  }
+}

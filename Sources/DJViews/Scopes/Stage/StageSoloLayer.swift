@@ -32,6 +32,7 @@ enum StageSoloPainter {
     switch paint {
     case .none: break
     case .corona(let rays): drawCorona(gc, rays: rays)
+    case .sonar(let arcs): drawSonar(gc, arcs: arcs)
     }
   }
 
@@ -67,6 +68,23 @@ enum StageSoloPainter {
             line, with: .color(ray.stroke.color),
             style: StrokeStyle(lineWidth: ray.lineWidth, lineCap: .round))
         }
+      }
+    }
+  }
+}
+
+extension StageSoloPainter {
+  // MARK: sonar (mode 10)
+
+  /// `renderSonar`: one stroked circle per ring, each with its own glow, oldest first.
+  static func drawSonar(_ gc: GraphicsContext, arcs: [SonarArc]) {
+    for arc in arcs {
+      glow(gc, color: arc.shadow, blur: arc.shadowBlur) { layer in
+        let circle = Path(
+          ellipseIn: CGRect(
+            x: arc.cx - arc.radius, y: arc.cy - arc.radius, width: 2 * arc.radius,
+            height: 2 * arc.radius))
+        layer.stroke(circle, with: .color(arc.stroke.color), lineWidth: arc.lineWidth)
       }
     }
   }

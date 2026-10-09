@@ -7,6 +7,7 @@
 // (never `.shuffle`), then `advance(_:)` with the finished context.
 //
 //   corona  StageCoronaModel.swift   the master's FFT as 128 bars (audio-driven)
+//   sonar   StageSonarModel.swift    an expanding ring per fire (beat-driven)
 //
 // Everything the view draws is a value (`StageSoloPaint`) computed here from the context, so the
 // view is a pure function of it and the numbers are unit-tested without a window.
@@ -15,11 +16,18 @@
 public enum StageSoloPaint: Equatable, Sendable {
   case none
   case corona([CoronaRay])
+  case sonar([SonarArc])
 }
 
 @MainActor
 public final class StageSoloModel: StageLayerModel {
   public let corona = StageCoronaModel()
+  /// The sonar's rings (stage.js `session.sonarRings` and its rate-limit maps).
+  public private(set) var sonar = StageSonar()
+
+  /// The visualizer the last frame showed: a change is `setVisualizer`, which starts the
+  /// beat-driven visualizers from scratch.
+  private var lastShown: StageVisualizer?
 
   public init() {}
 
@@ -33,9 +41,21 @@ public final class StageSoloModel: StageLayerModel {
   }
 
   public func advance(_ context: StageContext) {
-    if context.visualizer == .corona {
+    let shown = context.visualizer
+    if shown != lastShown {
+      resetVisualizers()
+      lastShown = shown
+    }
+    switch shown {
+    case .corona:
       corona.advance(feed: context.feed, dt: context.dt)
-    } else {
+    case .sonar:
+      corona.rest()
+      for fire in context.fires {
+        sonar.fire(channel: channel(of: fire, in: context), nowMs: fire.wallTime * 1000)
+      }
+      sonar.prune(nowMs: context.nowMs)
+    case .constellation, .petal, .shuffle:
       corona.rest()
     }
   }
@@ -48,11 +68,33 @@ public final class StageSoloModel: StageLayerModel {
     corona.rest()
   }
 
+  /// `setVisualizer`'s reset: the per-visualizer state of the beat-driven ones.
+  private func resetVisualizers() {
+    sonar.reset()
+  }
+
+  /// Forget the beat-driven state (the panels were rebuilt, or a test starts over).
+  public func reset() {
+    resetVisualizers()
+  }
+
+  /// stage.js reads the net's TRACK channel (`netChannel`); the panel carries it. A fire whose
+  /// net has no panel (a collapsed riff-group variant) falls back to the channel that played it.
+  func channel(of fire: StageFire, in context: StageContext) -> Int {
+    if let p = fire.panel, context.panels.indices.contains(p) { return context.panels[p].channel }
+    return fire.channel
+  }
+
   /// What to draw for `context` (`.none` unless a solo visualizer shows).
   public func paint(_ context: StageContext) -> StageSoloPaint {
     switch context.visualizer {
     case .corona: .corona(corona.rays(for: context))
-    case .constellation, .sonar, .petal, .shuffle: .none
+    case .sonar:
+      .sonar(
+        sonar.arcs(
+          nowMs: context.nowMs, center: context.ringCenter, width: context.width,
+          height: context.height))
+    case .constellation, .petal, .shuffle: .none
     }
   }
 }
