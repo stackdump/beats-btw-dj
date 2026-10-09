@@ -200,7 +200,10 @@ use `make run-app-release` (same bundle, `-c release`) to listen or run the hard
 
 ## Oracles
 
-`scripts/analyser-reference.mjs`, `scope-model-oracle.mjs`, `scope-spectro-oracle.mjs` run the
-pinned beats algorithms in node (no DOM) to print the literals the Swift tests pin;
+`scripts/analyser-reference.mjs`, `scope-model-oracle.mjs`, `scope-spectro-oracle.mjs`,
+`scope-live-oracle.mjs` run the pinned beats algorithms in node (no DOM) to print the literals the
+Swift tests pin (the last one: the Scope/Live auto-gain spring and release, and the Bands
+residual, its 6–24 dB scale and its colour index, replayed over whole scripts by
+`LiveBandsOracleTests`);
 `scripts/stage-solo-chrome-reference.html` runs the pinned `renderCorona/Sonar/Petal` bodies in
 headless Chrome and prints probe pixels (`#dpr=1|2`).
