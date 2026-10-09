@@ -155,8 +155,9 @@ public final class VoiceCatalog: @unchecked Sendable {
   }
 
   /// What a net with `instrument` should try, in order: the seeded pick from its category's
-  /// pool, the rest of the pool, then the category's GM programs. nil when the pick is the
-  /// synth voice (categories in `keepSynth` offer it) or the instrument has no category.
+  /// pool, the rest of the pool, then the category's GM programs — or, for a `keepSynth`
+  /// category, its synth voice instead of GM. nil when the pick is the synth voice or the
+  /// instrument has no category.
   public func sources(instrument: String, role: String, seed: Double) -> [SamplerSource]? {
     guard let category = categoryOf[instrument] else { return nil }
     let pool = pool(category)
@@ -168,7 +169,9 @@ public final class VoiceCatalog: @unchecked Sendable {
       if synth && pick == pool.count { return nil }
       for k in 0..<pool.count { ordered += pool[(pick + k) % pool.count].sources }
     }
-    ordered += (gm[category] ?? []).map { .gm($0) }
+    // A category with a synth voice of its own falls back to it, not to General MIDI (a
+    // tuned plucked sitar beats the GM one).
+    if !synth { ordered += (gm[category] ?? []).map { .gm($0) } }
     return ordered.isEmpty ? nil : ordered
   }
 

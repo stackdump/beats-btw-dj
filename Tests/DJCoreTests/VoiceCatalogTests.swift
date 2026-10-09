@@ -100,6 +100,13 @@ struct VoiceCatalogTests {
         || !catalog.pool("guitar.distorted").isEmpty)
   }
 
+  @Test func synthCategoriesFallBackToTheirSynthNotGM() {
+    for seed in 0..<20 {
+      let s = catalog.sources(instrument: "sitar", role: "melody", seed: Double(seed)) ?? []
+      #expect(!s.contains { if case .gm = $0 { true } else { false } })
+    }
+  }
+
   @Test func stableHashIsFixed() {
     #expect(VoiceCatalog.stableHash("a") == 0xaf63_dc4c_8601_ec8c)
   }
