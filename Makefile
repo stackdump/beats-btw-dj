@@ -38,7 +38,7 @@ swift-test:
 # The audio-thread contract ("render allocates nothing") is only meaningful with the
 # optimizer on, so those tests skip in debug and run here in a release build.
 swift-rt-test:
-	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'WaveRunnerRealTimeTests|WaveDeckSourceTests|AllocationCounterTests'
+	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'WaveRunnerRealTimeTests|WaveDeckSourceTests|AllocationCounterTests|ScopeTapRealTimeTests'
 
 # make djctl ARGS="monitor inpulse"
 djctl:

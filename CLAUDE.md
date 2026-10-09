@@ -85,3 +85,25 @@ its copy; the two are now independent. Rules inherited from that split:
 ## Commits
 
 Signed with GPG key `624DDC38A40EF01D` (`commit.gpgsign=true` on this box).
+
+## Scopes (Phase 6)
+
+- **Taps** (`Sources/DJCore/Scope`): `AudioTap` is a preallocated power-of-two mono float ring,
+  *overwrite-oldest* (producer only publishes a running frame count; the reader keeps its own
+  cursor and re-checks after copying, so a stalled UI loses old audio, never blocks the render).
+  One per deck (`Deck.tap`, written in `Deck.renderBlock`, the deck's own output pre-EQ/fader) and
+  `DJEngine.masterTap` (post-mix, post-master-gain, filled by `MasterTapAU`, a pass-through AU
+  between main mixer and output; `AVAudioSinkNode` is not pulled in manual rendering).
+  `framesWritten` equals `DJEngine.frame`: the shared timebase.
+- `TapReader` (main thread) = scope.js `readWaveform`: 256-frame blocks (min/max/mean-square,
+  timestamped), `columns(width:window:)`, `recent()` raw samples, `spectrum()` 4096-pt dB FFT.
+- **Fire events**: `WaveGraph.fireSink` (set by `WaveDeckSource.load`) gets a `FireEvent`
+  (net, transition, note, velocity, tick, tap frame, audible/control flags) for every fired
+  transition, into `WaveDeckSource.events.ring` (SPSC). Not a copy of the history log (that is for
+  rewinding); marking = `Deck.netSnapshot`. The master feed has no events.
+- `AutoGain` ports scope.js drawLive (fixture `autogain.json` from `scripts/beats-autogain.mjs`).
+- `ScopeFeed` per source (`ScopeFeed.feeds(for:)`: "A", "B", "master"); `AppModel.poll` updates the
+  open ones. `ScopePanel` + **`DJViews/ScopeRegistry.swift`**: one `case` line per `ScopeMode`; a
+  port swaps its `ScopePlaceholder` line for its own view in its own file.
+- RT contract is measured: `ScopeTapRealTimeTests` (in `make swift-rt-test`).
+

@@ -174,6 +174,27 @@ Not verified by eye in the running app: the sandbox can't capture other apps' wi
 `ImageRenderer` pixels instead. The first time the full window is opened on a real
 display is the check that layout (sizes, spacing, the 3-way deck column) looks right.
 
+## Phase 6 - Scopes
+
+Port beats' scope/stage visualizations per deck and on the master, fed by the engine's own taps
+and live net state. Infrastructure is done (audio taps, fire-event ring, `AutoGain`, `ScopeFeed`,
+`ScopePanel`, `ScopeRegistry`; see CLAUDE.md "Scopes"). Each mode is one registry line plus its own file.
+
+| Mode | beats source | Status |
+|---|---|---|
+| scope | scope.js `live` | next |
+| spectro | scope.js `spectro` | next |
+| bands | scope.js `bands` | next |
+| raster | scope.js `raster` | next |
+| constellation | stage.js `mandala` | next |
+| corona | stage.js `corona` | next |
+| sonar | stage.js `sonar` | next |
+| petal | stage.js `petal` | next |
+
+Overlays (`flow`, `pulse`, `flame`, `tilt`, `bolts`, ...) and backgrounds (`void`, `stars`, `aurora`)
+are modelled (`ScopeOverlays`, `ScopeBackground`) but not drawn. Live output of the master tap is
+verified offline only.
+
 ---
 
 ## Standing rules

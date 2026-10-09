@@ -45,4 +45,42 @@ struct AppLayoutTests {
     savePNG(ContentView(model: m), width: 900, height: 760, name: "app-default")
     #expect(try renderPixels(ContentView(model: m), width: 900, height: 760) != nil)
   }
+
+  @Test func scopesAreOffByDefaultAndLayOutWhenOpened() async throws {
+    let m = try await model()
+    #expect(m.scopesOpen.isEmpty, "the default layout has no scope panels")
+    let closed = try #require(renderPixels(ContentView(model: m), width: 1100, height: 1100))
+    let litClosed = closed.count(inX: 0..<1100, y: 0..<1100) { r, g, b in r > 60 || g > 60 || b > 60 }
+
+    m.scopesOpen = ["A", "master", "B"]
+    m.poll()  // creates the feeds' first readings
+    m.feeds["B"]?.mode = .corona
+    for _ in 0..<5 {
+      _ = try renderOffline(try #require(m.engineForTest), frames: 4096)
+      m.poll()
+    }
+    let view = ContentView(model: m)
+    savePNG(view, width: 1100, height: 1300, name: "app-scopes")
+    let open = try #require(renderPixels(view, width: 1100, height: 1300))
+    let litOpen = open.count(inX: 0..<1100, y: 0..<1300) { r, g, b in r > 60 || g > 60 || b > 60 }
+    #expect(litOpen > litClosed + 3_000, "scope panels draw something (\(litClosed) -> \(litOpen))")
+    #expect(m.feeds["A"]?.reader.count ?? 0 > 0 && m.feeds["master"]?.reader.count ?? 0 > 0)
+  }
+
+  @Test func aScopePanelShowsItsModeAndTheFeedBehindTheLabel() async throws {
+    let m = try await model()
+    m.scopesOpen = ["A"]
+    m.poll()
+    for _ in 0..<5 {
+      _ = try renderOffline(try #require(m.engineForTest), frames: 4096)
+      m.poll()
+    }
+    let feed = try #require(m.feeds["A"])
+    for mode in ScopeMode.allCases {
+      feed.mode = mode
+      let px = try #require(renderPixels(ScopePanel(feed: feed), width: 420, height: 200))
+      let lit = px.count(inX: 0..<420, y: 0..<200) { r, g, b in r > 60 || g > 60 || b > 60 }
+      #expect(lit > 800, "\(mode.title) renders something (\(lit) lit pixels)")
+    }
+  }
 }

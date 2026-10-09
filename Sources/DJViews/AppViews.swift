@@ -62,6 +62,8 @@ public final class AppModel {
   var lastControl: (device: String, group: String, index: Int, at: Date)?
 
   private var dj: DJEngine?
+  /// The engine this model drives (tests render it between polls).
+  var engineForTest: DJEngine? { dj }
   private var hub: ControllerHub?
   private var refresh: Timer?
   private var injectedRouter: ControllerRouter?
