@@ -43,12 +43,17 @@ public final class ScopeHub {
   /// Feeds somebody has acquired.
   public var activeFeeds: [ScopeFeed] { feeds.values.filter(\.isActive) }
 
-  /// Drain every subscribed feed. Once per UI frame; idempotent.
+  /// Drain every subscribed feed. Once per UI frame; idempotent. A feed that has a model
+  /// (`ModelEngine`) has it take in the new fires too, so the model's history does not depend on
+  /// which scope mode is on screen (scope.js deposits on every fire).
   public func pump() {
     let active = activeFeeds
     guard !active.isEmpty else { return }
     pumpCount += 1
-    for f in active { f.pump() }
+    for f in active {
+      f.pump()
+      ModelEngine.existing(for: f)?.consume(f)
+    }
   }
 
   // MARK: pacing
