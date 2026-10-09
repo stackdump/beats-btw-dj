@@ -29,30 +29,30 @@ private func push(_ tap: ScopeTap, _ l: [Float], _ r: [Float]?, at frame: Int) {
   }
 }
 
-/// Counts the enable transitions a tap reports. Written on the test's own thread only.
-private final class Transitions: @unchecked Sendable {
-  var log: [Bool] = []
-}
-
 struct ScopeTapTests {
-  @Test func subscribersAreCountedAndOnlyTheEdgesNotify() {
-    let seen = Transitions()
-    let tap = ScopeTap(onEnabledChange: { seen.log.append($0) })
+  @Test func subscribersAreCountedAndTheTapIsEnabledWhileAnyRemain() {
+    let tap = ScopeTap()
     #expect(!tap.isEnabled && tap.subscribers == 0)
     tap.acquire()
-    #expect(tap.isEnabled && seen.log == [true])
+    #expect(tap.isEnabled && tap.subscribers == 1)
     tap.acquire()
     tap.acquire()
-    #expect(tap.subscribers == 3 && seen.log == [true], "only the first acquire is an edge")
+    #expect(tap.subscribers == 3)
     tap.release()
     tap.release()
-    #expect(tap.isEnabled && seen.log == [true])
+    #expect(tap.isEnabled && tap.subscribers == 1)
     tap.release()
-    #expect(!tap.isEnabled && seen.log == [true, false])
-    tap.release()  // unbalanced: ignored
-    #expect(tap.subscribers == 0 && seen.log == [true, false])
+    #expect(!tap.isEnabled)
+    tap.release()  // unbalanced: ignored, never negative
+    tap.release()
+    #expect(tap.subscribers == 0 && !tap.isEnabled)
     tap.acquire()
-    #expect(seen.log == [true, false, true])
+    #expect(tap.subscribers == 1, "an extra release left no debt behind")
+  }
+
+  @Test func acquireAndReleaseAreSafeFromSeveralThreadsAtOnce() {
+    #expect(hammerSubscriptions(threads: 4, each: 50_000) == 0, "balanced calls net to zero")
+    #expect(hammerUnbalancedReleases(threads: 4, each: 50_000) == 0, "and never go below it")
   }
 
   @Test func defaultCapacityIsAtLeastSixteenBitsOfHistory() {
@@ -107,6 +107,7 @@ struct ScopeTapTests {
     #expect(got.count == 450)
     #expect(got[99] == 1 && got[100] == 0 && got[399] == 0 && got[400] == 2)
     #expect(tap.frame(ofSequence: 400) == 1400, "the sample stamped 1400 is still at frame 1400")
+    #expect(tap.gapFrames == 300)
     #expect(tap.endFrame == 1450)
   }
 

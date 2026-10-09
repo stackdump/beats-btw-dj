@@ -45,7 +45,12 @@ public final class DJEngine {
   public var deterministic = false {
     didSet { for d in decks.values { d.deterministic = deterministic } }
   }
-  private let frameClock = FrameClock()
+  let frameClock = FrameClock()
+  /// Mono history of the master mix (after the master volume), for the scopes; off until a
+  /// scope calls `masterTap.acquire()`. Fed once per render cycle, with no latency: after every
+  /// cycle `masterTap.endFrame == frame`. See MasterTap.swift.
+  public let masterTap = ScopeTap()
+  let masterProbe: MasterTapProbe
   // Headphone cue: pre-fader sends → cueSum ─┐
   //                master mix → headMaster ──┴→ headBus (→ the cue pair, once routed)
   let cueSum = AVAudioMixerNode()
@@ -68,6 +73,7 @@ public final class DJEngine {
     decks names: [String] = ["A", "B"], offline: Bool = false,
     sampleRate offlineRate: Double = 48_000, outputChannels: Int = 2
   ) throws {
+    masterProbe = MasterTapProbe(tap: masterTap, clock: frameClock)
     if offline {
       sampleRate = offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: offlineRate, channels: 2)!
@@ -97,7 +103,7 @@ public final class DJEngine {
       for b in UnsafeMutableAudioBufferListPointer(abl) {
         if let d = b.mData { memset(d, 0, Int(b.mDataByteSize)) }
       }
-      clock.frames.add(Int(frames), ordering: .relaxed)
+      clock.frames.store(clock.frames.load(ordering: .relaxed) + Int(frames), ordering: .relaxed)
       return noErr
     }
     engine.attach(clockNode)
@@ -126,7 +132,10 @@ public final class DJEngine {
       decks[name] = deck
     }
     applyGains()
+    masterProbe.attach(to: engine)
   }
+
+  deinit { masterProbe.detach() }
 
   /// Crossfader gain for a deck (1 for decks other than A/B).
   public func crossfadeGain(_ deck: String) -> Double {
@@ -143,10 +152,13 @@ public final class DJEngine {
 
   public func start() throws {
     engine.prepare()
+    masterProbe.attach(to: engine)  // a no-op unless the engine replaced its output unit
     try engine.start()
   }
 
-  public func stop() { engine.stop() }
+  public func stop() {
+    engine.stop()
+  }
 
   public subscript(name: String) -> Deck? { decks[name] }
 }

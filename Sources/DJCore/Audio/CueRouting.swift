@@ -58,6 +58,7 @@ extension DJEngine {
       commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, interleaved: false,
       channelLayout: layout)
     engine.connect(unit, to: engine.outputNode, format: multi)
+    masterProbe.setMasterChannel(masterPair)  // the master tap reads the master pair
   }
 
   /// Send the master to channels 1/2 and the headphone cue to 3/4 of an interface (the
@@ -95,6 +96,10 @@ extension DJEngine {
         AVAudioConnectionPoint(node: engine.outputNode, bus: 0),
         AVAudioConnectionPoint(node: headMaster, bus: 0),
       ], fromBus: 0, format: format)
+    masterProbe.setMasterChannel(0)
+    // Back on the system's default device. An offline engine has no device to point at (and
+    // must not touch the hardware).
+    guard !engine.isInManualRenderingMode else { return }
     var id = AudioDeviceID(0)
     var size = UInt32(MemoryLayout<AudioDeviceID>.size)
     var address = AudioObjectPropertyAddress(

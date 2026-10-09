@@ -138,6 +138,7 @@ struct DeckBlockEntryTests {
     #expect(deck.renderedFrames == 784)
     // the tap sees the hole as silence and stays in step with the deck's frame count
     #expect(deck.tap.frames == 256 + 400 + 128, "the hole is silence in the sequence numbers")
+    #expect(deck.tap.gapFrames == 400)
     #expect(deck.tap.endFrame == deck.renderedFrames)
     #expect(deck.tap.frame(ofSequence: 256 + 400) == 656)
   }
