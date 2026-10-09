@@ -222,10 +222,14 @@ public final class RasterController {
   private func computingText() -> String {
     let percent = progress?.percent ?? 0
     if let c = computingStatus, c.percent == percent { return c.text }
-    let text =
-      percent > 0
-      ? "raster · computing the arrangement… \(percent) %" : "raster · computing the arrangement…"
+    let text = Self.computingStatusText(percent: percent)
     computingStatus = (percent, text)
     return text
+  }
+
+  /// The header line while the compute is `percent` done (0 = no tick counted yet).
+  static func computingStatusText(percent: Int) -> String {
+    percent > 0
+      ? "raster · computing the arrangement… \(percent) %" : "raster · computing the arrangement…"
   }
 }

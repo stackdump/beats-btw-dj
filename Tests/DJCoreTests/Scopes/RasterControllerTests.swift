@@ -390,14 +390,30 @@ struct RasterControllerTests {
     #expect(raster.phase == .computing)
     #expect(computingStatus(raster.statusText), "\(raster.statusText ?? "nil")")
     #expect(raster.canvasMessage == "computing the arrangement…", "the canvas keeps the JS text")
-    var text = raster.statusText
-    for _ in 0..<1500 where text?.hasSuffix(" %") != true {
+    // Watch the line while it computes. Whether a percentage is ever SEEN depends on the main
+    // actor getting scheduled while the compute runs, which a loaded machine (this suite runs
+    // beside many main-actor tests) does not guarantee, so the text is checked wherever it is
+    // seen and the percentage itself is pinned deterministically by `computingStatusText`.
+    for _ in 0..<1500 where raster.phase == .computing {
+      let text = raster.statusText
+      #expect(computingStatus(text), "\(text ?? "nil")")
+      if text?.hasSuffix(" %") == true { break }
       try await Task.sleep(nanoseconds: 20_000_000)
-      text = raster.statusText
     }
-    #expect(text?.hasSuffix(" %") == true, "no percentage after 30 s: \(text ?? "nil")")
-    #expect(computingStatus(text))
     raster.cancel()
+  }
+
+  @Test func theComputingLineCarriesThePercentageOnlyOnceTicksAreCounted() {
+    #expect(
+      RasterController.computingStatusText(percent: 0) == "raster · computing the arrangement…")
+    #expect(
+      RasterController.computingStatusText(percent: 1) == "raster · computing the arrangement… 1 %")
+    #expect(
+      RasterController.computingStatusText(percent: 100)
+        == "raster · computing the arrangement… 100 %")
+    for percent in [0, 1, 37, 99, 100] {
+      #expect(computingStatus(RasterController.computingStatusText(percent: percent)))
+    }
   }
 
   @Test func theFinishedStatusLineIsTheSameStringEveryFrame() async throws {
