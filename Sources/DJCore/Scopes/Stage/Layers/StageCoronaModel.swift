@@ -51,9 +51,10 @@ public struct CoronaRay: Equatable, Sendable {
   public var shadow: ScopeColor
   public var shadowBlur: Double
 
-  /// The bar has no length (a bin at the floor): stage.js still strokes it with round caps,
-  /// which leaves a dot as wide as the line.
-  public var isDot: Bool { x0 == x1 && y0 == y1 }
+  /// The bar has no length (a bin at or below the floor, or silent). stage.js still strokes it,
+  /// but a canvas draws nothing for a zero-length line, round caps or not (measured in Chrome:
+  /// neither a dot nor a glow), so neither does the painter.
+  public var isZeroLength: Bool { x0 == x1 && y0 == y1 }
 }
 
 /// The corona's numbers, ported from `renderCorona` (pure; the drawing is in DJViews).

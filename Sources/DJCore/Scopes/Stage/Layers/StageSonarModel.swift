@@ -18,6 +18,12 @@ public struct SonarRing: Equatable, Sendable {
   public var hue: Double
   /// How long it lives, ms (900).
   public var life: Double
+
+  public init(born: Double, hue: Double, life: Double = StageSonar.life) {
+    self.born = born
+    self.hue = hue
+    self.life = life
+  }
 }
 
 /// A ring as it is drawn at an instant.

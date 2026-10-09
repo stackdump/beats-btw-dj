@@ -8,6 +8,7 @@
 //
 //   corona  StageCoronaModel.swift   the master's FFT as 128 bars (audio-driven)
 //   sonar   StageSonarModel.swift    an expanding ring per fire (beat-driven)
+//   petal   StagePetalModel.swift    one petal per panel, breathing with its fires (beat-driven)
 //
 // Everything the view draws is a value (`StageSoloPaint`) computed here from the context, so the
 // view is a pure function of it and the numbers are unit-tested without a window.
@@ -17,6 +18,7 @@ public enum StageSoloPaint: Equatable, Sendable {
   case none
   case corona([CoronaRay])
   case sonar([SonarArc])
+  case petal([PetalShape])
 }
 
 @MainActor
@@ -24,6 +26,8 @@ public final class StageSoloModel: StageLayerModel {
   public let corona = StageCoronaModel()
   /// The sonar's rings (stage.js `session.sonarRings` and its rate-limit maps).
   public private(set) var sonar = StageSonar()
+  /// The petals' energies (stage.js `session.petalEnergy`).
+  public private(set) var petals = StagePetals()
 
   /// The visualizer the last frame showed: a change is `setVisualizer`, which starts the
   /// beat-driven visualizers from scratch.
@@ -55,7 +59,11 @@ public final class StageSoloModel: StageLayerModel {
         sonar.fire(channel: channel(of: fire, in: context), nowMs: fire.wallTime * 1000)
       }
       sonar.prune(nowMs: context.nowMs)
-    case .constellation, .petal, .shuffle:
+    case .petal:
+      corona.rest()
+      for fire in context.fires { petals.fire(PetalKey(deck: fire.deck, netId: fire.netId)) }
+      petals.decay(dt: context.dt)
+    case .constellation, .shuffle:
       corona.rest()
     }
   }
@@ -71,6 +79,7 @@ public final class StageSoloModel: StageLayerModel {
   /// `setVisualizer`'s reset: the per-visualizer state of the beat-driven ones.
   private func resetVisualizers() {
     sonar.reset()
+    petals.reset()
   }
 
   /// Forget the beat-driven state (the panels were rebuilt, or a test starts over).
@@ -94,7 +103,13 @@ public final class StageSoloModel: StageLayerModel {
         sonar.arcs(
           nowMs: context.nowMs, center: context.ringCenter, width: context.width,
           height: context.height))
-    case .constellation, .petal, .shuffle: .none
+    case .petal:
+      .petal(
+        petals.shapes(
+          channels: context.panels.map(\.channel),
+          keys: context.panels.map { PetalKey(deck: $0.deck, netId: $0.netId) },
+          center: context.ringCenter, width: context.width, height: context.height))
+    case .constellation, .shuffle: .none
     }
   }
 }

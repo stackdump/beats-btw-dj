@@ -76,28 +76,49 @@ enum SoloSwatch {
 
 @MainActor
 struct StageSoloGlowTests {
-  /// A canvas `shadowBlur` of B is a Gaussian of standard deviation B/2. A wide bar's shadow, at
-  /// a distance d outside its edge, has the strength Q(d / sigma) of the shadow colour: with
-  /// blur 20 (sigma 10) that is 0.1587 at 10 points and 0.0228 at 20; with sigma 5 it would be
-  /// 0.0228 at 10, with sigma 20, 0.3085. This pins the conversion the painter relies on.
-  @Test func aCanvasBlurIsAGaussianOfHalfTheNumber() throws {
+  /// A canvas `shadowBlur` of B is a Gaussian of standard deviation B/2 DEVICE pixels, which is
+  /// B/(2 * dpr) points. A wide bar's shadow, at a distance d outside its edge, has the strength
+  /// Q(d / sigma) of the shadow colour: with blur 20 at dpr 1 (sigma 10 points) that is 0.1587 at
+  /// 10 points and 0.0228 at 20; at dpr 2 (sigma 5 points) the same strengths are at 5 and 10
+  /// points. (A sigma twice or half as big would put 0.0228 / 0.3085 where 0.1587 should be.)
+  @Test(arguments: [1.0, 2.0])
+  func aCanvasBlurIsAGaussianOfHalfTheNumberOfDevicePixels(scale: Double) throws {
     let view = ZStack {
       Color.black
       Canvas { gc, _ in
-        StageSoloPainter.glow(gc, color: ScopeColor(r: 1, g: 1, b: 1, a: 1), blur: 20) { layer in
-          layer.fill(Path(CGRect(x: 100, y: 0, width: 100, height: 200)), with: .color(.black))
+        StageSoloPainter.glow(gc, blur: 20) { layer in
+          layer.fill(Path(CGRect(x: 100, y: 0, width: 100, height: 200)), with: .color(.white))
         }
+        // the bar itself, over its own shadow
+        gc.fill(Path(CGRect(x: 100, y: 0, width: 100, height: 200)), with: .color(.black))
       }
     }
-    let px = try #require(renderPixels(view, width: 300, height: 200))
-    func strength(_ d: Int) -> Double { Double(px.color(200 + d, 100).r) / 255 }
-    // (the bar itself is drawn black over its own shadow)
-    #expect(abs(strength(1) - 0.46) < 0.04, "next to the edge: \(strength(1))")
-    #expect(abs(strength(10) - 0.1587) < 0.035, "one sigma out: \(strength(10))")
-    #expect(abs(strength(20) - 0.0228) < 0.02, "two sigma out: \(strength(20))")
-    #expect(strength(45) < 0.01)
+    let px = try #require(renderPixelsAt(scale: CGFloat(scale), view, width: 300, height: 200))
+    let sigma = 10 / scale
+    func strength(_ d: Double) -> Double {
+      Double(px.color(Int((200 + d) * scale), Int(100 * scale)).r) / 255
+    }
+    #expect(abs(strength(1 / scale) - 0.46) < 0.04, "next to the edge: \(strength(1 / scale))")
+    #expect(abs(strength(sigma) - 0.1587) < 0.03, "one sigma out: \(strength(sigma))")
+    // (SwiftUI's blur has slightly longer tails than a Gaussian: 0.042 where a Gaussian has 0.023.
+    // Chrome-measured glows of real shapes agree to within two levels, see the reference tests.)
+    #expect(abs(strength(2 * sigma) - 0.0228) < 0.025, "two sigma out: \(strength(2 * sigma))")
+    #expect(strength(4.5 * sigma) < 0.01)
     // left of the bar the same, mirrored
-    #expect(abs(Double(px.color(100 - 10, 100).r) / 255 - 0.1587) < 0.035)
+    let left = Double(px.color(Int((100 - sigma) * scale), Int(100 * scale)).r) / 255
+    #expect(abs(left - 0.1587) < 0.03)
+  }
+
+  /// The painter reads the device ratio from the view it is drawn in.
+  @Test func theDeviceScaleIsTheViewsDisplayScale() throws {
+    var seen: [Double] = []
+    for scale in [1.0, 2.0, 3.0] {
+      var got = 0.0
+      let view = Canvas { gc, _ in got = StageSoloPainter.deviceScale(gc) }
+      _ = renderPixelsAt(scale: CGFloat(scale), view, width: 20, height: 20)
+      seen.append(got)
+    }
+    #expect(seen == [1, 2, 3])
   }
 }
 
@@ -187,12 +208,25 @@ struct StageCoronaRenderTests {
     #expect(SoloSwatch.lift(px.color(464, 300)) > 60, "the cap at the inner end")
     #expect(SoloSwatch.lift(px.color(563, 300)) > 60, "and at the outer end")
     #expect(SoloSwatch.lift(px.color(560, 300)) > 150)
-    // every silent bin is a dot as wide as the line: bin 0 at the top, radius 1, on the circle
-    let top = (399..<401).flatMap { x in (232..<235).map { px.color(x, $0) } }
-    #expect(top.contains { SoloSwatch.lift($0) > 40 }, "the dot of silent bin 0: \(top)")
-    let brightest = try #require(top.max { SoloSwatch.lift($0) < SoloSwatch.lift($1) })
-    let hue = try #require(SoloSwatch.hue(brightest))
-    #expect(SoloSwatch.hueGap(hue, 200) < 25, "cold end of the ramp: \(brightest)")
+  }
+
+  /// Measured in Chrome with stage.js's own renderCorona: an all-silent spectrum leaves no pixel
+  /// on the canvas (a zero-length line is not drawn, round caps or not), while a bin a hair above
+  /// the floor draws its round-capped dot and glow.
+  @Test func silentBinsDrawNothingAndNearSilentOnesDrawADot() throws {
+    let silent = try #require(
+      renderPixels(canvas(rays(spectrum([:]))), width: 800, height: 600))
+    #expect(silent.count(inX: 0..<800, y: 0..<600) { SoloSwatch.lift(($0, $1, $2, 255)) > 2 } == 0)
+    let floor = try #require(
+      renderPixels(
+        canvas(rays([Float](repeating: -100, count: 128))), width: 800, height: 600))
+    #expect(floor.count(inX: 0..<800, y: 0..<600) { SoloSwatch.lift(($0, $1, $2, 255)) > 2 } == 0)
+    let hush = try #require(
+      renderPixels(
+        canvas(rays([Float](repeating: -99.9999, count: 128))), width: 800, height: 600))
+    let lit = hush.count(inX: 0..<800, y: 0..<600) { SoloSwatch.lift(($0, $1, $2, 255)) > 2 }
+    #expect(lit > 128 * 8, "128 dots with their glow: \(lit) pixels (Chrome: 4002)")
+    #expect(lit < 128 * 80)
   }
 
   @Test func theBackgroundIsUntouchedAwayFromTheBars() throws {
@@ -224,7 +258,7 @@ struct StageCoronaRenderTests {
     let rise = Int((166 * tan(2 * Double.pi / 128)).rounded())  // bin 31 is 2.8 degrees up
     let up = px.color(400 + 66 + 100, 300 - rise)
     #expect(SoloSwatch.lift(up) > 100, "bin 31 is lit too: \(up)")
-    // the opposite side is just dots
+    // the opposite side is silent
     #expect(px.near(400 - 66 - 60, 300, Sw.background, tol: 3))
     // inside the dark planet's gap nothing is drawn
     #expect(px.near(400 + 40, 300, Sw.background, tol: 3))
@@ -415,5 +449,252 @@ struct StageSonarRenderTests {
     }
     #expect(seen >= 1, "a ring is drawn where the model says (\(seen))")
     #expect(ctx.isSolo && ctx.visualizer == .sonar && ctx.panels.count > 1)
+  }
+}
+
+// MARK: - petal (mode 11)
+
+@MainActor
+struct StagePetalRenderTests {
+  private let center = StagePoint(x: 400, y: 300)
+
+  /// Petals of a ring at the stage's centre; `raws[i]` is panel i's energy.
+  private func petals(
+    _ raws: [Double], channels: [Int], width: Double = 800, height: Double = 600
+  ) -> [PetalShape] {
+    var energies = StagePetals()
+    var keys: [PetalKey] = []
+    for (i, raw) in raws.enumerated() {
+      let k = PetalKey(deck: "A", netId: "n\(i)")
+      keys.append(k)
+      var rest = raw
+      while rest > 0 {  // the energy a run of fires leaves: bump by bump, then trimmed
+        energies.fire(k)
+        rest -= StagePetals.bump
+      }
+    }
+    var shapes = energies.shapes(
+      channels: channels, keys: keys, center: center, width: width, height: height)
+    // an exact raw energy for the pixel arithmetic (the shapes are values)
+    for i in shapes.indices {
+      shapes[i] = StagePetals.shape(
+        index: i, count: raws.count, raw: raws[i], hue: shapes[i].hue, center: center,
+        width: width, height: height)
+      if i > 0 {
+        shapes[i].fillShadow = shapes[i - 1].shadow
+        shapes[i].fillShadowBlur = shapes[i - 1].shadowBlur
+      }
+    }
+    return shapes
+  }
+
+  private func canvas(_ shapes: [PetalShape]) -> some View {
+    ZStack {
+      StagePalette.background.color
+      Canvas { gc, _ in StageSoloPainter.drawPetals(gc, petals: shapes) }
+    }
+  }
+
+  private func pixels(_ shapes: [PetalShape]) throws -> Pixels {
+    try #require(renderPixels(canvas(shapes), width: 800, height: 600))
+  }
+
+  /// The brightest pixel within `r` points of (x, y).
+  private func brightest(_ px: Pixels, _ x: Int, _ y: Int, r: Int = 3) -> (
+    r: Int, g: Int, b: Int, a: Int
+  ) {
+    var best = px.color(x, y)
+    for yy in (y - r)...(y + r) {
+      for xx in (x - r)...(x + r)
+      where SoloSwatch.lift(px.color(xx, yy)) > SoloSwatch.lift(best) {
+        best = px.color(xx, yy)
+      }
+    }
+    return best
+  }
+
+  /// How far from the centre along `dir` the last clearly lit pixel is.
+  private func reach(_ px: Pixels, dx: Int, dy: Int, threshold: Int = 60) -> Int {
+    var far = 0
+    for s in 0..<300 {
+      let x = 400 + dx * s
+      let y = 300 + dy * s
+      guard x >= 0, y >= 0, x < 800, y < 600 else { break }
+      if SoloSwatch.lift(px.color(x, y)) > threshold { far = s }
+    }
+    return far
+  }
+
+  /// `createRadialGradient(cx, cy, baseR / 2, tipX, tipY, len)` is a cone between a small circle on
+  /// the centre and a circle of radius `len` AROUND THE TIP, extended past both with the end
+  /// colours. A point on the axis lies on the boundary of two circles of the family; the one with
+  /// the larger parameter wins, and that is always past the end circle (omega = 1 + s / r0 > 1):
+  /// the fill along the axis is the END colour, hsla(hue, 95%, 65%, 0.05 + 0.25 e), not a ramp
+  /// from the centre (Chrome agrees: see StageSoloChromeReferenceTests).
+  @Test func theFillAlongTheAxisIsTheGradientsEndColourNotARampFromTheCentre() throws {
+    // petal 1 of 4 points right; energy 0.01 (e = 0.1) keeps its glow and outline out of the way
+    let shapes = petals([0, 0.01, 0, 0], channels: [4, 4, 4, 4])
+    let px = try pixels(shapes)
+    savePNG(canvas(shapes), width: 800, height: 600, name: "petal-gradient")
+    let p = shapes[1]
+    #expect(abs(p.length - 104.1) < 1e-9 && abs(p.gradientStartRadius - 24) < 1e-9)
+    let end = p.fillOuter
+    let a = end.a
+    #expect(abs(a - 0.075) < 1e-12)
+    let over = (
+      Int((end.r * 255 * a + 10 * (1 - a)).rounded()),
+      Int((end.g * 255 * a + 10 * (1 - a)).rounded()),
+      Int((end.b * 255 * a + 26 * (1 - a)).rounded())
+    )
+    for s in [30.0, 52.0, 94.0] {
+      let c = px.color(400 + Int(s), 300)
+      let off: Int = abs(c.r - over.0) + abs(c.g - over.1) + abs(c.b - over.2)
+      #expect(off <= 6, "s = \(s): pixel \(c), end colour over the background \(over)")
+      // a plain radial gradient on the centre would still be mostly the inner colour here:
+      // alpha 0.305 against the 0.075 above (about three times the lift)
+      let plain = (s - p.gradientStartRadius) / (p.length - p.gradientStartRadius)
+      #expect(plain < 0.9)
+      #expect(SoloSwatch.lift(c) < 50, "the lift is that of alpha 0.075, not 0.2...0.3")
+    }
+    // an energetic petal's fill is stronger (0.05 + 0.25 e), still the end colour all along
+    let hot = try pixels(petals([0, 0.5, 0, 0], channels: [4, 4, 4, 4]))
+    #expect(
+      SoloSwatch.lift(hot.color(400 + 60, 300)) > SoloSwatch.lift(px.color(400 + 60, 300)) + 20)
+  }
+
+  @Test func theTipIsInTheChannelsHueAndEnergyMakesAPetalLonger() throws {
+    // raw energies 0, 0.25, 1, 0.04: lengths 84.72, 181.62, 278.52, 123.48
+    let shapes = petals([0, 0.25, 1, 0.04], channels: [10, 5, 2, 3])
+    let px = try pixels(shapes)
+    savePNG(canvas(shapes), width: 800, height: 600, name: "petal-lengths")
+    // petal i points at i/4 of a turn clockwise from the top: up, right, down, left
+    let axes = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+    let hues = [0.0, 320, 220, 200]
+    for (i, axis) in axes.enumerated() {
+      let p = shapes[i]
+      let r = reach(px, dx: axis.0, dy: axis.1)
+      #expect(abs(Double(r) - p.length) < 9, "petal \(i): reaches \(r), len \(p.length)")
+      let tip = brightest(
+        px, 400 + Int((Double(axis.0) * p.length).rounded()),
+        300 + Int((Double(axis.1) * p.length).rounded()))
+      if let hue = SoloSwatch.hue(tip) {
+        #expect(SoloSwatch.hueGap(hue, hues[i]) < 15, "petal \(i) tip \(tip): hue \(hue)")
+      } else {
+        Issue.record("petal \(i): grey tip \(tip)")
+      }
+    }
+    #expect(reach(px, dx: 0, dy: 1) > reach(px, dx: 1, dy: 0))
+    #expect(reach(px, dx: 1, dy: 0) > reach(px, dx: -1, dy: 0))
+    #expect(reach(px, dx: -1, dy: 0) > reach(px, dx: 0, dy: -1))
+    // and the stroke is wider and stronger for the energetic one: 1 + 2.5 e
+    #expect(abs(shapes[2].lineWidth - 3.5) < 1e-9 && abs(shapes[0].lineWidth - 1) < 1e-9)
+  }
+
+  @Test func theNextPetalsFillWearsThePreviousPetalsGlow() throws {
+    // petal 0 (red, full energy: glow alpha 0.6, blur 18) then petal 1 (blue, resting)
+    let leaky = petals([1, 0, 0, 0], channels: [10, 2, 2, 2])
+    var clean = leaky
+    for i in clean.indices { clean[i].fillShadow = nil }
+    let a = try pixels(leaky)
+    let b = try pixels(clean)
+    savePNG(canvas(leaky), width: 800, height: 600, name: "petal-leaky-fill")
+    func differing(x: Range<Int>, y: Range<Int>) -> Int {
+      var n = 0
+      for yy in y {
+        for xx in x where abs(a.color(xx, yy).r - b.color(xx, yy).r) > 3 { n += 1 }
+      }
+      return n
+    }
+    #expect(differing(x: 340..<460, y: 20..<200) == 0, "petal 0's fill has no glow of its own")
+    #expect(differing(x: 400..<490, y: 270..<330) > 150, "petal 1's fill wears petal 0's red glow")
+  }
+
+  @Test func aSinglePanelsPetalIsAWideTeardropThroughTheTop() throws {
+    let shapes = petals([0.25], channels: [5])
+    let px = try pixels(shapes)
+    #expect(abs(shapes[0].halfWidth - Double.pi * 0.7) < 1e-9)
+    #expect(reach(px, dx: 0, dy: -1) > 150, "up")
+    #expect(reach(px, dx: 0, dy: 1) < 60, "nothing below the centre but the glow and the base")
+  }
+
+  // MARK: the layer
+
+  private func panels(_ channels: [Int]) -> [StagePanel] {
+    channels.enumerated().map { i, ch in
+      let shape = StageNetShape(
+        netId: "n\(i)", placeIds: ["p"], placeX: [0], placeY: [0], transitionIds: ["t"],
+        transitionX: [10], transitionY: [10])
+      return StagePanel(
+        id: "A/n\(i)", deck: "A", netId: "n\(i)", label: "n", channel: ch, riffGroup: "",
+        center: StagePoint(x: 400, y: 300), ring: nil, side: 100, angle: 0, view: nil,
+        muted: false, opacity: 1, shape: shape, tokens: [0], firedAt: [-.infinity])
+    }
+  }
+
+  private func fire(_ net: String, wall: Double = 99.9) -> StageFire {
+    StageFire(
+      time: 0, wallTime: wall, panel: nil, deck: "A", netId: net, transitionId: "t",
+      transition: nil, origin: nil, note: 60, velocity: 100, channel: 1, durSec: 0.1,
+      macroRunning: false)
+  }
+
+  @Test func theLayerDrawsAPetalPerPanelAndTheFiredOnesAreLonger() throws {
+    let model = StageSoloModel()
+    let ps = panels([4, 12, 11, 10])
+    // net n1 fires twice (energy 0.9) in a frame whose decay is nil (dt 0)
+    let ctx = SoloSwatch.context(
+      .petal, panels: ps, fires: [fire("n1"), fire("n1", wall: 99.95)], dt: 0)
+    model.advance(ctx)
+    let px = try #require(SoloSwatch.pixels(ctx, model))
+    savePNG(SoloSwatch.scene(ctx, model), width: 800, height: 600, name: "petal-layer")
+    guard case .petal(let shapes) = model.paint(ctx) else {
+      Issue.record("no petal paint")
+      return
+    }
+    #expect(shapes.count == 4 && abs(shapes[1].raw - 0.9) < 1e-12)
+    // petal 1 points right: its tip is far out, in the hue of channel 12 (24, orange)
+    let tip = shapes[1].tip
+    var best = px.color(Int(tip.x), Int(tip.y))
+    for y in (Int(tip.y) - 3)...(Int(tip.y) + 3) {
+      for x in (Int(tip.x) - 3)...(Int(tip.x) + 3)
+      where SoloSwatch.lift(px.color(x, y)) > SoloSwatch.lift(best) {
+        best = px.color(x, y)
+      }
+    }
+    let hue = try #require(SoloSwatch.hue(best))
+    #expect(SoloSwatch.hueGap(hue, 24) < 15, "tip \(best) hue \(hue)")
+    #expect(Int(tip.x) > 400 + 200, "far out: \(tip.x)")
+    // petal 3 (left, at rest) is short and dim
+    #expect(shapes[3].length < 90 && SoloSwatch.lift(px.color(400 - 200, 300)) < 8)
+    // not a petal showing: nothing
+    let still = SoloSwatch.context(.constellation, panels: ps)
+    let blank = try #require(SoloSwatch.pixels(still, model))
+    #expect(blank.count(inX: 0..<800, y: 0..<600) { SoloSwatch.lift(($0, $1, $2, 255)) > 4 } == 0)
+  }
+
+  @Test func theStageOnARealDeckShowsAFlowerOfItsSixNets() throws {
+    let rig = try StageViewRig()
+    defer { rig.stop() }
+    rig.model.settings.visualizer = .petal
+    try rig.run(seconds: 2)
+    let ctx = rig.model.context
+    #expect(ctx.visualizer == .petal && ctx.panels.count == 6)
+    let px = try #require(renderPixels(rig.scene(), width: 1000, height: 800))
+    savePNG(rig.scene(), width: 1000, height: 800, name: "petal-real-deck")
+    guard case .petal(let shapes) = rig.model.layers.solo.paint(ctx) else {
+      Issue.record("no petal paint")
+      return
+    }
+    #expect(shapes.count == 6)
+    var lit = 0
+    for p in shapes {
+      // half way up the petal's axis there is colour
+      let x = Int((p.center.x + cos(p.angle) * p.length * 0.6).rounded())
+      let y = Int((p.center.y + sin(p.angle) * p.length * 0.6).rounded())
+      if SoloSwatch.lift(px.color(x, y)) > 6 { lit += 1 }
+    }
+    #expect(lit == 6, "every petal is drawn: \(lit) of 6")
+    #expect(shapes.contains { $0.raw > 0.2 }, "and the ones that just fired are big")
+    #expect(px.near(5, 400, Sw.background, tol: 3))
   }
 }

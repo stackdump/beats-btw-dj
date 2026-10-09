@@ -68,15 +68,15 @@ struct StageCoronaGeometryTests {
       near(last.norm, 1) && near(last.x1, 481.64868980154563) && near(last.y1, 26.450499379265523))
   }
 
-  @Test func theFloorAndSilenceAreZeroLengthDotsAtTheColdEnd() {
+  @Test func theFloorAndSilenceAreZeroLengthBarsAtTheColdEnd() {
     for db: Float in [-100, -250, -.infinity] {
       let r = ray(96, db)
-      #expect(near(r.norm, 0) && r.isDot, "\(db) dB")
+      #expect(near(r.norm, 0) && r.isZeroLength, "\(db) dB")
       #expect(near(r.x0, 382) && near(r.y0, 400), "bin 96 is at the left")
       #expect(near(r.hue, 200) && near(r.lineWidth, 2) && near(r.stroke.a, 0.35))
       #expect(near(r.shadowBlur, 6))
     }
-    #expect(!ray(0, -99).isDot)
+    #expect(!ray(0, -99).isZeroLength)
   }
 
   @Test func normaliseIsTheClampedDecibelRangeOnto0To1() {
@@ -122,7 +122,7 @@ struct StageCoronaGeometryTests {
       decibels: db, center: center, planetRadius: 100, width: 1000, height: 800)
     #expect(rays.count == 128)
     #expect(near(rays[0].y1, 154) && near(rays[32].x1, 874))
-    #expect(rays.filter { !$0.isDot }.count == 2)
+    #expect(rays.filter { !$0.isZeroLength }.count == 2)
     for (i, r) in rays.enumerated() {  // every bar starts on the inner circle
       let d = hypot(r.x0 - 500, r.y0 - 400)
       #expect(near(d, 118, 1e-9), "bin \(i): \(d)")
@@ -186,7 +186,7 @@ struct StageCoronaModelTests {
     // -13.56 dB for amplitude 1: norm 0.8644, hue 61.7
     #expect(near(rays[k].norm, (20 * log10(0.21) + 100) / 100, 0.001))
     // the quiet half is flat
-    #expect(rays[(k + 40)...].allSatisfy { $0.norm < 0.001 && $0.isDot == ($0.norm == 0) })
+    #expect(rays[(k + 40)...].allSatisfy { $0.norm < 0.001 && $0.isZeroLength == ($0.norm == 0) })
   }
 
   @Test func theFrameRateDoesNotChangeTheSmoothingPerSecond() {
