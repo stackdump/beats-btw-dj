@@ -169,3 +169,33 @@ final class StoreHarness {
 
 func sameBytes(_ d: Data, _ other: Data) -> Bool { d == other }
 func wavBytes(_ audio: RenderedAudio) -> Data { WAV.encode(audio, float32: true) }
+
+// MARK: - Share URL helpers (Foundation file / process work, away from the Testing overlay)
+
+/// Decode with the system `gzip`: an independent inflater for what ShareCodec produced.
+func systemGunzip(_ bytes: [UInt8]) -> [UInt8]? {
+  let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "djshare-\(UUID().uuidString)")
+  try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: dir) }
+  let file = dir.appendingPathComponent("x.gz")
+  guard (try? Data(bytes).write(to: file)) != nil else { return nil }
+  let p = Process()
+  p.executableURL = URL(fileURLWithPath: "/usr/bin/gzip")
+  p.arguments = ["-dc", file.path]
+  let out = Pipe()
+  p.standardOutput = out
+  p.standardError = FileHandle.nullDevice
+  guard (try? p.run()) != nil else { return nil }
+  let data = out.fileHandleForReading.readDataToEndOfFile()
+  p.waitUntilExit()
+  return p.terminationStatus == 0 ? [UInt8](data) : nil
+}
+
+/// When DJ_SHARE_URL_OUT is set, save Swift-built share URLs for scripts/beats-share-url-check.mjs.
+func saveSwiftShareURLs(_ rows: [(payload: JSONValue, url: String)]) {
+  guard let path = ProcessInfo.processInfo.environment["DJ_SHARE_URL_OUT"] else { return }
+  let arr = JSONValue.array(
+    rows.map { .object(JSONObject([("payload", $0.payload), ("url", .string($0.url))])) })
+  try? arr.jsStringified.write(toFile: path, atomically: true, encoding: .utf8)
+}

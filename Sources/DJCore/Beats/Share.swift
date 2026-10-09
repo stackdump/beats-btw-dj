@@ -6,7 +6,9 @@
 // `overrides` is layered on afterwards by the UI. Notably `tempo` / `swing` /
 // `humanize` in `overrides` are NOT applied to a composed project — they only
 // feed the raw-`nets` path and the history list — so `Share.project()` doesn't
-// either. Raw-`nets` envelopes need arrangeWithOpts and are a later slice.
+// either. Raw-`nets` envelopes load literally (ShareURL.swift); the ones that carry a
+// `structure` also need arrangeWithOpts, which is a later slice. URL / gzip decoding is
+// ShareURL.swift + ShareCodec.swift.
 
 public struct Share {
   public var genre: String?
@@ -115,18 +117,24 @@ public struct Share {
     return Share(payload: payload, cid: cid)
   }
 
-  /// The project the composer path produces: `compose(genre, params)` then the
-  /// model-level overrides. nil for raw-`nets` envelopes (not ported yet) and for a
-  /// payload with no genre (the JS throws there).
+  /// The project the browser ends up with: for a raw-`nets` envelope the literal nets
+  /// (`rawNetsProject()`, nil while it still needs arranging); otherwise the composer
+  /// path, `compose(genre, params)` then the model-level overrides (nil for a payload
+  /// with no genre — the JS throws there).
   public func project() -> Project? {
-    guard nets == nil, let genre else { return nil }
+    if nets != nil { return rawNetsProject() }
+    guard let genre else { return nil }
     var proj = compose(genre: genre, overrides: .object(params))
     if let overrides { proj.applyShareOverrides(overrides) }
     return proj
   }
 }
 
-public enum ShareError: Error { case cidMismatch }
+public enum ShareError: Error {
+  case cidMismatch
+  /// share URL / gzip decoding (ShareCodec)
+  case badBase64, badGzip
+}
 
 extension Project {
   /// The parts of `applyShareOverrides` that change the project model: per-channel
