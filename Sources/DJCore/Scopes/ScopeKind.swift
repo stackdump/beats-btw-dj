@@ -46,7 +46,10 @@ public enum ScopeKind: String, CaseIterable, Identifiable, Sendable {
     let lanes = Double(laneCount)
     switch kind {
     case .spectro: return measured ? max(300, room) : max(170, jsRound(room * 0.7))
-    case .bands: return measured ? 300 : 124
+    // scope.js says 300 with "measured", which cuts the residual's bottom row, the bar numbers
+    // and the tilt line; BandsScene knows what its layout needs
+    case .bands:
+      return measured ? BandsScene.measuredPanelHeight : BandsScene.modelPanelHeight
     case .raster: return max(90, min(max(560, room), lanes * 28 + 32))
     case .live: return max(170, min(640, max(110 + lanes * 12, room)))
     }

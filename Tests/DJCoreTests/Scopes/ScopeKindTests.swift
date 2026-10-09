@@ -41,7 +41,8 @@ struct ScopeKindTests {
       #expect(
         ScopeKind.viewHeight(kind: .bands, measured: false, laneCount: 3, windowHeight: win) == 124)
       #expect(
-        ScopeKind.viewHeight(kind: .bands, measured: true, laneCount: 3, windowHeight: win) == 300)
+        ScopeKind.viewHeight(kind: .bands, measured: true, laneCount: 3, windowHeight: win) == 332,
+        "scope.js says 300, which cuts the residual's last row, the axis and the tilt line")
     }
   }
 
