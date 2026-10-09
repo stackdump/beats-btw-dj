@@ -115,6 +115,17 @@ public enum ScopeTransport: Equatable, Sendable {
   case scrubbing
   /// The song ended (a `stop-transport` control fired).
   case ended
+
+  /// What a status line says when the net is not running: "stopped", "scrubbing", "ended"; nil
+  /// while it plays (or there is no net).
+  public var statusNote: String? {
+    switch self {
+    case .playing, .noNet: nil
+    case .stopped: "stopped"
+    case .scrubbing: "scrubbing"
+    case .ended: "ended"
+    }
+  }
 }
 
 /// The net clock as of the last pump (the lead deck's, on a master feed).
@@ -825,12 +836,7 @@ public final class ScopeFeed {
   public var statusText: String {
     if !hasNet { return source == .master ? "no net deck" : "needs a net deck" }
     var text = "\(lanes.count) lanes · \(Int(clock.tempo.rounded())) bpm"
-    switch clock.transport {
-    case .playing, .noNet: break
-    case .stopped: text += " · stopped"
-    case .scrubbing: text += " · scrubbing"
-    case .ended: text += " · ended"
-    }
+    if let note = clock.transport.statusNote { text += " · \(note)" }
     if masterTapSilent { text += " · master tap silent" }
     return text
   }
