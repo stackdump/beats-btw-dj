@@ -5,7 +5,11 @@ public struct CatalogSound: Hashable, Sendable {
   /// Display name (`Vintage Strat`).
   public var name: String
   public var category: String
-  public var source: SamplerSource
+  /// Every installed copy, best first (Logic before GarageBand, combined patches before
+  /// articulations, iOS copies last): a copy whose samples are missing or in a format
+  /// AUSampler can't read falls through to the next.
+  public var sources: [SamplerSource]
+  public var source: SamplerSource { sources[0] }
 }
 
 /// Voicing: which sampled instrument a net plays. beats' composer still picks its instrument
@@ -75,26 +79,33 @@ public final class VoiceCatalog: @unchecked Sendable {
   // MARK: scan
 
   static func scan(roots: [String], rules: [Rule]) -> [String: [CatalogSound]] {
-    var byKey: [String: (sound: CatalogSound, rank: Int)] = [:]
+    var byKey:
+      [String: (name: String, category: String, copies: [(rank: Int, src: SamplerSource)])] =
+        [:]
     let fm = FileManager.default
-    for root in roots.sorted() {
+    // Logic's library first: where both have an instrument, its copy is the complete one.
+    let ordered = roots.sorted {
+      ($0.contains("/Logic/") ? 0 : 1, $0) < ($1.contains("/Logic/") ? 0 : 1, $1)
+    }
+    for (r, root) in ordered.enumerated() {
       guard let walker = fm.enumerator(atPath: root) else { continue }
       while let rel = walker.nextObject() as? String {
         guard rel.hasSuffix(".exs") else { continue }
         let name = ((rel as NSString).lastPathComponent as NSString).deletingPathExtension
         guard let category = categorize(rel, rules: rules), category != "skip" else { continue }
-        // Articulation and platform copies of one instrument count once.
+        // Articulation and platform copies of one instrument are one sound, tried in order.
         let (stem, rank) = canonical(name)
         let key = category + "|" + stem.lowercased()
-        let sound = CatalogSound(
-          name: stem, category: category,
-          source: .exs((root as NSString).appendingPathComponent(rel)))
-        if let have = byKey[key], have.rank <= rank { continue }
-        byKey[key] = (sound, rank)
+        let src = SamplerSource.exs((root as NSString).appendingPathComponent(rel))
+        byKey[key, default: (stem, category, [])].copies.append((rank * 10 + r, src))
       }
     }
     var out: [String: [CatalogSound]] = [:]
-    for (_, v) in byKey { out[v.sound.category, default: []].append(v.sound) }
+    for (_, v) in byKey {
+      let copies = v.copies.sorted { $0.rank < $1.rank }.map(\.src)
+      out[v.category, default: []].append(
+        CatalogSound(name: v.name, category: v.category, sources: copies))
+    }
     for k in out.keys { out[k]!.sort { $0.name < $1.name } }
     return out
   }
@@ -155,7 +166,7 @@ public final class VoiceCatalog: @unchecked Sendable {
     if count > 0 {
       let pick = Int(Self.stableHash("\(seed)|\(role)|\(category)") % UInt64(count))
       if synth && pick == pool.count { return nil }
-      for k in 0..<pool.count { ordered.append(pool[(pick + k) % pool.count].source) }
+      for k in 0..<pool.count { ordered += pool[(pick + k) % pool.count].sources }
     }
     ordered += (gm[category] ?? []).map { .gm($0) }
     return ordered.isEmpty ? nil : ordered

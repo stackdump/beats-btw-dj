@@ -124,7 +124,7 @@ struct WaveRunnerRealTimeTests {
     let bank = src.samplers
     let used = Set(prepared.lanes.map(\.samplerSlot).filter { $0 >= 0 })
     var p = 0
-    while bank.count < SamplerBank.capacity && p < 127 {
+    while bank.count < SamplerBank.capacity && p < 64 {
       if let s = bank.slot(for: [.gm(p)]) { bank.release(s) }
       p += 1
     }
@@ -133,7 +133,8 @@ struct WaveRunnerRealTimeTests {
     // Started here (spawning a task allocates), loading only once the measured renders run.
     Task.detached {
       while !result.go.load(ordering: .acquiring) { await Task.yield() }
-      result.slot.store(bank.slot(for: [.gm(127)]) ?? -1, ordering: .releasing)
+      // a pitched program the fill didn't reach (unpitched SFX ones are turned away on load)
+      result.slot.store(bank.slot(for: [.gm(80)]) ?? -1, ordering: .releasing)
     }
     run(10)
     let evicting = countAllocations {
@@ -148,10 +149,10 @@ struct WaveRunnerRealTimeTests {
     let slot = result.slot.load(ordering: .acquiring)
     #expect(slot >= 0, "the load evicted a slot")
     #expect(!used.contains(slot), "never one the playing project references")
-    #expect(bank.source(of: slot) == .gm(127))
+    #expect(bank.source(of: slot) == .gm(80))
     #expect(evicting.allocations == 0, "render allocated \(evicting.allocations) times")
     #expect(evicting.frees == 0, "render freed \(evicting.frees) times")
-    bank.release(slot)
+    if slot >= 0 { bank.release(slot) }
     src.drainRetired()
   }
 }

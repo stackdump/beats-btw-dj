@@ -116,9 +116,17 @@ public final class SamplerInstrument: @unchecked Sendable {
   /// brought to, so a pick from any pool sits in the mix.
   public static let targetRMSdB = -27.5
 
+  /// Worst pitch error (cents, in whatever octave it sounds) a sound may have to be played.
+  /// Character patches are a few cents out; past this a pick would clash with the track's key.
+  public static let maxDetuneCents = 30.0
+  /// Below this on the reference phrase a sound is treated as silent (missing samples).
+  public static let silentRMSdB = -70.0
+
   /// Off the audio thread, before publishing: play the reference phrase, measure it, set
-  /// `gain` to land on `targetRMSdB`, then silence and reset the unit.
-  func normalize(sampleRate sr: Double) {
+  /// `gain` to land on `targetRMSdB`, then silence and reset the unit. Returns false for a
+  /// sound not fit to play — silent, or out of tune past `maxDetuneCents`.
+  @discardableResult
+  func normalize(sampleRate sr: Double) -> Bool {
     gain = 1
     let total = Int(2 * sr)
     let block = 512
@@ -140,9 +148,22 @@ public final class SamplerInstrument: @unchecked Sendable {
     }
     let rms = 10 * log10(max(sum / Double(total), 1e-20))
     gain = min(20, max(0.02, pow(10, (Self.targetRMSdB - rms) / 20)))
+    // Tuning: one held A3, measured 0.1–0.4 s in.
+    send(0xB0, 123, 0, at: 0)
+    au.reset()
+    var held = [Float](repeating: 0, count: Int(0.4 * sr))
+    send(0x90, 57, 100, at: 0)
+    var t2 = 0
+    while t2 < held.count {
+      let n = min(block, held.count - t2)
+      held.withUnsafeMutableBufferPointer { renderAdding(frames: n, $0.baseAddress! + t2, nil) }
+      t2 += n
+    }
+    let pitch = pitchClassError(held[Int(0.1 * sr)...], note: 57, sampleRate: sr)
     send(0xB0, 123, 0, at: 0)
     au.reset()
     timestamp.mSampleTime = 0
+    return rms > Self.silentRMSdB && abs(pitch.cents) <= Self.maxDetuneCents
   }
 
   deinit {
@@ -263,7 +284,10 @@ public final class SamplerBank: @unchecked Sendable {
         unloadable.insert(s)
         continue
       }
-      inst.normalize(sampleRate: sampleRate)
+      guard inst.normalize(sampleRate: sampleRate) else {
+        unloadable.insert(s)  // silent or out of tune: never published
+        continue
+      }
       if target < filled { evict(target) } else { filled += 1 }
       slots[target] = Unmanaged.passRetained(inst)
       bySource[s] = target
@@ -435,4 +459,46 @@ extension WaveDeckSource {
     }
     return out
   }
+}
+
+/// How far `x` (a held `note`) sits from that note's pitch class, in cents, whatever octave it
+/// sounds in (a glockenspiel speaks two octaves up): the strongest partial within ±100 cents
+/// of the note in octaves −2…+3, by Hann-windowed DFT in 1-cent steps.
+func pitchClassError(_ x: ArraySlice<Float>, note: Int, sampleRate sr: Double) -> (
+  cents: Double, octave: Int, level: Double
+) {
+  let v = Array(x)
+  let n = v.count
+  guard n > 16 else { return (0, 0, 0) }
+  var w = [Double](repeating: 0, count: n)
+  for i in 0..<n {
+    w[i] = Double(v[i]) * (0.5 - 0.5 * cos(2 * Double.pi * Double(i) / Double(n - 1)))
+  }
+  var best = (cents: 0.0, octave: 0, level: -1.0)
+  for oct in -2...3 {
+    let base = 440 * pow(2, Double(note + 12 * oct - 69) / 12)
+    guard base < sr * 0.45 else { continue }
+    var c = -100.0
+    while c <= 100 {
+      let k = 2 * Double.pi * base * pow(2, c / 1200) / sr
+      var re = 0.0
+      var im = 0.0
+      // rotate a phasor instead of calling cos/sin per sample
+      let cr = cos(k)
+      let ci = -sin(k)
+      var pr = 1.0
+      var pi = 0.0
+      for i in 0..<n {
+        re += w[i] * pr
+        im += w[i] * pi
+        let t = pr * cr - pi * ci
+        pi = pr * ci + pi * cr
+        pr = t
+      }
+      let mag = re * re + im * im
+      if mag > best.level { best = (c, oct, mag) }
+      c += 1
+    }
+  }
+  return best
 }

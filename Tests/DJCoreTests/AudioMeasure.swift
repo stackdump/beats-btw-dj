@@ -79,3 +79,6 @@ func partialPeak(_ x: ArraySlice<Float>, near: Double, sampleRate sr: Double) ->
 
 /// `ExsNames.patch` on raw bytes (Data stays out of the Testing files).
 func exsPatch(_ bytes: [UInt8]) -> [UInt8]? { ExsNames.patch(Data(bytes)).map { [UInt8]($0) } }
+
+/// `DJ_SAMPLER_SWEEP=1` (`make sampler-sweep`): check every installed sound, not one per category.
+let samplerSweep = ProcessInfo.processInfo.environment["DJ_SAMPLER_SWEEP"] == "1"

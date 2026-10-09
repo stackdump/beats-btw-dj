@@ -95,8 +95,18 @@ its copy; the two are now independent. Rules inherited from that split:
 - Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
   `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
   uninitialises). Old EXS files with 31-char truncated sample names are patched into
-  `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Logic's guitars round-robin, so
-  sessions with them are not byte-identical on replay.
+  `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Samples load whole into memory
+  (StreamFromDisk off): a streaming thread that falls behind changed renders under load; the
+  cost is RAM (tonal content is ~3 GB in all; a full bank of pianos is a few GB).
+- Load-time check (`normalize`): a sound is level-matched, and turned away (marked
+  unloadable, the pick falls through) if it is silent on the reference phrase or more than
+  `maxDetuneCents` (30) off in whatever octave it speaks. Each catalog sound keeps every
+  installed copy as a fallback chain (Logic before GarageBand before iOS copies): GarageBand
+  copies of Logic instruments can lack samples, and newer-format EXS (Koto, Toy Piano, Music
+  Box) don't load in AUSampler at all. Some sampled instruments vary between renders on
+  purpose (guitar round robin, tape/chime modulation): sessions with them are not
+  byte-identical on replay; GM programs always are. `make sampler-sweep` runs the sound
+  checks over every installed sound (minutes); the default suite takes one per category.
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and

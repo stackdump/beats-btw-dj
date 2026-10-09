@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-rt-test app run-app djctl mcp-install fmt lint fixtures-beats fixtures-go beats-tables
+        swift-build swift-test swift-rt-test app run-app djctl mcp-install sampler-sweep fmt lint fixtures-beats fixtures-go beats-tables
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -49,6 +49,11 @@ app:
 
 run-app: app
 	open build/DJApp.app
+
+# Every installed sampled instrument through the sound checks (pitch, level, determinism);
+# the default suite takes one per category. Slow: each load reads its samples into memory.
+sampler-sweep:
+	DJ_SAMPLER_SWEEP=1 swift test $(SWIFT_TEST_FLAGS) --filter 'SamplerTests'
 
 # MCP server for the running app (`djctl mcp`), registered for every claude on this Mac.
 # Installed as a copy so `swift build -c release` (e.g. swift-rt-test) can't swap it mid-session.

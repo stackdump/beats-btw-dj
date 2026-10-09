@@ -38,6 +38,18 @@ struct VoiceCatalogTests {
     ("Logic/09 Orchestral/01 Woodwinds/Alto Sax.exs", "woodwind.reed"),
     ("Logic/09 Orchestral/02 Brass/Floating Flugels.exs", "brass"),
     ("Logic/03 Drums & Percussion/Something/Kit.exs", "skip"),
+    ("GarageBand/Live Rock Kit.exs", "skip"),
+    ("GarageBand/Hip Hop Drum Machine.exs", "skip"),
+    ("Logic/09 Orchestral/07 Pipe Organ/Bass 1.exs", "keys.organ"),
+    ("GarageBand/Double Bass.exs", "bass.acoustic"),
+    ("Logic/09 Orchestral/01 Woodwinds/Bassoon Solo.exs", "woodwind.reed"),
+    ("GarageBand/Palm Muted Bass.exs", "bass.electric"),
+    ("Logic/04 Keyboards/Producer Packs/Sweet Overdrive Kalimba.exs", "mallet"),
+    ("Logic/08 Guitars/Warm Electric.exs", "guitar.electric"),
+    ("GarageBand/Classical Grand.exs", "keys.piano"),
+    ("GarageBand/Japanese Traditional/Koto.exs", "ethnic"),
+    ("Logic/04 Keyboards/Toy Celesta.exs", "mallet"),
+    ("Logic/04 Keyboards/Producer Packs/Dreamy Smooth Vox.exs", "vocal"),
   ])
   func rulesSortInstrumentsByName(_ path: String, _ category: String) {
     #expect(VoiceCatalog.categorize(path, rules: catalog.rules) == category)
@@ -71,7 +83,7 @@ struct VoiceCatalogTests {
 
   @Test func aPickFallsBackThroughItsPoolThenGM() throws {
     let s = try #require(catalog.sources(instrument: "piano", role: "melody", seed: 1))
-    let pool = catalog.pool("keys.piano").map(\.source)
+    let pool = catalog.pool("keys.piano").flatMap(\.sources)
     #expect(Set(s.prefix(pool.count)) == Set(pool), "the whole pool, rotated")
     #expect(s.suffix(2) == [.gm(0), .gm(1)])
   }
