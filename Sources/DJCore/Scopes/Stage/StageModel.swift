@@ -2,7 +2,7 @@ import Foundation
 
 // StageModel: the Stage's per-frame brain (beats' stage.js session, without the DOM).
 //
-// It owns the panels of the ring and the toolbar state, reads the
+// It owns the panels of the ring, their drift, the track spin and the toolbar state, reads the
 // engine ONLY through the scope feed (marking, fire log, mutes, tick facts: it never re-derives
 // what the engine publishes), and once per drawn frame builds the `StageContext` the layers read.
 //
@@ -18,9 +18,15 @@ import Foundation
 //
 // What it reconciles, and when (stage.js):
 //   * `stageOnProjectSync`: a NEW TRACK (the sounding project of a deck has another
-//     `trackSerial`) rebuilds every panel and clears the pulse, flame and bolts layers. The first
-//     build, a source switch and the expand toggle rebuild too. A section relaunch or jump of
-//     the same song (same `trackSerial`, new generation) keeps the panels.
+//     `trackSerial`) rebuilds every panel, quarter-turns the diagram (+90 on the spin target) and
+//     clears the pulse, flame and bolts layers. The first build, a source switch and the expand
+//     toggle rebuild WITHOUT the turn ("toggling the view is not a track change"), and so does a
+//     deck that loses its net (a sample was loaded) or gains one: only a deck that was showing a
+//     net and still does, with another song, is a new track. A section
+//     relaunch or jump of the same song (same `trackSerial`, new generation) keeps the panels.
+//     The turn is keyed on `trackSerial` rather than on `ScopeFeed.generation` because that also
+//     bumps on a restart from the top, a re-acquire and a lane-set change, none of which is a
+//     track change.
 //   * `stageOnMuteStateChange`: panels never reflow when mutes change; a muted panel dims
 //     (opacity 0.25, eased over 280 ms) and a collapsed riff-group panel flips to whichever
 //     variant is unmuted.
@@ -35,6 +41,8 @@ public final class StageModel {
 
   /// The last frame's context (empty before the first `advance`).
   public private(set) var context: StageContext
+  /// The diagram's turn (mode 20).
+  public private(set) var spin = StageSpin()
   /// Bumps whenever the panels are rebuilt.
   public private(set) var epoch = 0
   /// Extra models advanced after the registry's, and cleared on a rebuild like the pulse, flame
@@ -48,6 +56,7 @@ public final class StageModel {
   private let subscription = ScopeSubscription()
   private var attached = false
 
+  private var random: ClosureRandom
   private var panels: [PanelState] = []
   private var builtFeed: ObjectIdentifier?
   private var builtExpand = false
@@ -61,11 +70,13 @@ public final class StageModel {
 
   public init(
     hub: ScopeHub, settings: StageSettings = StageSettings(),
-    layers: StageLayerModels = StageLayerModels()
+    layers: StageLayerModels = StageLayerModels(),
+    random: @escaping () -> Double = { Double.random(in: 0..<1) }
   ) {
     self.hub = hub
     self.settings = settings
     self.layers = layers
+    self.random = ClosureRandom(generate: random)
     context = StageContext(
       width: 0, height: 0,
       layout: StagePanelLayout.layoutRing(width: 0, height: 0, count: 0),
@@ -141,15 +152,20 @@ public final class StageModel {
     let feed = hub.feed(settings.source)
     let views = deckViews(feed)
 
-    // Panels follow the sounding project.
+    // Panels follow the sounding project; a new track turns the whole diagram.
     let trackChanged = reconcile(feed: feed, views: views)
+    if trackChanged { spin.bump() }
     updateMutesAndTokens(views: views, dt: dt)
+    spin.advance(dt: dt)
+
+    let flowOn = settings.isOn(.flow)
+    for p in panels { p.flow.advance(dt: dt, flowOn: flowOn) }
 
     let layout = StagePanelLayout.layoutRing(
       width: width, height: height, count: panels.count, scale: settings.scale)
     var values = panels.enumerated().map { makePanel($1, index: $0, layout: layout) }
 
-    // Fires: read after the layout so an origin is where the node is drawn this frame.
+    // Fires: read after the flow step so an origin is where the node is drawn this frame.
     let audioNow = feed.nowTime
     let level = hub.vizLevel
     let fires = consumeFires(
@@ -164,7 +180,7 @@ public final class StageModel {
     let ctx = StageContext(
       width: width, height: height, layout: layout, panels: values, now: now, dt: dt,
       audioNow: audioNow, fires: fires, macroRunning: feed.clock.macroActive,
-      hasNet: !views.isEmpty, source: settings.source, feed: feed, metaRotation: 0,
+      hasNet: !views.isEmpty, source: settings.source, feed: feed, metaRotation: spin.rotation,
       selection: settings.visualizer, visualizer: visualizer, overlays: settings.overlays,
       scale: settings.scale, expandVariants: settings.expandVariants, bgMode: settings.bgMode,
       cardOnChange: settings.cardOnChange, showBacks: settings.showBacks,
@@ -236,6 +252,7 @@ public final class StageModel {
     var label: String
     var channel: Int
     let riffGroup: String
+    var flow: StageFlow
     var firedAt: [Double]
     var fade: StageFade
     var muted = false
@@ -243,7 +260,7 @@ public final class StageModel {
 
     init(
       id: String, deck: String, netId: String, shape: StageNetShape, label: String,
-      channel: Int, riffGroup: String
+      channel: Int, riffGroup: String, flow: StageFlow
     ) {
       self.id = id
       self.deck = deck
@@ -252,6 +269,7 @@ public final class StageModel {
       self.label = label
       self.channel = channel
       self.riffGroup = riffGroup
+      self.flow = flow
       firedAt = [Double](repeating: -.infinity, count: shape.transitionIds.count)
       fade = StageFade()
       tokens = [Double](repeating: 0, count: shape.placeIds.count)
@@ -347,8 +365,14 @@ public final class StageModel {
     let shapeChanged = netIds != builtNetIds
     guard feedChanged || expandChanged || trackChanged || shapeChanged else { return false }
 
-    // The very first build, a source switch and the expand toggle are not track changes.
-    let genuine = trackChanged && !feedChanged && !expandChanged && !builtTracks.isEmpty
+    // A track change is a deck that WAS showing a net and still is, with another song. The very
+    // first build, a source switch and the expand toggle are not track changes; neither is a deck
+    // that loses its net (a sample was loaded) or gains one (it had none): nothing new started
+    // under the viewer's eyes, and the card flash (mode 19) keys on this too.
+    let swapped = tracks.contains { deck, serial in
+      builtTracks[deck].map { $0 != serial } ?? false
+    }
+    let genuine = swapped && !feedChanged && !expandChanged
     rebuild(views: views)
     builtFeed = ObjectIdentifier(feed)
     builtExpand = settings.expandVariants
@@ -369,10 +393,11 @@ public final class StageModel {
       guard let desc = byKey[key], let view = views.first(where: { $0.deck == desc.deck }),
         let i = view.nets.indexById[desc.id]
       else { continue }
+      let flow = StageFlow.random(using: &random)
       let state = PanelState(
         id: key, deck: desc.deck, netId: desc.id, shape: view.nets.shape(at: i),
         label: view.nets.label(at: i), channel: view.nets.layout.nets[i].channel,
-        riffGroup: view.nets.layout.nets[i].riffGroup)
+        riffGroup: view.nets.layout.nets[i].riffGroup, flow: flow)
       state.muted = view.snapshot.isMuted(net: i)
       state.fade = StageFade(value: state.muted ? StageFade.mutedOpacity : 1)
       built.append(state)
@@ -432,7 +457,7 @@ public final class StageModel {
     return StagePanel(
       id: s.id, deck: s.deck, netId: s.netId, label: s.label, channel: s.channel,
       riffGroup: s.riffGroup, center: center, ring: layout.hasRing ? center : nil,
-      side: layout.side, angle: 0, view: view, muted: s.muted,
+      side: layout.side, angle: s.flow.angle, view: view, muted: s.muted,
       opacity: s.fade.value, shape: s.shape, tokens: s.tokens, firedAt: s.firedAt)
   }
 
@@ -508,4 +533,10 @@ public final class StageModel {
     return
       "\(bars) bars · \(nets - muted)/\(nets) nets · \(places) places · \(transitions) transitions · \(arcs) arcs · \(notes) notes"
   }
+}
+
+/// Adapts a closure to `StageRandom` (the model's injectable `Math.random`).
+struct ClosureRandom: StageRandom {
+  let generate: () -> Double
+  mutating func next() -> Double { generate() }
 }

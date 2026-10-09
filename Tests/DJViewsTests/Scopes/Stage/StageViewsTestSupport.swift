@@ -33,7 +33,8 @@ final class StageViewRig {
       dj["B"]!.setPlaying(true)
     }
     hub = ScopeHub(engine: dj)
-    model = StageModel(hub: hub)
+    var rng = StageSeededRandom(seed: 7)
+    model = StageModel(hub: hub, random: { rng.next() })
     model.settings.source = source
     self.width = width
     self.height = height

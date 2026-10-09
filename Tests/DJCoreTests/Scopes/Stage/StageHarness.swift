@@ -26,7 +26,8 @@ final class StageHarness {
     rig = try ScopeRig(
       net: net, samples: samples, genre: "techno", seed: seed, structure: structure, tempo: 300,
       play: play, block: Self.block)
-    model = StageModel(hub: rig.hub)
+    var rng = StageSeededRandom(seed: 11)
+    model = StageModel(hub: rig.hub, random: { rng.next() })
     model.settings.source = source
     if attach { model.attach() }
   }
