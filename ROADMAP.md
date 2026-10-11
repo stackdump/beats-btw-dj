@@ -135,9 +135,28 @@ controllers perform on the net.
 JS runner: no allocation in `process`).
 3.2 **(done — `Deck.generate/queueNext/advanceToNext/service`, `TrackSpec`)** Generate on a deck: genre + seed (+ structure) → compose → play; next
 track pre-composed in the background.
-3.3 **(done — `DeckPerform`, `WaveMacros`, profiles; FX/pan/shape/pitch/feel macros need a wave master chain, not ported)** Controls drive the net: section jump / slot activate (APC grid), role
+3.3 **(done — `DeckPerform`, `WaveMacros`, profiles; FX/pan/shape/pitch/feel macros NOT ported, blocked: see "3.3 blocker" below)** Controls drive the net: section jump / slot activate (APC grid), role
 mutes (APC track buttons), macros (port beats' macro catalog), live tempo,
 MPK keys into a scale-locked live net, stingers on pads.
+**3.3 blocker (investigated 2026-10-08, nothing ported).** There is no wave master chain in
+beats to port. `wave-engine/runner.js` master processing is only `tanh(sum * masterGain)`
+(already ported, with fixtures). The FX macros (`sweep-lp/hp`, `reverb-wash`, `delay-throw`,
+`riser`, `build-crush`, `phaser-drone`, `cathedral`, `dub-delay`, `filter-res`, `octave-*`,
+`pitch-bend`) drive sliders (`lp-freq`, `reverb-wet`, `delay-feedback`, `phaser-wet`,
+`crush-bits`, ...) of the **Tone.js** master chain in `audio/tone-engine.js`
+(browser WebAudio, Tone loaded from unpkg). The pan, shape (`decay-move`) and feel macros act
+on Tone per-channel panners / instrument decay / the sequencer worker. The wave engine's own
+README lists macros, swing/humanize and per-channel routing as "not yet in wave mode", and
+`&fx=tone` is the only way a wave render passes through any FX. So no real-JS audio exists for
+"the same net and macro automation": the repo's rule (ported behaviour proven by fixtures from
+the real JS) cannot be met, and Tone's reverb (random-noise convolution) and phaser/delay are
+WebAudio nodes with no node-side implementation here (no npm, no browser-free Tone). Deliberately
+left out, not approximated: a Swift reverb/delay/phaser/crusher/panner chain, and the macro
+wiring in `DeckPerform`/`WaveMacros`. To unblock, beats needs either a wave-engine master
+chain (then fixtures via `scripts/beats-wave.mjs` and a Swift port with preallocated state
+handed over the command ring, checked by `make swift-rt-test`), or a decision that the Swift
+chain is a new design validated by invariants (gain/pan law, filter response) rather than JS
+parity.
 3.4 **(done — `BeatGrid`/`BPMAnalyzer`, `DeckBeat`: sync, follow, quantized cues and loops)** Beat-aware mixing: both decks know BPM and bar phase (from the net
 clock or WAV analysis) — sync, quantized cues and loops to bars.
 3.5 **(done — `WaveHistory`, `WaveRunner.freeze/scrub/release`, Deck JogClock)** Scratching a live net: freeze/scrub/reverse the tick clock (the jog lab's
