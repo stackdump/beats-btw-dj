@@ -82,3 +82,47 @@ func exsPatch(_ bytes: [UInt8]) -> [UInt8]? { ExsNames.patch(Data(bytes)).map { 
 
 /// `DJ_SAMPLER_SWEEP=1` (`make sampler-sweep`): check every installed sound, not one per category.
 let samplerSweep = ProcessInfo.processInfo.environment["DJ_SAMPLER_SWEEP"] == "1"
+
+/// How far a mix sits from the 12-TET grid (A440), in cents: in each of up to `windows`
+/// loud stretches of `size` samples, the strongest semitone partial in `notes` (Hann-windowed
+/// DFT), refined to its peak within ±60 cents. A bass's own fundamentals smear at this
+/// window length, so `notes` should start above them: its upper partials still tell.
+func gridDeviations(
+  _ x: [Float], sampleRate sr: Double, notes: ClosedRange<Int> = 52...96, size: Int = 16_384,
+  windows: Int = 12
+) -> [Double] {
+  guard x.count >= size else { return [] }
+  let hann = (0..<size).map { 0.5 - 0.5 * cos(2 * Double.pi * Double($0) / Double(size - 1)) }
+  let starts = stride(from: 0, through: x.count - size, by: size / 2)
+    .filter { rmsDB(x[$0..<($0 + size)]) > -50 }
+  let picked = stride(from: 0, to: starts.count, by: max(1, starts.count / windows)).map {
+    starts[$0]
+  }
+  func mag(_ s: Int, _ f: Double) -> Double {
+    let k = 2 * Double.pi * f / sr
+    let cr = cos(k)
+    let ci = -sin(k)
+    var pr = 1.0
+    var pi = 0.0
+    var re = 0.0
+    var im = 0.0
+    for i in 0..<size {
+      let v = Double(x[s + i]) * hann[i]
+      re += v * pr
+      im += v * pi
+      let t = pr * cr - pi * ci
+      pi = pr * ci + pi * cr
+      pr = t
+    }
+    return re * re + im * im
+  }
+  return picked.map { s in
+    let n = notes.map { ($0, mag(s, midiHz($0))) }.max { $0.1 < $1.1 }!.0
+    var best = (cents: 0.0, mag: -1.0)
+    for c in stride(from: -60.0, through: 60, by: 1) {
+      let m = mag(s, midiHz(n) * pow(2, c / 1200))
+      if m > best.mag { best = (c, m) }
+    }
+    return best.cents
+  }
+}
