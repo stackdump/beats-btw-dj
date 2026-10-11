@@ -130,6 +130,10 @@ public struct Session: Equatable, Sendable {
 
 extension TrackSpec {
   /// A beats share-envelope payload for this spec (so a deck's source is a normal share).
+  /// `layers` go in under their envelope names; a spec without them writes exactly what it
+  /// always did. (Known gap, ROADMAP 2.8: `extra` is written at the top level, but
+  /// `shareFromPayload` only reads traits from `payload.traits`, so beats itself would drop
+  /// trait overrides from this payload; the app reads it back with `init(payload:)`, intact.)
   public var payload: JSONValue {
     var o = JSONObject()
     o["genre"] = .string(genre)
@@ -137,19 +141,23 @@ extension TrackSpec {
     if let structure, !structure.isEmpty { o["structure"] = .string(structure) }
     o["cohesion"] = .string(cohesion)
     for (k, v) in extra.entries where o[k] == nil { o[k] = v }
+    for (k, v) in layers.entries where o[k] == nil { o[k] = v }
     return .object(o)
   }
 
+  /// Envelope fields named in `layerKeys` come back as `layers`; every other non-core field is
+  /// a compose override, as before (no compose param uses a layer name).
   init?(payload p: JSONValue) {
     guard let genre = p["genre"]?.string, let seed = p["seed"]?.double else { return nil }
     var extra = JSONObject()
+    var layers = JSONObject()
     for (k, v) in p.object?.entries ?? []
     where !["genre", "seed", "structure", "cohesion"].contains(k) {
-      extra[k] = v
+      if Self.layerKeys.contains(k) { layers[k] = v } else { extra[k] = v }
     }
     self.init(
       genre: genre, seed: seed, structure: p["structure"]?.string,
-      cohesion: p["cohesion"]?.string ?? "v2", extra: extra)
+      cohesion: p["cohesion"]?.string ?? "v2", extra: extra, layers: layers)
   }
 }
 

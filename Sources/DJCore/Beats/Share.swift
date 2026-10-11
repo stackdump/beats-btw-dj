@@ -131,7 +131,8 @@ public struct Share {
   }
 
   /// What the browser layers on a composed project, in its order: the model-level overrides
-  /// (`_applyProjectSync`), then the arrange overlay (`overlayProject`).
+  /// (`_applyProjectSync`), then the arrange overlay (`overlayProject`). Shared with the decks
+  /// (`TrackSpec.finish`).
   public func finishComposed(_ proj: inout Project) {
     if let overrides { proj.applyShareOverrides(overrides) }
     overlayProject(&proj)

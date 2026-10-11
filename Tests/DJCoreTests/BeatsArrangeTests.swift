@@ -366,6 +366,36 @@ struct ShareArrangeTests {
     #expect(bad.isEmpty, "\(bad.count)/\(rows.count) mismatches; first: \(bad.prefix(6))")
   }
 
+  /// A deck generated from a share (`TrackSpec(share:)` → `PreparedTrack`) plays the project
+  /// the envelope describes, overrides and overlay included — the JS digest — and a recorded
+  /// session's payload (`TrackSpec.payload` / `init(payload:)`) replays the same project.
+  @Test func decksAndSessionsPlayTheEnvelopesProject() throws {
+    let rows = try #require(fixture()["shares"]?.array).filter { $0["netsFrom"] == .null }
+    var layered = 0
+    for (index, row) in rows.enumerated() {
+      let share = Share(payload: row["payload"]!, cid: row["cid"]!.string!)
+      let spec = try #require(TrackSpec(share: share))
+      let tag = "composer share \(index) \(row["payload"]!.jsStringified)"
+      let want = Digest(expected: row["result"]!)
+      #expect(Digest(spec.project()) == want, "\(tag)")
+      let back = try #require(TrackSpec(payload: spec.payload))
+      #expect(back == spec, "\(tag)")
+      #expect(Digest(back.project()) == want, "\(tag)")
+      // The session payload is itself an envelope that reads back to the same project.
+      #expect(Digest(Share(payload: spec.payload).project()!) == want, "\(tag)")
+      if !spec.layers.entries.isEmpty { layered += 1 }
+    }
+    #expect(layered >= 10)
+    // A spec without layers writes exactly the payload it always did.
+    let plain = TrackSpec(
+      genre: "techno", seed: 42, structure: "standard", cohesion: "v2",
+      extra: JSONObject([("bpm", .number(126))]))
+    #expect(
+      plain.payload.jsStringified
+        == #"{"genre":"techno","seed":42,"structure":"standard","cohesion":"v2","bpm":126}"#)
+    #expect(TrackSpec(payload: plain.payload) == plain)
+  }
+
   @Test func derivedNamesNeedNoCIDOrFallBackToTheSeed() {
     let withCID = Share(
       payload: .object(JSONObject([("genre", .string("house")), ("nets", .object(JSONObject()))])),

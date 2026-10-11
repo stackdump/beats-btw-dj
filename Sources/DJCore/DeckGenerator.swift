@@ -13,16 +13,31 @@ public struct TrackSpec: Sendable, Equatable {
   public var cohesion: String
   /// Extra `compose` overrides (traits, bpm, …), merged under the fields above.
   public var extra: JSONObject
+  /// Share-envelope fields beyond the compose params, under their envelope names
+  /// (`TrackSpec.layerKeys`): the overrides (`tracks`, `initialMutes`, `fx`, …) and the arrange
+  /// overlay directives (`fadeIn`, `drumBreak`, `feelCurve`, `counterMelody`). Applied to the
+  /// composed project by `finish` — the same `Share` code the envelope path uses — so a deck
+  /// plays, and a recorded session replays, the project the envelope describes. Empty for a
+  /// plain genre + seed spec.
+  public var layers: JSONObject
+
+  /// The envelope fields `layers` holds: what `shareFromPayload` puts in `overrides`, and
+  /// the overlay directives. (`macroCurve` is a compose param, in `extra`.)
+  public static let layerKeys: Set<String> = [
+    "tracks", "fx", "feel", "autoDj", "macrosDisabled", "initialMutes", "tempo", "swing",
+    "humanize", "note", "fadeIn", "drumBreak", "feelCurve", "counterMelody",
+  ]
 
   public init(
     genre: String, seed: Double, structure: String? = nil, cohesion: String = "v2",
-    extra: JSONObject = JSONObject()
+    extra: JSONObject = JSONObject(), layers: JSONObject = JSONObject()
   ) {
     self.genre = genre
     self.seed = seed
     self.structure = structure
     self.cohesion = cohesion
     self.extra = extra
+    self.layers = layers
   }
 
   /// `compose`'s overrides for this spec.
@@ -35,6 +50,7 @@ public struct TrackSpec: Sendable, Equatable {
   }
 
   /// The spec a share envelope describes (nil for raw-`nets` envelopes and genre-less ones).
+  /// Keeps the envelope's overrides and overlay directives in `layers`.
   public init?(share: Share) {
     guard share.nets == nil, let genre = share.genre else { return nil }
     var extra = share.params
@@ -44,7 +60,32 @@ public struct TrackSpec: Sendable, Equatable {
     extra["seed"] = nil
     extra["structure"] = nil
     extra["cohesion"] = nil
-    self.init(genre: genre, seed: seed, structure: structure, cohesion: cohesion, extra: extra)
+    // `shareFromPayload` copied these from the payload as they were, so writing them back
+    // under the same names gives an envelope that reads back to the same overrides / overlay.
+    var layers = share.overrides ?? JSONObject()
+    if let v = share.fadeIn { layers["fadeIn"] = .array(v) }
+    if let v = share.drumBreak { layers["drumBreak"] = .number(v) }
+    if let v = share.feelCurve { layers["feelCurve"] = .array(v) }
+    if let v = share.counterMelody { layers["counterMelody"] = .array(v) }
+    self.init(
+      genre: genre, seed: seed, structure: structure, cohesion: cohesion, extra: extra,
+      layers: layers)
+  }
+
+  /// The browser's layers on a composed project: the model-level overrides, then the arrange
+  /// overlay (`Share.finishComposed`). A no-op without `layers`.
+  public func finish(_ project: inout Project) {
+    guard !layers.entries.isEmpty else { return }
+    var p = layers
+    p["genre"] = .string(genre)
+    Share(payload: .object(p)).finishComposed(&project)
+  }
+
+  /// `compose` plus `finish`: the project this spec plays.
+  public func project() -> Project {
+    var p = compose(genre: genre, overrides: overrides)
+    finish(&p)
+    return p
   }
 }
 
@@ -58,7 +99,7 @@ public final class PreparedTrack: @unchecked Sendable {
   /// deck's bank. `.extended` alone plays every instrument on a synth voice.
   public init(spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended) {
     self.spec = spec
-    project = compose(genre: spec.genre, overrides: spec.overrides)
+    project = spec.project()
     var o = opts
     o.voicingSeed = spec.seed
     prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: o)
