@@ -70,6 +70,9 @@ public final class SamplerInstrument: @unchecked Sendable {
   private let left: UnsafeMutablePointer<Float>
   private let right: UnsafeMutablePointer<Float>
   private var timestamp = AudioTimeStamp()
+  /// What `normalize` last measured: RMS (dB) on the reference phrase and the A3 tuning
+  /// error (cents). Kept so a bank can say why it turned a sound away.
+  private(set) var lastCheck: (rmsDB: Double, cents: Double)?
 
   public init(source: SamplerSource, sampleRate: Double, gain: Double = 1) throws {
     self.source = source
@@ -163,6 +166,7 @@ public final class SamplerInstrument: @unchecked Sendable {
     send(0xB0, 123, 0, at: 0)
     au.reset()
     timestamp.mSampleTime = 0
+    lastCheck = (rms, pitch.cents)
     return rms > Self.silentRMSdB && abs(pitch.cents) <= Self.maxDetuneCents
   }
 
@@ -239,6 +243,8 @@ public final class SamplerBank: @unchecked Sendable {
   private let lock = NSLock()
   private var bySource: [SamplerSource: Int] = [:]
   private var unloadable: Set<SamplerSource> = []
+  /// Why each source in `unloadable` (or missing from disk) was turned away.
+  private var failures: [SamplerSource: String] = [:]
   private var filled = 0
   private var lastUsed = [UInt64](repeating: 0, count: capacity)
   private var uses: UInt64 = 0
@@ -274,18 +280,33 @@ public final class SamplerBank: @unchecked Sendable {
         acquire(i)
         return i
       }
-      if unloadable.contains(s) || !s.isAvailable { continue }
+      if unloadable.contains(s) { continue }
+      if !s.isAvailable {
+        failures[s] = "not on disk"
+        continue
+      }
       guard let target = freeSlot() else { return nil }
       // Load first, so a source that fails to load costs nothing already playing.
-      let loaded = SamplerInstrument.lifecycle.withLock {
-        try? SamplerInstrument(source: s, sampleRate: sampleRate)
+      var loadError: Error?
+      let loaded = SamplerInstrument.lifecycle.withLock { () -> SamplerInstrument? in
+        do { return try SamplerInstrument(source: s, sampleRate: sampleRate) } catch {
+          loadError = error
+          return nil
+        }
       }
       guard let inst = loaded else {
         unloadable.insert(s)
+        failures[s] = "load failed: \(loadError.map { Self.describe($0) } ?? "unknown")"
         continue
       }
       guard inst.normalize(sampleRate: sampleRate) else {
         unloadable.insert(s)  // silent or out of tune: never published
+        let c = inst.lastCheck
+        let rms = c.map { String(format: "%.1f", $0.rmsDB) } ?? "?"
+        let cents = c.map { String(format: "%+.0f", $0.cents) } ?? "?"
+        failures[s] =
+          (c.map { $0.rmsDB <= SamplerInstrument.silentRMSdB } ?? false)
+          ? "silent (\(rms) dB)" : "out of tune (\(cents) cents, limit \(Int(SamplerInstrument.maxDetuneCents)))"
         continue
       }
       if target < filled { evict(target) } else { filled += 1 }
@@ -297,6 +318,19 @@ public final class SamplerBank: @unchecked Sendable {
       return target
     }
     return nil
+  }
+
+  /// Why `slot(for:)` turned `source` away: not on disk, failed to load (with the system's
+  /// error, e.g. an OSStatus), silent, or out of tune. nil if it hasn't been tried or loaded.
+  public func loadFailure(for source: SamplerSource) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return bySource[source] == nil ? failures[source] : nil
+  }
+
+  private static func describe(_ error: Error) -> String {
+    let e = error as NSError
+    return "\(e.domain) \(e.code): \(e.localizedDescription)"
   }
 
   /// Off the audio thread: give back a reference `slot(for:)` took.

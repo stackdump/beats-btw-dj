@@ -66,6 +66,21 @@ struct SamplerTests {
     )
   }
 
+  /// `make sampler-sweep` prints every sound the bank turns away and why (the OSStatus,
+  /// silence or tuning error), so a catalog that quietly lost sounds is visible.
+  @Test func turnedAwaySoundsAreReported() {
+    var report: [String] = []
+    for s in allSounds {
+      let bank = SamplerBank(sampleRate: sr)
+      if bank.slot(for: s.sources) != nil { continue }
+      let why = s.sources.map { bank.loadFailure(for: $0) ?? "no reason recorded" }
+      report.append("\(s.category)\t\(s.name)\t\(why.joined(separator: "; "))")
+      #expect(!why.contains("no reason recorded"), "\(s.name): turned away with no reason")
+    }
+    print("turned away (\(report.count) of \(allSounds.count)):")
+    for line in report { print("  " + line) }
+  }
+
   @Test func silentOrDetunedSoundsAreTurnedAway() {
     // Singing bowls ring ~50 cents off; at least one is turned away (sound check, not a name list)
     let bowls = catalog.sounds["fx.bowl"] ?? []
