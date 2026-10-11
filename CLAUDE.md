@@ -83,8 +83,10 @@ its copy; the two are now independent. Rules inherited from that split:
   articulation and iOS copies count once). beats' composer still picks its instrument names
   — tracks stay beats-identical — and each name maps to a category; a role (all its riff
   variants) plays a pick from that category's pool seeded by the track seed + role, then the
-  rest of the pool, then the category's General MIDI programs (`gs_instruments.dls`), then
-  its synth voice. `keepSynth` categories offer the synth voice in the pool too. New content
+  rest of the pool, then the category's `gm` programs from each SoundFont, then — `keepSynth`
+  categories — its synth voice, else Apple's GM (`gs_instruments.dls`). `keepSynth`
+  categories offer the synth voice as a pick beside installed sounds (with none, the
+  SoundFont comes first: guitar.distorted, keys.harpsichord). New content
   joins the pools when installed — no code change; picks move when the pool does. Every
   sampler is level-normalised on load (`normalize`, to the lead voice's −27.5 dB on the
   reference phrase), so no per-instrument gains. Each deck owns a `SamplerBank` (`WaveDeckSource.samplers`); its
@@ -92,6 +94,12 @@ its copy; the two are now independent. Rules inherited from that split:
   sample-exact and offline rendering works. Compile with the deck's options
   (`Deck.waveOptions` / `.extended(samplers:seed:)`, seed = the track's) or the instrument
   stays a synth voice; a recompile without the seed (section jumps!) would change the picks.
+- SoundFonts (`SamplerSource.sf2`, melodic bank 0x79): `.sf2` files in
+  `~/Library/Application Support/dj-vevr-se/soundfonts` (`$DJ_SOUNDFONTS` overrides), other
+  banks by name, then `MuseScore_General.sf2` (MIT, FluidR3-based) last as the floor. `make
+  soundfonts` downloads it from MuseScore's mirror, sha256-pinned; never commit a bank. The
+  load-time checks apply as to EXS (SoundFontTests prints what they turn away; the bank's
+  Synth Bass 1 dies within 0.1 s, Choir Aahs is +32 cents). Tests skip without the bank.
 - Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
   `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
   uninitialises). Old EXS files with 31-char truncated sample names are patched into

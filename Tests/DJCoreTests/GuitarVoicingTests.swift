@@ -5,15 +5,19 @@ import Testing
 /// End to end: the generator writes tracks whose guitars play sampled guitars. beats'
 /// composer picks `acoustic-guitar` / `electric-guitar` / `distorted-guitar` for a role in
 /// some genres (`instrumentSets`); `VoiceCatalog` turns that into a seeded pick from the
-/// category's installed sounds. Each test finds a genre + seed whose track lands on a real
-/// guitar sample (not the pluck synth, not General MIDI), then renders that role's stem.
+/// category's installed sounds, then its SoundFont programs. Each test finds a genre + seed
+/// whose track lands on a real guitar sample — an EXS from the category's pool or a SoundFont
+/// guitar program, not the pluck synth, not Apple's General MIDI — then renders that role's
+/// stem.
 ///
 /// Gap (by design of beats' tables, not a bug here): only `melody` and `bass` ever get a
 /// guitar. `harmony` is always `warm-pad`/`dark-pad` (set in `compose`), and `arp` exists
 /// only in edm/synthwave/trance with pluck pools; their fallback sets hold no guitar either.
-/// `guitar.distorted` is `keepSynth`, so its `gm` programs (30, 29) are never offered: with no
-/// distorted-guitar EXS installed (none ships with Logic/GarageBand here), metal and
-/// speedcore guitars always play the synth voice, and that test skips.
+/// No distorted-guitar EXS ships with Logic/GarageBand here, and `guitar.distorted` is
+/// `keepSynth`, so Apple's GM programs are never offered: without a SoundFont, metal and
+/// speedcore guitars play the synth voice and that test skips. With one (`make soundfonts`),
+/// an empty pool offers no synth pick, so they play the bank's Distortion Guitar (GM 30,
+/// 0-based; 1-based 31), else its Overdriven Guitar (29).
 struct GuitarVoicingTests {
   let sr = 48_000.0
   let catalog = VoiceCatalog.shared
@@ -28,6 +32,16 @@ struct GuitarVoicingTests {
   static func installed(_ category: String) -> Bool {
     VoiceCatalog.shared.pool(category).contains { s in
       s.sources.contains { if case .exs = $0 { true } else { false } }
+    }
+  }
+
+  static var soundFont: Bool { !VoiceCatalog.shared.soundFonts.isEmpty }
+
+  /// A sample, not a synth voice or Apple's GM: an EXS or a SoundFont program.
+  static func sampled(_ s: SamplerSource?) -> Bool {
+    switch s {
+    case .exs, .sf2: true
+    default: false
     }
   }
 
@@ -49,8 +63,8 @@ struct GuitarVoicingTests {
 
   @Test(
     .enabled(
-      if: installed("guitar.distorted"),
-      "no Logic/GarageBand distorted guitar installed on this Mac"))
+      if: installed("guitar.distorted") || soundFont,
+      "no distorted guitar EXS and no SoundFont (make soundfonts) on this Mac"))
   func distortedGuitarTracksPlayASampledGuitar() throws {
     try check("distorted-guitar", "guitar.distorted")
   }
@@ -83,8 +97,8 @@ struct GuitarVoicingTests {
         let role = b.track.group ?? b.riffGroup
         // the pick is the synth voice (keepSynth) or nothing is installed: next seed
         guard
-          case .exs = catalog.sources(instrument: instrument, role: role, seed: Double(seed))?
-            .first
+          Self.sampled(
+            catalog.sources(instrument: instrument, role: role, seed: Double(seed))?.first)
         else { continue }
         let bank = SamplerBank(sampleRate: sr)
         let prepared = WaveRunner.prepare(
@@ -105,14 +119,19 @@ struct GuitarVoicingTests {
     let source = try #require(f.bank.source(of: f.slot))
     print("\(category): \(f.genre) seed \(f.seed) role \(f.role) nets \(f.nets) → \(source)")
 
-    // (2) a real sample from the category, not General MIDI (and the lane is not the synth)
-    guard case .exs(let path) = source else {
+    // (2) a real sample from the category — its pool or its SoundFont programs — not Apple's
+    // General MIDI (and the lane is not the synth)
+    switch source {
+    case .exs(let path):
+      #expect(
+        catalog.pool(category).contains { $0.sources.contains(.exs(path)) },
+        "\(path) is not in \(category)")
+    case .sf2(_, let program):
+      #expect(catalog.gm[category]?.contains(program) == true, "\(source) is not in \(category)")
+    case .gm:
       Issue.record("\(category) fell back to \(source)")
       return
     }
-    #expect(
-      catalog.pool(category).contains { $0.sources.contains(.exs(path)) },
-      "\(path) is not in \(category)")
     for n in f.nets {
       for li in f.prepared.byNet[n]! where f.prepared.lanes[li].isTonal {
         #expect(f.prepared.lanes[li].samplerSlot == f.slot, "\(n) plays the role's pick")

@@ -22,7 +22,8 @@ public final class VoiceCatalog: @unchecked Sendable {
   public static let shared: VoiceCatalog = {
     do {
       return try VoiceCatalog(
-        json: .parse(try loadText()), roots: Array(SamplerSource.roots.values))
+        json: .parse(try loadText()), roots: Array(SamplerSource.roots.values),
+        soundFonts: SamplerSource.soundFonts())
     } catch { fatalError("voice categories: \(error)") }
   }()
 
@@ -53,8 +54,10 @@ public final class VoiceCatalog: @unchecked Sendable {
   let extraPools: [String: [String]]
   /// Installed sounds, grouped by category, each group sorted by name.
   public let sounds: [String: [CatalogSound]]
+  /// SoundFont banks (.sf2 paths) whose `gm` programs come after the pool, best first.
+  public let soundFonts: [String]
 
-  public init(json: JSONValue, roots: [String]) throws {
+  public init(json: JSONValue, roots: [String], soundFonts: [String] = []) throws {
     rules = (json["rules"]?.array ?? []).compactMap { r in
       guard let c = r["category"]?.string else { return nil }
       return Rule(
@@ -74,6 +77,7 @@ public final class VoiceCatalog: @unchecked Sendable {
     }
     extraPools = pools
     sounds = Self.scan(roots: roots, rules: rules)
+    self.soundFonts = soundFonts
   }
 
   // MARK: scan
@@ -155,23 +159,29 @@ public final class VoiceCatalog: @unchecked Sendable {
   }
 
   /// What a net with `instrument` should try, in order: the seeded pick from its category's
-  /// pool, the rest of the pool, then the category's GM programs — or, for a `keepSynth`
-  /// category, its synth voice instead of GM. nil when the pick is the synth voice or the
-  /// instrument has no category.
+  /// pool, the rest of the pool, then the category's `gm` programs from each SoundFont, then
+  /// — for a `keepSynth` category — its synth voice, else macOS's own GM programs. nil when
+  /// the pick is the synth voice or the instrument has no category.
+  ///
+  /// A `keepSynth` category offers its synth voice as one of the picks only beside installed
+  /// sounds; with none (no distorted guitar ships with Logic) a SoundFont program comes first.
   public func sources(instrument: String, role: String, seed: Double) -> [SamplerSource]? {
     guard let category = categoryOf[instrument] else { return nil }
     let pool = pool(category)
     let synth = keepSynth.contains(category)
-    let count = pool.count + (synth ? 1 : 0)
+    let offersSynth = synth && !pool.isEmpty
+    let count = pool.count + (offersSynth ? 1 : 0)
     var ordered: [SamplerSource] = []
     if count > 0 {
       let pick = Int(Self.stableHash("\(seed)|\(role)|\(category)") % UInt64(count))
-      if synth && pick == pool.count { return nil }
+      if offersSynth && pick == pool.count { return nil }
       for k in 0..<pool.count { ordered += pool[(pick + k) % pool.count].sources }
     }
-    // A category with a synth voice of its own falls back to it, not to General MIDI (a
-    // tuned plucked sitar beats the GM one).
-    if !synth { ordered += (gm[category] ?? []).map { .gm($0) } }
+    let programs = gm[category] ?? []
+    for bank in soundFonts { ordered += programs.map { .sf2(bank, program: $0) } }
+    // A category with a synth voice of its own falls back to it, not to Apple's General MIDI
+    // (a tuned plucked sitar beats the GM one).
+    if !synth { ordered += programs.map { .gm($0) } }
     return ordered.isEmpty ? nil : ordered
   }
 

@@ -128,8 +128,8 @@ extension AppModel {
     return names.sorted()
   }
 
-  /// What an instrument can sound like here: its category and how many sampled sounds this
-  /// Mac has for it (a track picks one by seed), or just its synth voice.
+  /// What an instrument can sound like here: its category, how many sampled sounds this Mac
+  /// has for it (a track picks one by seed), its fallback (SoundFont or GM), or its synth voice.
   static func soundOf(_ name: String) -> String {
     if name.hasPrefix("drums") { return "drum kit" }
     let v = InstrumentTable.shared.voice(instrument: name, group: "melody")
@@ -138,7 +138,13 @@ extension AppModel {
     guard let category = catalog.categoryOf[name] else { return synth }
     let n = catalog.pool(category).count
     let keeps = catalog.keepSynth.contains(category)
-    return "\(category): \(n) sampled" + (keeps ? " or \(synth)" : n == 0 ? ", GM" : "")
+    var out = "\(category): \(n) sampled"
+    if !catalog.soundFonts.isEmpty && catalog.gm[category] != nil {
+      out += ", SoundFont"
+    } else if !keeps && n == 0 {
+      out += ", GM"
+    }
+    return out + (keeps ? " or \(synth)" : "")
   }
 
   /// Render a short phrase on one instrument, save it as a WAV and play it on the Mac's

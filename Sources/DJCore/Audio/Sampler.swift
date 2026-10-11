@@ -3,18 +3,23 @@ import AudioToolbox
 import Foundation
 import Synchronization
 
-/// Where a sampled instrument comes from. Both live on this Mac and are never copied into
-/// the repo or published: Apple's licence covers playing them, not redistributing them.
+/// Where a sampled instrument comes from. All of it lives on this Mac and is never copied
+/// into the repo or published: Apple's licence covers playing its content, not redistributing
+/// it, and SoundFonts are downloaded (`make soundfonts`), not checked in.
 public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
   /// A Logic / GarageBand EXS instrument (absolute path).
   case exs(String)
   /// A General MIDI program (0-based) from macOS's own gs_instruments.dls.
   case gm(Int)
+  /// A General MIDI program (0-based) from a SoundFont bank (absolute path to the .sf2),
+  /// melodic bank (MSB 0x79). Drum kits (0x78) are never sampled: beats' kits play as is.
+  case sf2(String, program: Int)
 
   public var description: String {
     switch self {
     case .exs(let p): return "exs:" + ((p as NSString).lastPathComponent as String)
     case .gm(let n): return "gm:\(n)"
+    case .sf2(let p, let n): return "sf2:" + ((p as NSString).lastPathComponent as String) + "#\(n)"
     }
   }
 
@@ -37,9 +42,29 @@ public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
 
   public var isAvailable: Bool {
     switch self {
-    case .exs(let p): return FileManager.default.fileExists(atPath: p)
+    case .exs(let p), .sf2(let p, _): return FileManager.default.fileExists(atPath: p)
     case .gm: return FileManager.default.fileExists(atPath: Self.gmBank.path)
     }
+  }
+
+  /// Where SoundFonts are looked for: `$DJ_SOUNDFONTS`, else
+  /// `~/Library/Application Support/dj-vevr-se/soundfonts` (`make soundfonts` fills it).
+  public static var soundFontDir: String {
+    if let d = ProcessInfo.processInfo.environment["DJ_SOUNDFONTS"], !d.isEmpty { return d }
+    return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("dj-vevr-se/soundfonts").path
+  }
+
+  /// The floor under every category: General MIDI from a free, complete bank.
+  public static let floorSoundFont = "MuseScore_General.sf2"
+
+  /// The .sf2 banks in `dir`, in the order voicing tries them: any others by name, then
+  /// `floorSoundFont` last (the floor).
+  public static func soundFonts(in dir: String = soundFontDir) -> [String] {
+    let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+    return names.filter { $0.lowercased().hasSuffix(".sf2") }
+      .sorted { ($0 == floorSoundFont ? 1 : 0, $0) < ($1 == floorSoundFont ? 1 : 0, $1) }
+      .map { (dir as NSString).appendingPathComponent($0) }
   }
 }
 
@@ -70,9 +95,10 @@ public final class SamplerInstrument: @unchecked Sendable {
   private let left: UnsafeMutablePointer<Float>
   private let right: UnsafeMutablePointer<Float>
   private var timestamp = AudioTimeStamp()
-  /// What `normalize` last measured: RMS (dB) on the reference phrase and the A3 tuning
-  /// error (cents). Kept so a bank can say why it turned a sound away.
-  private(set) var lastCheck: (rmsDB: Double, cents: Double)?
+  /// What `normalize` last measured: RMS (dB) on the reference phrase, the A3 tuning error
+  /// (cents) and whether the held A3 still sounded when it was measured. Kept so a bank can
+  /// say why it turned a sound away.
+  private(set) var lastCheck: (rmsDB: Double, cents: Double, held: Bool)?
 
   public init(source: SamplerSource, sampleRate: Double, gain: Double = 1) throws {
     self.source = source
@@ -91,6 +117,10 @@ public final class SamplerInstrument: @unchecked Sendable {
     case .gm(let program):
       try unit.loadSoundBankInstrument(
         at: SamplerSource.gmBank, program: UInt8(clamping: program),
+        bankMSB: UInt8(kAUSampler_DefaultMelodicBankMSB), bankLSB: UInt8(kAUSampler_DefaultBankLSB))
+    case .sf2(let path, let program):
+      try unit.loadSoundBankInstrument(
+        at: URL(fileURLWithPath: path), program: UInt8(clamping: program),
         bankMSB: UInt8(kAUSampler_DefaultMelodicBankMSB), bankLSB: UInt8(kAUSampler_DefaultBankLSB))
     }
     au = unit.auAudioUnit
@@ -166,8 +196,8 @@ public final class SamplerInstrument: @unchecked Sendable {
     send(0xB0, 123, 0, at: 0)
     au.reset()
     timestamp.mSampleTime = 0
-    lastCheck = (rms, pitch.cents)
-    return rms > Self.silentRMSdB && abs(pitch.cents) <= Self.maxDetuneCents
+    lastCheck = (rms, pitch.cents, pitch.level > 0)
+    return rms > Self.silentRMSdB && pitch.level > 0 && abs(pitch.cents) <= Self.maxDetuneCents
   }
 
   deinit {
@@ -306,7 +336,10 @@ public final class SamplerBank: @unchecked Sendable {
         let cents = c.map { String(format: "%+.0f", $0.cents) } ?? "?"
         failures[s] =
           (c.map { $0.rmsDB <= SamplerInstrument.silentRMSdB } ?? false)
-          ? "silent (\(rms) dB)" : "out of tune (\(cents) cents, limit \(Int(SamplerInstrument.maxDetuneCents)))"
+          ? "silent (\(rms) dB)"
+          : (c.map { !$0.held } ?? false)
+            ? "silent 0.1 s into a held note: too short to tune"
+            : "out of tune (\(cents) cents, limit \(Int(SamplerInstrument.maxDetuneCents)))"
         continue
       }
       if target < filled { evict(target) } else { filled += 1 }
@@ -484,7 +517,8 @@ enum ExsNames {
 
 extension WaveDeckSource {
   /// Main thread: which of the latest project's nets play on a sampler, and from what
-  /// (net id → "exs:Vintage Strat.exs" / "gm:25"). The rest play synth voices.
+  /// (net id → "exs:Vintage Strat.exs" / "sf2:MuseScore_General.sf2#30" / "gm:25"). The
+  /// rest play synth voices.
   public var sampledNets: [String: String] {
     guard let p = latest else { return [:] }
     var out: [String: String] = [:]

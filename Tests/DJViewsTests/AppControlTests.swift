@@ -116,7 +116,9 @@ struct AppControlTests {
       m, "audition", #"{"instrument":"electric-guitar","notes":[40,45,50],"play":false}"#)
     #expect(a["sound"]?.string?.hasPrefix("guitar.electric") == true)
     let plays = a["plays"]?.string ?? ""
-    #expect(plays.hasPrefix("exs:") || plays.hasPrefix("gm:"), "played \(plays)")
+    #expect(
+      plays.hasPrefix("exs:") || plays.hasPrefix("sf2:") || plays.hasPrefix("gm:"),
+      "played \(plays)")
     #expect((a["rmsDB"]?.double ?? -200) > -40)
     #expect(a["path"]?.string?.hasSuffix("electric-guitar.wav") == true)
     #expect(try await call(m, "state") == before)

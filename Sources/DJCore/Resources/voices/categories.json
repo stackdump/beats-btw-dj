@@ -1,5 +1,5 @@
 {
-  "comment": "Voicing (VoiceCatalog): sampled instruments installed on this Mac are scanned and sorted into categories by `rules` (first match wins; `any` = one of these words in the folder/name, `not` = none of these). Each beats instrument name maps to a category in `instruments`; a net plays a seeded pick from that category's pool (by track seed + role), then the rest of the pool, then `gm` (General MIDI programs, 0-based), then its synth voice. Categories in `keepSynth` also offer the original synth voice in the pool. A category no instrument maps to (fx.*: singing bowls are pitched ~50 cents off) is catalogued but never picked; an instrument no rule matches (Mellotron.exs, a multi-sound patch) is left out. Nothing here is a sample: the content stays on this Mac.",
+  "comment": "Voicing (VoiceCatalog): sampled instruments installed on this Mac are scanned and sorted into categories by `rules` (first match wins; `any` = one of these words in the folder/name, `not` = none of these). Each beats instrument name maps to a category in `instruments`; a net plays a seeded pick from that category's pool (by track seed + role), then the rest of the pool, then `gm` (General MIDI programs, 0-based) from each SoundFont found (`make soundfonts`: MuseScore_General.sf2 is the floor), then its synth voice for a `keepSynth` category, else `gm` from macOS's own bank. Categories in `keepSynth` also offer the original synth voice as a pick beside their installed sounds. A category no instrument maps to (fx.*: singing bowls are pitched ~50 cents off) is catalogued but never picked; an instrument no rule matches (Mellotron.exs, a multi-sound patch) is left out. Nothing here is a sample: the content stays on this Mac.",
   "rules": [
     {"category": "skip", "any": ["drums & percussion", "drum kit", "ultrabeat", "drum machine", " kit", "orchestral kit"]},
     {"category": "keys.organ", "any": ["organ"]},
@@ -36,7 +36,7 @@
   },
   "gm": {
     "guitar.acoustic": [25, 24], "guitar.electric": [27, 26], "guitar.distorted": [30, 29],
-    "bass.electric": [33, 34], "bass.acoustic": [32], "bass.sub": [38], "bass.synth": [38, 39],
+    "bass.electric": [33, 34], "bass.acoustic": [32], "bass.sub": [38, 39], "bass.synth": [38, 39],
     "keys.piano": [0, 1], "keys.epiano": [4, 5], "keys.organ": [16, 17], "keys.clav": [7],
     "keys.harpsichord": [6],
     "mallet": [12, 11, 108, 10, 114], "synth.bell": [14, 98],

@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-rt-test app run-app djctl mcp-install sampler-sweep fmt lint fixtures-beats fixtures-go beats-tables
+        swift-build swift-test swift-rt-test app run-app djctl mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-go beats-tables
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -54,6 +54,26 @@ run-app: app
 # the default suite takes one per category. Slow: each load reads its samples into memory.
 sampler-sweep:
 	DJ_SAMPLER_SWEEP=1 swift test $(SWIFT_TEST_FLAGS) --filter 'SamplerTests'
+
+# SoundFonts for voicing (`SamplerSource.soundFonts`), downloaded, never committed:
+# MuseScore_General.sf2 (MIT, FluidR3-based) is the General MIDI floor under every category.
+# The SF2, not the .sf3 (AUSampler reads no Ogg-compressed banks). Pinned by sha256.
+SOUNDFONT_DIR ?= $(if $(DJ_SOUNDFONTS),$(DJ_SOUNDFONTS),$(HOME)/Library/Application Support/dj-vevr-se/soundfonts)
+MUSESCORE_SF2_URL := https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General
+MUSESCORE_SF2_SHA256 := ee51d2c4b1525e70f19a45909c4fd7a2e26d91d115fa89dbf5a6bc413d8b9bf3
+soundfonts:
+	@mkdir -p "$(SOUNDFONT_DIR)"
+	@cd "$(SOUNDFONT_DIR)" && \
+	if ! echo "$(MUSESCORE_SF2_SHA256)  MuseScore_General.sf2" | shasum -a 256 -c --status 2>/dev/null; then \
+	  echo "downloading MuseScore_General.sf2 (206 MB)"; \
+	  curl -fL --progress-bar -o MuseScore_General.sf2.part "$(MUSESCORE_SF2_URL)/MuseScore_General.sf2" && \
+	  echo "$(MUSESCORE_SF2_SHA256)  MuseScore_General.sf2.part" | shasum -a 256 -c && \
+	  mv MuseScore_General.sf2.part MuseScore_General.sf2 || { rm -f MuseScore_General.sf2.part; exit 1; }; \
+	fi && \
+	for f in MuseScore_General_License.md MuseScore_General_Readme.md VERSION; do \
+	  curl -fsSL -o "$$f" "$(MUSESCORE_SF2_URL)/$$f" || exit 1; \
+	done && \
+	echo "MuseScore_General $$(cat VERSION) in $(SOUNDFONT_DIR)"
 
 # MCP server for the running app (`djctl mcp`), registered for every claude on this Mac.
 # Installed as a copy so `swift build -c release` (e.g. swift-rt-test) can't swap it mid-session.

@@ -97,7 +97,7 @@ struct VoiceCatalogTests {
     #expect(synth > 0 && synth < 80)
     #expect(
       catalog.sources(instrument: "distorted-guitar", role: "melody", seed: 3) == nil
-        || !catalog.pool("guitar.distorted").isEmpty)
+        || !catalog.pool("guitar.distorted").isEmpty || !catalog.soundFonts.isEmpty)
   }
 
   @Test func synthCategoriesFallBackToTheirSynthNotGM() {
