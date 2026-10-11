@@ -4,7 +4,7 @@ PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test swift-test-filter swift-rt-test app run-app app-release run-app-release djctl \
-        mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-go beats-tables
+        mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-go beats-tables share-url-check
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -149,6 +149,12 @@ beats-tables:
 fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-parity.mjs
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-wave.mjs
+	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-share-url.mjs
+
+# Reverse direction: real JS must accept the share URLs Swift builds.
+share-url-check:
+	DJ_SHARE_URL_OUT=$(CURDIR)/.build/swift-share-urls.json $(MAKE) swift-test
+	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-share-url-check.mjs .build/swift-share-urls.json
 
 # Needs go on PATH and a beats checkout; see scripts/beats-go-oracle.mjs.
 BEATS_REPO ?= $(HOME)/Workspace/beats-bitwrap-io

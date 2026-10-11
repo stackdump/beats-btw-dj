@@ -93,9 +93,27 @@ go-pflow `petri` semantics where JS leaves gaps.
 2.4 **(done — `Sources/DJCore/Beats/Generator/`; arrangeWithOpts / counter-melody / macros deferred, see below)** Port the composer in dependency order: core → theory → euclidean →
 markov → riffs → variety → countermelody → arrange → theme → groove →
 structure → composer. Gate each on fixtures.
-2.5 **(done — `Sources/DJCore/Beats/Share.swift`; URL/gzip decoding and raw-`nets` envelopes deferred)** Share envelope → params (`shareFromPayload`), including tempo / swing /
+2.5 **(done — `Share.swift`, `ShareURL.swift`, `ShareCodec.swift`; raw-`nets` envelopes that carry a `structure` other than "loop" still need arrange, see below)** Share envelope → params (`shareFromPayload`), including tempo / swing /
 humanize overrides, cohesion pin (v1 for envelopes without the field),
 traits, `macroCurve`.
+Follow-up slice, all proven by `share-urls.json` (`scripts/beats-share-url.mjs`, real JS):
+`ShareLink.parse` = `parseShareFromUrl` (`?cid=&z=` verified against the CID and refused on
+mismatch; legacy `?p=` and `?g=&s=&structure=&t=`; short `?cid=` links come back as
+`.needsFetch` with the legacy fallback, and the fetched text goes through `Share.decode`,
+which re-hashes); `ShareCodec` = base64url + gzip on the Compression framework's raw deflate
+(RFC 1952 header / CRC-32 / ISIZE added by hand, no zlib dependency; the JS CompressionStream
+and node zlib streams, stored blocks included, all inflate, damaged ones throw);
+`ShareLink.forms` builds short / full URLs; `Share.rawNetsProject()` = the `_bootGenerate`
+raw-`nets` branch (name via `deriveShareName`, tempo / swing / humanize / initialMutes from
+overrides) with model CID, doc sha and bytes equal to JS. Reverse direction: `make
+share-url-check` has JS's own `parseShareFromUrl` accept the URLs Swift built. Left out, on
+purpose: (1) raw-`nets` + `structure` ≠ "loop" needs `ArrangeWithOpts` (Generator, owned by
+another change) — `needsArrange` is true and `project()` is nil rather than a silently
+un-arranged song; (2) fetching short links (network; the caller does it); (3) Swift's deflate
+output is not byte-identical to CompressionStream's, so only the decoded text, CID and
+envelope are compared, never the `z` bytes; (4) `fx` in a raw-nets envelope is carried in
+`overrides` but `Project` has no fx model; (5) a `#fragment` link is read as a Swift-only
+extension (JS reads `location.search` only).
 2.6 **(done — `Sources/DJCore/Beats/Wave/`; parity form, real-time hardening is 3.1)** Port the wave engine (`net.js`, `synth.js`, `runner.js`): trace exact,
 audio within 1e-5 (bit-exact where libm agrees), same as beats-py.
 2.7 **(done — `make fixtures-go`, `Tests/DJCoreTests/BeatsGoOracleTests.swift`; finding: Go ≠ JS end to end; JS is canonical, see GO-DIVERGENCE.md)** Second oracle: run the Go generator (`tools/parity`) on the same inputs

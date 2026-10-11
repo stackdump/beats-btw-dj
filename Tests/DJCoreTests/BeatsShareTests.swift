@@ -93,6 +93,10 @@ struct ShareEnvelopeTests {
 
   @Test func rawNetsEnvelopesAreNotComposed() throws {
     let s = Share(payload: try JSONValue.parse(#"{"genre":"techno","nets":{"a":{}}}"#))
-    #expect(s.project() == nil)
+    // loaded literally (BeatsShareURLTests checks them against JS), never composed
+    #expect(s.project()?.nets.keys == ["a"])
+    let arranged = Share(
+      payload: try JSONValue.parse(#"{"genre":"techno","nets":{"a":{}},"structure":"standard"}"#))
+    #expect(arranged.project() == nil)
   }
 }
