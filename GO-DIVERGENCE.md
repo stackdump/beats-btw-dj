@@ -42,8 +42,22 @@ Different nets, so different CIDs even for identical sections. (Go also produced
 fewer slot nets in the one case inspected, which follows from the RNG-driven
 blueprint pick in #2.)
 
+## 4. JS-internal: a share's counterMelody overlay never plays in the browser
+
+Not a Go/JS difference, but one for the same list. On the composer path
+`lib/backend/index.js` runs `arrangeWithOpts(el._project, …, { overlayOnly: true, … })` on
+the worker's project-sync JSON. `injectCounterMelody` simulates the source nets, which are
+plain objects there, so `nb.resetState()` throws (`nb.resetState is not a function`) whenever an
+entry's section exists. The catch only logs, and since the throw comes after `fadeIn` /
+`drumBreak` / `feelCurve` mutated `el._project` in place but before `project-load`, the worker
+plays none of the overlay. Full arranges hit the same throw on cloned variant nets
+(`cloneBundle` is a JSON round trip). Swift deliberately runs the overlay on parsed nets, so the
+counter-melody plays (ROADMAP 2.8, "Deliberate deviation"); fixtures hold Swift to what the JS
+function does with `NetBundle`s, and `wireProbe` records the browser throw.
+
 ## What to decide in beats
 
 Either align Go to JS (channels, a mulberry32/LCG port, accumulator nets), or
-declare Go output non-canonical and keep Go away from share regeneration. Until
-then nothing in the Swift app depends on Go.
+declare Go output non-canonical and keep Go away from share regeneration. Until then nothing
+in the Swift app depends on Go. For #4, either parse the nets before simulating (then shares
+with a counter-melody start to sound different in the browser) or drop the directive.

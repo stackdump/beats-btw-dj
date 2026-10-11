@@ -75,7 +75,7 @@ channel 1; verify the `[MIXXX]`-only Inpulse entries (FX/sampler pads, PFL,
 load, browser); pad NOTE mode on the MPK. A `djctl learn` wizard is deferred —
 re-capture + fixture regeneration covers preset changes for now.
 
-## Phase 2 — Native music generation with CID equivalence **(next — JS read, no Swift yet)**
+## Phase 2 — Native music generation with CID equivalence **(done through 2.8)**
 
 Goal: the Swift app composes and renders beats tracks itself, and for the
 same share envelope produces the **same CIDs** as beats.
@@ -90,10 +90,10 @@ structure, cohesion) → project JSON + model CID; module-level vectors (RNG,
 bjorklund, motif, structure). Swift tests compare byte-for-byte.
 2.3 **(done — `Sources/DJCore/Beats/PFlow.swift`; layout recompute and runtime fire/isEnabled deferred to 2.6)** Port `pflow.js` (NetBundle, parse, `projectToJSON`, durations, CID) —
 go-pflow `petri` semantics where JS leaves gaps.
-2.4 **(done — `Sources/DJCore/Beats/Generator/`; arrangeWithOpts / counter-melody / macros deferred, see below)** Port the composer in dependency order: core → theory → euclidean →
+2.4 **(done — `Sources/DJCore/Beats/Generator/`; arrangeWithOpts and counter-melody are 2.8; macros are Phase 3)** Port the composer in dependency order: core → theory → euclidean →
 markov → riffs → variety → countermelody → arrange → theme → groove →
 structure → composer. Gate each on fixtures.
-2.5 **(done — `Share.swift`, `ShareURL.swift`, `ShareCodec.swift`; raw-`nets` envelopes that carry a `structure` other than "loop" still need arrange, see below)** Share envelope → params (`shareFromPayload`), including tempo / swing /
+2.5 **(done — `Share.swift`, `ShareURL.swift`, `ShareCodec.swift`; raw-`nets` envelopes with a `structure` and the overlays are 2.8)** Share envelope → params (`shareFromPayload`), including tempo / swing /
 humanize overrides, cohesion pin (v1 for envelopes without the field),
 traits, `macroCurve`.
 Follow-up slice, all proven by `share-urls.json` (`scripts/beats-share-url.mjs`, real JS):
@@ -107,9 +107,9 @@ and node zlib streams, stored blocks included, all inflate, damaged ones throw);
 raw-`nets` branch (name via `deriveShareName`, tempo / swing / humanize / initialMutes from
 overrides) with model CID, doc sha and bytes equal to JS. Reverse direction: `make
 share-url-check` has JS's own `parseShareFromUrl` accept the URLs Swift built. Left out, on
-purpose: (1) raw-`nets` + `structure` ≠ "loop" needs `ArrangeWithOpts` (Generator, owned by
-another change) — `needsArrange` is true and `project()` is nil rather than a silently
-un-arranged song; (2) fetching short links (network; the caller does it); (3) Swift's deflate
+purpose: (1) raw-`nets` + `structure` ≠ "loop" (`needsArrange`) is arranged since 2.8 —
+share-urls.json still records only the boot project before arrange, arrange.json proves the
+rest; (2) fetching short links (network; the caller does it); (3) Swift's deflate
 output is not byte-identical to CompressionStream's, so only the decoded text, CID and
 envelope are compared, never the `z` bytes; (4) `fx` in a raw-nets envelope is carried in
 `overrides` but `Project` has no fx model; (5) a `#fragment` link is read as a Swift-only
@@ -118,9 +118,87 @@ extension (JS reads `location.search` only).
 audio within 1e-5 (bit-exact where libm agrees), same as beats-py.
 2.7 **(done — `make fixtures-go`, `Tests/DJCoreTests/BeatsGoOracleTests.swift`; finding: Go ≠ JS end to end; JS is canonical, see GO-DIVERGENCE.md)** Second oracle: run the Go generator (`tools/parity`) on the same inputs
 for model CIDs.
-Later in this phase: raw-`nets` envelopes + `arrangeWithOpts`, overlay
-directives (fadeIn, drumBreak, feelCurve, counterMelody), `tracks`/`fx`
-overrides.
+2.8 **(done — `Generator/Arrange.swift`, `Generator/CounterMelody.swift`, `Share.project()` /
+`rawNetsProject()`, `TrackSpec.layers`; `make fixtures-beats` runs `scripts/beats-arrange.mjs`,
+`Tests/DJCoreTests/BeatsArrangeTests.swift`)** The deferred composer features: `arrangeWithOpts`
+(full and `overlayOnly`), the overlay directives (`fadeIn`, `drumBreak`, `feelCurve`,
+`macroCurve`, `counterMelody`), raw-`nets` envelopes with a `structure`, and the `tracks` /
+`fx` / `initialMutes` overrides. Proven on fixtures from the real JS at beats `668978e`: node
+count, canonical bytes, model CID and the sha of the serialized document must all match, and
+where the JS throws the Swift must throw. arrange.json holds 252 overlays on composed projects
+(8 genres × seeds × {minimal, standard, extended} × {v1, v2}; 26 add a counter-melody net),
+343 full arranges (6 genres × v1/v2 × 9 sizes plus Object.prototype names × parsed / wire input
+× option sets incl. authored `sections`, `maxVariants`, `velocityDeltas`, counter-melody; 82 of
+them are JS throws), 12 hand-written wire documents, 23 whole share envelopes (composer +
+overrides + overlay, and raw `nets` + arrange + overrides, with their share CIDs; 11 raw) and 27
+override cases run through the real `applyShareOverrides`. Every overlay directive completes in
+≥ 1 v1 and ≥ 1 v2 case per genre, and every arrange option per genre, cohesion and input form
+(`fixturesCoverTheDirectives`). The arrange tables are lifted from the JS source into the
+fixture and compared. Debugging a mismatch: `node scripts/beats-arrange.mjs --dump
+arranges:12` prints the JS document, `DJ_ARRANGE_DUMP=<dir>` makes the test write the Swift one.
+
+What the port reproduces, found by the fixtures rather than assumed:
+
+- `expandArrangeVariants` clones through JSON and the counter-melody net is a plain object, so
+  those nets lack `resetState`; `simulateMusicNotes` then throws (`nb.resetState is not a
+  function`). A full arrange with a counter-melody therefore throws unless nothing it simulates
+  was cloned (`of` a single-slot net such as `snare`, or `maxVariants: 1`); a second unscoped
+  entry throws on the first entry's net. Swift tracks the "plain" nets (`ArrangeContext`).
+- A share's raw `nets` reach arrange as unparsed wire JSON: `velocityDeltas` finds no
+  `bindings` to tweak, and the closing `stampDurationSteps` stamps only bindings whose JSON
+  has a finite positive `duration` and no positive `durationSteps`, from the raw (possibly
+  fractional) ms. `ArrangeOpts.wireForm`, `Project(wireJSON:)`.
+- Object.prototype names (`constructor`, `toString`, `__proto__`, …): as a `size` the
+  blueprint lookup finds a function and the arrange throws; as a genre it gets song blueprints
+  without family archetypes; a curve entry naming one keeps its point (the net is built) at a
+  tick that never matches, and a section with such a name never gets a start. `null` entries
+  in `fadeIn` / `sections` / curves / `counterMelody` throw where the JS reads them.
+- `toFixed(6)` in the counter-melody seed rounds the exact binary value half up; `drumBreak`
+  bars can be fractional (the unmute then lands on no transition); fractional velocity deltas
+  are rounded by the re-parse.
+- Order: overrides before the overlay on the composer path (`_applyProjectSync`, then the
+  pending overlay); on the raw path arrange first, overrides once the worker answers. A throw
+  in the raw-path arrange is caught and the project loads as far as it got (stamped); a throw
+  in the composer overlay leaves the composed project (the browser never sends the half-built
+  one). `counterMelody` is never passed to the raw-path arrange.
+- `fx` never touches the project (a fixture checks the document is unchanged); `tracks` is
+  keyed by channel through `parseInt`; `initialMutes` from an override replaces the list.
+
+The app: `TrackSpec(share:)` keeps the overrides and overlay directives in `layers`, and
+`PreparedTrack` plays `compose` → overrides → overlay through the same `Share.finishComposed`;
+`TrackSpec.payload` writes them under their envelope names and `init(payload:)` reads them
+back, so recorded sessions replay the same project (payloads without them are unchanged).
+
+**Deliberate deviation — counterMelody on the composer path (decision to confirm, Matt).** In
+the browser the overlay runs on `el._project`, the worker's plain JSON, so any counter-melody
+entry whose section exists throws (`nb.resetState is not a function`, caught and logged;
+`wireProbe` fixtures) and the browser then drops the *whole* overlay — fadeIn and drumBreak
+included — because the half-built project is never sent to the worker. `Share.project()` and the
+decks run the overlay on the parsed project instead, which is what the JS function produces
+when given `NetBundle`s: the counter-melody plays. Parity is held on that function-level
+behaviour. See GO-DIVERGENCE.md for the beats-side bug.
+
+Left out, and why:
+
+- Raw-`nets` decks: `TrackSpec(share:)` is nil for them; playing one needs a new
+  `DeckSourceDescriptor` case carrying the nets (and a session payload for it).
+  `Share.rawNetsProject()` already builds the project.
+- Known gap in `TrackSpec.payload` (not fixed here): `extra` (traits) is written at the top
+  level, but `shareFromPayload` reads traits only from `payload.traits`, so beats would compose
+  such a payload without its trait overrides. The app's own `init(payload:)` reads them back.
+- The browser's `_normalizeProject` adds stinger nets (`isStingerTrack`) to `initialMutes`
+  before the overrides land; not modelled (as in 2.5), so a raw-`nets` share whose stingers are
+  not already muted differs in `initialMutes`.
+- `feel`, `autoDj`, `macrosDisabled`, `note`, `ui`, `hits`, `loop` overrides: UI state, no
+  model effect.
+- JS coercions on inputs no envelope should carry: non-string `genre` / `name` / `structure`
+  (a non-string structure arranges as an unknown size; JS looks it up by `String(value)`),
+  fractional or non-numeric authored section `steps`, a non-array `active`, non-numeric
+  `velocityDeltas`, net IDs that are Object.prototype names, sibling `bindings` in wire nets
+  (tweak / channel), `null` `tracks` entries. Curve points naming Object.prototype keys mixed
+  with same-tick points assume V8's sort keeps the numeric ones in order (it does for the
+  fixtures; the comparator returns NaN for them).
+- No Go oracle for any of this (`make fixtures-go` covers compose only; JS is canonical).
 
 Done when: every genre × {loop, minimal, standard, extended} × cohesion
 {v1, v2} × N seeds matches project JSON and model CID, share CIDs match, and
