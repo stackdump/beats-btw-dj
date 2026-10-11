@@ -207,7 +207,9 @@ struct RawNetsEnvelopeTests {
       #expect(share.toJSON().jsStringified == r["share"]!.jsStringified, "\(tag)")
       #expect(share.needsArrange == (r["needsArrange"]?.bool ?? false), "\(tag)")
       if share.needsArrange {
-        #expect(share.project() == nil, "\(tag)")
+        // Arranged (no digest here: share-urls.json records the boot project before arrange;
+        // the arranged one is proven by arrange.json, BeatsArrangeTests).
+        #expect(share.project() != nil, "\(tag)")
         arrange += 1
         continue
       }

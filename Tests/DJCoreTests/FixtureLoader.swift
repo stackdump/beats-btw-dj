@@ -199,3 +199,15 @@ func saveSwiftShareURLs(_ rows: [(payload: JSONValue, url: String)]) {
     rows.map { .object(JSONObject([("payload", $0.payload), ("url", .string($0.url))])) })
   try? arr.jsStringified.write(toFile: path, atomically: true, encoding: .utf8)
 }
+
+/// With DJ_ARRANGE_DUMP=<dir>, a mismatching arrange case writes the Swift document (the bytes
+/// behind `docSha`) as `<section>-<index>.swift.json`, to diff against
+/// `node scripts/beats-arrange.mjs --dump <section>:<index>` (BeatsArrangeTests).
+func dumpSwiftDocument(_ section: String, _ index: Int, _ project: Project) {
+  guard let dir = ProcessInfo.processInfo.environment["DJ_ARRANGE_DUMP"], !dir.isEmpty else {
+    return
+  }
+  let path = (dir as NSString).appendingPathComponent("\(section)-\(index).swift.json")
+  try? (project.toJSON().jsStringified + "\n").write(
+    toFile: path, atomically: true, encoding: .utf8)
+}

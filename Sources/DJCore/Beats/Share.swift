@@ -6,8 +6,9 @@
 // `overrides` is layered on afterwards by the UI. Notably `tempo` / `swing` /
 // `humanize` in `overrides` are NOT applied to a composed project — they only
 // feed the raw-`nets` path and the history list — so `Share.project()` doesn't
-// either. Raw-`nets` envelopes load literally (ShareURL.swift); the ones that carry a
-// `structure` also need arrangeWithOpts, which is a later slice. URL / gzip decoding is
+// either. Raw-`nets` envelopes load literally and, with a `structure`, are expanded by
+// `arrangeWithOpts` (ShareURL.swift); composed ones get the overlay directives (`fadeIn`,
+// `drumBreak`, `feelCurve`, `counterMelody`) after the overrides. URL / gzip decoding is
 // ShareURL.swift + ShareCodec.swift.
 
 public struct Share {
@@ -117,16 +118,50 @@ public struct Share {
     return Share(payload: payload, cid: cid)
   }
 
-  /// The project the browser ends up with: for a raw-`nets` envelope the literal nets
-  /// (`rawNetsProject()`, nil while it still needs arranging); otherwise the composer
-  /// path, `compose(genre, params)` then the model-level overrides (nil for a payload
-  /// with no genre — the JS throws there).
+  /// The project the browser ends up with: for a raw-`nets` envelope `rawNetsProject()`;
+  /// otherwise the composer path, `compose(genre, params)`, then the model-level overrides,
+  /// then the arrange overlay (`overlayProject`). nil for a payload with no genre (the JS
+  /// throws there).
   public func project() -> Project? {
     if nets != nil { return rawNetsProject() }
     guard let genre else { return nil }
     var proj = compose(genre: genre, overrides: .object(params))
-    if let overrides { proj.applyShareOverrides(overrides) }
+    finishComposed(&proj)
     return proj
+  }
+
+  /// What the browser layers on a composed project, in its order: the model-level overrides
+  /// (`_applyProjectSync`), then the arrange overlay (`overlayProject`).
+  public func finishComposed(_ proj: inout Project) {
+    if let overrides { proj.applyShareOverrides(overrides) }
+    overlayProject(&proj)
+  }
+
+  /// The browser's `_pendingOverlay`: set when the envelope has `fadeIn` (an empty list
+  /// counts), a non-zero `drumBreak`, `feelCurve` or `counterMelody`. (`macroCurve` rides in
+  /// `params` and is applied by compose.)
+  public var hasOverlay: Bool {
+    fadeIn != nil || (drumBreak.map { $0 != 0 && !$0.isNaN } ?? false) || feelCurve != nil
+      || counterMelody != nil
+  }
+
+  /// The overlay `arrangeWithOpts(…, { overlayOnly: true, … })` the browser runs on a composed
+  /// project once the worker has produced it, after the overrides (`_applyProjectSync` applies
+  /// them first). Runs on the parsed project, so `counterMelody` works — in the browser the
+  /// overlay runs on plain JSON and a counter-melody throws (deliberate deviation: ROADMAP 2.8,
+  /// GO-DIVERGENCE.md). A throw leaves the project as composed: the browser catches it and
+  /// never sends the half-built project to the worker.
+  public func overlayProject(_ proj: inout Project) {
+    guard hasOverlay, nets == nil else { return }
+    var opts = ArrangeOpts()
+    opts.overlayOnly = true
+    opts.fadeIn = fadeIn ?? []
+    opts.drumBreak = drumBreak ?? 0
+    opts.feelCurve = feelCurve ?? []
+    opts.counterMelody = counterMelody ?? []
+    var overlaid = proj
+    let g = genre.flatMap { $0.isEmpty ? nil : $0 } ?? "wrapped"
+    if (try? arrangeWithOpts(&overlaid, genre: g, size: "", opts: opts)) != nil { proj = overlaid }
   }
 }
 

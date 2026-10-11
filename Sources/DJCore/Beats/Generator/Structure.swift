@@ -377,22 +377,45 @@ func injectFeelCurve(_ proj: inout Project, tmpl: SongTemplate, curve: [FeelPoin
 /// `injectMacroCurve(proj, tmpl, curve)` — `curve` is the envelope's `macroCurve` array
 /// of `{ section, macro, bars? }` objects.
 func injectMacroCurve(_ proj: inout Project, tmpl: SongTemplate, curve: [JSONValue]) {
-  let (starts, total) = sectionStarts(tmpl)
-  if total == 0 { return }
-  var points: [(tick: Int, control: ControlBinding)] = []
-  for e in curve {
-    guard let section = e["section"]?.string, let tick = starts[section] else { continue }
-    guard let m = e["macro"], m.isTruthy else { continue }
+  injectCurve(&proj, tmpl: tmpl, curve: curve, net: "macro-curve", prefixes: ("mp", "mt")) { e in
+    guard let m = e["macro"], m.isTruthy else { return nil }
     var c = controlBinding("fire-macro", target: "")
     if let name = m.string, !name.isEmpty { c.macro = name }
     if let bars = e["bars"]?.double, bars > 0 { c.macroBars = bars }
+    return c
+  }
+}
+
+/// `resolveCurvePoints` and the control bundle built from its points (feel / macro curves).
+/// An entry whose `section` names an `Object.prototype` property resolves, in JS, to the
+/// inherited function: the point is kept (so the net is built) but its tick never matches a
+/// transition, so it adds no control. Sections with such names never get a start of their own.
+func injectCurve(
+  _ proj: inout Project, tmpl: SongTemplate, curve: [JSONValue], net: String,
+  prefixes: (place: String, transition: String), value: (JSONValue) -> ControlBinding?
+) {
+  let (starts, total) = sectionStarts(tmpl)
+  if total == 0 { return }
+  var points: [(tick: Int?, control: ControlBinding)] = []
+  for e in curve {
+    guard let section = e["section"]?.string else { continue }
+    let tick: Int?
+    if objectProtoKeys.contains(section) {
+      tick = nil
+    } else if let t = starts[section] {
+      tick = t
+    } else {
+      continue
+    }
+    guard let c = value(e) else { continue }
     points.append((tick, c))
   }
   if points.isEmpty { return }
   var ctrlAt: [Int: ControlBinding] = [:]
-  for p in points.enumerated().sorted(by: {
-    $0.element.tick != $1.element.tick ? $0.element.tick < $1.element.tick : $0.offset < $1.offset
-  }).map(\.element) { ctrlAt[p.tick] = p.control }
-  proj.nets["macro-curve"] = buildControlBundle(
-    steps: total, ctrlAt: ctrlAt, placePrefix: "mp", transPrefix: "mt")
+  let timed = points.enumerated().compactMap { p in
+    p.element.tick.map { (p.offset, $0, p.element.control) }
+  }
+  for p in timed.sorted(by: { $0.1 != $1.1 ? $0.1 < $1.1 : $0.0 < $1.0 }) { ctrlAt[p.1] = p.2 }
+  proj.nets[net] = buildControlBundle(
+    steps: total, ctrlAt: ctrlAt, placePrefix: prefixes.place, transPrefix: prefixes.transition)
 }

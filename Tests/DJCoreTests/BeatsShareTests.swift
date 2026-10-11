@@ -95,8 +95,13 @@ struct ShareEnvelopeTests {
     let s = Share(payload: try JSONValue.parse(#"{"genre":"techno","nets":{"a":{}}}"#))
     // loaded literally (BeatsShareURLTests checks them against JS), never composed
     #expect(s.project()?.nets.keys == ["a"])
+    // With a structure the literal nets are arranged, as the JS does (the arranged bytes are
+    // checked against the real JS in BeatsArrangeTests): the lone net is split into phrase
+    // variants under a section control net and the song gets a structure; nothing is composed.
     let arranged = Share(
       payload: try JSONValue.parse(#"{"genre":"techno","nets":{"a":{}},"structure":"standard"}"#))
-    #expect(arranged.project() == nil)
+    let p = try #require(arranged.project())
+    #expect(p.nets.keys == ["a-0", "a-1", "a-2", "struct-a", "struct-stop"])
+    #expect(!p.structure.isEmpty)
   }
 }

@@ -148,9 +148,8 @@ func jsParseInt(_ s: String) -> Double? {
 // MARK: - Raw-nets envelopes
 
 extension Share {
-  /// The browser expands a raw-`nets` envelope with `ArrangeWithOpts` when it carries a
-  /// `structure` other than "loop". That port is not done (see ROADMAP 2.4), so such an
-  /// envelope has no honest project yet.
+  /// The browser expands a raw-`nets` envelope with `arrangeWithOpts` when it carries a
+  /// truthy `structure` other than "loop" (petri-note.js `_bootGenerate`).
   public var needsArrange: Bool {
     guard nets != nil, let s = structure else { return false }
     return s != .string("loop")
@@ -168,14 +167,20 @@ extension Share {
       seed = UInt32(bitPattern: jsToInt32(s))
     }
     if seed == 0 { seed = 1 }
-    return generateTrackName(genre: genre ?? "custom", seed: Double(seed))
+    // `share.genre || 'custom'`
+    return generateTrackName(
+      genre: genre.flatMap { $0.isEmpty ? nil : $0 } ?? "custom", seed: Double(seed))
   }
 
-  /// The project the browser loads for a raw-`nets` envelope (`project-load`): name, tempo /
-  /// swing / humanize from the overrides, the nets verbatim, `initialMutes`. nil when the
-  /// envelope has no nets or still needs arranging (`needsArrange`).
+  /// The project the browser ends up with for a raw-`nets` envelope: the `project-load` it
+  /// builds (name, tempo / swing / humanize from the overrides, the nets verbatim,
+  /// `initialMutes`), expanded by `arrangeWithOpts` when `needsArrange` (on the unparsed nets:
+  /// `ArrangeOpts.wireForm`; a throw is caught and the project loads as far as the arrange got,
+  /// as the JS `try/catch` does), then the model-level overrides that `_applyProjectSync` layers
+  /// on once the worker answers. `counterMelody` is never passed to this arrange (the JS
+  /// doesn't). nil when the envelope has no nets.
   public func rawNetsProject() -> Project? {
-    guard let nets, !needsArrange else { return nil }
+    guard let nets else { return nil }
     var proj = JSONObject()
     proj["name"] = .string(name ?? derivedName)
     proj["tempo"] = overrides?["tempo"] ?? .number(120)
@@ -183,7 +188,23 @@ extension Share {
     proj["humanize"] = overrides?["humanize"] ?? .number(0)
     proj["nets"] = nets
     if let m = overrides?["initialMutes"], m.isTruthy { proj["initialMutes"] = m }
-    return Project(json: .object(proj))
+    var project = Project(wireJSON: .object(proj))
+    if needsArrange, let structure {
+      var opts = ArrangeOpts()
+      opts.seed = arrangeSeed ?? 0
+      opts.velocityDeltas = velocityDeltas.map { $0.object ?? JSONObject() }
+      opts.maxVariants = maxVariants ?? 0
+      opts.fadeIn = fadeIn ?? []
+      opts.drumBreak = drumBreak ?? 0
+      opts.sections = sections ?? []
+      opts.feelCurve = feelCurve ?? []
+      opts.macroCurve = macroCurve ?? []
+      opts.wireForm = true
+      let g = genre.flatMap { $0.isEmpty ? nil : $0 } ?? "wrapped"
+      try? arrangeWithOpts(&project, genre: g, size: arrangeSize(structure), opts: opts)
+    }
+    if let overrides { project.applyShareOverrides(overrides) }
+    return project
   }
 
   /// Legacy `{ genre, params }` links as a `Share` (the composer path).

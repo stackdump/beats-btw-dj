@@ -167,6 +167,11 @@ public struct NetBundle {
   public var riffVariant = ""
   public var bindings = OrderedMap<MidiBinding>()
   public var controlBindings = OrderedMap<ControlBinding>()
+  /// For a net that came from an unparsed wire document (`Project.init(wireJSON:)`): the raw
+  /// ms `stampDurationSteps` stamps from, per binding — only bindings whose JSON carried a
+  /// finite positive `duration` and no positive `durationSteps`, as the JS stamp on raw nets.
+  /// nil for parsed nets. Not part of the model.
+  var wireDurationMs: [String: Double]?
 }
 
 public struct Section {
@@ -569,8 +574,14 @@ extension Project {
     for id in nets.keys {
       for bid in nets[id]!.bindings.keys {
         var m = nets[id]!.bindings[bid]!
-        if m.durationSteps > 0 || m.duration <= 0 { continue }
-        m.durationSteps = durationStepsFromMs(Double(m.duration), bpm: bpm)
+        if m.durationSteps > 0 { continue }
+        if let wire = nets[id]!.wireDurationMs {
+          guard let ms = wire[bid] else { continue }
+          m.durationSteps = durationStepsFromMs(ms, bpm: bpm)
+        } else {
+          if m.duration <= 0 { continue }
+          m.durationSteps = durationStepsFromMs(Double(m.duration), bpm: bpm)
+        }
         nets[id]!.bindings[bid] = m
       }
     }
