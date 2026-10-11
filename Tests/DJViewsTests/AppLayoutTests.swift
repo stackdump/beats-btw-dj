@@ -18,8 +18,11 @@ struct AppLayoutTests {
     dj["B"]!.setPlaying(true)
     try dj.start()
     for _ in 0..<40 { _ = try renderOffline(dj, frames: 4096) }
-    // The waveform is analysed off the main thread; under load that takes a while.
-    for _ in 0..<200 where dj["B"]!.waveform == nil { try await Task.sleep(for: .milliseconds(25)) }
+    // let the waveform land: it is computed in the background, so wait for it (a fixed sleep
+    // lost the race under a loaded machine)
+    for _ in 0..<200 where dj["B"]!.waveform == nil {
+      try await Task.sleep(for: .milliseconds(50))
+    }
     let m = AppModel(engine: dj)
     m.start()
     m.setShowPads(pads)

@@ -165,6 +165,7 @@ extension Deck {
   public func advanceToNext() -> Bool {
     guard let track = next.take() else { return false }
     loadNet(track)
+    advances += 1
     return true
   }
 

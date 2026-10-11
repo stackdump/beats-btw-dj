@@ -72,11 +72,14 @@ public enum NetMacro: UInt8, CaseIterable, Sendable {
 }
 
 extension WaveGraph {
-  /// A mute macro that starts `delay` ticks from now.
-  func scheduleMute(_ which: MacroTargets, after delay: Int, ticks: Int) {
+  /// A mute macro that starts `delay` ticks from now. `macro` is the `NetMacro.tag` it belongs
+  /// to (0: none): the delayed mutes carry it, so the display knows whose they are. The timer's
+  /// `arg` holds the mute length in its low 16 bits and the tag above them.
+  func scheduleMute(_ which: MacroTargets, after delay: Int, ticks: Int, macro: UInt8 = 0) {
     for i in 0..<Self.timerCapacity where timerKind[i] == 0 {
       setTimer(
-        i, kind: 3, net: Int32(which.rawValue), remaining: Int32(max(1, delay)), arg: Int32(ticks))
+        i, kind: 3, net: Int32(which.rawValue), remaining: Int32(max(1, delay)),
+        arg: Int32(min(max(ticks, 0), 0xFFFF)) | Int32(macro) << 16)
       return
     }
     timerOverflow += 1
@@ -128,30 +131,41 @@ extension WaveGraph {
 
   // MARK: macros
 
-  private func addTimer(kind: UInt8, net: Int, ticks: Int) {
+  /// `arg` of a kind-1 (unmute) timer is the `NetMacro.tag` of the macro that muted the net
+  /// (0 when no macro did).
+  private func addTimer(kind: UInt8, net: Int, ticks: Int, arg: Int32 = 0) {
     for i in 0..<Self.timerCapacity where timerKind[i] == 0 {
-      setTimer(i, kind: kind, net: Int32(net), remaining: Int32(max(1, ticks)), arg: 0)
+      setTimer(i, kind: kind, net: Int32(net), remaining: Int32(max(1, ticks)), arg: arg)
       return
     }
     timerOverflow += 1
   }
 
+  /// Does a macro selector pick net `i`? (Control nets never.) The one rule `fireMute` mutes
+  /// by, and the display asks to know which roles a running macro touches.
+  func selects(_ which: MacroTargets, net i: Int) -> Bool {
+    if isControlNet[i] { return false }
+    switch which {
+    case .nonDrums: return !isDrumNet[i]
+    case .drumsOnly: return isDrumNet[i]
+    case .everything: return true
+    case .nonKick: return !isKickNet[i]
+    }
+  }
+
   /// Mute every audible net the selector picks and unmute it again after `ticks` ticks.
   /// Skips nets already muted, so the restore never undoes a mute someone meant.
   /// Returns how many nets it muted.
+  ///
+  /// `macro` is the `NetMacro.tag` of the macro firing (0: none; the tag rides on the restore
+  /// timers so the display can tell which macro is holding which net).
   @discardableResult
-  public func fireMute(_ which: MacroTargets, ticks: Int) -> Int {
+  public func fireMute(_ which: MacroTargets, ticks: Int, macro: UInt8 = 0) -> Int {
     var n = 0
     for i in 0..<nets.count {
-      if isControlNet[i] || muted[i] != 0 { continue }
-      switch which {
-      case .nonDrums: if isDrumNet[i] { continue }
-      case .drumsOnly: if !isDrumNet[i] { continue }
-      case .everything: break
-      case .nonKick: if isKickNet[i] { continue }
-      }
+      if muted[i] != 0 || !selects(which, net: i) { continue }
       setMuted(i, 1)
-      addTimer(kind: 1, net: i, ticks: ticks)
+      addTimer(kind: 1, net: i, ticks: ticks, arg: Int32(macro))
       n += 1
     }
     return n
@@ -164,7 +178,7 @@ extension WaveGraph {
     repeatBurst = max(1, burst)
     repeatElapsed = 0
     repeatRemaining = max(1, ticks)
-    fireMute(.nonKick, ticks: repeatBurst)
+    fireMute(.nonKick, ticks: repeatBurst, macro: NetMacro.beatRepeat.tag)
     repeatElapsed = 1
     repeatRemaining -= 1
   }
@@ -196,6 +210,36 @@ extension WaveGraph {
     repeatRemaining = 0
   }
 
+  /// Is any macro in effect: a pending restore or a running beat repeat? Allocation-free.
+  var hasActiveMacros: Bool {
+    if repeatRemaining > 0 { return true }
+    for i in 0..<Self.timerCapacity where timerKind[i] != 0 { return true }
+    return false
+  }
+
+  /// Which macros are in effect, and which nets each is holding muted, for the display:
+  /// bit `k` of `mask` is `NetMacro(rawValue: k)`; nets below 256 whose pending restore a macro
+  /// owns (a mute timer carrying its tag) are in that macro's part of `held`. A beat repeat
+  /// counts while it runs,
+  /// even between its bursts. Tempo macros live on the runner (`WaveRunner.macroSnapshot`).
+  /// Allocation-free: this runs on the audio thread once per render block.
+  func macroSnapshot() -> MacroSnapshot {
+    var s = MacroSnapshot()
+    if repeatRemaining > 0 { s.mask |= NetMacro.beatRepeat.bit }
+    for i in 0..<Self.timerCapacity where timerKind[i] != 0 {
+      let tag: Int32
+      switch timerKind[i] {
+      case 1: tag = timerArg[i]
+      case 3: tag = timerArg[i] >> 16
+      default: tag = 0
+      }
+      guard tag > 0, tag <= 32 else { continue }
+      s.mask |= 1 << UInt32(tag - 1)
+      if timerKind[i] == 1 { s.hold(net: Int(timerNet[i]), slot: Int(tag - 1)) }
+    }
+    return s
+  }
+
   /// Number of pending tick-locked restores (UI / tests).
   public var pendingMacroTimers: Int { timerKind.reduce(0) { $0 + ($1 != 0 ? 1 : 0) } }
 
@@ -210,7 +254,9 @@ extension WaveGraph {
         let arg = timerArg[i]
         setTimer(i, kind: 0, net: 0, remaining: 0, arg: 0)
         if kind == 3 {
-          fireMute(MacroTargets(rawValue: UInt8(net)) ?? .nonDrums, ticks: Int(arg))
+          fireMute(
+            MacroTargets(rawValue: UInt8(net)) ?? .nonDrums, ticks: Int(arg & 0xFFFF),
+            macro: UInt8(truncatingIfNeeded: arg >> 16))
         } else {
           setMuted(Int(net), kind == 1 ? 0 : 1)
         }
@@ -220,7 +266,9 @@ extension WaveGraph {
     }
     if repeatRemaining > 0 {
       logRepeat()
-      if repeatElapsed % repeatStep == 0 { fireMute(.nonKick, ticks: repeatBurst) }
+      if repeatElapsed % repeatStep == 0 {
+        fireMute(.nonKick, ticks: repeatBurst, macro: NetMacro.beatRepeat.tag)
+      }
       repeatElapsed += 1
       repeatRemaining -= 1
     }

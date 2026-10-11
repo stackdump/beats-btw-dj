@@ -24,5 +24,12 @@ struct DJApp: App {
           model.stop()
         }
     }
+    // The Stage (SPEC modes 7…21): a full-window visualization of the decks' nets, opened by the
+    // "Stage" button next to "Scopes".
+    Window(StageWindow.title, id: StageWindow.id) {
+      StageWindowView(app: model)
+        .frame(minWidth: 760, minHeight: 480)
+    }
+    .defaultSize(width: 1100, height: 760)
   }
 }

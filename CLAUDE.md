@@ -52,7 +52,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - **The wave source obeys the same audio-thread rules as the turntable**, and they are
   measured, not asserted: `make swift-rt-test` builds in release and counts malloc/free
   on the render thread (`countAllocations`, a `malloc_logger` hook) across swaps, macros,
-  keys and scratching. Debug builds skip those tests (unoptimised Swift allocates).
+  keys and scratching. Debug builds skip those tests (unoptimised Swift allocates: forced on
+  in debug they count millions of mallocs, so they could only fail), and `make run-app` is a
+  debug build; the app to listen with is `make run-app-release`.
   Traps found so far: a marking array sharing storage with its `initial` copy (CoW on the
   first write), non-escaping closures that became escaping, retiring objects on the
   audio thread (hand them back through the retire ring).

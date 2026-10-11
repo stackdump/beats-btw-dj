@@ -35,6 +35,10 @@ struct DeckState: Equatable {
   var overlay: WaveformOverlay?
   var snapshot: NetSnapshot?
   var timeline: SectionTimeline?
+  /// The ring's arc layer: dimmed while playing, turned by the Auto-DJ swing (SPEC 22).
+  var ringArcs = RingArcs()
+  /// Running macros and the chase over the roles they hold muted (SPEC 26).
+  var macroPulse = MacroPulseState()
 }
 
 @MainActor @Observable
@@ -50,9 +54,23 @@ public final class AppModel {
   var inpulseOutput: AudioOutputDevice?
   var inpulseRouted = false
   var padLights: [String: [PadLight]] = [:]
+  /// Every attached controller's LEDs by profile name, for the device map (SPEC 25).
+  var deviceLights: [String: DeviceLights] = [:]
   var padPort: String?
   var showPads = false
   var showMap = false
+  // Scopes (SPEC modes 1…6): the panel under the decks, and what it shows.
+  var showScopes = false
+  var scopeKind: ScopeKind = .live
+  var scopeSource: ScopeSource = .master
+  var scopeMeasured = false
+  /// What the panel's height rule (scope.js `viewHeight`) works from: the usable height of the
+  /// screen the window is on (not the window, which grows with the panel); 800 until known.
+  var scopeWindowHeight = 800.0
+  /// Hands out the scope feeds; made once the engine exists (`start()`).
+  private(set) var scopeHub: ScopeHub?
+  /// The Stage window's model (SPEC modes 7…21); made with the hub.
+  public private(set) var stageModel: StageModel?
   var walk: ControlWalk?
   var walkReportPath: String?
   var lastControl: (device: String, group: String, index: Int, at: Date)?
@@ -71,15 +89,33 @@ public final class AppModel {
   var engine: DJEngine? { dj }
   var router: ControllerRouter? { hub?.router ?? injectedRouter }
 
+  /// Seconds on a steadily increasing clock: the time base of display animations (the ring
+  /// swing). Tests inject their own.
+  @ObservationIgnored var uptime: () -> Double = { ProcessInfo.processInfo.systemUptime }
+  /// Per net deck, the Auto-DJ swing of its ring.
+  @ObservationIgnored private var ringSpins: [String: RingSpin] = [:]
+  /// Per net deck, the macro chase over its role toggles, and when it was last advanced.
+  @ObservationIgnored private var chaseBoards: [String: MacroChaseBoard] = [:]
+  @ObservationIgnored private var chaseClock: [String: Double] = [:]
+  /// How often the rings' snapshot is rebuilt at the current visual level (SPEC mode 27).
+  @ObservationIgnored private var ringGate = RingRenderGate()
+
   /// `engine`: drive this engine instead of building the real one (tests, previews). No
-  /// controllers are opened and nothing is polled until `poll()` is called.
-  public init(engine: DJEngine? = nil) { injected = engine }
+  /// controllers are opened and nothing is polled until `poll()` is called. `perf`: the visual
+  /// quality monitor for an injected engine (a test's own clock); the default is a plain one.
+  public init(engine: DJEngine? = nil, perf: PerfMonitor? = nil) {
+    injected = engine
+    injectedPerf = perf
+  }
   private let injected: DJEngine?
+  private let injectedPerf: PerfMonitor?
 
   public func start() {
     guard dj == nil else { return }
     if let injected {
       dj = injected
+      scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
+      stageModel = scopeHub.map { StageModel(hub: $0) }
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
       poll()
@@ -103,6 +139,11 @@ public final class AppModel {
       self.dj = dj
       self.hub = hub
       startControlServer()
+      // The adaptive visual level (SPEC mode 27): a 60 Hz heartbeat on the main run loop while a
+      // deck plays, and the quality choice remembered between runs.
+      scopeHub = ScopeHub(
+        engine: dj, perf: PerfMonitor(store: .userDefaults(), heartbeatInterval: 1.0 / 60))
+      stageModel = scopeHub.map { StageModel(hub: $0) }
       status = "\(Int(dj.sampleRate)) Hz"
       let t = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
         MainActor.assumeIsolated { [weak self] in self?.poll() }
@@ -158,6 +199,7 @@ public final class AppModel {
 
   public func stop() {
     controlServer?.stop()
+    scopeHub?.perf.stop()
     hub?.stop()
     dj?.stop()
   }
@@ -165,7 +207,12 @@ public final class AppModel {
   /// Refresh the display state from the engine (30 Hz in the app).
   public func poll() {
     guard let dj else { return }
+    let now = uptime()
     let router = hub?.router ?? injectedRouter
+    // The perf monitor measures while something plays; the rings are rebuilt less often at the
+    // reduced levels (backend/index.js `onStateSync`).
+    scopeHub?.perf.setRunning(dj.decks.values.contains { $0.playing })
+    let ringsDue = ringGate.due(now: now, level: scopeHub?.vizLevel ?? 0)
     devices = hub?.devices ?? []
     crossfader = dj.crossfader
     master = dj.master
@@ -179,8 +226,17 @@ public final class AppModel {
       padPort = nil
       padLights = [:]
     }
+    var mirrored: [String: DeviceLights] = [:]
+    for p in SurfaceProfile.all where p.leds != nil {
+      if let l = router?.deviceLights(profileName: p.name) { mirrored[p.name] = l }
+    }
+    if mirrored != deviceLights { deviceLights = mirrored }
     for (name, d) in dj.decks {
       let adapter = router?.jogAdapters.first { $0.deck == name }
+      let previous = decks[name]
+      // A held back poll keeps the last snapshot, unless there is none to keep or the deck has
+      // another track.
+      let refreshRings = ringsDue || previous?.snapshot == nil || previous?.title != d.title
       var state = DeckState(
         title: d.title, playing: d.playing, platterSeconds: d.platterSeconds,
         positionSeconds: d.positionSeconds,
@@ -194,8 +250,19 @@ public final class AppModel {
         nextComposing: d.nextComposing != nil,
         quantize: d.quantize == .off ? "off" : (d.quantize == .beat ? "beat" : "bar"),
         scrubbing: d.wave.isScrubbing, pfl: d.pfl, overview: d.waveform,
-        overlay: d.waveformOverlay, snapshot: d.netSnapshot, timeline: d.sectionTimeline)
+        overlay: d.waveformOverlay, snapshot: refreshRings ? d.netSnapshot : previous?.snapshot,
+        timeline: d.sectionTimeline)
       if d.mode == .net {
+        var spin = ringSpins[name] ?? RingSpin()
+        spin.observe(advances: d.advances, at: now)
+        ringSpins[name] = spin
+        let arcs = spin.arcs(playing: d.playing, at: now)
+        state.ringArcs = refreshRings ? arcs : (previous?.ringArcs ?? arcs)
+        var board = chaseBoards[name] ?? MacroChaseBoard()
+        board.update(d.macroActivity, dt: now - (chaseClock[name] ?? now))
+        chaseBoards[name] = board
+        chaseClock[name] = now
+        state.macroPulse = board.state
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
@@ -421,6 +488,7 @@ public final class AppModel {
 
 public struct ContentView: View {
   let model: AppModel
+  @Environment(\.openWindow) private var openWindow
 
   public init(model: AppModel) { self.model = model }
 
@@ -442,7 +510,8 @@ public struct ContentView: View {
           maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
           highlight: model.lastControl.flatMap {
             Date().timeIntervalSince($0.at) < 1.5 ? ($0.device, $0.group, $0.index) : nil
-          }
+          },
+          lights: model.deviceLights
         )
         .frame(height: 240)
       }
@@ -451,6 +520,14 @@ public struct ContentView: View {
           pads: pads, tracks: model.padLights["track"] ?? [], scenes: model.padLights["scene"] ?? []
         ) { model.pressPad($0, $1) }
         .frame(width: 300, height: 300)
+      }
+      if model.showScopes, let scopes = model.scopeHub {
+        ScopePanelView(
+          hub: scopes,
+          kind: Binding(get: { model.scopeKind }, set: { model.scopeKind = $0 }),
+          source: Binding(get: { model.scopeSource }, set: { model.scopeSource = $0 }),
+          measured: Binding(get: { model.scopeMeasured }, set: { model.scopeMeasured = $0 }),
+          windowHeight: model.scopeWindowHeight)
       }
       Divider()
       HStack {
@@ -475,6 +552,11 @@ public struct ContentView: View {
           .disabled(model.devices.isEmpty)
           Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
             .toggleStyle(.button)
+          Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
+            .toggleStyle(.button)
+          // The Stage (SPEC modes 7…21) is not a ScopeKind: it has a window of its own.
+          Button(StageWindow.title) { openWindow(id: StageWindow.id) }
+            .disabled(!StageWindow.canOpen(model))
           Toggle(
             model.isRecording ? "● REC" : "Record",
             isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })
@@ -500,6 +582,19 @@ public struct ContentView: View {
       }
     }
     .padding()
+    .background {
+      if model.showScopes { ScreenHeightReader { model.scopeWindowHeight = $0 } }
+    }
+    // the rings and the small animations pace themselves by the hub's visual level
+    .environment(\.scopeHub, model.scopeHub)
+    // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
+    // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
+    // bar, which are full at the window's minimum width
+    .overlay(alignment: .bottom) {
+      if let scopes = model.scopeHub {
+        VizNoticeView(perf: scopes.perf).padding(.bottom, 64)
+      }
+    }
   }
 }
 
@@ -560,7 +655,11 @@ struct DeckView: View {
       if state.isNet {
         SectionTimelineView(timeline: state.timeline) { model.launchSection(name, $0) }
           .frame(height: 26)
-        NetRingsView(snapshot: state.snapshot, tint: tint)
+        if let scopes = model.scopeHub {
+          TimelineDotsView(
+            feed: scopes.feed(.deck(name)), hub: scopes, active: state.playing || state.scrubbing)
+        }
+        NetRingsView(snapshot: state.snapshot, tint: tint, arcs: state.ringArcs)
         NetPanel(name: name, state: state, model: model, tint: tint)
       }
       LabeledSlider(
@@ -598,6 +697,12 @@ struct MixerView: View {
       LabeledSlider(
         label: "Master", value: Binding(get: { model.master }, set: { model.setMaster($0) }),
         range: 0...1)
+      // The master flame (SPEC mode 28): feed.html's equalizer bars over the master tap; the flat
+      // line while no deck plays.
+      if let scopes = model.scopeHub {
+        MasterFlameView(
+          hub: scopes, active: model.decks.values.contains { $0.playing || $0.scrubbing })
+      }
       LabeledSlider(
         label: "Phones",
         value: Binding(get: { model.headphoneLevel }, set: { model.setHeadphoneLevel($0) }),
@@ -661,11 +766,12 @@ struct NetPanel: View {
               get: { state.rolesOn.contains(r) }, set: { _ in model.toggleRole(name, r) })
           )
           .toggleStyle(.button).controlSize(.small).tint(tint)
+          .macroPulseGlow(state.macroPulse.level(of: r))
         }
       }
       FlowRow(spacing: 4) {
         ForEach(NetMacro.allCases, id: \.rawValue) { m in
-          Button(m.label) { model.fire(name, m) }.controlSize(.small)
+          MacroButton(macro: m, running: state.macroPulse.isRunning(m)) { model.fire(name, m) }
         }
         Button("Panic") { model.panic(name) }.controlSize(.small).tint(.red)
       }

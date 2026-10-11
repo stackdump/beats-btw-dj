@@ -30,11 +30,11 @@ struct Pixels {
 }
 
 @MainActor
-func renderPixels<V: View>(_ view: V, width: Int, height: Int) -> Pixels? {
+func renderPixels<V: View>(_ view: V, width: Int, height: Int, scale: CGFloat = 1) -> Pixels? {
   let renderer = ImageRenderer(
     content: view.frame(width: CGFloat(width), height: CGFloat(height)).environment(
       \.colorScheme, .dark))
-  renderer.scale = 1
+  renderer.scale = scale
   guard let cg = renderer.cgImage else { return nil }
   let w = cg.width
   let h = cg.height
@@ -52,9 +52,13 @@ func renderPixels<V: View>(_ view: V, width: Int, height: Int) -> Pixels? {
   return ok ? Pixels(width: w, height: h, rgba: data) : nil
 }
 
-/// Write a PNG next to the build for a human to look at (not asserted).
+/// Write a PNG for a human to look at (not asserted). Only when asked:
+/// `DJ_SHOT_DIR=/some/dir make swift-test-filter FILTER=…`; otherwise this does nothing.
 @MainActor
 func savePNG<V: View>(_ view: V, width: Int, height: Int, name: String) {
+  guard let path = ProcessInfo.processInfo.environment["DJ_SHOT_DIR"], !path.isEmpty else {
+    return
+  }
   print("SHOT: start \(name)")
   let renderer = ImageRenderer(content: view.frame(width: CGFloat(width), height: CGFloat(height)))
   renderer.scale = 2
@@ -67,10 +71,6 @@ func savePNG<V: View>(_ view: V, width: Int, height: Int, name: String) {
     print("SHOT: no png")
     return
   }
-  // Only when asked: DJ_SHOT_DIR=/some/dir swift test …
-  let path =
-    ProcessInfo.processInfo.environment["DJ_SHOT_DIR"]
-    ?? "/private/tmp/claude-501/-Users-myork-Workspace-dj-vevr-se/204e49f8-1d95-43c8-acb9-b79c69198b55/scratchpad/shots"
   let dir = URL(fileURLWithPath: path, isDirectory: true)
   try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
   do { try png.write(to: dir.appendingPathComponent("\(name).png")) } catch {

@@ -7,18 +7,36 @@ extension Deck {
     public var name: String
     public var startTick: Int
     public var steps: Int
+    /// How many phrases the section is cut into: the longest phrase list of any role (1 when
+    /// no role has one). canvas.js `renderTimeline`: `Math.max(...phraseLists.map(p => p.length))`.
+    public var phraseCount = 1
+    /// The phrase letters of the section's first role ("A", "B", "A", "C"), as the timeline
+    /// prints them; empty when the section has no phrase data.
+    public var phrasePattern: [String] = []
+
+    /// The sections of a project's structure, in order, with their start ticks.
+    public static func sections(of project: Project) -> [SectionInfo] {
+      var start = 0
+      var out: [SectionInfo] = []
+      for sec in project.structure {
+        let lists = sec.phrases.values
+        out.append(
+          SectionInfo(
+            name: sec.name, startTick: start, steps: sec.steps,
+            phraseCount: lists.map(\.count).max() ?? 1, phrasePattern: lists.first ?? []))
+        start += sec.steps
+      }
+      return out
+    }
   }
 
-  /// The song's sections with their start ticks (empty for a loop or a sample deck).
+  /// The song's sections with their start ticks (empty for a loop or a sample deck). This is
+  /// the project the deck has *loaded*; a project queued behind a playing one only takes over
+  /// at the next bar. For the sections of the project that is sounding, read the layout of
+  /// `wave.activeGeneration` (`MarkingLayout.sections`).
   public var sections: [SectionInfo] {
     guard mode == .net, let p = netProject else { return [] }
-    var start = 0
-    var out: [SectionInfo] = []
-    for sec in p.structure {
-      out.append(SectionInfo(name: sec.name, startTick: start, steps: sec.steps))
-      start += sec.steps
-    }
-    return out
+    return SectionInfo.sections(of: p)
   }
 
   /// The section the net clock is in, or nil.
@@ -28,7 +46,8 @@ extension Deck {
   }
 
   /// Rebuild the net at the start of section `index` (silently replaying the control
-  /// nets) and swap it in at the next bar. Composes nothing: same project, new position.
+  /// nets) and swap it in at the next bar. Composes nothing: same project, new position (the
+  /// prepared project keeps the song's `trackSerial`, with a new `generation`).
   @MainActor @discardableResult
   public func jumpToSection(_ index: Int) async -> Bool {
     let secs = sections
@@ -37,11 +56,13 @@ extension Deck {
     let bank = wave.samplers
     let seed = currentSpec?.seed ?? 0
     let start = secs[index].startTick
+    let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
       WaveRunner.prepare(
-        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed), startTick: start)
+        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed), startTick: start,
+        trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
@@ -56,7 +77,8 @@ extension Deck {
     if deterministic {
       wave.load(
         WaveRunner.prepare(
-          project, sampleRate: wave.sampleRate, opts: waveOptions, startTick: max(0, tick)))
+          project, sampleRate: wave.sampleRate, opts: waveOptions, startTick: max(0, tick),
+          trackSerial: wave.latest?.trackSerial))
       applyNetTempo()
     } else {
       Task { @MainActor in await self.jumpToTick(tick) }
@@ -93,12 +115,13 @@ extension Deck {
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = currentSpec?.seed ?? 0
+    let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
       WaveRunner.prepare(
         project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed),
-        startTick: max(0, tick))
+        startTick: max(0, tick), trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)

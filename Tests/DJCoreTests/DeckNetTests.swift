@@ -34,12 +34,19 @@ struct DeckNetTests {
     #expect(deck.turntable.position == 0, "the turntable stays parked")
   }
 
-  @Test func theLatestGenerateWins() async throws {
+  @Test @MainActor func theLatestGenerateWins() async throws {
     let dj = try DJEngine(decks: ["A"], offline: true)
     let deck = try #require(dj["A"])
-    async let first = deck.generate(TrackSpec(genre: "jazz", seed: 1, structure: "standard"))
-    async let second = deck.generate(TrackSpec(genre: "dnb", seed: 2))
-    let (a, b) = await (first, second)
+    // Both requests are queued on the main actor before it is ever yielded, so both are
+    // registered (in this order) before either compose can reach its "am I still the latest?"
+    // check: that check runs on the main actor, behind the two jobs queued here. (Two
+    // `async let`s, or waiting for the first to register, let a loaded machine finish the
+    // first compose before the second was requested.)
+    let first = Task { @MainActor in
+      await deck.generate(TrackSpec(genre: "jazz", seed: 1, structure: "standard"))
+    }
+    let second = Task { @MainActor in await deck.generate(TrackSpec(genre: "dnb", seed: 2)) }
+    let (a, b) = await (first.value, second.value)
     #expect(b)
     #expect(!a, "the first compose finished after the second was requested")
     #expect(deck.currentSpec?.genre == "dnb")

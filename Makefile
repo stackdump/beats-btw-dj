@@ -3,7 +3,8 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-rt-test app run-app djctl mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-go beats-tables
+        swift-build swift-test swift-test-filter swift-rt-test app run-app app-release run-app-release djctl \
+        mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-go beats-tables
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -35,19 +36,41 @@ swift-build:
 swift-test:
 	swift test $(SWIFT_TEST_FLAGS)
 
+# One suite or test: make swift-test-filter FILTER='ScopeLive'
+swift-test-filter:
+	swift test $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
+
 # The audio-thread contract ("render allocates nothing") is only meaningful with the
-# optimizer on, so those tests skip in debug and run here in a release build.
+# optimizer on, so those tests skip in debug and run here in a release build. (Forced on in a
+# debug build they fail by design: the unoptimised render path makes millions of mallocs. The app
+# that `make run-app` builds is a debug one; `make run-app-release` is the one this vouches for.)
+# The filter is a regex: name every new audio-thread test suite `…RealTime…` to include it.
 swift-rt-test:
-	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'WaveRunnerRealTimeTests|WaveDeckSourceTests|AllocationCounterTests'
+	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
 
 # make djctl ARGS="monitor inpulse"
 djctl:
 	swift run djctl $(ARGS)
 
+# The debug app is for looking at the UI. It is NOT what the audio-thread contract is about: with
+# the optimizer off Swift allocates all over the render path (measured: tens of millions of mallocs
+# in a few thousand blocks of `WaveDeckSource.process`, against 0 in release), so `swift-rt-test`
+# only means something in a release build, the debug app's audio can glitch under load, and a
+# no-allocation test run against it could only ever fail. To listen, play with the controller or
+# judge the audio, use `make run-app-release`.
 app:
 	scripts/bundle-app.sh debug build
 
 run-app: app
+	@echo "note: this is a DEBUG build (unoptimised; its audio thread allocates, see swift-rt-test)."
+	@echo "      for listening or the hardware check use: make run-app-release"
+	open build/DJApp.app
+
+# The same app built with -c release into build/DJApp.app: the build `swift-rt-test` vouches for.
+app-release:
+	scripts/bundle-app.sh release build
+
+run-app-release: app-release
 	open build/DJApp.app
 
 # Every installed sampled instrument through the sound checks (pitch, level, determinism);

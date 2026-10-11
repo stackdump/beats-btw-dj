@@ -72,6 +72,9 @@ public final class CompiledNet {
   public let vel: [Int]
   public let durMs: [Double]
   public let durSteps: [Double]
+  /// MIDI channel of every MIDI-bound transition: the binding's, else the track's (what picks
+  /// its voice). 0 for transitions without a binding.
+  public let channel: [UInt8]
   let action: [ControlAction]
   let actionNote: [Int]
   let actionTarget: [String]
@@ -148,6 +151,7 @@ public final class CompiledNet {
     var vel = [Int](repeating: 0, count: nTrans)
     var durMs = [Double](repeating: 0, count: nTrans)
     var durSteps = [Double](repeating: 0, count: nTrans)
+    var channel = [UInt8](repeating: 0, count: nTrans)
     var action = [ControlAction](repeating: .none, count: nTrans)
     var actionNote = [Int](repeating: 0, count: nTrans)
     var actionTarget: [String] = []
@@ -158,6 +162,7 @@ public final class CompiledNet {
         vel[i] = Int(Int16(truncatingIfNeeded: b.velocity))
         durMs[i] = Double(b.duration)
         durSteps[i] = Double(b.durationSteps)
+        channel[i] = UInt8(clamping: b.channel != 0 ? b.channel : nb.track.channel)
       }
       if let c = nb.controlBindings[t] {
         actionTarget.append(c.targetNet)
@@ -172,6 +177,7 @@ public final class CompiledNet {
     self.vel = vel
     self.durMs = durMs
     self.durSteps = durSteps
+    self.channel = channel
     self.action = action
     self.actionNote = actionNote
     self.actionTarget = actionTarget
@@ -211,6 +217,8 @@ public final class WaveGraph {
   let isDrumNet: [Bool]
   let isControlNet: [Bool]
   let isKickNet: [Bool]
+  /// Per net: a stinger (`hit1`...).
+  let isStingerNet: [Bool]
   /// Role name hash → group index (>= 0) or `-(net index) - 2` for a plain net.
   let roleTargets: [Int32: Int]
   /// Net indices of each group, in project order.
@@ -277,6 +285,7 @@ public final class WaveGraph {
     tempo = proj.tempo > 0 ? proj.tempo : 120
     isControlNet = nets.map { $0.bundle.role == "control" }
     isDrumNet = nets.map { isDrumChannel($0.bundle.track.channel) }
+    isStingerNet = nets.map { isStingerID($0.id) }
     isKickNet = nets.map { n in
       n.bundle.riffGroup == "kick" || n.id == "kick" || n.id.hasPrefix("kick:")
     }
@@ -449,7 +458,9 @@ public final class WaveGraph {
     endTickRecord()
   }
 
-  /// Plain marking `{netId: {place: tokens}}` — for the UI, allocates.
+  /// Plain marking `{netId: {place: tokens}}` — allocates dictionaries, so only for a graph no
+  /// other thread is running (tests, a stopped runner). Never call it on a deck that plays:
+  /// read the published copy with `WaveDeckSource.readMarking` instead.
   public func marking() -> [String: [String: Double]] {
     var out: [String: [String: Double]] = [:]
     for n in nets {

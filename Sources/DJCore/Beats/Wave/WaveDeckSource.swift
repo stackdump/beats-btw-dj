@@ -39,12 +39,33 @@ public enum WaveCommand: BitwiseCopyable {
 ///  * Everything else is for one non-audio thread. Projects are compiled off the audio
 ///    thread (`WaveRunner.prepare`) and handed over whole; whatever the audio thread
 ///    lets go of comes back through `retired` to be freed on the main thread.
+///
+/// What the scopes read, all in the deck's frame time base (`Deck.renderedFrames`):
+///  * `fires` / `anchors` (and `readEvents`): audible hits and every tick of the net clock, in
+///    overwrite rings the audio thread fills. Any number of readers, each with its own cursor.
+///  * `readMarking`: a consistent copy of every net's tokens and mutes (the marking mirror),
+///    with the layout of the project it came from.
+///  * the atomics `tick`, `tickPhase`, `tempo`, `isPlaying`, `isMacroActive`, the mute words.
+///    Each is stored once per render block and they are not stamped or stored together, so two
+///    of them may be one block apart; the (frame, tick) pairs that are exact are the anchors'.
+///
+/// **Net mode only.** These mirrors, the rings and the marking mirror are written by `render`,
+/// which the deck calls only while it plays a net (`Deck.mode == .net`). After the deck goes
+/// back to a sample they stop where they were (`isPlaying` may still read true, `readMarking`
+/// still returns the last song): gate every read on `Deck.mode`, which is main-thread state.
 public final class WaveDeckSource: @unchecked Sendable {
   public let sampleRate: Double
 
   private let commands = SPSCRing<WaveCommand>(capacity: 512)
   private let retired = SPSCRing<UnsafeMutableRawPointer>(capacity: 32)
   private let runner: WaveRunner
+  /// Audio -> readers: every audible net fire, and every tick of the net clock, in order, as
+  /// absolute sequence numbers. The audio thread only writes; each reader keeps its own cursor.
+  /// Read `fires` before `anchors` (see `readEvents`).
+  public let fires: LatestRing<FireEvent>
+  public let anchors: LatestRing<TickAnchor>
+  /// Frames rendered through the 3-argument `render` (a standalone source's own time base).
+  private var ownFrames = 0
 
   // Audio → main mirrors.
   private let tickAtomic = Atomic<Int>(0)
@@ -54,6 +75,12 @@ public final class WaveDeckSource: @unchecked Sendable {
   private let stoppedAtomic = Atomic<Bool>(false)
   private let hasProjectAtomic = Atomic<Bool>(false)
   private let scrubbingAtomic = Atomic<Bool>(false)
+  private let macroAtomic = Atomic<Bool>(false)
+  /// Which macros are in effect, which nets each holds muted, and for which project: one
+  /// consistent record per block (see MacroMirror.swift).
+  private let macroMirror = MacroMirror()
+  /// The last whole record a reader got (main thread): what it keeps if a writer is in the way.
+  private var macroLast = MacroMirror.Read()
   /// Whether the owning deck routes its output through this source.
   private let activeAtomic = Atomic<Bool>(false)
   /// Bit i of word i/64 = net i is muted (first 256 nets), refreshed every block.
@@ -64,17 +91,39 @@ public final class WaveDeckSource: @unchecked Sendable {
 
   /// Main-thread only: the last project handed over, to resolve net ids.
   public private(set) var latest: WaveProject?
+  /// `WaveProject.generation` of the project the audio thread is running (0: none yet).
+  private let activeGenerationAtomic = Atomic<Int32>(0)
+  /// The project queued behind it, waiting for a bar (0: none).
+  private let pendingGenerationAtomic = Atomic<Int32>(0)
+  /// Main-thread only: the mirrors (with their layouts) of recently loaded projects, oldest
+  /// first, so a snapshot or an event can be matched to the layout of the project that
+  /// produced it even after newer projects have been loaded. Not the projects themselves
+  /// (about 6 MB each for a big song): a mirror with its layout is about 0.35 MB (measured,
+  /// 6000-place techno), 8 of them a few MB per deck.
+  private var mirrors: [MarkingMirror] = []
+  private static let mirrorsKept = 8
 
   /// This deck's sampled instruments (rendered by `runner`, inside this deck's callback).
   public let samplers: SamplerBank
 
-  public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
+  /// `fireCapacity` / `anchorCapacity` size the event rings (rounded up to a power of two). A
+  /// ring that fills overwrites its oldest records; a reader that was a whole ring behind is
+  /// told how many it missed. The defaults hold minutes of an ordinary song and many seconds
+  /// of the densest one, against a reader that polls at 30...60 Hz.
+  public init(
+    sampleRate: Double, opts: WaveOptions = WaveOptions(), fireCapacity: Int = 8192,
+    anchorCapacity: Int = 2048
+  ) {
     self.sampleRate = sampleRate
     let bank = opts.samplers ?? SamplerBank(sampleRate: sampleRate)
     samplers = bank
     var o = opts
     o.samplers = bank
+    fires = LatestRing<FireEvent>(capacity: fireCapacity)
+    anchors = LatestRing<TickAnchor>(capacity: anchorCapacity)
     runner = WaveRunner(sampleRate: sampleRate, opts: o)
+    runner.fireRing = fires
+    runner.anchorRing = anchors
     let ring = retired
     runner.onRetire = { project in
       // Retain into the ring *before* the runner drops its own reference, so the last
@@ -109,6 +158,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     drainRetired()
     if commands.push(.load(p)) {
       latest = prepared
+      remember(prepared.marking)
       // A stopped deck installs the project at once: show its starting mutes before the
       // first render publishes the real ones.
       if !isPlaying { publishMutes(prepared.graph.muted) }
@@ -174,6 +224,118 @@ public final class WaveDeckSource: @unchecked Sendable {
     return !muted(-t - 2)
   }
 
+  // MARK: fires and tick anchors (any reader thread)
+
+  /// A reader's place in a deck's two event streams: the next fire and the next anchor it has
+  /// not seen. Every reader (a deck's feed, the master's feed, a timeline) has its own, so
+  /// readers never disturb one another or the audio thread.
+  public struct EventCursor: Equatable, Sendable {
+    public var fires: Int
+    public var anchors: Int
+    public init(fires: Int = 0, anchors: Int = 0) {
+      self.fires = fires
+      self.anchors = anchors
+    }
+  }
+
+  /// A cursor for a reader that subscribes now: it sees the fires from now on, and the anchors
+  /// from the newest one written so far (so the first anchor it reads places it on the net
+  /// clock at once, and the fires of a tick that is half written still find their anchor).
+  /// `EventCursor()` instead starts at the oldest records still held.
+  public func eventCursorNow() -> EventCursor {
+    let a = anchors.written  // anchors first: a tick's anchor is written before its fires
+    let f = fires.written
+    return EventCursor(fires: f, anchors: max(0, a - 1))
+  }
+
+  /// Append everything written since `cursor` to `fires` and `anchors` (oldest first) and move
+  /// the cursor past it. Returns how many records of each stream were lost: overwritten before
+  /// this reader got to them, because it was a whole ring behind.
+  ///
+  /// The fires are read first and the anchors second, and the audio thread writes a tick's
+  /// anchor before its fires, so every fire returned has its anchor (same `generation` and
+  /// `tick`) in this call's `anchors` or an earlier one's, unless that anchor was lost.
+  /// Records are stamped in the deck's frame time base and carry their project `generation`
+  /// (resolve it with `markingLayout(generation:)`: which net, which lane, which song).
+  ///
+  /// Allocates only if the arrays have to grow, on the caller's thread.
+  @discardableResult
+  public func readEvents(
+    _ cursor: inout EventCursor, fires out: inout [FireEvent],
+    anchors anchorsOut: inout [TickAnchor]
+  ) -> (firesLost: Int, anchorsLost: Int) {
+    let f = fires.drain(from: &cursor.fires, into: &out)
+    let a = anchors.drain(from: &cursor.anchors, into: &anchorsOut)
+    return (f, a)
+  }
+
+  public var fireCapacity: Int { fires.capacity }
+  public var anchorCapacity: Int { anchors.capacity }
+
+  // MARK: marking mirror (main thread)
+
+  /// `WaveProject.generation` of the project the audio thread is running right now; 0 until
+  /// the first render after a load. Changes at the bar where a queued project takes over.
+  public var activeGeneration: Int32 { activeGenerationAtomic.load(ordering: .relaxed) }
+
+  /// The layout of the most recently loaded project: net ids, place ids and what each net is.
+  public var markingLayout: MarkingLayout? { latest?.marking.layout }
+
+  /// The layout of a recent project by generation (the active one, the latest, and a few
+  /// older), e.g. the generation stamped on a `FireEvent` or a `TickAnchor`. It says which net
+  /// an event's `net` index is (`nets[i]`: riff group, instrument, note range, positions), and
+  /// by `trackSerial` whether two generations are the same song (a section launch) or not.
+  /// Main thread.
+  public func markingLayout(generation: Int32) -> MarkingLayout? {
+    mirror(generation: generation)?.layout
+  }
+
+  /// Copy the marking of the project that is sounding into `snap`: every net's place tokens,
+  /// the mute flags, the tick, and which project (`snap.generation`, `snap.layout`) they are
+  /// from. Consistent (never a mix of two states), lock-free, and allocation-free once `snap`
+  /// is sized (it is resized when the project changes). On a deck that is not playing, a project
+  /// loaded since the last render is the one reported (its initial marking, or the one rebuilt
+  /// for a section launch) because it takes over at the next block; on a playing deck the old
+  /// project is reported until it hands over at the bar. False if nothing is loaded.
+  ///
+  /// Never touches the audio thread's graph: `WaveGraph.marking()` allocates and must not be
+  /// called from the main thread while the deck plays.
+  @discardableResult
+  public func readMarking(into snap: inout MarkingSnapshot) -> Bool {
+    let active = activeGeneration
+    var m = active != 0 ? mirror(generation: active) : nil
+    // A project the audio thread has not seen yet, on a deck that is not playing, is installed
+    // at once by the next block: it is the one to show. (One already queued for a bar is not.)
+    if let newest = latest, !isPlaying, newest.generation != active,
+      newest.generation != pendingGenerationAtomic.load(ordering: .relaxed)
+    {
+      m = newest.marking
+    }
+    guard let m = m ?? latest?.marking else { return false }
+    return m.read(into: &snap)
+  }
+
+  /// `readMarking(into:)` for a particular project (a recent generation). False if unknown.
+  @discardableResult
+  public func readMarking(generation: Int32, into snap: inout MarkingSnapshot) -> Bool {
+    guard let m = mirror(generation: generation) else { return false }
+    return m.read(into: &snap)
+  }
+
+  private func mirror(generation g: Int32) -> MarkingMirror? {
+    mirrors.last { $0.layout.generation == g }
+  }
+
+  private func remember(_ m: MarkingMirror) {
+    mirrors.append(m)
+    // Drop the oldest, but never the one the audio thread is running or the newest.
+    let active = activeGeneration
+    var i = 0
+    while mirrors.count > Self.mirrorsKept, i < mirrors.count - 1 {
+      if mirrors[i].layout.generation == active { i += 1 } else { mirrors.remove(at: i) }
+    }
+  }
+
   /// Free projects the audio thread has let go of. Called by `send`/`load`; call it
   /// from a timer too.
   public func drainRetired() {
@@ -189,15 +351,82 @@ public final class WaveDeckSource: @unchecked Sendable {
   public var hasEnded: Bool { stoppedAtomic.load(ordering: .relaxed) }
   public var hasProject: Bool { hasProjectAtomic.load(ordering: .relaxed) }
   public var isScrubbing: Bool { scrubbingAtomic.load(ordering: .relaxed) }
+  /// A macro is in effect: a pending mute restore (drop, breakdown, cut...), a beat repeat, or
+  /// a tempo effect (half time, tape stop, tempo anchor). It does not say which, or for how long.
+  public var isMacroActive: Bool { macroAtomic.load(ordering: .relaxed) }
+
+  /// The last whole macro record (main thread).
+  private func macroRead() -> MacroMirror.Read {
+    if let r = macroMirror.read() { macroLast = r }
+    return macroLast
+  }
+
+  /// The macros in effect right now, as of the last render block: a mute macro while the nets
+  /// it muted wait for their restore, the beat repeat while it runs, a tempo macro while its
+  /// tempo effect lasts. (A mute macro that found everything it targets already muted muted
+  /// nothing and is not in effect.) Main thread; allocates the array it returns.
+  public var activeMacros: [NetMacro] {
+    let m = macroRead().snapshot.mask
+    return NetMacro.allCases.filter { m & $0.bit != 0 }
+  }
+
+  public func isActive(_ macro: NetMacro) -> Bool {
+    macroRead().snapshot.mask & macro.bit != 0
+  }
+
+  /// Is net `index` of the project the audio thread runs held muted by a running macro (its
+  /// restore is pending)? As `isNetMuted`, from a per-block mirror. Main thread.
+  public func isNetHeldByMacro(index i: Int) -> Bool { macroRead().snapshot.isHeld(net: i) }
+
+  /// Of `roles` (riff-group or plain-net role names), those with a net that `macro` holds muted
+  /// (its own mutes: a net another macro muted first is not its) and that is still muted (a
+  /// role the performer switched back on during the macro is no longer held), in the order
+  /// given. Reads the
+  /// latest project's role table like `isRoleAudible`; allocates its result. Empty while the
+  /// record comes from another project than the latest one (a hand-over waiting for its bar):
+  /// the nets it names are the running graph's, the tables are the new one's. Main thread.
+  public func rolesHeld(by macro: NetMacro, among roles: [String]) -> [String] {
+    heldRoles(roles) { $0.isHeld(net: $1, by: macro) }
+  }
+
+  /// `rolesHeld(by:among:)` for any macro.
+  public func rolesHeldByMacros(_ roles: [String]) -> [String] {
+    heldRoles(roles) { $0.isHeld(net: $1) }
+  }
+
+  private func heldRoles(_ roles: [String], _ held: (MacroSnapshot, Int) -> Bool) -> [String] {
+    let read = macroRead()
+    guard let project = latest, project.generation == read.generation else { return [] }
+    let g = project.graph
+    return roles.filter { role in
+      guard let t = g.roleTargets[strHash(role)] else { return false }
+      let nets = t >= 0 ? g.groupNets[t] : [-t - 2]
+      return nets.contains { held(read.snapshot, $0) && isNetMuted(index: $0) }
+    }
+  }
 
   // MARK: audio-thread side
 
-  /// Fill `frames` samples of `left` (and `right` if given). Real-time safe.
+  /// Fill `frames` samples of `left` (and `right` if given). Real-time safe. Stamps fires
+  /// on a time base of its own that starts at 0 and counts only these calls; a deck uses the
+  /// variant below so everything shares the deck's `renderedFrames`.
   public func render(
     frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
   ) {
+    render(frames: frames, left: left, right: right, startFrame: ownFrames)
+    ownFrames += frames
+  }
+
+  /// `render`, with `startFrame` the deck frame of the first sample of this block.
+  public func render(
+    frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
+    startFrame: Int
+  ) {
     while let c = commands.pop() { apply(c) }
-    runner.process(left, right, frames: frames)
+    runner.process(left, right, frames: frames, startFrame: startFrame)
+    runner.publishMarking(endFrame: startFrame + frames)
+    activeGenerationAtomic.store(runner.generation, ordering: .relaxed)
+    pendingGenerationAtomic.store(runner.pendingGeneration, ordering: .relaxed)
     tickAtomic.store(runner.graph?.tick ?? 0, ordering: .relaxed)
     phaseBits.store(runner.tickPhase.bitPattern, ordering: .relaxed)
     tempoBits.store(runner.tempo.bitPattern, ordering: .relaxed)
@@ -205,6 +434,8 @@ public final class WaveDeckSource: @unchecked Sendable {
     stoppedAtomic.store(runner.stopped, ordering: .relaxed)
     hasProjectAtomic.store(runner.graph != nil, ordering: .relaxed)
     scrubbingAtomic.store(runner.isScrubbing, ordering: .relaxed)
+    macroAtomic.store(runner.macroActive, ordering: .relaxed)
+    macroMirror.publish(runner.macroSnapshot(), generation: runner.generation)
     if let g = runner.graph { publishMutes(g.muted) }
   }
 

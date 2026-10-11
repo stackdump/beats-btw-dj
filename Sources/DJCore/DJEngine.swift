@@ -45,7 +45,17 @@ public final class DJEngine {
   public var deterministic = false {
     didSet { for d in decks.values { d.deterministic = deterministic } }
   }
-  private let frameClock = FrameClock()
+  let frameClock = FrameClock()
+  /// Mono history of the master mix (after the master volume), for the scopes; off until a
+  /// scope calls `masterTap.acquire()`. Fed once per render cycle, with no latency: after every
+  /// cycle `masterTap.endFrame == frame`. See MasterTap.swift.
+  public let masterTap = ScopeTap()
+  /// The LEFT channel of the master mix (the master pair's left when cue routing is on), for the
+  /// stage's corona: Tone's analyser hears the left channel only, `masterTap` the (L+R)/2
+  /// down-mix. Off unless someone subscribed (`ScopeFeed.setLeftChannelWanted`); fed from the same
+  /// render notification as `masterTap`, so the two always cover the same frames.
+  public let masterLeftTap = ScopeTap(capacity: ScopeTap.leftCapacity)
+  let masterProbe: MasterTapProbe
   // Headphone cue: pre-fader sends → cueSum ─┐
   //                master mix → headMaster ──┴→ headBus (→ the cue pair, once routed)
   let cueSum = AVAudioMixerNode()
@@ -68,6 +78,7 @@ public final class DJEngine {
     decks names: [String] = ["A", "B"], offline: Bool = false,
     sampleRate offlineRate: Double = 48_000, outputChannels: Int = 2
   ) throws {
+    masterProbe = MasterTapProbe(tap: masterTap, leftTap: masterLeftTap, clock: frameClock)
     if offline {
       sampleRate = offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: offlineRate, channels: 2)!
@@ -97,7 +108,7 @@ public final class DJEngine {
       for b in UnsafeMutableAudioBufferListPointer(abl) {
         if let d = b.mData { memset(d, 0, Int(b.mDataByteSize)) }
       }
-      clock.frames.add(Int(frames), ordering: .relaxed)
+      clock.frames.store(clock.frames.load(ordering: .relaxed) + Int(frames), ordering: .relaxed)
       return noErr
     }
     engine.attach(clockNode)
@@ -126,7 +137,10 @@ public final class DJEngine {
       decks[name] = deck
     }
     applyGains()
+    masterProbe.attach(to: engine)
   }
+
+  deinit { masterProbe.detach() }
 
   /// Crossfader gain for a deck (1 for decks other than A/B).
   public func crossfadeGain(_ deck: String) -> Double {
@@ -143,10 +157,13 @@ public final class DJEngine {
 
   public func start() throws {
     engine.prepare()
+    masterProbe.attach(to: engine)  // a no-op unless the engine replaced its output unit
     try engine.start()
   }
 
-  public func stop() { engine.stop() }
+  public func stop() {
+    engine.stop()
+  }
 
   public subscript(name: String) -> Deck? { decks[name] }
 }
@@ -167,6 +184,27 @@ public final class Deck: JogClock {
   /// The live-net source. Only one of `turntable` / `wave` is rendered at a time.
   public let wave: WaveDeckSource
   public let node: AVAudioSourceNode
+  let renderer: DeckRenderer
+  /// Mono history of this deck's output (the source node's mixdown, before the EQ and the
+  /// fader), for the scopes. Off until a scope calls `tap.acquire()`.
+  public var tap: ScopeTap { renderer.tap }
+  /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
+  /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
+  public var leftTap: ScopeTap { renderer.leftTap }
+  /// Frames this deck's source node has rendered, in both source modes (sample and net): the
+  /// common time base of `tap`, the deck's fire events and its tick anchors. Monotonic;
+  /// readable from any thread. Everything stamped below the value you read is already
+  /// readable from its ring.
+  public var renderedFrames: Int { renderer.renderedFrames }
+
+  /// What the source node's block runs on the audio thread: render the active source,
+  /// count the frames, feed the tap if a scope subscribed. Internal so tests can drive a
+  /// deck block by block without an engine running.
+  func renderBlock(
+    frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
+  ) {
+    renderer.renderBlock(frames: frames, left: left, right: right)
+  }
   /// Band 0 low-pass, 1 high-pass (see `filter`); 2 low shelf, 3 mid peak,
   /// 4 high shelf (see `eqLow` / `eqMid` / `eqHigh`).
   public let filterNode = AVAudioUnitEQ(numberOfBands: 5)
@@ -184,6 +222,10 @@ public final class Deck: JogClock {
   public private(set) var netBaseBPM = 120.0
   /// What `generate` / `advanceToNext` last loaded.
   public internal(set) var currentSpec: TrackSpec?
+  /// How many times the deck has handed over to its pre-composed next track (`advanceToNext`:
+  /// the song ended with `autoAdvance` on, or the Next button). A display that reacts to a
+  /// hand-over (the ring's Auto-DJ swing) watches this move.
+  public internal(set) var advances = 0
   /// When a song ends (its `stop-transport` fires), start the pre-composed next one.
   public var autoAdvance = false
   /// Called whenever no next track is composed or composing: keeps one coming.
@@ -288,15 +330,10 @@ public final class Deck: JogClock {
     cueSend.outputVolume = 0
     turntable = tt
     wave = wv
+    let core = DeckRenderer(turntable: tt, wave: wv)
+    renderer = core
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
-      let list = UnsafeMutableAudioBufferListPointer(abl)
-      guard let l = list[0].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
-      let r = list.count > 1 ? list[1].mData?.assumingMemoryBound(to: Float.self) : nil
-      if wv.isActive {
-        wv.render(frames: Int(frames), left: l, right: r)
-      } else {
-        tt.render(frames: Int(frames), left: l, right: r)
-      }
+      core.render(abl, frames: Int(frames))
       return noErr
     }
     let types: [AVAudioUnitEQFilterType] = [
