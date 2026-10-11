@@ -18,6 +18,14 @@ cp -R Sources/DJCore/Resources/profiles "$app/Contents/Resources/profiles"
 cp -R Sources/DJCore/Resources/beats "$app/Contents/Resources/beats"
 cp -R Sources/DJCore/Resources/voices "$app/Contents/Resources/voices"
 
+# Build id, read back by BuildInfo: the commit, "-dirty" with tracked changes; "unknown"
+# outside a git checkout.
+build=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+if [ "$build" != unknown ] && [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+  build="$build-dirty"
+fi
+built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -28,6 +36,8 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>CFBundleName</key><string>dj-vevr-se</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>$build</string>
+  <key>DJBuildDate</key><string>$built</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>

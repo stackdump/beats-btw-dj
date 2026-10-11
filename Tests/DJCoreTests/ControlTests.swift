@@ -70,6 +70,7 @@ struct MCPBridgeTests {
     #expect(r["result"]?["protocolVersion"]?.string == "2025-03-26")
     #expect(r["result"]?["capabilities"]?["tools"] != nil)
     #expect(r["result"]?["serverInfo"]?["name"]?.string == "dj-vevr-se")
+    #expect(r["result"]?["serverInfo"]?["version"]?.string == BuildInfo.current.id)
   }
 
   @Test func notificationsGetNoReply() {

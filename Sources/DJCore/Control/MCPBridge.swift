@@ -8,7 +8,7 @@ public struct MCPBridge {
   public let call: Call
   public var version: String
 
-  public init(version: String = "0.1.0", call: @escaping Call) {
+  public init(version: String = BuildInfo.current.id, call: @escaping Call) {
     self.call = call
     self.version = version
   }
@@ -112,7 +112,8 @@ public struct MCPBridge {
       "dj_state",
       "Snapshot of the app: per deck (title, mode sample|net, playing, bpm, position, sections "
         + "and the current one, roles and which are on, volume/filter/pitch, quantize, next "
-        + "track), crossfader, master, connected controllers, recording, status line.",
+        + "track), crossfader, master, connected controllers, recording, status line, and the "
+        + "app's build (id, version, build = git commit, date).",
       [:]),
     tool(
       "dj_perform",

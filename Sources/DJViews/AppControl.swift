@@ -268,6 +268,12 @@ extension AppModel {
       })
     if !lastMessage.isEmpty { o["lastMidi"] = .string(lastMessage) }
     o["padsOnScreen"] = .bool(showPads)
+    let b = BuildInfo.current
+    var build = JSONObject([
+      ("id", .string(b.id)), ("version", .string(b.version)), ("build", .string(b.build)),
+    ])
+    if let d = b.dateString { build["date"] = .string(d) }
+    o["build"] = .object(build)
     return .object(o)
   }
 

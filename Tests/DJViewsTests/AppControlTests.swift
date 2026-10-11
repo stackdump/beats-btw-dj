@@ -25,6 +25,7 @@ struct AppControlTests {
     #expect(s["decks"]?["A"]?["mode"]?.string == "sample")
     #expect(s["decks"]?["B"]?["playing"]?.bool == false)
     #expect(s["crossfader"]?.double == 0.5)
+    #expect(s["build"]?["id"]?.string == BuildInfo.current.id)
   }
 
   @Test func performGoesThroughTheEngine() async throws {

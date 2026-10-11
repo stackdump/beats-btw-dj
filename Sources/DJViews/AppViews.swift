@@ -493,6 +493,9 @@ public struct ContentView: View {
           }
           Text(model.lastMessage).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(
             1)
+          Text("build \(BuildInfo.current.id)").font(.caption2.monospaced()).foregroundStyle(
+            .tertiary
+          ).textSelection(.enabled).help(BuildInfo.current.dateString.map { "built \($0)" } ?? "")
         }
       }
     }
