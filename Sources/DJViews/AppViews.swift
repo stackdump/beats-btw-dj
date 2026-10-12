@@ -518,6 +518,36 @@ public struct ContentView: View {
   public init(model: AppModel) { self.model = model }
 
   public var body: some View {
+    VStack(spacing: 0) {
+      // The decks and the panels under them scroll when the window is too short for them; the
+      // bottom bar stays put. Without the scroll view the content's height was the window's
+      // minimum, so decks + Scopes (up to 640 pt) could ask for more than the screen has and the
+      // window ran off its bottom edge. When everything fits it is laid out plainly: no scroller,
+      // and `ImageRenderer` (the layout tests) cannot draw an NSScrollView-backed ScrollView.
+      ViewThatFits(in: .vertical) {
+        panels.padding()
+        ScrollView(.vertical) { panels.padding() }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+      Divider()
+      bottomBar.padding()
+    }
+    .background {
+      if model.showScopes { ScreenHeightReader { model.scopeWindowHeight = $0 } }
+    }
+    // the rings and the small animations pace themselves by the hub's visual level
+    .environment(\.scopeHub, model.scopeHub)
+    // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
+    // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
+    // bar, which are full at the window's minimum width
+    .overlay(alignment: .bottom) {
+      if let scopes = model.scopeHub {
+        VizNoticeView(perf: scopes.perf).padding(.bottom, 64)
+      }
+    }
+  }
+
+  private var panels: some View {
     VStack(spacing: 16) {
       HStack(alignment: .top, spacing: 24) {
         DeckView(name: "A", model: model, tint: .orange)
@@ -554,70 +584,58 @@ public struct ContentView: View {
           measured: Binding(get: { model.scopeMeasured }, set: { model.scopeMeasured = $0 }),
           windowHeight: model.scopeWindowHeight)
       }
-      Divider()
-      HStack {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Controllers").font(.caption.bold())
-          if model.devices.isEmpty {
-            Text("none — plug in an Inpulse 200 MK3, APC mini mk2 or MPK Mini").font(.caption)
-          }
-          ForEach(model.devices, id: \.port) { d in
-            Text("● \(d.profile)").font(.caption).foregroundStyle(.green)
-          }
+    }
+  }
+
+  private var bottomBar: some View {
+    HStack {
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Controllers").font(.caption.bold())
+        if model.devices.isEmpty {
+          Text("none — plug in an Inpulse 200 MK3, APC mini mk2 or MPK Mini").font(.caption)
         }
-        Spacer()
-        HStack {
-          Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
-            .toggleStyle(.button)
-          Menu("Check controls") {
-            ForEach(model.devices, id: \.port) { d in
-              Button(d.profile) { model.startWalk(device: d.profile) }
-            }
-          }
-          .disabled(model.devices.isEmpty)
-          Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
-            .toggleStyle(.button)
-          Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
-            .toggleStyle(.button)
-          // The Stage (SPEC modes 7…21) is not a ScopeKind: it has a window of its own.
-          Button(StageWindow.title) { openWindow(id: StageWindow.id) }
-            .disabled(!StageWindow.canOpen(model))
-          Toggle(
-            model.isRecording ? "● REC" : "Record",
-            isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })
-          )
-          .toggleStyle(.button).tint(.red)
-          Button("Export WAV…") { model.exportLastSession() }
-            .disabled(model.lastSession == nil || model.isRecording)
-          Button("Publish…") { model.publishLastSession() }
-            .disabled(model.lastSession == nil || model.isRecording)
-        }
-        VStack(alignment: .trailing, spacing: 2) {
-          Text(model.status).font(.caption)
-          if let cid = model.lastSession {
-            Text(cid).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(
-              .enabled)
-          }
-          Text(model.lastMessage).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(
-            1)
-          Text("build \(BuildInfo.current.id)").font(.caption2.monospaced()).foregroundStyle(
-            .tertiary
-          ).textSelection(.enabled).help(BuildInfo.current.dateString.map { "built \($0)" } ?? "")
+        ForEach(model.devices, id: \.port) { d in
+          Text("● \(d.profile)").font(.caption).foregroundStyle(.green)
         }
       }
-    }
-    .padding()
-    .background {
-      if model.showScopes { ScreenHeightReader { model.scopeWindowHeight = $0 } }
-    }
-    // the rings and the small animations pace themselves by the hub's visual level
-    .environment(\.scopeHub, model.scopeHub)
-    // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
-    // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
-    // bar, which are full at the window's minimum width
-    .overlay(alignment: .bottom) {
-      if let scopes = model.scopeHub {
-        VizNoticeView(perf: scopes.perf).padding(.bottom, 64)
+      Spacer()
+      HStack {
+        Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
+          .toggleStyle(.button)
+        Menu("Check controls") {
+          ForEach(model.devices, id: \.port) { d in
+            Button(d.profile) { model.startWalk(device: d.profile) }
+          }
+        }
+        .disabled(model.devices.isEmpty)
+        Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
+          .toggleStyle(.button)
+        Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
+          .toggleStyle(.button)
+        // The Stage (SPEC modes 7…21) is not a ScopeKind: it has a window of its own.
+        Button(StageWindow.title) { openWindow(id: StageWindow.id) }
+          .disabled(!StageWindow.canOpen(model))
+        Toggle(
+          model.isRecording ? "● REC" : "Record",
+          isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })
+        )
+        .toggleStyle(.button).tint(.red)
+        Button("Export WAV…") { model.exportLastSession() }
+          .disabled(model.lastSession == nil || model.isRecording)
+        Button("Publish…") { model.publishLastSession() }
+          .disabled(model.lastSession == nil || model.isRecording)
+      }
+      VStack(alignment: .trailing, spacing: 2) {
+        Text(model.status).font(.caption)
+        if let cid = model.lastSession {
+          Text(cid).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(
+            .enabled)
+        }
+        Text(model.lastMessage).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(
+          1)
+        Text("build \(BuildInfo.current.id)").font(.caption2.monospaced()).foregroundStyle(
+          .tertiary
+        ).textSelection(.enabled).help(BuildInfo.current.dateString.map { "built \($0)" } ?? "")
       }
     }
   }

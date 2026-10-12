@@ -44,6 +44,24 @@ struct AppLayoutTests {
     #expect(m.decks["B"]?.overview != nil, "deck B has its waveform")
   }
 
+  /// Net deck + Scopes is taller than a laptop screen. The decks and the panel scroll; the bottom
+  /// bar (Scopes, Stage, Record, status) stays on screen at the window's foot instead of being
+  /// pushed off its bottom edge.
+  @Test func aShortWindowWithScopesKeepsTheBottomBarOnScreen() async throws {
+    let m = try await model()
+    m.showScopes = true
+    let view = ContentView(model: m)
+    savePNG(view, width: 1100, height: 620, name: "app-short-scopes")
+    let px = try #require(renderPixels(view, width: 1100, height: 620))
+    // Before, the window's foot was the middle of the scope panel (its dark background) and the
+    // bar was below the edge. Offscreen, the bar's buttons are yellow placeholders.
+    let foot = 540..<620
+    let scope = px.count(inX: 0..<1100, y: foot) { r, g, b in r < 40 && g < 40 && b < 60 }
+    let buttons = px.count(inX: 0..<1100, y: foot) { r, g, b in r > 200 && g > 160 && b < 80 }
+    #expect(scope < 3_000, "no scope panel under the bottom bar (\(scope) pixels)")
+    #expect(buttons > 2_000, "the bottom bar is drawn at the window's foot (\(buttons) pixels)")
+  }
+
   @Test func theDefaultWindowSize() async throws {
     let m = try await model()
     savePNG(ContentView(model: m), width: 900, height: 760, name: "app-default")

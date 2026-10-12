@@ -178,7 +178,7 @@ struct PerfAppModelTests {
     // (125, 196, 255); the rest of the window animates between two renders, so it cannot be diffed.
     func link(_ px: Pixels) -> (n: Int, x0: Int, x1: Int, y0: Int, y1: Int) {
       var out = (n: 0, x0: px.width, x1: 0, y0: px.height, y1: 0)
-      for y in 1000..<1300 {
+      for y in 1300..<1500 {
         for x in 400..<900 where px.near(x, y, (125, 196, 255), tol: 18) {
           out = (out.n + 1, min(out.x0, x), max(out.x1, x), min(out.y0, y), max(out.y1, y))
         }
@@ -190,7 +190,8 @@ struct PerfAppModelTests {
     #expect(link(without).n == 0, "and only while there is a notice")
     #expect(
       shown.x0 > 550 && shown.x1 < 850, "at the bottom centre, as monitor.js' toast: \(shown)")
-    #expect(shown.y0 > 1050 && shown.y1 < 1150, "just above the bottom bar: \(shown)")
+    // the bottom bar is pinned to the window's foot (the decks above it scroll)
+    #expect(shown.y0 > 1380 && shown.y1 < 1460, "just above the bottom bar: \(shown)")
     #expect(m.scopeHub?.vizLevel == 0)
   }
 }

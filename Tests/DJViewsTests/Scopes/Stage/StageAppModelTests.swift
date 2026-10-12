@@ -67,10 +67,11 @@ struct StageAppModelTests {
     m.poll()
     // (Offscreen, SwiftUI draws every button as a placeholder, so this cannot find the Stage
     // button: its wiring is `StageWindow`, above. It checks that the toolbar row it joined lays
-    // out and draws.)
+    // out and draws. At 700 pt the decks do not fit and scroll, which offscreen draws nothing;
+    // the bar is pinned under them, at the window's foot.)
     let px = try #require(renderPixels(ContentView(model: m), width: 1100, height: 700))
-    let ink = px.count(inX: 0..<1100, y: 0..<120) { r, g, b in r + g + b > 300 }
-    #expect(ink > 500, "the top bar is drawn (\(ink) light pixels)")
+    let ink = px.count(inX: 0..<1100, y: 580..<700) { r, g, b in r + g + b > 300 }
+    #expect(ink > 500, "the bottom bar is drawn (\(ink) light pixels)")
     savePNG(ContentView(model: m), width: 1100, height: 700, name: "app-stage-button")
   }
 }
