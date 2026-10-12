@@ -160,6 +160,42 @@ struct WaveRunnerRealTimeTests {
     if slot >= 0 { bank.release(slot) }
     src.drainRetired()
   }
+
+  /// A deck plays sampled lanes while another engine is built in the same process (the app's
+  /// `SessionPlayer` renders a set offline while the decks play; in a parallel test run, other
+  /// tests build theirs). Connecting that engine's mixers used to make every sampler already
+  /// loaded build its AudioToolbox parameter cache on its next note-on, on the render thread:
+  /// 54 mallocs and 50 frees each (see `SamplerInstrument.buildParameterCache`).
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func samplersDoNotAllocateWhenAnotherEngineIsBuilt() throws {
+    let sr = 48_000.0
+    let src = WaveDeckSource(sampleRate: sr)
+    let prepared = WaveRunner.prepare(
+      project("country", 7, "minimal"), sampleRate: sr, opts: .extended(samplers: src.samplers))
+    #expect(prepared.lanes.contains { $0.samplerSlot >= 0 }, "a sampled lane to measure")
+    src.load(prepared)
+    src.setTempo(480)
+    src.play()
+    var l = [Float](repeating: 0, count: 512)
+    var r = [Float](repeating: 0, count: 512)
+    func run(_ n: Int) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n { src.render(frames: 512, left: lp.baseAddress!, right: rp.baseAddress!) }
+        }
+      }
+    }
+    run(200)  // warm up, and every sampled lane has struck notes
+    var engines: [DJEngine] = []
+    for _ in 0..<2 {
+      engines.append(try DJEngine(decks: ["X"], offline: true, sampleRate: sr))
+      let report = countAllocations { run(400) }
+      #expect(report.allocations == 0, "render allocated \(report.allocations) times")
+      #expect(report.frees == 0, "render freed \(report.frees) times")
+    }
+    #expect(engines.count == 2)
+    src.drainRetired()
+  }
 }
 
 private final class EvictionResult: Sendable {

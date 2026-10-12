@@ -137,6 +137,28 @@ public final class SamplerInstrument: @unchecked Sendable {
     right = .allocate(capacity: Self.maxFrames)
     abl = AudioBufferList.allocate(maximumBuffers: 2)
     timestamp.mFlags = .sampleTimeValid
+    Self.buildParameterCache(unit.audioUnit)
+  }
+
+  /// AUSampler reports a parameter change on every note-on, from inside its render. Once an
+  /// AVAudioMixerNode is connected anywhere in the process *after* this unit exists (another
+  /// AVAudioEngine's graph: `SessionPlayer` rendering a set offline while the decks play),
+  /// AudioToolbox answers that report by building the unit's parameter cache, lazily, on the
+  /// render thread: about 54 mallocs and 50 frees per sampler, once. Building it here instead
+  /// (adding a parameter listener builds it) leaves nothing for the render thread to build.
+  /// Measured by `samplersDoNotAllocateWhenAnotherEngineIsBuilt` (WaveDeckSourceTests).
+  private static func buildParameterCache(_ unit: AudioUnit) {
+    var listener: AUParameterListenerRef?
+    let created = AUListenerCreateWithDispatchQueue(
+      &listener, 0, DispatchQueue.global(), { _, _, _ in })
+    guard created == noErr, let listener else { return }
+    var param = AudioUnitParameter(
+      mAudioUnit: unit, mParameterID: AudioUnitParameterID(kAUSamplerParam_Gain),
+      mScope: kAudioUnitScope_Global, mElement: 0)
+    if AUListenerAddParameter(listener, nil, &param) == noErr {
+      AUListenerRemoveParameter(listener, nil, &param)
+    }
+    AUListenerDispose(listener)
   }
 
   /// The phrase levels are measured on: a strummed C chord, then single notes (the same
