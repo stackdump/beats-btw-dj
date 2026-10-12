@@ -205,7 +205,9 @@ Compose overrides (`extra`: traits, `bpm`, …) go under `payload.traits`, where
 beats composes a deck's payload with the same params the deck does: `specPayloads` in
 share-urls.json has the real JS read that form and compose it, and records that the old
 top-level form loses the traits there. `init(payload:)` still reads the old form (sessions
-recorded before 2026-10-12) to the same spec (`TrackSpecPayloadTests`).
+recorded before 2026-10-12) to the same spec (`TrackSpecPayloadTests`). A stored session
+verifies against its own text, so its CID holds; only re-encoding one whose net decks carry
+extras writes the new form and a new CID. None were saved or published before the change.
 
 Raw-`nets` shares play on a deck too: `DeckSourceDescriptor.rawNets(payload:)` carries the
 envelope payload (`TrackSpec(share:)` stays nil for them), `PreparedTrack(rawNets:)` builds

@@ -135,6 +135,30 @@ struct AppControlTests {
       ])
   }
 
+  /// Load ▸ "Share link from clipboard" calls `AppModel.loadShare(deck, text)` with the
+  /// pasteboard's string: a good link lands on the deck (recorded), a bad one only says why.
+  @Test func theClipboardMenuItemLoadsAShareOrSaysWhy() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    let raw = try #require(
+      try beatsFixture("share-urls")["rawNets"]?.array?.first {
+        $0["payload"]?["name"]?.string == "Hand Made"
+      })
+    let rec = try SessionRecorder.start(on: dj)
+    m.loadShare("A", "  " + raw["search"]!.string! + "\n")  // pasted text, with whitespace
+    for _ in 0..<2000 where dj["A"]?.mode != .net { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(dj["A"]?.mode == .net && dj["A"]?.title == "Hand Made")
+    #expect(
+      rec.finish().events.map(\.kind) == [
+        .action(.load(deck: "A", source: .rawNets(payload: raw["payload"]!)))
+      ])
+    m.loadShare("B", "not a link")
+    #expect(m.status.hasPrefix("share: not a beats share"))
+    m.loadShare("B", "")  // an empty clipboard
+    #expect(m.status.hasPrefix("share: "))
+    #expect(dj["B"]?.mode == .sample, "nothing was loaded")
+  }
+
   @Test func loadShareSaysWhatIsWrong() async throws {
     let m = try model()
     let urls = try #require(try beatsFixture("share-urls")["urls"]?.array)
