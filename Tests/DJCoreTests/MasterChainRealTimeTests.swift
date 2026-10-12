@@ -66,4 +66,32 @@ struct MasterChainRealTimeTests {
     #expect(report.frees == 0, "the chain freed \(report.frees) times")
     #expect(l.allSatisfy { $0.isFinite } && r.allSatisfy { $0.isFinite })
   }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func automationDoesNotAllocate() {
+    let a = FxAutomation(tempo: 174, genreBpm: 128)
+    var dispatches = 0
+    var t = 0.0
+    let durations: [Int?] = [nil, 0, 1, 8]
+    let report = countAllocations {
+      for round in 0..<40 {
+        for m in MasterMacro.allCases {
+          a.setNow(t)
+          a.fire(m, duration: durations[round % 4]) { _ in dispatches += 1 }
+          a.advance(until: t + 0.37) { _ in dispatches += 1 }
+          t += 0.37
+        }
+        if round % 5 == 4 {
+          a.panic { _ in dispatches += 1 }
+        }
+        a.setSlider(.lpFreq, Double(round))
+        a.advance(until: t + 2) { _ in dispatches += 1 }
+        t += 2
+      }
+      a.advance(until: t + 120) { _ in dispatches += 1 }
+    }
+    #expect(dispatches > 1000)
+    #expect(report.allocations == 0, "the automation allocated \(report.allocations) times")
+    #expect(report.frees == 0)
+  }
 }

@@ -109,6 +109,11 @@ struct WaveRunnerRealTimeTests {
     run(100)
     let report = countAllocations {
       run(1000)
+      // the master chain after the samplers (they render inside the runner's block)
+      src.fire(.phaserDrone)
+      src.fire(.octaveDown)
+      src.fire(.buildCrush)
+      run(400)
       src.noteOn(52, velocity: 100)
       run(50)
       src.allNotesOff()
@@ -315,6 +320,36 @@ struct WaveDeckSourceTests {
     measure(150)
     src.release()
     measure(200)
+    // the master chain: every master macro (overlapping, so every slider and the feel tempo
+    // move at once), re-fires mid-flight, a panic mid-ramp, permanent fires, hand moves, and
+    // the full durations played out (8 bars at 520 BPM ≈ 3.7 s ≈ 1400 blocks)
+    for m in MasterMacro.allCases { src.fire(m) }
+    measure(300)
+    src.fire(.sweepLp, bars: 8)
+    src.fire(.phaserDrone, bars: 8)
+    src.fire(.octaveUp, bars: 4)
+    src.fire(.feelBuild, bars: 8)
+    measure(37)
+    src.fire(.sweepLp, bars: 8)  // re-fire: keeps the first start
+    src.fire(.buildCrush, bars: 8)
+    src.fire(.vinylBrake)
+    measure(250)
+    src.panic()
+    measure(5)
+    for m in [MasterMacro.filterRes, .pitchBend, .feelEuphoric, .riser, .reverbWash] {
+      src.fire(m, bars: 0)
+    }
+    src.setMasterFx(.crushBits, 100)
+    src.setMasterFx(.distortion, 100)
+    src.setMasterFx(.masterPitch, -12)
+    measure(400)
+    src.fire(.feelReset, bars: 16)
+    src.fire(.sweepHp, bars: 8)
+    src.fire(.phaserDrone, bars: 8)
+    measure(1500)
+    src.stop()
+    src.play()
+    measure(100)
     #expect(allocs == 0, "render allocated \(allocs) times")
     #expect(frees == 0, "render freed \(frees) times")
     src.drainRetired()

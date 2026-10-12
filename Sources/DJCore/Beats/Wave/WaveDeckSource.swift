@@ -28,6 +28,11 @@ public enum WaveCommand: BitwiseCopyable {
   case scrub(ticks: Double)
   case release
   case chase(seconds: Double)
+  /// A master-chain macro (`MasterMacro.rawValue`); `bars` < 0: its default duration, 0:
+  /// permanent.
+  case masterMacro(id: UInt8, bars: Int16)
+  /// A hand on a master FX slider (`MasterFxKey.rawValue`, the slider's own units).
+  case masterFx(key: UInt8, value: Int16)
 }
 
 /// A `WaveRunner` that a deck can play: the Petri-net executor and the wave synthesis
@@ -106,6 +111,29 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// This deck's sampled instruments (rendered by `runner`, inside this deck's callback).
   public let samplers: SamplerBank
 
+  // The master chain (beats' Tone master inserts) after the net and its samplers, and the
+  // macro automation that drives it, on the deck's transport clock (see MasterFx/).
+  private let fx: FxAutomation
+  private let chain: MasterChain
+  /// Frames the transport has run (it stops while the deck is paused or stopped).
+  private var transportFrames: Int64 = 0
+  /// The block being rendered: its transport time and length (for the automation's events).
+  private var blockTransport = 0.0
+  private var blockFrames = 0
+  /// This block's slider dispatches, in time order: sample index, chain time, key, value.
+  private static let opCapacity = 256
+  private let opIndex: UnsafeMutablePointer<Int>
+  private let opTime: UnsafeMutablePointer<Double>
+  private let opKey: UnsafeMutablePointer<UInt8>
+  private let opValue: UnsafeMutablePointer<Int32>
+  private var opCount = 0
+  /// Audio → main: which master macros are in effect (`MasterMacro.bit`), the chain's HP / LP
+  /// corners (Double bits) and whether it is bypassed.
+  private let masterMaskAtomic = Atomic<UInt32>(0)
+  private let hpCornerBits = Atomic<UInt64>(20.0.bitPattern)
+  private let lpCornerBits = Atomic<UInt64>(20000.0.bitPattern)
+  private let chainIdleAtomic = Atomic<Bool>(true)
+
   /// `fireCapacity` / `anchorCapacity` size the event rings (rounded up to a power of two). A
   /// ring that fills overwrites its oldest records; a reader that was a whole ring behind is
   /// told how many it missed. The defaults hold minutes of an ordinary song and many seconds
@@ -124,6 +152,12 @@ public final class WaveDeckSource: @unchecked Sendable {
     runner = WaveRunner(sampleRate: sampleRate, opts: o)
     runner.fireRing = fires
     runner.anchorRing = anchors
+    fx = FxAutomation()
+    chain = MasterChain(sampleRate: sampleRate)
+    opIndex = .allocate(capacity: Self.opCapacity)
+    opTime = .allocate(capacity: Self.opCapacity)
+    opKey = .allocate(capacity: Self.opCapacity)
+    opValue = .allocate(capacity: Self.opCapacity)
     let ring = retired
     runner.onRetire = { project in
       // Retain into the ring *before* the runner drops its own reference, so the last
@@ -137,6 +171,10 @@ public final class WaveDeckSource: @unchecked Sendable {
       if case .load(let p) = c { Unmanaged<WaveProject>.fromOpaque(p).release() }
     }
     drainRetired()
+    opIndex.deallocate()
+    opTime.deallocate()
+    opKey.deallocate()
+    opValue.deallocate()
   }
 
   // MARK: main-thread side
@@ -188,6 +226,17 @@ public final class WaveDeckSource: @unchecked Sendable {
     send(.stinger(hash: strHash(netId), ticks: Int32(ticks)))
   }
   public func panic() { send(.panic) }
+
+  /// Fire a master-chain macro for `bars` bars (nil: its default; 0: permanent, no restore).
+  public func fire(_ macro: MasterMacro, bars: Int? = nil) {
+    send(.masterMacro(id: macro.rawValue, bars: Int16(clamping: bars ?? -1)))
+  }
+
+  /// Move one of the master FX sliders by hand (its own units: 0...100, pitch -12...12).
+  public func setMasterFx(_ key: MasterFxKey, _ value: Int) {
+    send(.masterFx(key: UInt8(key.rawValue), value: Int16(clamping: value)))
+  }
+
   public func noteOn(_ note: Int, velocity: Int) {
     send(.noteOn(note: Int16(clamping: note), velocity: UInt8(clamping: velocity)))
   }
@@ -374,6 +423,27 @@ public final class WaveDeckSource: @unchecked Sendable {
     macroRead().snapshot.mask & macro.bit != 0
   }
 
+  /// The master-chain macros with an animation, a restore or a sub-fire pending, as of the last
+  /// render block. Main thread; allocates the array it returns.
+  public var activeMasterMacros: [MasterMacro] {
+    let m = masterMaskAtomic.load(ordering: .relaxed)
+    return MasterMacro.allCases.filter { m & $0.bit != 0 }
+  }
+
+  public func isActive(_ macro: MasterMacro) -> Bool {
+    masterMaskAtomic.load(ordering: .relaxed) & macro.bit != 0
+  }
+
+  /// The master chain's HP and LP corners (Hz) at the last block, and whether the chain was
+  /// bypassed then (both at rest: 20 Hz and 20 kHz).
+  public var masterFilterCorners: (hp: Double, lp: Double, bypassed: Bool) {
+    (
+      Double(bitPattern: hpCornerBits.load(ordering: .relaxed)),
+      Double(bitPattern: lpCornerBits.load(ordering: .relaxed)),
+      chainIdleAtomic.load(ordering: .relaxed)
+    )
+  }
+
   /// Is net `index` of the project the audio thread runs held muted by a running macro (its
   /// restore is pending)? As `isNetMuted`, from a per-block mirror. Main thread.
   public func isNetHeldByMacro(index i: Int) -> Bool { macroRead().snapshot.isHeld(net: i) }
@@ -422,8 +492,35 @@ public final class WaveDeckSource: @unchecked Sendable {
     frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
     startFrame: Int
   ) {
+    blockTransport = Double(transportFrames) / sampleRate
+    blockFrames = frames
+    opCount = 0
+    fx.setNow(blockTransport)
     while let c = commands.pop() { apply(c) }
+    syncFx()
+    if runner.playing {
+      fx.advance(until: blockTransport + Double(frames) / sampleRate) { handle($0) }
+      transportFrames += Int64(frames)
+    } else {
+      fx.flush { handle($0) }
+    }
     runner.process(left, right, frames: frames, startFrame: startFrame)
+    var s = 0
+    for i in 0..<opCount {
+      let k = opIndex[i]
+      if k > s {
+        chain.process(left, right, from: s, to: k)
+        s = k
+      }
+      chain.apply(MasterFxKey(rawValue: Int(opKey[i]))!, Int(opValue[i]), at: opTime[i])
+    }
+    chain.process(left, right, from: s, to: frames)
+    chain.finish(frames: frames)
+    masterMaskAtomic.store(fx.activeMask, ordering: .relaxed)
+    let corners = chain.filterCorners()
+    hpCornerBits.store(corners.hp.bitPattern, ordering: .relaxed)
+    lpCornerBits.store(corners.lp.bitPattern, ordering: .relaxed)
+    chainIdleAtomic.store(chain.isIdle(), ordering: .relaxed)
     runner.publishMarking(endFrame: startFrame + frames)
     activeGenerationAtomic.store(runner.generation, ordering: .relaxed)
     pendingGenerationAtomic.store(runner.pendingGeneration, ordering: .relaxed)
@@ -466,7 +563,9 @@ public final class WaveDeckSource: @unchecked Sendable {
       runner.load(prepared: Unmanaged<WaveProject>.fromOpaque(p).takeRetainedValue())
     case .play: runner.play()
     case .pause: runner.pause()
-    case .stop: runner.stop()
+    case .stop:
+      runner.stop()
+      fx.panic { handle($0) }  // beats: transport stop cancels and restores every animation
     case .tempo(let bpm): runner.setTempo(bpm)
     case .mute(let hash, let muted): runner.setMute(hash: hash, muted)
     case .roleMute(let hash, let muted): runner.setRoleMuted(hash: hash, muted)
@@ -474,7 +573,10 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .macro(let id, let ticks):
       if let m = NetMacro(rawValue: id) { runner.fireMacro(m, ticks: Int(ticks)) }
     case .stinger(let hash, let ticks): runner.fireStinger(hash: hash, ticks: Int(ticks))
-    case .panic: runner.panic()
+    case .panic:
+      runner.panic()
+      syncFx()
+      fx.panic { handle($0) }
     case .noteOn(let note, let velocity): runner.noteOn(Int(note), velocity: Int(velocity))
     case .noteOff(let note): runner.noteOff(Int(note))
     case .allNotesOff: runner.allNotesOff()
@@ -483,6 +585,38 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .scrub(let ticks): runner.scrub(ticks: ticks)
     case .release: runner.release()
     case .chase(let seconds): runner.setChase(seconds: seconds)
+    case .masterMacro(let id, let bars):
+      guard let m = MasterMacro(rawValue: id) else { return }
+      syncFx()
+      let ticks = fx.fire(m, duration: bars < 0 ? nil : Int(bars)) { handle($0) }
+      runner.markMacroRunning(ticks: ticks)
+    case .masterFx(let key, let value):
+      if let k = MasterFxKey(rawValue: Int(key)) { fx.setSlider(k, Double(value)) }
+    }
+  }
+
+  /// `el._tempo` is the deck's tempo; the genre's BPM is the project's (as `tempo-anchor` reads
+  /// it: the composer sets a song's tempo to its genre's).
+  private func syncFx() {
+    fx.tempo = runner.tempo
+    fx.genreBpm = runner.graph?.project.tempo ?? runner.tempo
+  }
+
+  /// What the automation says, during a block: slider dispatches are queued for the chain at the
+  /// sample they fall on; tempo writes go to the runner at once (block resolution, as the tempo
+  /// macros).
+  private func handle(_ e: FxAutomationEvent) {
+    switch e {
+    case .fx(let t, let key, let value):
+      guard opCount < Self.opCapacity else { return }
+      let offset = max(0, t - blockTransport)
+      opIndex[opCount] = min(blockFrames, max(0, Int((offset * sampleRate).rounded(.up))))
+      opTime[opCount] = chain.time(at: 0) + offset
+      opKey[opCount] = UInt8(key.rawValue)
+      opValue[opCount] = Int32(value)
+      opCount += 1
+    case .tempo(_, let bpm):
+      runner.setTempo(bpm)
     }
   }
 }
