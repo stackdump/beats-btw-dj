@@ -151,6 +151,7 @@ fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-arrange.mjs
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-wave.mjs
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-share-url.mjs
+	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-macro-fx.mjs
 
 # Reverse direction: real JS must accept the share URLs Swift builds.
 share-url-check:
