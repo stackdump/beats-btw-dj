@@ -89,19 +89,60 @@ public struct TrackSpec: Sendable, Equatable {
   }
 }
 
-/// A track composed and compiled off the audio thread, ready to hand to a deck.
+/// A track composed (or, for a raw-`nets` share, built) and compiled off the audio thread,
+/// ready to hand to a deck.
 public final class PreparedTrack: @unchecked Sendable {
-  public let spec: TrackSpec
+  /// What a session names it by: `.net(spec)` or `.rawNets(payload:)`.
+  public let source: DeckSourceDescriptor
   public let project: Project
   public let prepared: WaveProject
 
+  /// The composed track's spec; nil for a raw-`nets` share.
+  public var spec: TrackSpec? {
+    if case .net(let s) = source { return s }
+    return nil
+  }
+
   /// `opts`: the deck's (`Deck.waveOptions`), so its sampled instruments load into that
   /// deck's bank. `.extended` alone plays every instrument on a synth voice.
-  public init(spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended) {
-    self.spec = spec
-    project = spec.project()
+  public convenience init(spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended) {
+    self.init(
+      source: .net(spec), project: spec.project(), seed: spec.seed, sampleRate: sampleRate,
+      opts: opts)
+  }
+
+  /// A raw-`nets` share envelope's project (`Share.rawNetsProject()`, named by the payload's
+  /// share CID as a link to it would be). The payload is read in canonical key order, the
+  /// order a share link's payload decodes in (the URL carries canonical JSON), so a payload
+  /// handed over in any order — or replayed from a session's canonical text — builds the
+  /// same project. nil when the payload has no `nets`.
+  public convenience init?(rawNets payload: JSONValue, sampleRate: Double, opts: WaveOptions) {
+    let canonical = payload.canonicalJS
+    let ordered = (try? JSONValue.parse(canonical)) ?? payload
+    let share = Share(payload: ordered, cid: BeatsCID.shareCID(canonical: canonical))
+    guard let project = share.rawNetsProject() else { return nil }
+    self.init(
+      source: .rawNets(payload: payload), project: project,
+      seed: DeckSourceDescriptor.voicingSeed(rawNets: payload), sampleRate: sampleRate, opts: opts)
+  }
+
+  /// Either kind of net source; nil for `.none` / `.sample` (or nets-less payloads).
+  public convenience init?(source: DeckSourceDescriptor, sampleRate: Double, opts: WaveOptions) {
+    switch source {
+    case .net(let spec): self.init(spec: spec, sampleRate: sampleRate, opts: opts)
+    case .rawNets(let payload): self.init(rawNets: payload, sampleRate: sampleRate, opts: opts)
+    case .none, .sample: return nil
+    }
+  }
+
+  private init(
+    source: DeckSourceDescriptor, project: Project, seed: Double, sampleRate: Double,
+    opts: WaveOptions
+  ) {
+    self.source = source
+    self.project = project
     var o = opts
-    o.voicingSeed = spec.seed
+    o.voicingSeed = seed
     prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: o)
   }
 }
@@ -186,6 +227,7 @@ extension Deck {
   public func loadNet(_ track: PreparedTrack) {
     loadNet(track.prepared, project: track.project)
     currentSpec = track.spec
+    if case .rawNets(let payload) = track.source { currentRawNets = payload }
   }
 
   /// Start composing the next track in the background (cancels an earlier request).

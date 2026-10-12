@@ -222,6 +222,14 @@ public final class Deck: JogClock {
   public private(set) var netBaseBPM = 120.0
   /// What `generate` / `advanceToNext` last loaded.
   public internal(set) var currentSpec: TrackSpec?
+  /// The raw-`nets` share payload the deck is playing, when it is playing one (then
+  /// `currentSpec` is nil).
+  public internal(set) var currentRawNets: JSONValue?
+  /// The seed this deck's sampled instruments are picked with (`WaveOptions.voicingSeed`):
+  /// the spec's, or a raw-`nets` share's; recompiles (section jumps) must keep it.
+  var voicingSeed: Double {
+    currentSpec?.seed ?? currentRawNets.map { DeckSourceDescriptor.voicingSeed(rawNets: $0) } ?? 0
+  }
   /// How many times the deck has handed over to its pre-composed next track (`advanceToNext`:
   /// the song ended with `autoAdvance` on, or the Next button). A display that reacts to a
   /// hand-over (the ring's Auto-DJ swing) watches this move.
@@ -320,7 +328,7 @@ public final class Deck: JogClock {
 
   /// How this deck compiles nets: the instrument table, with its own sampler bank.
   public var waveOptions: WaveOptions {
-    .extended(samplers: wave.samplers, seed: currentSpec?.seed ?? 0)
+    .extended(samplers: wave.samplers, seed: voicingSeed)
   }
 
   init(name: String, sampleRate: Double, format: AVAudioFormat) {
@@ -486,7 +494,9 @@ public final class Deck: JogClock {
 
   /// Hand over a project compiled elsewhere (`WaveRunner.prepare`).
   public func loadNet(_ prepared: WaveProject, project: Project, title: String? = nil) {
-    currentSpec = nil  // a hand-built net has no spec; `loadNet(_:)` for a track sets it after
+    // A hand-built net has no spec; `loadNet(_:)` for a track sets its source after.
+    currentSpec = nil
+    currentRawNets = nil
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net

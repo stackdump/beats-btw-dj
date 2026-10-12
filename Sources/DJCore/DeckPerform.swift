@@ -54,7 +54,7 @@ extension Deck {
     guard secs.indices.contains(index), let project = netProject else { return false }
     let sr = wave.sampleRate
     let bank = wave.samplers
-    let seed = currentSpec?.seed ?? 0
+    let seed = voicingSeed
     let start = secs[index].startTick
     let song = wave.latest?.trackSerial
     generation += 1
@@ -114,7 +114,7 @@ extension Deck {
     guard mode == .net, let project = netProject else { return false }
     let sr = wave.sampleRate
     let bank = wave.samplers
-    let seed = currentSpec?.seed ?? 0
+    let seed = voicingSeed
     let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation

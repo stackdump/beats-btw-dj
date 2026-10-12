@@ -11,9 +11,8 @@ All of it is on `main` (Phase 3 landed there directly; `phase5-scopes` merged in
 README's "Where we are" says what the app does; this is what each phase still has open.
 
 - **Phase 1** — done. Open: the Inpulse hardware pass (checklist below), MPK pad NOTE mode.
-- **Phase 2** — done, 2.1–2.8. Open: raw-`nets` decks, nothing in the app / MCP loads a share
-  link on a deck (both in 2.8). The counterMelody deviation is kept and goes back to beats
-  (GO-DIVERGENCE.md §5).
+- **Phase 2** — done, 2.1–2.8. Open: nothing in the app / MCP loads a share link on a deck
+  (2.8). The counterMelody deviation is kept and goes back to beats (GO-DIVERGENCE.md §5).
 - **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
   not ported and each needs a design call. Which master macros go on Inpulse pads is open.
 - **Phase 4** — done. Open: the Inpulse headphone-knob mapping; no real set published yet.
@@ -207,6 +206,14 @@ share-urls.json has the real JS read that form and compose it, and records that 
 top-level form loses the traits there. `init(payload:)` still reads the old form (sessions
 recorded before 2026-10-12) to the same spec (`TrackSpecPayloadTests`).
 
+Raw-`nets` shares play on a deck too: `DeckSourceDescriptor.rawNets(payload:)` carries the
+envelope payload (`TrackSpec(share:)` stays nil for them), `PreparedTrack(rawNets:)` builds
+`Share.rawNetsProject()` off the audio thread like a composed track (the payload read in
+canonical key order, as a share URL decodes it; voicing seeded by the payload's `seed`, else
+0), and a session records it as `{"kind":"rawNets","share":…,"cid":…}` so a replay builds the
+same project (`RawNetsSessionTests`: byte-identical replay with a mid-set load and a section
+jump on an arranged share). Older session payloads decode unchanged.
+
 **Deliberate deviation — counterMelody on the composer path (kept, 2026-10-12; to backport to
 beats, GO-DIVERGENCE.md §5).** In
 the browser the overlay runs on `el._project`, the worker's plain JSON, so any counter-melody
@@ -221,9 +228,6 @@ Left out, and why:
 
 - Loading a share on a deck: `ShareLink.parse` and `TrackSpec(share:)` exist, but no app
   control, MCP tool or `djctl` command calls them yet (decks are generated from genre + seed).
-- Raw-`nets` decks: `TrackSpec(share:)` is nil for them; playing one needs a new
-  `DeckSourceDescriptor` case carrying the nets (and a session payload for it).
-  `Share.rawNetsProject()` already builds the project.
 - The browser's `_normalizeProject` adds stinger nets (`isStingerTrack`) to `initialMutes`
   before the overrides land; not modelled (as in 2.5), so a raw-`nets` share whose stingers are
   not already muted differs in `initialMutes`.

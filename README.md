@@ -38,9 +38,9 @@ there. In short:
   `dj-vevr-se` MCP server over it.
 
 Open: the Inpulse hardware pass (controls captured but unnamed, or never captured; which
-centre knob is headphones); a beats share link can be decoded but not yet loaded on a deck
-from the app or MCP, and raw-`nets` shares not at all; reverb / delay / pan / shape macros are
-not ported; the scopes need a look on a real display.
+centre knob is headphones); a beats share link (composed or raw-`nets`) can be decoded and
+played on a deck, but nothing in the app or MCP loads one yet; reverb / delay / pan / shape
+macros are not ported; the scopes need a look on a real display.
 
 ## Controllers
 

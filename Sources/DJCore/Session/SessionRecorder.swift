@@ -62,9 +62,16 @@ extension Deck {
     if playing || wave.isPlaying { throw SessionError.notAtRest(deck: name) }
     switch mode {
     case .net:
-      guard let spec = currentSpec else { throw SessionError.unrecordable(deck: name) }
+      let source: DeckSourceDescriptor
+      if let spec = currentSpec {
+        source = .net(spec)
+      } else if let payload = currentRawNets {
+        source = .rawNets(payload: payload)
+      } else {
+        throw SessionError.unrecordable(deck: name)
+      }
       if wave.tick != 0 || !hotCues.isEmpty { throw SessionError.notAtRest(deck: name) }
-      return .net(spec)
+      return source
     case .sample:
       guard let buffer = loaded else { return .none }
       if turntable.position != 0 || !hotCues.isEmpty || looping || cuePoint != 0 {
@@ -170,9 +177,12 @@ extension DJEngine {
       guard let d = deck(n) else { break }
       switch source {
       case .none: break
-      case .net(let spec):
-        d.loadNet(
-          prepared ?? PreparedTrack(spec: spec, sampleRate: sampleRate, opts: d.waveOptions))
+      case .net, .rawNets:
+        if let track = prepared
+          ?? PreparedTrack(source: source, sampleRate: sampleRate, opts: d.waveOptions)
+        {
+          d.loadNet(track)
+        }
       case .sample(let id, let title, let grid):
         if id == DeckSourceDescriptor.demoID {
           d.loadDemo()

@@ -322,6 +322,87 @@ struct SessionReplayTests {
   }
 }
 
+/// Raw-`nets` shares (share-urls.json, from the real JS) on decks: the session names the share
+/// and replays the same project, to the byte.
+struct RawNetsSessionTests {
+  static func payload(_ name: String?) throws -> JSONValue {
+    let rows = try JSONValue.parse(try beatsFixtureText("share-urls"))["rawNets"]!.array!
+    return try #require(
+      rows.first { $0["payload"]?["name"]?.string == name && $0["payload"]?["genre"] != nil }?[
+        "payload"])
+  }
+
+  @Test func aRawNetsSetReplaysToTheByte() throws {
+    let handMade = try Self.payload("Hand Made")
+    // nameless, needs arrange (lofi, structure standard): it has sections
+    let rows = try JSONValue.parse(try beatsFixtureText("share-urls"))["rawNets"]!.array!
+    let arranged = try #require(rows.first { $0["needsArrange"]?.bool == true }?["payload"])
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
+    dj.deterministic = true
+    dj["A"]!.loadNet(
+      try #require(
+        PreparedTrack(rawNets: handMade, sampleRate: rate, opts: dj["A"]!.waveOptions)))
+    dj["B"]!.loadDemo()
+    try dj.start()
+    defer { dj.stop() }
+    let recorder = try SessionRecorder.start(on: dj)
+    let conductor = OfflineConductor(engine: dj, router: ControllerRouter(engine: dj))
+    var l: [Float] = []
+    var r: [Float] = []
+    for b in 0..<320 {
+      let (bl, br) = try conductor.step {
+        switch b {
+        case 0: dj.perform(.play(deck: "A", on: true))
+        case 60: dj.perform(.crossfader(0.4))
+        case 100:
+          dj.perform(.load(deck: "B", source: .rawNets(payload: arranged)))
+          dj.perform(.play(deck: "B", on: true))
+        case 180: dj.perform(.section(deck: "B", index: 1))
+        case 240: dj.perform(.role(deck: "A", role: "kick", on: false))
+        default: break
+        }
+      }
+      l += bl
+      r += br
+    }
+    let session = recorder.finish()
+    #expect(session.decks["A"] == .rawNets(payload: handMade))
+    #expect(
+      session.events.contains {
+        $0.kind == .action(.load(deck: "B", source: .rawNets(payload: arranged)))
+      })
+    #expect(dj["B"]!.sections.count > 1, "the arranged share has sections")
+    #expect(l.reduce(0) { max($0, abs($1)) } > 0.05)
+    // the envelope names the share; it reads back, CID checked, to the same session
+    let source = try #require(session.json["decks"]?["A"]?["source"])
+    #expect(source["kind"]?.string == "rawNets")
+    #expect(source["cid"]?.string == BeatsCID.shareCID(handMade))
+    let revived = try Session.decode(session.canonical, cid: session.cid)
+    #expect(revived == session)
+    let replay = try SessionPlayer(session: revived).render()
+    #expect(replay.frames == l.count)
+    #expect(replay.left == l && replay.right == r)
+    let again = try SessionPlayer(session: revived).render()
+    #expect(
+      WAV.encode(again, float32: true) == WAV.encode(replay, float32: true), "byte-identical")
+  }
+
+  @Test func olderSessionsAndBadRawNetsDecodeAsBefore() throws {
+    // A session from before raw-nets decks decodes and re-encodes unchanged.
+    let s = SessionModelTests.sample()
+    #expect(try Session.decode(s.canonical, cid: s.cid) == s)
+    // A rawNets source without nets is not a source.
+    let bad = JSONValue.object(
+      JSONObject([
+        ("kind", .string("rawNets")), ("share", .object(JSONObject([("genre", .string("x"))]))),
+      ]))
+    #expect(DeckSourceDescriptor(json: bad) == nil)
+    #expect(
+      DeckSourceDescriptor(
+        json: DeckSourceDescriptor.rawNets(payload: try Self.payload("Hand Made")).json) != nil)
+  }
+}
+
 struct WAVTests {
   @Test func headerAndSamples() {
     let audio = RenderedAudio(sampleRate: 8000, left: [0, 0.5, -1, 1], right: [0.25, -0.5, 0, 2])

@@ -141,6 +141,51 @@ struct DeckNetTests {
     #expect(abs(deck.wave.tempo - base * (1 + 0.5 * Deck.pitchRange)) < 1e-9)
   }
 
+  /// A raw-`nets` share (share-urls.json, built by the real JS) loads on a deck — prepared off
+  /// the main thread, recorded as `.rawNets` — plays, and is the project the browser loads.
+  @Test func aRawNetsSharePlaysOnADeck() async throws {
+    let rows = try JSONValue.parse(try beatsFixtureText("share-urls"))["rawNets"]!.array!
+    let row = try #require(rows.first { $0["payload"]?["name"]?.string == "Hand Made" })
+    let payload = row["payload"]!
+    #expect(TrackSpec(share: Share(payload: payload)) == nil, "not a composer share")
+    let dj = try DJEngine(decks: ["A"], offline: true)
+    let deck = try #require(dj["A"])
+    let sr = dj.sampleRate
+    let bank = deck.wave.samplers
+    let prepared = await Task.detached {
+      PreparedTrack(rawNets: payload, sampleRate: sr, opts: .extended(samplers: bank))
+    }.value
+    let track = try #require(prepared)
+    let opts = deck.waveOptions
+    #expect(track.spec == nil && track.source == .rawNets(payload: payload))
+    let recorder = try SessionRecorder.start(on: dj)
+    dj.perform(.load(deck: "A", source: .rawNets(payload: payload)), prepared: track)
+    #expect(
+      recorder.finish().events.map(\.kind) == [
+        .action(.load(deck: "A", source: .rawNets(payload: payload)))
+      ])
+    #expect(deck.mode == .net && deck.currentSpec == nil && deck.currentRawNets == payload)
+    let want = row["project"]!
+    #expect(deck.title == want["name"]!.string!)
+    #expect(deck.netBaseBPM == want["tempo"]!.double!)
+    #expect(deck.netProject?.modelCID == want["modelCID"]!.string!)
+    #expect(try deck.sourceDescriptor() == .rawNets(payload: payload))
+    deck.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    #expect(peak(try renderOffline(dj, frames: 48_000)) > 0.05)
+    #expect(deck.wave.isPlaying && deck.wave.tick > 4)
+    // Built with the deck's options, any key order: the same project.
+    let sorted = try JSONValue.parse(payload.canonicalJS)
+    #expect(
+      PreparedTrack(rawNets: sorted, sampleRate: sr, opts: opts)?.project.modelCID
+        == want["modelCID"]!.string!)
+    #expect(
+      PreparedTrack(
+        rawNets: .object(JSONObject([("genre", .string("x"))])), sampleRate: sr, opts: opts)
+        == nil)
+  }
+
   @Test func shareEnvelopesBecomeSpecs() throws {
     let rows = try JSONValue.parse(try beatsFixtureText("envelopes"))["envelopes"]!.array!
     var n = 0

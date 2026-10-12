@@ -31,15 +31,38 @@ extension SampleBuffer {
   }
 }
 
-/// What a deck holds.
+/// What a deck holds. Raw-`nets` payloads are equal when their canonical JSON is (a session
+/// read back from its canonical text has them in sorted key order).
 public enum DeckSourceDescriptor: Equatable, Sendable {
   case none
   /// Audio, by content id. The built-in demo loop is `demo-loop`. The grid is recorded so
   /// a replay doesn't depend on re-running the tempo analysis.
   case sample(id: String, title: String, grid: BeatGrid?)
   case net(TrackSpec)
+  /// A raw-`nets` beats share: the envelope payload as given (its CID is `shareCID` of it).
+  /// It plays `Share.rawNetsProject()` — the nets verbatim, arranged and overridden as the
+  /// browser does — so a session names the share, not the project.
+  case rawNets(payload: JSONValue)
 
   public static let demoID = "demo-loop"
+
+  /// The seed a raw-`nets` deck picks its sampled instruments with: the envelope's `seed`
+  /// when it has a number there, else 0 (the composed path uses the spec's seed).
+  static func voicingSeed(rawNets payload: JSONValue) -> Double {
+    if case .number(let s)? = payload["seed"] { return s }
+    return 0
+  }
+
+  public static func == (a: Self, b: Self) -> Bool {
+    switch (a, b) {
+    case (.none, .none): return true
+    case (.sample(let i, let t, let g), .sample(let j, let u, let h)):
+      return i == j && t == u && g == h
+    case (.net(let x), .net(let y)): return x == y
+    case (.rawNets(let p), .rawNets(let q)): return p == q || p.canonicalJS == q.canonicalJS
+    default: return false
+    }
+  }
 }
 
 /// Per-deck knobs at the start of a session.
@@ -185,6 +208,12 @@ extension DeckSourceDescriptor {
           ("kind", .string("net")), ("share", spec.payload),
           ("cid", .string(BeatsCID.shareCID(spec.payload))),
         ]))
+    case .rawNets(let payload):
+      return .object(
+        JSONObject([
+          ("kind", .string("rawNets")), ("share", payload),
+          ("cid", .string(BeatsCID.shareCID(payload))),
+        ]))
     case .sample(let id, let title, let grid):
       var o = JSONObject([
         ("kind", .string("sample")), ("id", .string(id)), ("title", .string(title)),
@@ -203,6 +232,9 @@ extension DeckSourceDescriptor {
     case "net":
       guard let p = v["share"], let spec = TrackSpec(payload: p) else { return nil }
       self = .net(spec)
+    case "rawNets":
+      guard let p = v["share"], Share(payload: p).nets != nil else { return nil }
+      self = .rawNets(payload: p)
     case "sample":
       guard let id = v["id"]?.string else { return nil }
       var grid: BeatGrid?
