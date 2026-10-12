@@ -126,6 +126,63 @@ struct SurfaceProfileTests {
     }
     #expect(checked > 280, "only \(checked) captured messages checked")
   }
+
+  struct Control: Hashable { var group: String, index: Int }
+
+  /// Inpulse surface controls (group, index) that a captured message reaches. Jog messages
+  /// belong to the jog profile and are left out, as in `everyCapturedMessageIsCovered`.
+  func inpulseCaptured() throws -> Set<Control> {
+    var d = SurfaceDecoder(profile: inpulse)
+    var out = Set<Control>()
+    for m in try capturedMessages()["inpulse"] ?? [] {
+      if JogProfile.inpulse200MK3.parse(m) != nil { continue }
+      if let e = d.decode(m) { out.insert(Control(group: e.group, index: e.index)) }
+    }
+    return out
+  }
+
+  func bindings(_ c: Control) -> [SurfaceProfile.Binding] {
+    inpulse.layout.filter { $0.group == c.group && ($0.index == nil || $0.index == c.index) }
+  }
+
+  /// The Inpulse controls the real hardware sent that are still parked: each needs naming on
+  /// the unit first (ROADMAP Phase 1 hardware pass) or is a hardware layer. Remove an entry
+  /// when it gets bound; a new entry means a captured control lost its binding.
+  @Test func inpulseCapturedButParkedIsTheKnownSet() throws {
+    let parked = try inpulseCaptured().filter { c in
+      let bs = bindings(c)
+      return !bs.isEmpty && bs.allSatisfy { $0.action == .unbound }
+    }
+    let names = Set(parked.map { "\($0.group).\(inpulse.group($0.group)?.name($0.index) ?? "?")" })
+    #expect(
+      names == [
+        "deckA.buttons.btn03", "deckA.buttons.btn09", "deckA.buttons.btn0A",
+        "deckA.buttons.shift", "deckA.buttons.hotCueMode", "deckA.buttons.fxMode",
+        "deckB.buttons.btn03", "deckB.buttons.btn09", "deckB.buttons.btn0A",
+        "deckB.buttons.shift", "deckB.buttons.hotCueMode", "deckB.buttons.fxMode",
+        "mixer.buttons.centre01", "mixer.buttons.centre02", "mixer.buttons.centre03",
+      ], "\(names.sorted())")
+  }
+
+  /// A binding or parked control that no captured message reaches rests on Mixxx's
+  /// original-200 map or a guess, and says so: `[MIXXX]` / `[UNVERIFIED]` in its group's
+  /// comment (or, for a parked control, its reason).
+  @Test func inpulseUncapturedControlsAreMarked() throws {
+    let captured = try inpulseCaptured()
+    var bound = 0
+    for b in inpulse.layout {
+      if captured.contains(where: { $0.group == b.group && (b.index == nil || $0.index == b.index) }
+      ) {
+        continue
+      }
+      let marks = [inpulse.group(b.group)?.comment ?? "", b.reason ?? ""].contains {
+        $0.contains("[MIXXX]") || $0.contains("[UNVERIFIED]")
+      }
+      #expect(marks, "\(b.group)[\(b.index.map(String.init) ?? "*")] \(b.action) is not captured")
+      if b.action != .unbound { bound += 1 }
+    }
+    #expect(bound > 0)  // the hot-cue clear pads at least: the check is live
+  }
 }
 
 @MainActor

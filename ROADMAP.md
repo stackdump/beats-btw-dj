@@ -70,10 +70,38 @@ expectations: the Inpulse sends every knob/fader as 14-bit CC pairs, its SHIFT i
 note 0x04 *and* a hardware channel shift (+3), pad modes 0x0F/0x10 select note
 ranges; the MPK preset on this unit sends knobs on CC 1–8 (knob 1 collides with
 the joystick's CC 1) and pads as Program Change — not beats' factory map. Still
-open: identify Inpulse centre knobs CC 0x03/0x04 and buttons 0x01/0x02 on
-channel 1; verify the `[MIXXX]`-only Inpulse entries (FX/sampler pads, PFL,
-load, browser); pad NOTE mode on the MPK. A `djctl learn` wizard is deferred —
-re-capture + fixture regeneration covers preset changes for now.
+open: the Inpulse hardware pass below; pad NOTE mode on the MPK. A `djctl learn`
+wizard is deferred — re-capture + fixture regeneration covers preset changes for now.
+
+**Inpulse hardware pass (open; checked 2026-10-11).** The 2026-10-07 capture settles the
+pad modes — after FX (0x10) the pads send 0x10–0x13 (group `rollPads`, a Mixxx name kept
+for sessions and tests; bound to macros), after HOT CUE (0x0F) 0x00–0x03 — but leaves two
+kinds of gap. Captured but not named (parked): LOOP + the two STEMS buttons (0x03 / 0x09 /
+0x0A) on each deck and the centre buttons 0x01–0x03; `SurfaceProfileTests.
+inpulseCapturedButParkedIsTheKnownSet` lists them. Never captured: every shifted button,
+the browser, pads 0x08+ / 0x20+ / 0x30+, pad bend, deck B PFL / LOAD / hot-cue pads;
+`inpulseUncapturedControlsAreMarked` keeps each tagged `[MIXXX]` / `[UNVERIFIED]`. One
+session with `djctl monitor inpulse > captures/inpulse-<date>.log` (keep the 2026-10-07
+log), saying each control's panel name as it is pressed:
+
+- [ ] Name 0x03, 0x09, 0x0A on each deck (LOOP, STEMS music, STEMS mic) and centre
+  buttons 0x01–0x03 (ASSIST/PREP, MASTER, BEATMATCH GUIDE).
+- [ ] Turn the browser encoder both ways and push it, with and without SHIFT.
+- [ ] Turn MASTER, then HEADPHONES, on its own (which one is CC 0x03 / 0x04).
+- [ ] Hold SHIFT and press every deck button (LOOP, both STEMS, HOT CUE, FX, SYNC, CUE,
+  PLAY, PFL, LOAD) and turn HIGH/GAIN, on both decks.
+- [ ] Each pad mode — HOT CUE, LOOP (SHIFT + HOT CUE), FX, SAMPLER (SHIFT + FX) — × all
+  4 pads, with and without SHIFT, on both decks.
+- [ ] Deck B PFL and LOAD.
+- [ ] Add the new distinct messages to `Tests/DJCoreTests/Fixtures/captured-messages.json`
+  (no script yet: notes on + off, one value per CC, as now), fix the profile's names and
+  comments and drop the tags that are now measured, bind what has an obvious action, and
+  shrink the known-parked set in the test.
+
+Open decision: the FX-mode pads carry the net macros (cut, beat-repeat, drop, breakdown).
+The master-chain macros (3.3) bind through the same `macro` action; which four go on
+which pads — or on the LOOP / SAMPLER pad modes once their numbers are known — is a choice
+to make, not a measurement.
 
 ## Phase 2 — Native music generation with CID equivalence **(done through 2.8)**
 
