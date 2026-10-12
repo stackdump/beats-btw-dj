@@ -168,7 +168,7 @@ public final class SurfaceController {
     case .sectionPrev: deck.stepSection(-1)
     case .sectionNext: deck.stepSection(1)
     case .roleMute: if let r = b.role { deck.toggleRole(r) }
-    case .macro: if let m = b.macro.flatMap(NetMacro.init(id:)) { deck.fire(m) }
+    case .macro: if let id = b.macro { deck.fireMacro(id: id) }
     case .panic: deck.panic()
     case .stinger: deck.stinger(b.slot ?? 0)
     case .nextTrack: deck.skipToNextTrack()

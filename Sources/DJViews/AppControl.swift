@@ -50,7 +50,7 @@ extension AppModel {
         if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
         }
-        if case .macro(_, let id) = action, !NetMacro.allCases.contains(where: { $0.id == id }) {
+        if case .macro(_, let id) = action, !Deck.isMacro(id: id) {
           throw ControlRequestError.bad("unknown macro \(id) (see dj_catalog)")
         }
       }
@@ -313,6 +313,12 @@ extension AppModel {
       if let c = s.currentSection { o["currentSection"] = .int(c) }
       o["roles"] = .object(JSONObject(s.roles.map { ($0, .bool(s.rolesOn.contains($0))) }))
       o["beatInBar"] = .int(s.beatInBar)
+      // the macros in effect: net ones, then the master chain's
+      o["macrosRunning"] = .array(
+        (NetMacro.allCases.filter { s.macroPulse.isRunning($0) }.map(\.id)
+          + MasterMacro.allCases.filter { s.masterRunning.contains($0) }.map(\.id)).map {
+            .string($0)
+          })
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
       // role (riff variants `bass-0`, `bass-1`… folded together) → what it plays on
       var sampled: [String: String] = [:]
@@ -342,10 +348,20 @@ extension AppModel {
       Self.allInstruments.map {
         .object(JSONObject([("name", .string($0)), ("sound", .string(Self.soundOf($0)))]))
       })
-    o["macros"] = .array(
-      NetMacro.allCases.map {
-        .object(JSONObject([("id", .string($0.id)), ("label", .string($0.label))]))
-      })
+    o["macros"] =
+      .array(
+        NetMacro.allCases.map {
+          .object(
+            JSONObject([
+              ("id", .string($0.id)), ("label", .string($0.label)), ("group", .string("Net")),
+            ]))
+        }
+          + MasterMacro.allCases.map {
+            .object(
+              JSONObject([
+                ("id", .string($0.id)), ("label", .string($0.label)), ("group", .string($0.group)),
+              ]))
+          })
     o["apcPads"] = .array(
       SurfaceProfile.apcMiniMK2.deviceMap().filter { !$0.parked && $0.action != "unbound" }.map {
         var r = JSONObject([

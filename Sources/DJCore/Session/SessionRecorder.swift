@@ -193,7 +193,7 @@ extension DJEngine {
     case .autoAdvance(let n, let on): deck(n)?.autoAdvance = on
     case .section(let n, let i): deck(n)?.launchSection(i)
     case .role(let n, let role, let on): deck(n)?.setRole(role, on: on)
-    case .macro(let n, let id): if let m = NetMacro(id: id) { deck(n)?.fire(m) }
+    case .macro(let n, let id): deck(n)?.fireMacro(id: id)
     case .panic(let n): deck(n)?.panic()
     case .stinger(let n, let k): deck(n)?.stinger(k)
     case .sync(let n, let align):

@@ -39,6 +39,8 @@ struct DeckState: Equatable {
   var ringArcs = RingArcs()
   /// Running macros and the chase over the roles they hold muted (SPEC 26).
   var macroPulse = MacroPulseState()
+  /// The master-chain macros (FX, pitch, feel) in effect.
+  var masterRunning: Set<MasterMacro> = []
 }
 
 @MainActor @Observable
@@ -263,6 +265,7 @@ public final class AppModel {
         chaseBoards[name] = board
         chaseClock[name] = now
         state.macroPulse = board.state
+        state.masterRunning = Set(d.wave.activeMasterMacros)
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
@@ -373,6 +376,7 @@ public final class AppModel {
     dj?.perform(.role(deck: deck, role: role, on: !d.isRoleOn(role)))
   }
   func fire(_ deck: String, _ macro: NetMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
+  func fire(_ deck: String, _ macro: MasterMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
   func panic(_ deck: String) { dj?.perform(.panic(deck: deck)) }
   func stinger(_ deck: String, _ n: Int) { dj?.perform(.stinger(deck: deck, n: n)) }
   func skipToNext(_ deck: String) { dj?.perform(.nextTrack(deck: deck)) }
@@ -779,6 +783,7 @@ struct NetPanel: View {
         ForEach(0..<4, id: \.self) { n in
           Button("Hit \(n + 1)") { model.stinger(name, n) }.controlSize(.small)
         }
+        MasterMacroMenu(name: name, running: state.masterRunning, model: model)
         Spacer()
         Button("Sync") { model.sync(name) }.controlSize(.small)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)
@@ -788,6 +793,37 @@ struct NetPanel: View {
         .controlSize(.small).disabled(!state.nextReady)
       }
     }
+  }
+}
+
+/// The master chain's macros (beats' FX, Pitch and Feel groups) in one menu; its title shows a
+/// dot while any of them is in effect, and the running ones are checked.
+struct MasterMacroMenu: View {
+  let name: String
+  let running: Set<MasterMacro>
+  let model: AppModel
+
+  var body: some View {
+    Menu {
+      ForEach(["FX", "Pitch", "Feel"], id: \.self) { group in
+        Section(group) {
+          ForEach(MasterMacro.allCases.filter { $0.group == group }, id: \.rawValue) { m in
+            Button {
+              model.fire(name, m)
+            } label: {
+              if running.contains(m) {
+                Label(m.label, systemImage: "checkmark")
+              } else {
+                Text(m.label)
+              }
+            }
+          }
+        }
+      }
+    } label: {
+      Text(running.isEmpty ? "FX" : "FX ●")
+    }
+    .controlSize(.small).fixedSize()
   }
 }
 

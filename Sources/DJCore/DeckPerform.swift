@@ -155,6 +155,31 @@ extension Deck {
     wave.fire(macro, ticks: macro.ticks(duration))
   }
 
+  /// A master-chain macro (FX, pitch, feel) for `duration` bars (nil: its default; 0: permanent).
+  public func fire(_ macro: MasterMacro, duration: Int? = nil) {
+    guard mode == .net else { return }
+    wave.fire(macro, bars: duration)
+  }
+
+  /// Fire a catalog macro by its beats id (`drop`, `sweep-lp`, `feel-build`...), whichever kind
+  /// it is. False for an id neither catalogue has.
+  @discardableResult
+  public func fireMacro(id: String, duration: Int? = nil) -> Bool {
+    if let m = NetMacro(id: id) {
+      fire(m, duration: duration)
+    } else if let m = MasterMacro(id: id) {
+      fire(m, duration: duration)
+    } else {
+      return false
+    }
+    return true
+  }
+
+  /// Is a catalog id one this app plays (`fireMacro(id:)` would fire it)?
+  public static func isMacro(id: String) -> Bool {
+    NetMacro(id: id) != nil || MasterMacro(id: id) != nil
+  }
+
   public func panic() { if mode == .net { wave.panic() } }
 
   /// Stinger `n` (0…3 → `hit1`…`hit4`): unmute its ring for `bars` bars.

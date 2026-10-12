@@ -512,7 +512,12 @@ public final class ModelEngine {
     case .some(.deck): path = fxPoint
     default: path = .deckOutput
     }
-    if path == .matchTap { return DeckFx(gain: Self.sourceGain) }
+    if path == .matchTap {
+      // the tap is after the deck's master chain: its HP / LP is in what the tap hears
+      var fx = DeckFx(gain: Self.sourceGain)
+      (fx.chainHighPass, fx.chainLowPass) = DeckFx.chainPasses(deck: deck)
+      return fx
+    }
     return DeckFx(
       deck: deck,
       gain: Self.sourceGain * deck.trim * deck.volume * engine.crossfadeGain(name) * engine.master)

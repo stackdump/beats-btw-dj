@@ -126,7 +126,8 @@ public struct MCPBridge {
       centre for filter/gain/eq; pitch is -1…1 = ±8%, 0 = none) · crossfader {value 0…1, \
       0 = A} · master {value} · nextTrack {deck} · autoAdvance {deck, on} · \
       section {deck, index} · role {deck, role, on} · macro {deck, macro: id from \
-      dj_catalog} · panic {deck} · stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
+      dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
+      stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       queueNext {deck, share: {genre, seed, structure?}}.
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \

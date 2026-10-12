@@ -152,6 +152,13 @@ public struct DeckFx: Equatable, Sendable {
 
   public var highPass: Pass?
   public var lowPass: Pass?
+  /// A net deck's master chain (beats' master HP / LP, Tone.Filter rolloff -48; the model takes
+  /// it as four stages, as scope-model.js `filterState` does (`round(48 / 12)`), though Tone
+  /// cascades three,
+  /// Q 1 dB), which comes before the DJ filter and the deck tap. As scope-model.js
+  /// `fxResponse` reads `toneEngine._hpFilter` / `_lpFilter`.
+  public var chainHighPass: Pass?
+  public var chainLowPass: Pass?
   public var lowShelf: Shelf?
   public var mid: Peak?
   public var highShelf: Shelf?
@@ -170,14 +177,25 @@ public struct DeckFx: Equatable, Sendable {
     self.gain = gain
   }
 
+  /// The master chain's HP / LP of a net deck (nil: a sample deck, or the chain at rest).
+  public static func chainPasses(deck: Deck) -> (hp: Pass?, lp: Pass?) {
+    guard deck.mode == .net else { return (nil, nil) }
+    let c = deck.wave.masterFilterCorners
+    if c.bypassed { return (nil, nil) }
+    let q = MasterChain.filterQDb
+    let n = 4  // scope-model.js: stages = round(-rolloff / 12)
+    return (Pass(fc: c.hp, qDb: q, stages: n), Pass(fc: c.lp, qDb: q, stages: n))
+  }
+
   /// A deck's live filter and EQ bands (the bypassed ones, and shelves/peaks at 0 dB, are left
-  /// out), with `gain` as given.
+  /// out), its master chain's HP / LP, with `gain` as given.
   public init(deck: Deck, gain: Double) {
     let b = deck.filterNode.bands
     func pass(_ band: AVAudioUnitEQFilterParameters) -> Pass? {
       band.bypass ? nil : Pass(fc: Double(band.frequency))
     }
     self.init(gain: gain)
+    (chainHighPass, chainLowPass) = Self.chainPasses(deck: deck)
     lowPass = pass(b[0])
     highPass = pass(b[1])
     if !b[2].bypass, b[2].gain != 0 {
@@ -244,6 +262,8 @@ public enum ModelFx {
       guard let p, !isParked(kind, fc: p.fc) else { return }
       apply(BiquadCoefficients.pass(kind, fc: p.fc, qDb: p.qDb, sampleRate: sr), stages: p.stages)
     }
+    pass(.highpass, fx.chainHighPass)
+    pass(.lowpass, fx.chainLowPass)
     pass(.highpass, fx.highPass)
     pass(.lowpass, fx.lowPass)
     if let s = fx.lowShelf {
