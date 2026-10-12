@@ -12,8 +12,8 @@ README's "Where we are" says what the app does; this is what each phase still ha
 
 - **Phase 1** — done. Open: the Inpulse hardware pass (checklist below), MPK pad NOTE mode.
 - **Phase 2** — done, 2.1–2.8. Open: raw-`nets` decks, nothing in the app / MCP loads a share
-  link on a deck, the `TrackSpec.payload` traits gap, the counterMelody deviation to confirm
-  (all in 2.8).
+  link on a deck, the `TrackSpec.payload` traits gap (all in 2.8). The counterMelody deviation is kept and
+  goes back to beats (GO-DIVERGENCE.md §5).
 - **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
   not ported and each needs a design call. Which master macros go on Inpulse pads is open.
 - **Phase 4** — done. Open: the Inpulse headphone-knob mapping; no real set published yet.
@@ -201,7 +201,8 @@ The app: `TrackSpec(share:)` keeps the overrides and overlay directives in `laye
 `TrackSpec.payload` writes them under their envelope names and `init(payload:)` reads them
 back, so recorded sessions replay the same project (payloads without them are unchanged).
 
-**Deliberate deviation — counterMelody on the composer path (decision to confirm, Matt).** In
+**Deliberate deviation — counterMelody on the composer path (kept, 2026-10-12; to backport to
+beats, GO-DIVERGENCE.md §5).** In
 the browser the overlay runs on `el._project`, the worker's plain JSON, so any counter-melody
 entry whose section exists throws (`nb.resetState is not a function`, caught and logged;
 `wireProbe` fixtures) and the browser then drops the *whole* overlay — fadeIn and drumBreak
@@ -284,7 +285,8 @@ the Pan macros (`ping-pong`, `hard-left`, `hard-right`, `auto-pan`, `mono`) and 
 (`tighten`, `loosen`, `pulse`), which act on Tone channel strips / instrument decay. A Swift
 reverb, delay, panner or decay control here would be new design, not a port.
 
-**Deviations (by decision):** a neutral chain is bypassed and bit-transparent, like beats' default
+**Deviations (by decision; kept in dj, the improvements go back to beats — GO-DIVERGENCE.md §5):**
+a neutral chain is bypassed and bit-transparent, like beats' default
 lean wave path, not the `&fx=tone` chain at rest (HP 20 Hz, LP 20 kHz and the pitch shifter's
 fixed taps colour the sound); HP / LP / pitch fade in and out of bypass over 5 ms; no compressor
 (beats ends in Compressor(-12, 3)). Timing is beats' offline grid (`audioAnimLoop`: 120 ms FX,
@@ -374,6 +376,9 @@ display is the check that layout (sizes, spacing, the 3-way deck column) looks r
 - Generation parity is proven by fixtures from the real JS (and Go), never
   by eyeballing.
 - Unverified hardware values are tagged until measured.
+- Where dj and beats' JS differ by design (decided 2026-10-12), dj keeps its behaviour and the
+  improvement is backported to beats; the list is GO-DIVERGENCE.md §5. Fixtures still hold
+  every other path to the JS.
 
 ## Verification notes (2026-10-08)
 

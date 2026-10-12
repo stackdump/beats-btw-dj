@@ -59,5 +59,26 @@ function does with `NetBundle`s, and `wireProbe` records the browser throw.
 
 Either align Go to JS (channels, a mulberry32/LCG port, accumulator nets), or
 declare Go output non-canonical and keep Go away from share regeneration. Until then nothing
-in the Swift app depends on Go. For #4, either parse the nets before simulating (then shares
-with a counter-melody start to sound different in the browser) or drop the directive.
+in the Swift app depends on Go. For #4, decided 2026-10-12: parse the nets before simulating, as dj does (§5) — shares with a
+counter-melody then start to sound different in the browser.
+
+## 5. dj improvements to backport to beats (decision 2026-10-12)
+
+Where dj and beats' JS differ by design, dj keeps its behaviour and beats takes the
+improvement. When one lands in beats, regenerate the fixtures at the new beats commit and drop
+the matching deviation note (ROADMAP 2.8 / 3.3).
+
+1. **counterMelody overlay plays** (#4 above; ROADMAP 2.8). Run the overlay on parsed nets
+   (`NetBundle`s), so the counter-melody plays and fadeIn / drumBreak / feelCurve are no longer
+   dropped with it. Same fix for full arranges (`cloneBundle`'s JSON round trip).
+2. **A neutral master chain is transparent** (ROADMAP 3.3). With `&fx=tone`, bypass HP / LP /
+   pitch shift while they are at rest (beats' chain at rest still colours: HP 20 Hz, LP 20 kHz,
+   the pitch shifter's fixed taps), fade them in and out of bypass over 5 ms, and drop the
+   always-on Compressor(-12, 3).
+3. **FX macros survive a project hand-over** (ROADMAP 3.3). beats' project-sync on regen / swap
+   cancels running FX macros; dj lets them finish.
+
+beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
+- `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX
+  sub-macros), so it is just octave-down for a bar.
+- `scope-model.js` models Tone's `rolloff: -48` as four biquads; Tone cascades three.

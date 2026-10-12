@@ -64,7 +64,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - Projects are composed and compiled off the audio thread (`TrackSpec` →
   `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
-  `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md).
+  `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
+  differs: there dj keeps its behaviour and the improvement is backported to beats
+  (GO-DIVERGENCE.md §5).
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 
