@@ -1,0 +1,224 @@
+<!doctype html>
+<!--
+  Ground truth for the master chain (Sources/DJCore/Beats/Wave/MasterFx/MasterChain.swift): beats'
+  master insert nodes, built exactly as audio/tone-engine.js `init` builds them, with the real
+  Tone.js 15.1.22 (the build beats pins), rendered by Chrome in an OfflineAudioContext, one node
+  at a time on a fixed stereo input, while tone-engine.js's master setters (copied verbatim below)
+  move them at fixed times. The setters run at those times through `OfflineAudioContext.suspend`,
+  so Tone sees `now()` = the render time (a multiple of 128 frames; an offline context has no
+  lookAhead; the page sets Tone's offline clock to the render's, see `render`). The page prints JSON into <pre id="out">: per scenario, the ops and a few
+  1024-frame windows of each output channel (base64 float32).
+  Tests/DJCoreTests/MasterChainChromeTests.swift replays the same input and ops through
+  MasterChain (with its rest bypass off: Tone's nodes run even at rest) and compares.
+
+  Needs .build/tone/Tone-15.1.22.js (scripts/beats-macro-fx.mjs downloads it and checks beats' SRI
+  hash). Re-measure:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu \
+      --no-sandbox --autoplay-policy=no-user-gesture-required --virtual-time-budget=60000 \
+      --allow-file-access-from-files \
+      --dump-dom "file://$PWD/scripts/master-chain-chrome-reference.html" \
+      | grep -o '<pre id="out">.*</pre>' | sed 's/<[^>]*>//g' \
+      > Tests/DJCoreTests/Fixtures/beats/master-chain-chrome.json
+
+  (--dump-dom gives up before the offline renders finish on some machines; scripts/master-chain-chrome.mjs
+  drives the page over CDP and waits for it: `node scripts/master-chain-chrome.mjs`.)
+-->
+<html><body>
+<pre id="out">pending</pre>
+<script src="../.build/tone/Tone-15.1.22.js"></script>
+<script>
+const SR = 22050;
+const SECONDS = 1.5;
+const N = Math.round(SR * SECONDS);
+const WIN = 1024;
+
+// The input: two tones and LCG noise, slightly different per channel. MasterChainChromeTests
+// computes the same numbers.
+function input() {
+  const l = new Float32Array(N), r = new Float32Array(N);
+  let seed = 12345;
+  for (let n = 0; n < N; n++) {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    const noise = (seed / 4294967296) * 2 - 1;
+    const t = n / SR;
+    l[n] = 0.3 * Math.sin(2 * Math.PI * 220 * t) + 0.2 * Math.sin(2 * Math.PI * 1375 * t) + 0.1 * noise;
+    r[n] = 0.3 * Math.sin(2 * Math.PI * 330 * t) + 0.15 * Math.sin(2 * Math.PI * 2750 * t) + 0.1 * noise;
+  }
+  return [l, r];
+}
+
+// ---- COPIED VERBATIM from audio/tone-engine.js (ToneEngine methods; `this` = a stand-in that
+// has only the node under test; `_channelFx` is empty as on the master) ----
+const setters = {
+    setDistortion(amount) {
+        if (!this._distortion) return;
+        const a = Math.max(0, Math.min(1, amount));
+        const wet = a > 0 ? 1 : 0;
+        this._distortion.distortion = a;
+        this._distortion.wet.rampTo(wet, 0.05);
+        for (const fx of this._channelFx.values()) {
+            fx.distortion.distortion = a;
+            fx.distortion.wet.rampTo(wet, 0.05);
+        }
+    },
+    setLowpassFreq(freq) {
+        if (!this._lpFilter) return;
+        const f = Math.max(100, Math.min(20000, freq));
+        this._lpFilter.frequency.cancelScheduledValues(Tone.now());
+        this._lpFilter.frequency.rampTo(f, 0.1);
+        for (const fx of this._channelFx.values()) {
+            fx.lpFilter.frequency.cancelScheduledValues(Tone.now());
+            fx.lpFilter.frequency.rampTo(f, 0.1);
+        }
+    },
+    setHighpassFreq(freq) {
+        if (!this._hpFilter) return;
+        const f = Math.max(20, Math.min(5000, freq));
+        this._hpFilter.frequency.cancelScheduledValues(Tone.now());
+        this._hpFilter.frequency.rampTo(f, 0.1);
+        for (const fx of this._channelFx.values()) {
+            fx.hpFilter.frequency.cancelScheduledValues(Tone.now());
+            fx.hpFilter.frequency.rampTo(f, 0.1);
+        }
+    },
+    setPhaserFreq(rate) {
+        if (!this._phaser) return;
+        const r = Math.max(0.1, Math.min(10, rate));
+        this._phaser.frequency.rampTo(r, 0.1);
+        for (const fx of this._channelFx.values()) fx.phaser.frequency.rampTo(r, 0.1);
+    },
+    setPhaserDepth(depth) {
+        if (!this._phaser) return;
+        const oct = Math.max(0.5, depth * 6);
+        this._phaser.octaves = oct;
+        for (const fx of this._channelFx.values()) fx.phaser.octaves = oct;
+    },
+    setPhaserWet(value) {
+        if (!this._phaser) return;
+        const v = Math.max(0, Math.min(1, value));
+        this._phaser.wet.rampTo(v, 0.05);
+        for (const fx of this._channelFx.values()) fx.phaser.wet.rampTo(v, 0.05);
+    },
+    setCrush(amount) {
+        if (!this._crusher) return;
+        const wet = amount <= 0 ? 0 : 1;
+        const bits = amount <= 0 ? this._crusher.bits.value : Math.max(1, Math.round(16 - amount * 15));
+        this._crusher.wet.rampTo(wet, 0.05);
+        if (amount > 0) this._crusher.bits.value = bits;
+        for (const fx of this._channelFx.values()) {
+            fx.crusher.wet.rampTo(wet, 0.05);
+            if (amount > 0) fx.crusher.bits.value = bits;
+        }
+    },
+    setMasterPitch(semitones) {
+        if (!this._pitchShift) return;
+        const p = Math.max(-24, Math.min(24, semitones));
+        this._pitchShift.pitch = p;
+    },
+};
+// ---- end of copy ----
+
+// mixer-sliders.js / build.js applyFx (the slider → setter mapping), copied:
+function hpFreq(val) { return 20 * Math.pow(250, val / 100); }
+function lpFreq(val) { return 100 * Math.pow(200, val / 100); }
+function applyFx(eng, fxName, val) {
+    switch (fxName) {
+        case 'distortion':     setters.setDistortion.call(eng, val / 100); break;
+        case 'master-pitch':   setters.setMasterPitch.call(eng, val); break;
+        case 'hp-freq':        setters.setHighpassFreq.call(eng, hpFreq(val)); break;
+        case 'lp-freq':        setters.setLowpassFreq.call(eng, lpFreq(val)); break;
+        case 'phaser-freq':    setters.setPhaserFreq.call(eng, val === 0 ? 0 : 0.1 + (val / 100) * 9.9); break;
+        case 'phaser-depth':   setters.setPhaserDepth.call(eng, val / 100); break;
+        case 'phaser-wet':     setters.setPhaserWet.call(eng, val / 100); break;
+        case 'crush-bits':     setters.setCrush.call(eng, val / 100); break;
+    }
+}
+
+// Scenarios: the node (as tone-engine.js init makes it), ops [frame, slider, value] (frames are
+// multiples of 128), and the windows (start frames) to keep.
+const q = (s) => Math.round(s * SR / 128) * 128;
+const scenarios = [
+  { name: 'lowpass', make: () => ({ _lpFilter: new Tone.Filter({ frequency: 20000, type: 'lowpass', rolloff: -48 }) }),
+    node: (e) => e._lpFilter,
+    ops: [[q(0.1), 'lp-freq', 40], [q(0.15), 'lp-freq', 70], [q(0.5), 'lp-freq', 20], [q(0.9), 'lp-freq', 100]],
+    windows: [q(0.05), q(0.12), q(0.3), q(0.55), q(0.95), q(1.3)] },
+  { name: 'highpass', make: () => ({ _hpFilter: new Tone.Filter({ frequency: 20, type: 'highpass', rolloff: -48 }) }),
+    node: (e) => e._hpFilter,
+    ops: [[q(0.1), 'hp-freq', 60], [q(0.4), 'hp-freq', 85], [q(0.8), 'hp-freq', 0]],
+    windows: [q(0.05), q(0.12), q(0.3), q(0.45), q(0.85), q(1.3)] },
+  { name: 'phaser', make: () => ({ _phaser: new Tone.Phaser({ frequency: 1, octaves: 3, baseFrequency: 350, wet: 0 }) }),
+    node: (e) => e._phaser,
+    ops: [[q(0.1), 'phaser-wet', 90], [q(0.1), 'phaser-depth', 100], [q(0.1), 'phaser-freq', 40],
+          [q(0.9), 'phaser-wet', 0], [q(0.9), 'phaser-freq', 0]],
+    windows: [q(0.12), q(0.3), q(0.6), q(0.92), q(1.3)] },
+  { name: 'crusher', make: () => ({ _crusher: new Tone.BitCrusher({ bits: 16, wet: 0 }) }),
+    node: (e) => e._crusher,
+    ops: [[q(0.1), 'crush-bits', 80], [q(0.5), 'crush-bits', 40], [q(1.0), 'crush-bits', 0]],
+    windows: [q(0.11), q(0.3), q(0.52), q(0.8), q(1.02), q(1.3)] },
+  { name: 'distortion', make: () => ({ _distortion: new Tone.Distortion({ distortion: 0, wet: 0 }) }),
+    node: (e) => e._distortion,
+    ops: [[q(0.1), 'distortion', 20], [q(0.5), 'distortion', 70], [q(1.0), 'distortion', 0]],
+    windows: [q(0.11), q(0.3), q(0.52), q(0.8), q(1.02), q(1.3)] },
+  { name: 'pitch', make: () => ({ _pitchShift: new Tone.PitchShift({ pitch: 0, windowSize: 0.03, feedback: 0 }) }),
+    node: (e) => e._pitchShift,
+    ops: [[q(0.1), 'master-pitch', 12], [q(0.6), 'master-pitch', -12], [q(1.1), 'master-pitch', 7]],
+    windows: [q(0.3), q(0.5), q(0.8), q(1.0), q(1.3)] },
+];
+
+function b64(f32) {
+  const u8 = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength);
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+async function render(sc, [inL, inR]) {
+  const raw = new OfflineAudioContext(2, N, SR);
+  const ctx = new Tone.OfflineContext(raw);
+  Tone.setContext(ctx);
+  const eng = sc.make();
+  eng._channelFx = new Map();
+  await Tone.loaded();
+  // the crusher's worklet module loads asynchronously: wait for its node to exist
+  await new Promise((r) => setTimeout(r, 200));
+  const buf = raw.createBuffer(2, N, SR);
+  buf.copyToChannel(inL, 0);
+  buf.copyToChannel(inR, 1);
+  const src = raw.createBufferSource();
+  src.buffer = buf;
+  Tone.connect(src, sc.node(eng));
+  sc.node(eng).connect(raw.destination);
+  src.start(0);
+  const times = [...new Set(sc.ops.map((o) => o[0]))].sort((a, b) => a - b);
+  for (const f of times) {
+    raw.suspend(f / SR).then(() => {
+      // Tone's OfflineContext keeps its own clock, advanced only by its render() loop; this page
+      // renders the raw context itself, so set Tone's `now()` to where the render stands.
+      ctx._currentTime = raw.currentTime;
+      for (const [g, key, v] of sc.ops) if (g === f) applyFx(eng, key, v);
+      raw.resume();
+    });
+  }
+  const out = await raw.startRendering();
+  const L = out.getChannelData(0), R = out.getChannelData(1);
+  return {
+    name: sc.name, ops: sc.ops,
+    windows: sc.windows.map((w) => ({ start: w, left: b64(L.slice(w, w + WIN)), right: b64(R.slice(w, w + WIN)) })),
+  };
+}
+
+(async () => {
+  try {
+    const inp = input();
+    const results = [];
+    for (const sc of scenarios) results.push(await render(sc, inp));
+    document.getElementById('out').textContent = JSON.stringify({
+      generator: 'scripts/master-chain-chrome-reference.html', tone: Tone.version,
+      chrome: navigator.userAgent, sampleRate: SR, frames: N, window: WIN, scenarios: results });
+  } catch (e) {
+    document.getElementById('out').textContent = 'ERROR ' + e + '\n' + e.stack;
+  }
+})();
+</script>
+</body></html>

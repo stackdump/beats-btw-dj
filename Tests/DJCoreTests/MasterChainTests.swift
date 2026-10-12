@@ -148,8 +148,9 @@ struct MasterChainTests {
     #expect(run(chain, seconds: 0.5, sig) == copy)
   }
 
-  @Test func filtersMatchTheWebAudioResponseToTheFourth() {
-    // 4 cascaded Web Audio biquads, Q 1 dB: the steady-state gain on a sine is |H(f)|^4
+  @Test func filtersMatchTheWebAudioResponseCubed() {
+    // Tone.Filter rolloff -48 = 3 cascaded Web Audio biquads, Q 1 dB: the steady-state gain on
+    // a sine is |H(f)|³
     for (key, slider, kind) in [
       (MasterFxKey.lpFreq, 50, ModelPassKind.lowpass), (.hpFreq, 60, .highpass),
     ] {
@@ -163,7 +164,7 @@ struct MasterChainTests {
         let got = rms(y[Int(0.4 * sr)...]) / rms(x[Int(0.4 * sr)...])
         let h2 = BiquadCoefficients.pass(kind, fc: fc, qDb: 1, sampleRate: sr)!
           .magnitude2(at: f, sampleRate: sr)
-        let want = pow(h2, 2)  // (|H|²)² = |H|⁴
+        let want = pow(h2, Double(MasterChain.filterStages) / 2)  // |H|³
         #expect(
           abs(got - want) <= 2e-3 * max(want, 1e-3),
           "\(key) \(slider) at \(f) Hz: \(got) vs \(want)")

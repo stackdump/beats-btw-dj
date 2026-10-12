@@ -9,8 +9,9 @@ import Foundation
 //
 // What each Tone node is, as ported (the Tone sources and the Web Audio spec / Chrome's
 // implementation are the reference; `MasterChainTests` hold the closed forms):
-//   * Tone.Filter rolloff -48 = four identical cascaded BiquadFilterNodes; Q = 1 (dB for
-//     lowpass/highpass). Their frequency is a Signal (an audio-rate input), so Chrome recomputes
+//   * Tone.Filter rolloff -48 = THREE identical cascaded BiquadFilterNodes (Filter.js:
+//     `[-12, -24, -48, -96].indexOf(rolloff) + 1`; measured in Chrome, MasterChainChromeTests),
+//     not the four "-48 dB/oct" suggests; Q = 1 (dB for lowpass/highpass). Their frequency is a Signal (an audio-rate input), so Chrome recomputes
 //     the coefficients every sample while it ramps. Biquad: Chrome's direct form I with the RBJ
 //     coefficients of the Web Audio spec (`BiquadCoefficients.pass`), float output.
 //   * Phaser: a sine LFO per channel (right at 180°) scaled to base…base·2^octaves Hz drives ten
@@ -24,12 +25,12 @@ import Foundation
 //   * PitchShift: two delay lines (linear interpolation, as Chrome's DelayNode) swept by
 //     sawtooth LFOs (0° and 180°) between 0 and the window, crossfaded (equal power) by a
 //     triangle LFO at 90°, all at `factor · 1.2 / window` Hz (`intervalToFrequencyRatio`, with
-//     beats' `interval - 1` for downward shifts). The LFO waveforms are the ideal sawtooth and
-//     triangle scaled by the normalisation Chrome applies to a PeriodicWave (peak of the
-//     2047-partial table: 1.17849 for the sawtooth, 0.99980 for the triangle), so the delay
-//     slopes — the pitch ratios — are Chrome's; the band-limited ripple near each sawtooth reset
-//     (where its crossfade gain is ~0) is not modelled. Its feedback path (feedback 0) is
-//     dropped.
+//     Tone's `interval - 1` for downward shifts). The LFOs are Chrome's oscillators: band-limited,
+//     normalised wavetables read as Chrome reads them (PeriodicWave.swift), so the sawtooths'
+//     slope (the pitch ratio: 1.2 / 1.1785 per unit of factor) and their resets are Chrome's.
+//     Its feedback path (feedback 0) is dropped.
+//   * Every Tone.CrossFade (the wets, the pitch shifter's tap fade) goes through GainToAudio's
+//     1024-point curve, which leaks the wet in at −56 dB at fade 0 (`crossfade`).
 //
 // Deviations, by decision (ROADMAP 3.3):
 //   * A neutral chain is bypassed and bit-transparent, as beats' default ("lean") wave path is,
@@ -190,7 +191,7 @@ final class MasterChain {
   /// `(frame + k) / sr` s.
   private(set) var frame: Int64 = 0
 
-  static let filterStages = 4
+  static let filterStages = 3
   static let filterQDb = 1.0
   static let phaserStages = 10
   static let phaserQ = 10.0
@@ -198,13 +199,35 @@ final class MasterChain {
   static let quantum: Int64 = 128
   static let curveLength = 1024
   static let window = 0.03
-  /// Peak of Chrome's 2047-partial sawtooth / triangle table (the PeriodicWave normalisation).
+  /// Peak of Chrome's full sawtooth table at 44.1 / 48 kHz (2047 partials over 4096 points),
+  /// which the PeriodicWave normalisation divides by: the slope of the sawtooth's ramp is 1 / this.
   static let sawPeak = 1.1784914234857347
-  static let trianglePeak = 0.9998021070789256
   /// Fade in / out of bypass.
   static let fadeSeconds = 0.005
+  /// Tone.CrossFade's GainToAudio: a 1024-point WaveShaper of `|x|·2 − 1`.
+  static let gainToAudioLength = 1024
 
   private let fadeStep: Double
+
+  /// The stages, for `solo`.
+  enum Stage { case highpass, phaser, lowpass, crusher, distortion, pitch }
+
+  /// Off: every stage runs as Tone's node does, at rest too (no bypass, no fades: HP at 20 Hz,
+  /// LP at 20 kHz, the pitch shifter's fixed taps at 0). For comparing with Chrome
+  /// (`MasterChainChromeTests`); the deck keeps it on.
+  var restBypass = true {
+    didSet {
+      if !restBypass {
+        hpMix = 1
+        lpMix = 1
+        pitchMix = 1
+      }
+    }
+  }
+  /// Tests: run only this stage.
+  var solo: Stage?
+
+  private func runs(_ stage: Stage) -> Bool { solo == nil || solo == stage }
 
   private struct Biquad {
     var b0 = 1.0
@@ -243,7 +266,12 @@ final class MasterChain {
   private let ring: UnsafeMutablePointer<Float>
   private let ringSize: Int
   private var ringWrite = 0
-  private var pitchPhase = 0.0
+  private let sawA: PeriodicWave
+  private let sawB: PeriodicWave
+  private let fadeWave: PeriodicWave
+  private var lfoA = WaveOscillator()
+  private var lfoB = WaveOscillator()
+  private var lfoFade = WaveOscillator()
   private var pitchMix = 0.0
   private var pitchRate = 0.0
   private var pitchMin = 0.03
@@ -266,6 +294,9 @@ final class MasterChain {
     ringSize = n
     ring = .allocate(capacity: 2 * n)
     ring.initialize(repeating: 0, count: 2 * n)
+    sawA = PeriodicWave.sawtooth(sampleRate: sampleRate)
+    sawB = PeriodicWave.sawtooth180(sampleRate: sampleRate)
+    fadeWave = PeriodicWave.triangle90(sampleRate: sampleRate)
     rebuildCurve(0)
     setPitch(0)
   }
@@ -276,6 +307,32 @@ final class MasterChain {
     apState.deallocate()
     curve.deallocate()
     ring.deallocate()
+  }
+
+  /// Tone.CrossFade (an equal-power StereoPannerNode on a constant): the dry and wet gains for
+  /// `fade`. The fade reaches the panner through GainToAudio, a 1024-point curve of `|x|·2 − 1`
+  /// that the WaveShaper interpolates: between its two points around 0 the curve does not reach
+  /// −1, so at fade 0 the pan is −0.998 and the wet leaks in at −56 dB (dry 0.9999988, wet
+  /// 0.00153; measured in Chrome). Exact from fade 1/1023 up.
+  @inline(__always)
+  static func crossfade(_ fade: Double) -> (dry: Double, wet: Double) {
+    let n = gainToAudioLength
+    let v = 0.5 * (fade + 1) * Double(n - 1)
+    func curve(_ i: Int) -> Double {
+      Double(Float(abs((Double(i) / Double(n - 1)) * 2 - 1) * 2 - 1))
+    }
+    let pan: Double
+    if v < 0 {
+      pan = curve(0)
+    } else if v >= Double(n - 1) {
+      pan = curve(n - 1)
+    } else {
+      let i = Int(v)
+      let f = v - Double(i)
+      pan = (1 - f) * curve(i) + f * curve(i + 1)
+    }
+    let x = (max(-1, min(1, Double(Float(pan)))) + 1) / 2
+    return (cos(x * Double.pi / 2), sin(x * Double.pi / 2))
   }
 
   /// The chain's time at sample `k` of the block being processed.
@@ -318,17 +375,17 @@ final class MasterChain {
     to end: Int
   ) {
     guard end > start else { return }
-    if isIdle(at: start) {
+    if restBypass && isIdle(at: start) {
       advancePhaser(start, end)
       writeHistory(left, right, start, end)
       return
     }
-    passStage(lowpass: false, left, right, start, end)
-    phaser(left, right, start, end)
-    passStage(lowpass: true, left, right, start, end)
-    crusher(left, right, start, end)
-    distortion(left, right, start, end)
-    pitchShift(left, right, start, end)
+    if runs(.highpass) { passStage(lowpass: false, left, right, start, end) }
+    if runs(.phaser) { phaser(left, right, start, end) } else { advancePhaser(start, end) }
+    if runs(.lowpass) { passStage(lowpass: true, left, right, start, end) }
+    if runs(.crusher) { crusher(left, right, start, end) }
+    if runs(.distortion) { distortion(left, right, start, end) }
+    if runs(.pitch) { pitchShift(left, right, start, end) }
   }
 
   /// End of a block of `frames`: advance the clock, forget events in the past.
@@ -379,7 +436,7 @@ final class MasterChain {
     let rest = lowpass ? 20000.0 : 20.0
     let settled = lowpass ? params.lp.isSettled(at: t0) : params.hp.isSettled(at: t0)
     let constant = lowpass ? params.lp.value(at: t0) : params.hp.value(at: t0)
-    let target: Double = settled && constant == rest ? 0 : 1
+    let target: Double = restBypass && settled && constant == rest ? 0 : 1
     var mix = lowpass ? lpMix : hpMix
     if mix == 0 && target == 0 { return }
     let st = lowpass ? lpState : hpState
@@ -455,7 +512,7 @@ final class MasterChain {
     let t0 = time(at: s)
     let wetSettled = params.phaserWet.isSettled(at: t0)
     let wet0 = params.phaserWet.value(at: t0)
-    if wetSettled && wet0 == 0 {
+    if restBypass && wetSettled && wet0 == 0 {
       if phaserRunning {
         phaserRunning = false
         apState.update(repeating: 0, count: Self.apStateCount)
@@ -474,8 +531,7 @@ final class MasterChain {
       let t = time(at: k)
       let w = wetSettled ? wet0 : params.phaserWet.value(at: t)
       let osc = sin(2 * Double.pi * phase)
-      let gd = cos(w * Double.pi / 2)
-      let gw = sin(w * Double.pi / 2)
+      let (gd, gw) = Self.crossfade(w)
       for ch in 0..<channels {
         // Tone.LFO: oscillator → AudioToGain ((x + 1) / 2) → Scale (× (max − min) + min)
         let f = ((ch == 0 ? osc : -osc) + 1) / 2 * (maxF - minF) + minF
@@ -503,7 +559,7 @@ final class MasterChain {
     let t0 = time(at: s)
     let wetSettled = params.crusherWet.isSettled(at: t0)
     let wet0 = params.crusherWet.value(at: t0)
-    if wetSettled && wet0 == 0 {
+    if restBypass && wetSettled && wet0 == 0 {
       crusherRunning = false
       return
     }
@@ -519,8 +575,7 @@ final class MasterChain {
         bitsK = params.crusherBits.value(at: time(at: k))
       }
       let w = wetSettled ? wet0 : params.crusherWet.value(at: time(at: k))
-      let gd = cos(w * Double.pi / 2)
-      let gw = sin(w * Double.pi / 2)
+      let (gd, gw) = Self.crossfade(w)
       let step = pow(0.5, bitsK - 1)
       for ch in 0..<channels {
         let buf = ch == 0 ? l : r!
@@ -564,12 +619,11 @@ final class MasterChain {
     let t0 = time(at: s)
     let wetSettled = params.distortionWet.isSettled(at: t0)
     let wet0 = params.distortionWet.value(at: t0)
-    if wetSettled && wet0 == 0 { return }
+    if restBypass && wetSettled && wet0 == 0 { return }
     let channels = r == nil ? 1 : 2
     for k in s..<e {
       let w = wetSettled ? wet0 : params.distortionWet.value(at: time(at: k))
-      let gd = cos(w * Double.pi / 2)
-      let gw = sin(w * Double.pi / 2)
+      let (gd, gw) = Self.crossfade(w)
       for ch in 0..<channels {
         let buf = ch == 0 ? l : r!
         let x = buf[k]
@@ -594,6 +648,9 @@ final class MasterChain {
       factor = pow(2, p / 12) - 1
     }
     pitchRate = factor * (1.2 / Self.window)
+    lfoA.setFrequency(pitchRate, sawA)
+    lfoB.setFrequency(pitchRate, sawB)
+    lfoFade.setFrequency(pitchRate, fadeWave)
   }
 
   /// Keep the history the delay lines read while the stage is bypassed.
@@ -611,22 +668,6 @@ final class MasterChain {
     ringWrite = w
   }
 
-  /// The ideal sawtooth (0 at phase 0, rising) at the level Chrome's normalised table plays it.
-  @inline(__always)
-  static func saw(_ phase: Double) -> Double {
-    var p = phase + 0.5
-    p -= p.rounded(.down)
-    return (2 * p - 1) / sawPeak
-  }
-
-  /// The ideal triangle (0 at phase 0, peak at a quarter), normalised likewise.
-  @inline(__always)
-  static func triangle(_ phase: Double) -> Double {
-    var p = phase + 0.25
-    p -= p.rounded(.down)
-    return (1 - 4 * abs(p - 0.5)) / trianglePeak
-  }
-
   /// Chrome's DelayNode read (the input is in the ring already): linear interpolation.
   @inline(__always)
   private func readDelay(_ base: UnsafeMutablePointer<Float>, _ w: Int, _ delay: Double) -> Double {
@@ -642,7 +683,7 @@ final class MasterChain {
   private func pitchShift(
     _ l: UnsafeMutablePointer<Float>, _ r: UnsafeMutablePointer<Float>?, _ s: Int, _ e: Int
   ) {
-    let target: Double = params.pitch != 0 ? 1 : 0
+    let target: Double = params.pitch != 0 || !restBypass ? 1 : 0
     if pitchMix == 0 && target == 0 {
       writeHistory(l, r, s, e)
       return
@@ -651,20 +692,17 @@ final class MasterChain {
     let channels = r == nil ? 1 : 2
     let right = r ?? l
     var mix = pitchMix
-    var phase = pitchPhase
     var w = ringWrite
     let minD = pitchMin
     let maxD = pitchMax
-    let inc = pitchRate / sampleRate
     for k in s..<e {
       ring[w] = l[k]
       ring[ringSize + w] = right[k]
       // Tone.LFO: (osc + 1) / 2 → × (max − min) + min
-      let dA = (Self.saw(phase) + 1) / 2 * (maxD - minD) + minD
-      let dB = (Self.saw(phase - 0.5) + 1) / 2 * (maxD - minD) + minD
-      let fade = (Self.triangle(phase - 0.25) + 1) / 2
-      let ga = cos(fade * Double.pi / 2)
-      let gb = sin(fade * Double.pi / 2)
+      let dA = (lfoA.next(sawA) + 1) / 2 * (maxD - minD) + minD
+      let dB = (lfoB.next(sawB) + 1) / 2 * (maxD - minD) + minD
+      let fade = (lfoFade.next(fadeWave) + 1) / 2
+      let (ga, gb) = Self.crossfade(fade)
       if mix < target {
         mix = min(target, mix + fadeStep)
       } else if mix > target {
@@ -678,11 +716,8 @@ final class MasterChain {
         buf[k] = Float(x + (y - x) * mix)
       }
       w = (w + 1) & mask
-      phase += inc
-      phase -= phase.rounded(.down)
     }
     ringWrite = w
-    pitchPhase = phase
     pitchMix = mix
   }
 }
