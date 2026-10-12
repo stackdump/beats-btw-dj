@@ -102,6 +102,24 @@ struct MCPBridgeTests {
     #expect(r["result"]?["content"]?[0]?["text"]?.string == #"{"ok":true}"#)
   }
 
+  @Test func loadShareIsOneControlRequest() throws {
+    let seen = Box()
+    let link = "https://beats.bitwrap.io/?g=house&s=7"
+    let r = try reply(
+      bridge(seen),
+      #"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"dj_load_share","arguments":{"deck":"B","link":"\#(link)"}}}"#
+    )
+    #expect(seen.calls.count == 1 && seen.calls[0].0 == "loadShare")
+    #expect(seen.calls[0].1["link"]?.string == link && seen.calls[0].1["deck"]?.string == "B")
+    #expect(r["result"]?["isError"]?.bool == false)
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":8,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let tool = try #require(tools.first { $0["name"]?.string == "dj_load_share" })
+    #expect(tool["inputSchema"]?["required"] == .array([.string("deck"), .string("link")]))
+    #expect(tool["description"]?.string?.contains("raw-nets") == true)
+  }
+
   @Test func appErrorsAreToolErrorsNotProtocolErrors() throws {
     let r = try reply(
       bridge(Box()),

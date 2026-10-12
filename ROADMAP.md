@@ -11,8 +11,9 @@ All of it is on `main` (Phase 3 landed there directly; `phase5-scopes` merged in
 README's "Where we are" says what the app does; this is what each phase still has open.
 
 - **Phase 1** — done. Open: the Inpulse hardware pass (checklist below), MPK pad NOTE mode.
-- **Phase 2** — done, 2.1–2.8. Open: nothing in the app / MCP loads a share link on a deck
-  (2.8). The counterMelody deviation is kept and goes back to beats (GO-DIVERGENCE.md §5).
+- **Phase 2** — done, 2.1–2.8, including share links (composed and raw-`nets`) on a deck from
+  the app / MCP. Open: nothing; short `?cid=` links need the caller to fetch the payload (2.8
+  "Left out"). The counterMelody deviation is kept and goes back to beats (GO-DIVERGENCE.md §5).
 - **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
   not ported and each needs a design call. Which master macros go on Inpulse pads is open.
 - **Phase 4** — done. Open: the Inpulse headphone-knob mapping; no real set published yet.
@@ -106,7 +107,7 @@ The master-chain macros (3.3) bind through the same `macro` action; which four g
 which pads — or on the LOOP / SAMPLER pad modes once their numbers are known — is a choice
 to make, not a measurement.
 
-## Phase 2 — Native music generation with CID equivalence **(done, 2.1–2.8; open items at the end of 2.8)**
+## Phase 2 — Native music generation with CID equivalence **(done, 2.1–2.8; what is left out, and why, at the end of 2.8)**
 
 Goal: the Swift app composes and renders beats tracks itself, and for the
 same share envelope produces the **same CIDs** as beats.
@@ -214,6 +215,14 @@ canonical key order, as a share URL decodes it; voicing seeded by the payload's 
 same project (`RawNetsSessionTests`: byte-identical replay with a mid-set load and a section
 jump on an arranged share). Older session payloads decode unchanged.
 
+Loading a share: `DeckSourceDescriptor.share(_:)` takes a share link (`ShareLink.parse`: full
+URL or its query, CID verified; legacy `?p=` / `?g=`) or an envelope payload as JSON and gives
+`.net(TrackSpec(share:))` or `.rawNets(payload:)`. The control socket's `loadShare {deck, link}`
+(MCP `dj_load_share`, `djctl ctl loadShare`) and the deck's Load ▸ "Share link from clipboard"
+prepare it off the main thread and load it through `DJEngine.perform`, so it is recorded
+(`ShareSourceTests`, `AppControlTests`, on the links and payloads of share-urls.json and
+envelopes.json).
+
 **Deliberate deviation — counterMelody on the composer path (kept, 2026-10-12; to backport to
 beats, GO-DIVERGENCE.md §5).** In
 the browser the overlay runs on `el._project`, the worker's plain JSON, so any counter-melody
@@ -226,8 +235,8 @@ behaviour. See GO-DIVERGENCE.md for the beats-side bug.
 
 Left out, and why:
 
-- Loading a share on a deck: `ShareLink.parse` and `TrackSpec(share:)` exist, but no app
-  control, MCP tool or `djctl` command calls them yet (decks are generated from genre + seed).
+- Short `?cid=` links (no `&z=`) are refused by `loadShare`: their payload is on a server and
+  the app does no fetching (2.5 (2)); the full link or the payload loads.
 - The browser's `_normalizeProject` adds stinger nets (`isStingerTrack`) to `initialMutes`
   before the overrides land; not modelled (as in 2.5), so a raw-`nets` share whose stingers are
   not already muted differs in `initialMutes`.

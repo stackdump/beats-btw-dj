@@ -304,7 +304,8 @@ case "mcp":
 case "ctl":
   // djctl ctl <method> ['{"json":"params"}'] — one raw control request, for debugging.
   guard args.count >= 2 else {
-    stderr("usage: djctl ctl state|catalog|perform|generate|loadFile|pad|record ['{params}']")
+    stderr(
+      "usage: djctl ctl state|catalog|perform|generate|loadFile|loadShare|pad|record ['{params}']")
     exit(2)
   }
   do {

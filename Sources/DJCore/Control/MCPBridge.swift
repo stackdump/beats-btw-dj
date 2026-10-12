@@ -16,7 +16,8 @@ public struct MCPBridge {
   /// Tool name → control method.
   static let methods: [String: String] = [
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
-    "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_press_pad": "pad",
+    "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_load_share": "loadShare",
+    "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition",
   ]
@@ -158,6 +159,26 @@ public struct MCPBridge {
         "path": prop("string", "Absolute path to a WAV/AIFF/MP3/M4A"),
       ],
       required: ["deck", "path"]),
+    tool(
+      "dj_load_share",
+      """
+      Load a beats (beats.bitwrap.io) share onto a deck as a live Petri-net track, exactly as \
+      the share describes it: a composed share (genre + seed + traits, overrides, overlays) is \
+      composed here; a raw-nets share plays its nets as given (arranged if it has a \
+      structure). Takes a few seconds; returns the deck when loaded, with `share` = {kind \
+      net|rawNets, cid}. Does not start playback — follow with dj_perform play. A short \
+      ?cid= link without &z= can't be loaded (its payload is on a server): pass the full \
+      link or the payload.
+      """,
+      [
+        "deck": prop("string", "A or B"),
+        "link": prop(
+          "string",
+          "A full share URL (https://beats.bitwrap.io/?cid=…&z=…, or just its ?query; the CID "
+            + "is verified), a legacy ?p= / ?g= link, or the envelope payload as JSON text "
+            + "(e.g. {\"genre\":\"techno\",\"seed\":42})"),
+      ],
+      required: ["deck", "link"]),
     tool(
       "dj_press_pad",
       "Press a pad on the APC mini grid (the real one, or the on-screen one, which this shows). "

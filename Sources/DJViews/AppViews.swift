@@ -356,15 +356,36 @@ public final class AppModel {
   }
   /// Compose off the main thread, then load; returns once the deck has the track.
   func composeAndLoad(_ deck: String, _ spec: TrackSpec) async {
-    guard let dj else { return }
     status = "composing \(spec.genre)…"
+    await prepareAndLoad(deck, .net(spec))
+  }
+  /// Build a net source (composed or raw-`nets`) off the main thread, then load it through
+  /// `perform`, so it is recorded. False (and the status says why) if it has no project.
+  @discardableResult
+  func prepareAndLoad(_ deck: String, _ source: DeckSourceDescriptor) async -> Bool {
+    guard let dj else { return false }
     let sr = dj.sampleRate
     let bank = dj[deck]?.wave.samplers
     let track = await Task.detached(priority: .userInitiated) {
-      PreparedTrack(spec: spec, sampleRate: sr, opts: .extended(samplers: bank))
+      PreparedTrack(source: source, sampleRate: sr, opts: .extended(samplers: bank))
     }.value
-    dj.perform(.load(deck: deck, source: .net(spec)), prepared: track)
+    guard let track else {
+      status = "nothing to play in that source"
+      return false
+    }
+    dj.perform(.load(deck: deck, source: source), prepared: track)
     status = "\(Int(dj.sampleRate)) Hz"
+    return true
+  }
+  /// A beats share (link or envelope JSON) onto a deck; a bad one says why in the status line.
+  func loadShare(_ deck: String, _ text: String) {
+    do {
+      let source = try DeckSourceDescriptor.share(text)
+      status = "loading share…"
+      Task { @MainActor in await prepareAndLoad(deck, source) }
+    } catch {
+      status = "share: \(error)"
+    }
   }
   func queueNext(_ deck: String, _ spec: TrackSpec) {
     dj?.perform(.queueNext(deck: deck, spec: spec))
@@ -620,6 +641,9 @@ struct DeckView: View {
           Button("Audio file…") { importing = true }
           Button("Demo loop") { model.loadDemo(name) }
           Button("Generate…") { generating = true }
+          Button("Share link from clipboard") {
+            model.loadShare(name, NSPasteboard.general.string(forType: .string) ?? "")
+          }
         }
         .fixedSize()
       }

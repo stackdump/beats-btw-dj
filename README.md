@@ -18,7 +18,7 @@ there. In short:
 
 - **Decks and mixer** — two decks, each a scratchable turntable (an audio file; ported from
   the lab's scrub worklet) or a **live Petri net** composed natively from genre + seed
-  (+ structure). Volume, one-knob filter, 3-band EQ, gain, ±8 % pitch, crossfader, master,
+  (+ structure), or loaded from a beats share link (composed or raw-`nets`). Volume, one-knob filter, 3-band EQ, gain, ±8 % pitch, crossfader, master,
   headphone cue on the Inpulse's outputs 3/4; 4 hot cues, sync, quantized cues and loops;
   scratching a net deck runs its clock backwards.
 - **Generation** — beats' composer, arrange / overlays, share envelopes and URLs and its wave
@@ -38,9 +38,8 @@ there. In short:
   `dj-vevr-se` MCP server over it.
 
 Open: the Inpulse hardware pass (controls captured but unnamed, or never captured; which
-centre knob is headphones); a beats share link (composed or raw-`nets`) can be decoded and
-played on a deck, but nothing in the app or MCP loads one yet; reverb / delay / pan / shape
-macros are not ported; the scopes need a look on a real display.
+centre knob is headphones); reverb / delay / pan / shape macros are not ported; the scopes
+need a look on a real display.
 
 ## Controllers
 

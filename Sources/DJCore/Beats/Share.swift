@@ -33,9 +33,13 @@ public struct Share {
   public var counterMelody: [JSONValue]?
   public var cid: String?
   public var parents: [JSONValue]?
+  /// The envelope as given (not part of `shareFromPayload`'s result; a raw-`nets` deck
+  /// carries it, `DeckSourceDescriptor.rawNets`).
+  public var payload: JSONValue
 
   /// `shareFromPayload(payload, cid)`
   public init(payload p: JSONValue, cid: String? = nil) {
+    payload = p
     var params = JSONObject()
     if let seed = p["seed"], case .number = seed { params["seed"] = seed }
     if let s = p["structure"], s.isTruthy { params["structure"] = s }

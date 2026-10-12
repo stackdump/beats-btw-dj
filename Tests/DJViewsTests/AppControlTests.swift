@@ -78,6 +78,82 @@ struct AppControlTests {
     }
   }
 
+  /// `loadShare` (dj_load_share): share links and payloads from the JS fixtures go on a deck
+  /// through `perform`, recorded as the load a replay needs.
+  @Test func loadShareLoadsComposedAndRawNetsSharesAndRecordsThem() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    let urls = try #require(try beatsFixture("share-urls")["urls"]?.array)
+    let full = try #require(
+      urls.first { $0["payload"]?["genre"]?.string == "house" && $0["z"] != nil })
+    let raw = try #require(
+      try beatsFixture("share-urls")["rawNets"]?.array?.first {
+        $0["payload"]?["name"]?.string == "Hand Made"
+      })
+    let envelope = try #require(
+      try beatsFixture("envelopes")["envelopes"]?.array?.first {
+        $0["payload"]?["traits"]?["modal-interchange"] != nil && $0["project"] != nil
+      })
+    let rec = try SessionRecorder.start(on: dj)
+
+    // a full share URL: composed
+    let b = try await m.control(
+      "loadShare",
+      .object(JSONObject([("deck", .string("B")), ("link", full["url"]!)])))
+    #expect(b["mode"]?.string == "net")
+    #expect(b["share"]?["kind"]?.string == "net" && b["share"]?["genre"]?.string == "house")
+    let houseSpec = try #require(TrackSpec(share: Share(payload: full["payload"]!)))
+    #expect(dj["B"]?.currentSpec == houseSpec)
+
+    // a raw-nets share link (its query alone)
+    let a = try await m.control(
+      "loadShare", .object(JSONObject([("deck", .string("A")), ("link", raw["search"]!)])))
+    #expect(a["share"]?["kind"]?.string == "rawNets")
+    #expect(a["share"]?["cid"]?.string == raw["cid"]!.string!)
+    #expect(a["title"]?.string == "Hand Made")
+    #expect(dj["A"]?.netProject?.modelCID == raw["project"]?["modelCID"]?.string)
+
+    // an envelope payload, as JSON text and as an object
+    let text = envelope["payload"]!.jsStringified
+    let e = try await m.control(
+      "loadShare", .object(JSONObject([("deck", .string("B")), ("link", .string(text))])))
+    #expect(e["share"]?["kind"]?.string == "net")
+    let envSpec = try #require(dj["B"]?.currentSpec)
+    #expect(envSpec.layers.entries.isEmpty)
+    #expect(envSpec.project().modelCID == envelope["project"]?["modelCID"]?.string)
+    _ = try await m.control(
+      "loadShare", .object(JSONObject([("deck", .string("B")), ("link", envelope["payload"]!)])))
+    #expect(dj["B"]?.currentSpec == envSpec)
+
+    let loads = rec.finish().events.map(\.kind)
+    #expect(
+      loads == [
+        .action(.load(deck: "B", source: .net(houseSpec))),
+        .action(.load(deck: "A", source: .rawNets(payload: raw["payload"]!))),
+        .action(.load(deck: "B", source: .net(envSpec))),
+        .action(.load(deck: "B", source: .net(envSpec))),
+      ])
+  }
+
+  @Test func loadShareSaysWhatIsWrong() async throws {
+    let m = try model()
+    let urls = try #require(try beatsFixture("share-urls")["urls"]?.array)
+    let short = try #require(urls.first { $0["needsFetch"]?.bool == true })
+    let tampered = try #require(urls.first { $0["label"]?.string?.hasPrefix("tampered") == true })
+    for (params, words) in [
+      (#"{"deck":"A","link":"\#(short["url"]!.string!)"}"#, "short link"),
+      (#"{"deck":"A","link":"\#(tampered["search"]!.string!)"}"#, "not a beats share"),
+      (#"{"deck":"A","link":"{\"genre\":\"polka\",\"seed\":1}"}"#, "unknown genre"),
+      (#"{"deck":"A"}"#, "`link` is required"),
+      (#"{"deck":"C","link":"?g=house"}"#, "no deck"),
+    ] {
+      await #expect {
+        try await call(m, "loadShare", params)
+      } throws: { "\($0)".contains(words) }
+    }
+    #expect(m.engine?["A"]?.mode == .sample, "nothing was loaded")
+  }
+
   @Test func catalogListsWhatTheToolsAccept() async throws {
     let c = try await call(try model(), "catalog")
     #expect(c["genres"]?.array?.contains(.string("techno")) == true)

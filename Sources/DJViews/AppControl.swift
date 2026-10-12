@@ -42,7 +42,8 @@ extension AppModel {
           "`action` must be an object with a known `op` (see the dj_perform description)")
       }
       if case .load = action {
-        throw ControlRequestError.bad("use dj_generate or dj_load_file to load a deck")
+        throw ControlRequestError.bad(
+          "use dj_generate, dj_load_share or dj_load_file to load a deck")
       }
       if let deck = a["deck"]?.string {
         let d = try requireDeck(deck)
@@ -72,6 +73,39 @@ extension AppModel {
       await composeAndLoad(deck, spec)
       poll()
       return deckJSON(deck) ?? .null
+
+    case "loadShare":
+      let deck = p["deck"]?.string ?? ""
+      _ = try requireDeck(deck)
+      let source: DeckSourceDescriptor
+      do {
+        if let link = p["link"]?.string {
+          source = try .share(link)
+        } else if let payload = p["link"] ?? p["payload"], payload.object != nil {
+          source = try .share(payload: payload)
+        } else {
+          throw ControlRequestError.bad(
+            "`link` is required: a beats share URL or an envelope payload (JSON)")
+        }
+      } catch let e as ShareLoadError {
+        throw ControlRequestError.bad(e.description)
+      }
+      guard await prepareAndLoad(deck, source) else { throw ControlRequestError.bad(status) }
+      poll()
+      var o = deckJSON(deck)?.object ?? JSONObject()
+      if case .rawNets(let payload) = source {
+        o["share"] = .object(
+          JSONObject([
+            ("kind", .string("rawNets")), ("cid", .string(BeatsCID.shareCID(payload))),
+          ]))
+      } else if case .net(let spec) = source {
+        o["share"] = .object(
+          JSONObject([
+            ("kind", .string("net")), ("cid", .string(BeatsCID.shareCID(spec.payload))),
+            ("genre", .string(spec.genre)), ("seed", .number(spec.seed)),
+          ]))
+      }
+      return .object(o)
 
     case "loadFile":
       let deck = p["deck"]?.string ?? ""

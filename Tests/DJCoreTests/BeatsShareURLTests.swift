@@ -257,6 +257,84 @@ struct TrackSpecPayloadTests {
   }
 }
 
+/// `DeckSourceDescriptor.share`: the links and payloads of share-urls.json / envelopes.json
+/// (built by the real JS) → what a deck holds.
+struct ShareSourceTests {
+  @Test func fullLinksAndTheirQueriesBecomeComposedDecks() throws {
+    let rows = try #require(fixture()["urls"]?.array)
+    var n = 0
+    for r in rows where r["label"]?.string == "full" {
+      let want = try #require(TrackSpec(share: Share(payload: r["payload"]!)))
+      for link in [r["url"]!.string!, r["search"]!.string!] {
+        #expect(try DeckSourceDescriptor.share(link) == .net(want), "\(link.prefix(60))")
+      }
+      n += 1
+    }
+    #expect(n == 4)
+    // legacy links compose too
+    guard case .net(let legacy) = try DeckSourceDescriptor.share("?g=dnb&s=77&structure=extended")
+    else {
+      Issue.record("legacy link is not a composed deck")
+      return
+    }
+    #expect(legacy.genre == "dnb" && legacy.seed == 77 && legacy.structure == "extended")
+  }
+
+  @Test func rawNetsLinksCarryTheirPayload() throws {
+    let rows = try #require(fixture()["rawNets"]?.array)
+    var n = 0
+    for r in rows {
+      let src = try DeckSourceDescriptor.share(r["search"]!.string!)
+      #expect(src == .rawNets(payload: r["payload"]!), "\(r["payload"]!.jsStringified.prefix(60))")
+      // the payload as JSON text is the same source
+      #expect(try DeckSourceDescriptor.share(r["payload"]!.jsStringified) == src)
+      guard let want = r["project"], r["needsArrange"]?.bool != true else { continue }
+      let track = try #require(PreparedTrack(source: src, sampleRate: 22_050, opts: .extended))
+      #expect(track.project.modelCID == want["modelCID"]!.string!)
+      n += 1
+    }
+    #expect(n == 5)
+  }
+
+  @Test func envelopePayloadsBecomeTheProjectBeatsComposes() throws {
+    let rows = try JSONValue.parse(try beatsFixtureText("envelopes"))["envelopes"]!.array!
+    var composed = 0
+    for row in rows {
+      let payload = row["payload"]!
+      let tag = payload.jsStringified
+      let src = try? DeckSourceDescriptor.share(payload: payload)
+      guard case .net(let spec)? = src, let want = row["project"] else { continue }
+      #expect(
+        compose(genre: spec.genre, overrides: spec.overrides).modelCID
+          == want["modelCID"]!.string!, "\(tag)")
+      #expect(try DeckSourceDescriptor.share(tag) == src, "as JSON text: \(tag)")
+      composed += 1
+    }
+    #expect(composed >= 14)
+  }
+
+  @Test func whatCannotBeLoadedSaysWhy() throws {
+    let rows = try #require(fixture()["urls"]?.array)
+    let short = try #require(rows.first { $0["needsFetch"]?.bool == true })
+    #expect(throws: ShareLoadError.needsFetch(cid: short["cid"]!.string!)) {
+      try DeckSourceDescriptor.share(short["url"]!.string!)
+    }
+    for label in ["tampered: z holds a different payload", "garbage z", "no params"] {
+      let r = try #require(rows.first { $0["label"]?.string == label })
+      #expect(throws: ShareLoadError.unreadable, "\(label)") {
+        try DeckSourceDescriptor.share(r["search"]!.string!)
+      }
+    }
+    #expect(throws: ShareLoadError.noTrack) {
+      try DeckSourceDescriptor.share(#"{"seed":5}"#)
+    }
+    #expect(throws: ShareLoadError.unknownGenre("polka")) {
+      try DeckSourceDescriptor.share(#"{"genre":"polka","seed":5}"#)
+    }
+    #expect(throws: ShareLoadError.unreadable) { try DeckSourceDescriptor.share("{nope") }
+  }
+}
+
 struct RawNetsEnvelopeTests {
   @Test func rawNetsProjectMatchesWhatTheBrowserLoads() throws {
     let rows = try #require(fixture()["rawNets"]?.array)
