@@ -4,7 +4,7 @@ PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test swift-test-filter swift-rt-test app run-app app-release run-app-release djctl \
-        mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-go beats-tables share-url-check
+        mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -152,6 +152,11 @@ fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-wave.mjs
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-share-url.mjs
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-macro-fx.mjs
+
+# The master chain in Chrome: beats' real Tone nodes rendered offline (needs Google Chrome and the
+# Tone build fixtures-beats fetches). Writes Fixtures/beats/master-chain-chrome.json.
+fixtures-chrome:
+	node scripts/master-chain-chrome.mjs
 
 # Reverse direction: real JS must accept the share URLs Swift builds.
 share-url-check:

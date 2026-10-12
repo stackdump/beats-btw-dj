@@ -15,8 +15,9 @@ public enum MacroTargets: UInt8, Sendable {
 }
 
 /// The net-native macros of `lib/macros/catalog.js` (mute, beat-repeat, compound and tempo
-/// kinds). The catalog's FX, pan, shape, pitch and feel macros drive Tone master-chain
-/// sliders; the wave engine has no master chain yet, so they are not ported.
+/// kinds). The catalog's FX, pitch and feel macros are `MasterMacro` (MasterFx/: they drive the
+/// deck's master chain); its pan and shape macros act on Tone channel strips that wave audio
+/// does not go through in beats, and are not ported (ROADMAP 3.3).
 public enum NetMacro: UInt8, CaseIterable, Sendable {
   case drop, breakdown, soloDrums, cut, doubleDrop, beatRepeat, halfTime, tapeStop, tempoAnchor
 

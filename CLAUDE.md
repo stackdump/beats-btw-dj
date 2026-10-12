@@ -65,6 +65,25 @@ its copy; the two are now independent. Rules inherited from that split:
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 
+## Master chain (ROADMAP 3.3)
+
+- A net deck ends in beats' `&fx=tone` master inserts (`MasterFx/`: HP → phaser → LP → crusher →
+  distortion → pitch shift), run in `WaveDeckSource.render` **after** `runner.process` (the net and
+  its samplers), so sampled voices go through it. FX / pitch / feel macros are `MasterMacro`
+  (kept apart from `NetMacro`: `MacroMirror` is sized by `NetMacro.allCases`), fired over the
+  same command ring (`masterMacro`, `masterFx`) and animated by `FxAutomation` on the deck's
+  transport clock (stops while paused) — beats' offline 120 / 200 ms grid, flushed per instant.
+- Same audio-thread rules, measured (`MasterChainRealTimeTests`, `renderDoesNotAllocate`). The
+  pitch shifter's Chrome wavetables (`PeriodicWave`) are built once per sample rate by whoever
+  creates the chain: never make a `MasterChain` / `WaveDeckSource` on the audio thread.
+- A neutral chain is bypassed and bit-transparent (decks without FX render the runner's exact
+  bytes). `restBypass = false` / `solo` exist only for `MasterChainChromeTests`.
+- Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs
+  scripts/beats-macro-fx.mjs, which fetches Tone 15.1.22 into `.build/tone`, SRI-checked) and
+  `master-chain-chrome.json` (Chrome rendering Tone's nodes; `make fixtures-chrome`,
+  needs Chrome). Tone facts that matter: `rolloff: -48` is three biquads; CrossFade leaks −56 dB
+  at wet 0; the HP / LP setters' cancel-then-ramp jumps back.
+
 ## Instruments beyond beats' wave engine
 
 - beats' wave engine folds every tonal instrument into 7 wavetable families (`tonalVoice`).

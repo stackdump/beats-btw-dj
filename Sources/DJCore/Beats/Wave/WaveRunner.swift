@@ -705,9 +705,9 @@ public final class WaveRunner {
 
   /// beats `markMacroRunning` (macros/runtime.js): a macro of ANY kind is running for `ticks` net
   /// ticks from its fire, whether or not it changed anything we can see (a mute that found every
-  /// net it targets already muted sets no restore timer; the catalog's FX, pan, shape, pitch,
-  /// feel and one-shot kinds drive a master chain this engine does not have and set none
-  /// either). It feeds `macroActive`, so the `FireFlags.macro` stamped on each hit, the per-deck
+  /// net it targets already muted sets no restore timer; the master-chain macros — FX, pitch,
+  /// feel, `MasterMacro` — set none either: `WaveDeckSource` calls this when it fires one). It
+  /// feeds `macroActive`, so the `FireFlags.macro` stamped on each hit, the per-deck
   /// clock flag and everything keyed on them (the Stage's bolts, seeds and halo) follow the macro
   /// that was fired, not the mutes it left behind. Every macro entry point calls it; a kind added
   /// later calls it too. Allocation-free.

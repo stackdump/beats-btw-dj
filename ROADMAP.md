@@ -213,28 +213,64 @@ controllers perform on the net.
 JS runner: no allocation in `process`).
 3.2 **(done — `Deck.generate/queueNext/advanceToNext/service`, `TrackSpec`)** Generate on a deck: genre + seed (+ structure) → compose → play; next
 track pre-composed in the background.
-3.3 **(done — `DeckPerform`, `WaveMacros`, profiles; FX/pan/shape/pitch/feel macros NOT ported, blocked: see "3.3 blocker" below)** Controls drive the net: section jump / slot activate (APC grid), role
-mutes (APC track buttons), macros (port beats' macro catalog), live tempo,
+3.3 **(done — `DeckPerform`, `WaveMacros`, profiles; the master-chain FX / pitch / feel macros
+since 2026-10-11 — `MasterChain`, `FxAutomation`, `MasterMacro`; pan, shape and the send-only FX
+macros NOT ported, see "3.3 master chain")** Controls drive the net: section jump / slot activate
+(APC grid), role mutes (APC track buttons), macros (port beats' macro catalog), live tempo,
 MPK keys into a scale-locked live net, stingers on pads.
-**3.3 blocker (investigated 2026-10-08, nothing ported).** There is no wave master chain in
-beats to port. `wave-engine/runner.js` master processing is only `tanh(sum * masterGain)`
-(already ported, with fixtures). The FX macros (`sweep-lp/hp`, `reverb-wash`, `delay-throw`,
-`riser`, `build-crush`, `phaser-drone`, `cathedral`, `dub-delay`, `filter-res`, `octave-*`,
-`pitch-bend`) drive sliders (`lp-freq`, `reverb-wet`, `delay-feedback`, `phaser-wet`,
-`crush-bits`, ...) of the **Tone.js** master chain in `audio/tone-engine.js`
-(browser WebAudio, Tone loaded from unpkg). The pan, shape (`decay-move`) and feel macros act
-on Tone per-channel panners / instrument decay / the sequencer worker. The wave engine's own
-README lists macros, swing/humanize and per-channel routing as "not yet in wave mode", and
-`&fx=tone` is the only way a wave render passes through any FX. So no real-JS audio exists for
-"the same net and macro automation": the repo's rule (ported behaviour proven by fixtures from
-the real JS) cannot be met, and Tone's reverb (random-noise convolution) and phaser/delay are
-WebAudio nodes with no node-side implementation here (no npm, no browser-free Tone). Deliberately
-left out, not approximated: a Swift reverb/delay/phaser/crusher/panner chain, and the macro
-wiring in `DeckPerform`/`WaveMacros`. To unblock, beats needs either a wave-engine master
-chain (then fixtures via `scripts/beats-wave.mjs` and a Swift port with preallocated state
-handed over the command ring, checked by `make swift-rt-test`), or a decision that the Swift
-chain is a new design validated by invariants (gain/pan law, filter response) rather than JS
-parity.
+
+**3.3 master chain (2026-10-11).** beats has no wave-engine master chain, but its `&fx=tone`
+routing (lib/backend/wave.js `connectOutput`) feeds the wave worklet into Tone's master inserts,
+and that is what the FX macros move. Ported, per deck, after the net and its sampled instruments
+(`Sources/DJCore/Beats/Wave/MasterFx/`):
+- **The chain** (`MasterChain`): HP → phaser → LP → bit crusher → distortion → pitch shift, as
+  tone-engine.js `init` builds them, with tone-engine.js's setters and build.js `applyFx` on top
+  (`MasterParams`) and Tone 15.1.22's own Param timeline under them (`ToneParam`).
+- **The macros** (`MasterMacro`, `FxAutomation`, beats' effects.js / runtime.js / feel/axes.js):
+  `sweep-lp`, `sweep-hp`, `reverb-wash` (its HP move), `riser` (its HP and phaser moves),
+  `build-crush`, `phaser-drone`, `filter-res`, `octave-up`, `octave-down`, `pitch-bend`,
+  `vinyl-brake`, `feel-chill`, `feel-drive`, `feel-ambient`, `feel-euphoric`, `feel-build`,
+  `feel-wind-down`, `feel-reset`. Fired from the deck's "FX" menu, any controller binding or MCP
+  `dj_perform` by beats id, recorded and replayed by sessions (the format is unchanged).
+- **Proven by**: `macro-fx.json` (scripts/beats-macro-fx.mjs runs beats' real macro code against
+  a stubbed Tone Transport and real Tone `Param`s; 666 cases: every ported macro × its durations
+  and 0 (permanent) × 120 / 174 BPM × start {defaults, sliders moved, re-fire at half, panic at
+  30 %} + 26 overlaps): every slider and tempo dispatch at the same time (1e-9) and value, the
+  same end state, every Tone-level call and 29 392 parameter values Tone read back mid-run.
+  `master-chain-chrome.json` (scripts/master-chain-chrome-reference.html: Chrome rendering beats'
+  real Tone nodes moved by its setters): LP, HP, crusher, distortion within 4.2e-5 of Chrome sample
+  for sample, phaser 2.1e-4, pitch shifter 7.9e-4. Closed forms in `MasterChainTests`;
+  `make swift-rt-test` measures the chain, the automation and the deck with every macro: zero
+  allocations, zero frees.
+
+**Not ported — nothing of theirs reaches wave audio in beats; each needs a design call:**
+`delay-throw`, `cathedral`, `dub-delay` and the reverb part of `reverb-wash` / `riser` (Tone's
+reverb and delay are sends fed only by Tone channel strips, which the wave worklet bypasses);
+the Pan macros (`ping-pong`, `hard-left`, `hard-right`, `auto-pan`, `mono`) and the Shape macros
+(`tighten`, `loosen`, `pulse`), which act on Tone channel strips / instrument decay. A Swift
+reverb, delay, panner or decay control here would be new design, not a port.
+
+**Deviations (by decision):** a neutral chain is bypassed and bit-transparent, like beats' default
+lean wave path, not the `&fx=tone` chain at rest (HP 20 Hz, LP 20 kHz and the pitch shifter's
+fixed taps colour the sound); HP / LP / pitch fade in and out of bypass over 5 ms; no compressor
+(beats ends in Compressor(-12, 3)). Timing is beats' offline grid (`audioAnimLoop`: 120 ms FX,
+200 ms feel), not requestAnimationFrame; the slider flush is at the dispatch instant (build.js
+throttles it to 33 ms wall time); Tone's lookAhead and the Transport's tick quantisation are not
+modelled; the automation runs on the deck's transport clock (stops while paused), feel tempo
+writes reach the runner at block resolution. The phaser's LFO starts at Tone's initial 1 Hz;
+beats' reset value for its slider (0) means 0.1 Hz, so after any macro restores it the rate is
+0.1 Hz — as in beats. Genre BPM for feel = the project's tempo (as `tempo-anchor` here). FX
+macros survive a project hand-over (beats' project-sync on regen / swap cancels them). The
+master-volume slider is not modelled (no ported macro moves it).
+
+**Found on the way (beats / Tone facts, kept):** `vinyl-brake`'s tape-stop step does nothing
+(`runCompound` fires only mute and FX sub-macros), so it is octave-down 60 ms later, for its own
+1 bar, with fxHold's default tail 0.6; Tone's Distortion curve has 1024 points, not 4096; Tone's
+`rolloff: -48` cascades three biquads (scope-model.js models four — kept there for parity);
+Tone.CrossFade leaks the wet in at −56 dB at wet 0 (GainToAudio's curve); the HP / LP setters'
+cancel-then-ramp jumps a cut ramp back to its start; pitch-down plays grains backwards at
+|ratio| ≈ 0.5 (`intervalToFrequencyRatio(interval - 1) + 1`).
+
 3.4 **(done — `BeatGrid`/`BPMAnalyzer`, `DeckBeat`: sync, follow, quantized cues and loops)** Beat-aware mixing: both decks know BPM and bar phase (from the net
 clock or WAV analysis) — sync, quantized cues and loops to bars.
 3.5 **(done — `WaveHistory`, `WaveRunner.freeze/scrub/release`, Deck JogClock)** Scratching a live net: freeze/scrub/reverse the tick clock (the jog lab's
