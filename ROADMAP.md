@@ -12,8 +12,8 @@ README's "Where we are" says what the app does; this is what each phase still ha
 
 - **Phase 1** — done. Open: the Inpulse hardware pass (checklist below), MPK pad NOTE mode.
 - **Phase 2** — done, 2.1–2.8. Open: raw-`nets` decks, nothing in the app / MCP loads a share
-  link on a deck, the `TrackSpec.payload` traits gap (all in 2.8). The counterMelody deviation is kept and
-  goes back to beats (GO-DIVERGENCE.md §5).
+  link on a deck (both in 2.8). The counterMelody deviation is kept and goes back to beats
+  (GO-DIVERGENCE.md §5).
 - **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
   not ported and each needs a design call. Which master macros go on Inpulse pads is open.
 - **Phase 4** — done. Open: the Inpulse headphone-knob mapping; no real set published yet.
@@ -200,6 +200,12 @@ The app: `TrackSpec(share:)` keeps the overrides and overlay directives in `laye
 `PreparedTrack` plays `compose` → overrides → overlay through the same `Share.finishComposed`;
 `TrackSpec.payload` writes them under their envelope names and `init(payload:)` reads them
 back, so recorded sessions replay the same project (payloads without them are unchanged).
+Compose overrides (`extra`: traits, `bpm`, …) go under `payload.traits`, where
+`shareFromPayload` reads them (an array `macroCurve` at the top level, as beats writes it), so
+beats composes a deck's payload with the same params the deck does: `specPayloads` in
+share-urls.json has the real JS read that form and compose it, and records that the old
+top-level form loses the traits there. `init(payload:)` still reads the old form (sessions
+recorded before 2026-10-12) to the same spec (`TrackSpecPayloadTests`).
 
 **Deliberate deviation — counterMelody on the composer path (kept, 2026-10-12; to backport to
 beats, GO-DIVERGENCE.md §5).** In
@@ -218,9 +224,6 @@ Left out, and why:
 - Raw-`nets` decks: `TrackSpec(share:)` is nil for them; playing one needs a new
   `DeckSourceDescriptor` case carrying the nets (and a session payload for it).
   `Share.rawNetsProject()` already builds the project.
-- Known gap in `TrackSpec.payload` (not fixed here): `extra` (traits) is written at the top
-  level, but `shareFromPayload` reads traits only from `payload.traits`, so beats would compose
-  such a payload without its trait overrides. The app's own `init(payload:)` reads them back.
 - The browser's `_normalizeProject` adds stinger nets (`isStingerTrack`) to `initialMutes`
   before the overrides land; not modelled (as in 2.5), so a raw-`nets` share whose stingers are
   not already muted differs in `initialMutes`.

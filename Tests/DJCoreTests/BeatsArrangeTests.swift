@@ -386,13 +386,15 @@ struct ShareArrangeTests {
       if !spec.layers.entries.isEmpty { layered += 1 }
     }
     #expect(layered >= 10)
-    // A spec without layers writes exactly the payload it always did.
+    // A spec without layers: its compose overrides go under `traits`, where beats reads them
+    // (TrackSpecPayloadTests holds this to the JS).
     let plain = TrackSpec(
       genre: "techno", seed: 42, structure: "standard", cohesion: "v2",
       extra: JSONObject([("bpm", .number(126))]))
     #expect(
       plain.payload.jsStringified
-        == #"{"genre":"techno","seed":42,"structure":"standard","cohesion":"v2","bpm":126}"#)
+        == #"{"genre":"techno","seed":42,"structure":"standard","cohesion":"v2","traits":{"bpm":126}}"#
+    )
     #expect(TrackSpec(payload: plain.payload) == plain)
   }
 

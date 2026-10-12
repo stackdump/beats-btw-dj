@@ -13,6 +13,8 @@
 //              (name derivation lifted verbatim from petri-note.js) and its model digest.
 //   gunzip[] : gzip streams from JS (CompressionStream) and node zlib, with the text
 //              they decode to.
+//   specPayloads[]: TrackSpec.payload's form (traits under `traits`) with shareFromPayload's
+//              reading and compose's model CID, beside the old top-level-traits form.
 // Swift-produced gzip is checked by a Swift round trip and by
 // scripts/beats-share-url-check.mjs (JS decodes what Swift encoded).
 
@@ -145,6 +147,31 @@ for (const payload of rawPayloads) {
   rawNets.push(entry);
 }
 
+// TrackSpec.payload (SessionModel.swift): the form the app writes for a deck's track, traits
+// under `traits` where shareFromPayload reads them. Each payload is written in that form; JS's
+// reading of it and the project compose builds from its params are recorded, and so is the
+// older form (traits spread at the top level), which beats reads without its traits.
+const composedDigest = (genre, params) => {
+  const proj = gen.compose(genre, JSON.parse(JSON.stringify(params)));
+  for (const [id, nb] of Object.entries(proj.nets)) if (!(nb instanceof pflow.NetBundle)) proj.nets[id] = pflow.parseNetBundle(nb);
+  return sha256hex(pflow.canonicalProjectJSON(proj));
+};
+const specPayloads = [];
+for (const payload of [
+  { genre: 'house', seed: 7, structure: 'standard', cohesion: 'v2', traits: { bpm: 126 } },
+  { genre: 'trance', seed: 27, structure: 'standard', cohesion: 'v1', traits: { 'tension-curve': true, 'modal-interchange': 0.35, bpm: 133 } },
+  { genre: 'ambient', seed: 5, cohesion: 'v2', macroCurve: [[0, 'build'], [16, 'drop']], traits: { 'ghost-notes': 0.3, bpm: 90 } },
+  { genre: 'techno', seed: 42, cohesion: 'v2', traits: { bpm: 131 }, tempo: 140, initialMutes: ['bass'], fadeIn: [{ target: 'bass' }] },
+]) {
+  const cid = await codec.computeCidForJsonLd(payload);
+  const share = url.shareFromPayload(payload, cid);
+  const { traits, ...rest } = payload;
+  const oldPayload = { ...rest, ...traits };
+  const oldShare = url.shareFromPayload(oldPayload, await codec.computeCidForJsonLd(oldPayload));
+  specPayloads.push({ payload, cid, share, modelCID: composedDigest(share.genre, share.params),
+    oldPayload, oldParams: oldShare.params, oldModelCID: composedDigest(oldShare.genre, oldShare.params) });
+}
+
 // gzip streams
 const texts = ['', 'a', '{"genre":"techno","seed":42}', 'x'.repeat(100000), 'héllo 😀   \u0000 end',
   JSON.stringify(rawPayloads[0])];
@@ -158,5 +185,5 @@ for (const t of texts) {
 for (const g of gunzip) if ((await codec.b64UrlToGunzip(g.z)) !== g.text) throw new Error('fixture self-check failed: ' + g.label);
 
 mkdirSync(outDir, { recursive: true });
-writeFileSync(path.join(outDir, 'share-urls.json'), JSON.stringify({ meta, base: BASE, urls, rawNets, gunzip }) + '\n');
+writeFileSync(path.join(outDir, 'share-urls.json'), JSON.stringify({ meta, base: BASE, urls, rawNets, gunzip, specPayloads }) + '\n');
 console.log('wrote share-urls.json');

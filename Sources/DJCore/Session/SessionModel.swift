@@ -129,31 +129,45 @@ public struct Session: Equatable, Sendable {
 // MARK: - JSON
 
 extension TrackSpec {
-  /// A beats share-envelope payload for this spec (so a deck's source is a normal share).
-  /// `layers` go in under their envelope names; a spec without them writes exactly what it
-  /// always did. (Known gap, ROADMAP 2.8: `extra` is written at the top level, but
-  /// `shareFromPayload` only reads traits from `payload.traits`, so beats itself would drop
-  /// trait overrides from this payload; the app reads it back with `init(payload:)`, intact.)
+  /// A beats share-envelope payload for this spec (so a deck's source is a normal share),
+  /// written where `shareFromPayload` reads it: the compose overrides in `extra` under
+  /// `traits` (an array `macroCurve` at the top level, as beats writes it), `layers` under
+  /// their envelope names. Keys `overrides` sets itself (seed, cohesion, a set structure) are
+  /// left out of `traits`, so beats composes with the same params the deck does. A spec
+  /// without extras writes exactly what it always did.
   public var payload: JSONValue {
     var o = JSONObject()
     o["genre"] = .string(genre)
     o["seed"] = .number(seed)
     if let structure, !structure.isEmpty { o["structure"] = .string(structure) }
     o["cohesion"] = .string(cohesion)
-    for (k, v) in extra.entries where o[k] == nil { o[k] = v }
+    var traits = JSONObject()
+    for (k, v) in extra.entries where k != "seed" && k != "cohesion" {
+      if k == "structure", o[k] != nil { continue }
+      if k == "macroCurve", v.array != nil { o[k] = v } else { traits[k] = v }
+    }
+    if !traits.entries.isEmpty { o["traits"] = .object(traits) }
     for (k, v) in layers.entries where o[k] == nil { o[k] = v }
     return .object(o)
   }
 
-  /// Envelope fields named in `layerKeys` come back as `layers`; every other non-core field is
-  /// a compose override, as before (no compose param uses a layer name).
+  /// Envelope fields named in `layerKeys` come back as `layers`; `traits` (an object) is
+  /// spread into `extra`; every other non-core field is a compose override, as before (no
+  /// compose param uses a layer name). Payloads written before traits moved under `traits`
+  /// (sessions recorded with top-level traits) therefore read back unchanged.
   init?(payload p: JSONValue) {
     guard let genre = p["genre"]?.string, let seed = p["seed"]?.double else { return nil }
     var extra = JSONObject()
     var layers = JSONObject()
     for (k, v) in p.object?.entries ?? []
     where !["genre", "seed", "structure", "cohesion"].contains(k) {
-      if Self.layerKeys.contains(k) { layers[k] = v } else { extra[k] = v }
+      if k == "traits", case .object(let traits) = v {
+        for (tk, tv) in traits.entries { extra[tk] = tv }
+      } else if Self.layerKeys.contains(k) {
+        layers[k] = v
+      } else {
+        extra[k] = v
+      }
     }
     self.init(
       genre: genre, seed: seed, structure: p["structure"]?.string,

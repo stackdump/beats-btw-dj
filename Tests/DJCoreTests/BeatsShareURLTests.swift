@@ -191,6 +191,72 @@ struct ShareURLTests {
   }
 }
 
+/// `TrackSpec.payload` against `specPayloads` (scripts/beats-share-url.mjs, real JS): the app
+/// writes traits where `shareFromPayload` reads them, and still reads the old form back.
+struct TrackSpecPayloadTests {
+  @Test func beatsComposesTheSpecsPayloadWithItsTraits() throws {
+    let rows = try #require(fixture()["specPayloads"]?.array)
+    #expect(rows.count >= 4)
+    for r in rows {
+      let payload = r["payload"]!
+      let tag = String(payload.jsStringified.prefix(60))
+      let spec = try #require(TrackSpec(share: Share(payload: payload)), "\(tag)")
+      #expect(spec.extra["traits"] == nil && !spec.extra.entries.isEmpty, "\(tag)")
+      // Swift writes exactly the envelope JS was given…
+      #expect(spec.payload.canonicalJS == payload.canonicalJS, "\(tag)")
+      // …which JS reads to these params, and composes to the project the deck composes.
+      let cid = r["cid"]!.string!
+      #expect(BeatsCID.shareCID(spec.payload) == cid, "\(tag)")
+      #expect(
+        Share(payload: spec.payload, cid: cid).toJSON().jsStringified == r["share"]!.jsStringified,
+        "\(tag)")
+      #expect(
+        compose(genre: spec.genre, overrides: spec.overrides).modelCID == r["modelCID"]!.string!,
+        "\(tag)")
+      // The old form (top-level traits): beats composes it without them…
+      let old = r["oldPayload"]!
+      #expect(Share(payload: old).params == r["oldParams"]!.object!, "\(tag)")
+      #expect(r["oldModelCID"]!.string! != r["modelCID"]!.string!, "\(tag)")
+      // …and the app reads both forms back to the same spec (layers in the payload's order).
+      #expect(TrackSpec(payload: old)?.payload.canonicalJS == payload.canonicalJS, "\(tag)")
+      #expect(TrackSpec(payload: old)?.extra == spec.extra, "\(tag)")
+      #expect(TrackSpec(payload: spec.payload) == spec, "\(tag)")
+    }
+  }
+
+  @Test func oldAndNewSessionPayloadsRoundTrip() throws {
+    let spec = TrackSpec(
+      genre: "techno", seed: 42, structure: "standard", cohesion: "v2",
+      extra: JSONObject([("bpm", .number(126)), ("ghost-notes", .number(0.3))]),
+      layers: JSONObject([("tempo", .number(130))]))
+    // As sessions recorded before this change wrote it: traits at the top level.
+    let old = try JSONValue.parse(
+      #"{"genre":"techno","seed":42,"structure":"standard","cohesion":"v2","bpm":126,"ghost-notes":0.3,"tempo":130}"#
+    )
+    let new = try JSONValue.parse(
+      #"{"genre":"techno","seed":42,"structure":"standard","cohesion":"v2","traits":{"bpm":126,"ghost-notes":0.3},"tempo":130}"#
+    )
+    #expect(spec.payload == new)
+    for form in [old, new] {
+      #expect(TrackSpec(payload: form) == spec)
+      let source = JSONValue.object(
+        JSONObject([("kind", .string("net")), ("share", form)]))
+      #expect(DeckSourceDescriptor(json: source) == .net(spec))
+      let action = JSONValue.object(
+        JSONObject([("op", .string("queueNext")), ("deck", .string("A")), ("share", form)]))
+      #expect(DeckAction(json: action) == .queueNext(deck: "A", spec: spec))
+    }
+    // A spec with no extras writes what it always did.
+    let plain = TrackSpec(genre: "jazz", seed: 3)
+    #expect(plain.payload.jsStringified == #"{"genre":"jazz","seed":3,"cohesion":"v2"}"#)
+    // Keys `overrides` sets itself are not traits.
+    let shadow = TrackSpec(
+      genre: "jazz", seed: 3, structure: "minimal",
+      extra: JSONObject([("seed", .number(9)), ("structure", .string("x")), ("bpm", .number(99))]))
+    #expect(shadow.payload["traits"] == .object(JSONObject([("bpm", .number(99))])))
+  }
+}
+
 struct RawNetsEnvelopeTests {
   @Test func rawNetsProjectMatchesWhatTheBrowserLoads() throws {
     let rows = try #require(fixture()["rawNets"]?.array)
