@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import Testing
 
 @testable import DJCore
@@ -53,5 +54,38 @@ struct ScopeTapRealTimeTests {
     // and the drain really saw it
     feeds["A"]!.update(now: 1e6)
     #expect(feeds["A"]!.events.count > 100)
+  }
+
+  /// The whole engine, not just the tap: two decks playing through the real AVAudioEngine
+  /// graph (EQ, strips, main mixer, master tap) rendered with `renderOffline`, the malloc
+  /// counter armed on the rendering thread, a second thread draining the master tap.
+  /// Hosting a custom AUAudioUnit in the master path cost one malloc/free pair per cycle.
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func realEngineMasterTapRenderDoesNotAllocate() throws {
+    let sr = 22_050.0
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: sr)
+    let a = try #require(dj["A"])
+    let b = try #require(dj["B"])
+    a.loadNet(
+      PreparedTrack(
+        spec: TrackSpec(genre: "techno", seed: 42, extra: JSONObject([("bpm", .number(600))])),
+        sampleRate: sr))
+    b.loadDemo()
+    a.setPlaying(true)
+    b.setPlaying(true)
+    try dj.start()
+    let out = try #require(AVAudioPCMBuffer(pcmFormat: dj.format, frameCapacity: 512))
+    func cycle() { _ = try? dj.engine.renderOffline(512, to: out) }
+    for _ in 0..<50 { cycle() }  // warm-up
+    let before = dj.masterTap.framesWritten
+    let feed = ScopeFeed.feeds(for: dj)["master"]!
+    let report = countRenderWhileDraining(feed: feed) {
+      for _ in 0..<500 { cycle() }
+    }
+    #expect(report.allocations == 0, "render path allocated \(report.allocations) times")
+    #expect(report.frees == 0, "render path freed \(report.frees) times")
+    #expect(dj.masterTap.framesWritten - before >= 500 * 512 - 512, "the master tap must fill")
+    #expect(dj.masterTap.recent(2048).contains { abs($0) > 1e-4 }, "and carry audio")
+    dj.stop()
   }
 }

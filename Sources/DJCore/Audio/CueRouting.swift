@@ -44,9 +44,9 @@ extension DJEngine {
     }
     channelRouter = unit
     engine.attach(unit)
-    engine.disconnectNodeOutput(masterTapNode)
+    engine.disconnectNodeOutput(engine.mainMixerNode)
     engine.connect(
-      masterTapNode,
+      engine.mainMixerNode,
       to: [
         AVAudioConnectionPoint(node: unit, bus: 0),
         AVAudioConnectionPoint(node: headMaster, bus: 0),
@@ -88,9 +88,9 @@ extension DJEngine {
     engine.disconnectNodeOutput(unit)
     engine.detach(unit)
     channelRouter = nil
-    engine.disconnectNodeOutput(masterTapNode)
+    engine.disconnectNodeOutput(engine.mainMixerNode)
     engine.connect(
-      masterTapNode,
+      engine.mainMixerNode,
       to: [
         AVAudioConnectionPoint(node: engine.outputNode, bus: 0),
         AVAudioConnectionPoint(node: headMaster, bus: 0),

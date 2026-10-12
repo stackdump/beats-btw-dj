@@ -53,8 +53,6 @@ public final class DJEngine {
   let headBus = AVAudioMixerNode()
   /// The master (post-mix, post-master-gain) for the scope views.
   public let masterTap = AudioTap()
-  /// Pass-through between the main mixer and the output that fills `masterTap`.
-  let masterTapNode: AVAudioUnitEffect
   var channelRouter: AVAudioUnit?
   var _headphoneMix = 0.0
   var _headphoneLevel = 0.7
@@ -72,7 +70,6 @@ public final class DJEngine {
     decks names: [String] = ["A", "B"], offline: Bool = false,
     sampleRate offlineRate: Double = 48_000, outputChannels: Int = 2
   ) throws {
-    masterTapNode = try MasterTapAU.makeNode(tap: masterTap, sampleRate: offlineRate)
     if offline {
       sampleRate = offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: offlineRate, channels: 2)!
@@ -90,7 +87,6 @@ public final class DJEngine {
       sampleRate = hw > 0 ? hw : offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
-    engine.attach(masterTapNode)
     engine.attach(cueSum)
     engine.attach(headMaster)
     engine.attach(headBus)
@@ -108,8 +104,8 @@ public final class DJEngine {
     }
     engine.attach(clockNode)
     engine.connect(clockNode, to: engine.mainMixerNode, format: format)
-    engine.connect(engine.mainMixerNode, to: masterTapNode, format: format)
-    engine.connect(masterTapNode, to: engine.outputNode, format: format)
+    engine.connect(engine.mainMixerNode, to: engine.outputNode, format: format)
+    installMasterTap()
     for name in names {
       let deck = Deck(name: name, sampleRate: sampleRate, format: format)
       engine.attach(deck.node)
