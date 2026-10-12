@@ -4,7 +4,7 @@ Branch `phase5-scopes` (from `main` 71cac0d). Ports the scope and stage visualiz
 beats.bitwrap.io — `public/lib/ui/scope.js`, `scope-model.js`, `stage.js` and the pieces of
 `canvas.js`, `feed.html`, `perf/monitor.js` that the task names, all at beats-bitwrap-io
 **`095d030`** — per deck and on the master, fed by the engine's own audio taps and live net
-state. **Not merged, not pushed: for review.**
+state. Merged into `main` in 69f8431 (2026-10-11).
 
 > `095d030` (the spring auto-gain commit) exists only in valoper's clone of beats, not in
 > the checkout on this Mac (which stops at its parent 668978e). The sources were read from

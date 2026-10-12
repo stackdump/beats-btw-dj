@@ -11,15 +11,46 @@ hardware (first target: Hercules DJControl Inpulse 200 MK3).
 SwiftPM — no Xcode project. The Go CLI and the browser lab stay as hardware
 and capture tools.
 
-Two decks (scratchable turntables ported from the lab's scrub worklet), a
-mixer (volume, one-knob filter, ±8 % pitch, crossfader, master) and 4 hot cues
-per deck. Supported controllers, all at once, hot-pluggable:
+## Where we are (2026-10-11)
 
-| Device | Profile | Bound now | Parked for later phases |
+Phases 1–5 of [ROADMAP.md](ROADMAP.md) are done on `main`; what is still open is listed
+there. In short:
+
+- **Decks and mixer** — two decks, each a scratchable turntable (an audio file; ported from
+  the lab's scrub worklet) or a **live Petri net** composed natively from genre + seed
+  (+ structure). Volume, one-knob filter, 3-band EQ, gain, ±8 % pitch, crossfader, master,
+  headphone cue on the Inpulse's outputs 3/4; 4 hot cues, sync, quantized cues and loops;
+  scratching a net deck runs its clock backwards.
+- **Generation** — beats' composer, arrange / overlays, share envelopes and URLs and its wave
+  engine are ported to Swift and held to the same CIDs and bytes by fixtures from the real JS.
+  In the app, installed Logic / GarageBand instruments and SoundFonts can stand in for the
+  synth voices (the parity path stays beats-exact).
+- **Performing a net** — section jumps, role mutes, stingers, MPK keys into the track's scale,
+  beats' net macros and its 18 master-chain FX / pitch / feel macros, from any controller, the
+  UI or MCP.
+- **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
+  that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com
+  (`djctl publish`; nothing published yet).
+- **Visuals** — waveform, platter, net / marking view, section timeline, APC grid mirror,
+  device map, and beats' scopes and Stage ([SCOPES.md](SCOPES.md)). All tested by rendering
+  offscreen; the scopes and Stage have not been looked at in a live window yet.
+- **Remote control** — the running app listens on a local socket; `djctl mcp` is the
+  `dj-vevr-se` MCP server over it.
+
+Open: the Inpulse hardware pass (controls captured but unnamed, or never captured; which
+centre knob is headphones); a beats share link can be decoded but not yet loaded on a deck
+from the app or MCP, and raw-`nets` shares not at all; reverb / delay / pan / shape macros are
+not ported; the scopes need a look on a real display.
+
+## Controllers
+
+All at once, hot-pluggable:
+
+| Device | Profile | Bound | Parked |
 |---|---|---|---|
 | Hercules DJControl Inpulse 200 MK3 | `inpulse-200-mk3.json` (jogs) + `inpulse-200-mk3-surface.json` | Jogs (scratch / bend / shift-seek), PLAY, CUE, SYNC (beat; SHIFT+SYNC bar), SHIFT+CUE rewind, PFL, LOAD (next track), hot-cue pads + SHIFT clear, FX-mode pads 0x10–0x13 (macros cut / beat-repeat / drop / breakdown), pads 0x20+ (6 role mutes, section prev/next), pads 0x30+ (stingers 1–4), volume, filter, EQ low/mid/high, SHIFT+HIGH gain, pitch, crossfader, master, headphone level; LEDs. `[MIXXX]`/`[UNVERIFIED]` (not yet seen on this unit): every SHIFT+control but the jog (SYNC, CUE, gain, hot-cue clear), hot-cue pads 2/4 on deck A and all on deck B, deck B PFL/LOAD, pads 0x20+/0x30+, which centre knob is master vs headphones | LOOP + the two STEMS buttons and the three centre buttons (captured, not yet named); browser encoder/push (not captured, no browser in the app); SHIFT+PLAY, SHIFT+LOOP/STEMS, pad bend (not captured). SHIFT and the HOT CUE/FX mode buttons are hardware layers |
-| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | Faders (A vol/filter/pitch, crossfader, B pitch/filter/vol, master), hot-cue + clear rows, play buttons, SHIFT (software); LEDs | grid rows 2–7, track 2–7, scene 3–8, fader 5 — Phase 3 section launcher |
-| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | Knobs 2–8 (A/B vol, crossfader, A/B filter, A/B pitch), pads (PROG CHANGE) = hot cues | keys, joystick, pad NOTE mode — Phase 3 instrument; knob 1 shares CC 1 with the joystick |
+| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | Faders: A vol / filter / pitch, crossfader, fader 5 = headphone cue mix, B pitch / filter / vol, master. Grid (rows from the bottom): row 1 hot cues (A 1–4, B 1–4), row 2 clear cue, rows 3–4 deck A sections 1–16, rows 5–6 deck B sections 1–16, row 7 macros drop / breakdown / cut / beat-repeat (A left, B right), row 8 half-time / tape-stop / double-drop / panic. Track 1 / 8 play A / B (SHIFT: quantize), track 2–7 role mutes kick / snare / hihat / bass / melody / harmony on A (SHIFT: on B). Scene 1–2 play A / B, 3–4 section prev / next A, 5–6 the same for B, 7–8 next track A / B. SHIFT (software); LEDs | DRUM mode pads (notes 64–79, ch 10) — instrument mode, pad positions not mapped yet |
+| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | Keys → the focus deck's net, snapped to its scale; joystick X = tempo nudge (focus deck); knobs 2–8 (A / B vol, crossfader, A / B filter, A / B pitch); pads in PROG CHANGE = hot cues (A 1–4, B 1–4); pads in NOTE mode, bank A = stingers 1–4 on A / B `[UNVERIFIED]` | knob 1 (CC 1 is also the joystick's Y axis in this preset); NOTE-mode bank B / pads 9–16 `[UNVERIFIED]` |
 
 Every control is either bound or explicitly parked with a reason (`"action": "unbound"`), and
 tests replay every distinct message captured from the real hardware on 2026-10-07. Two devices
@@ -51,10 +82,13 @@ make devices                              # live device maps (Chrome): http://lo
 |---|---|
 | `Package.swift` | SwiftPM manifest, macOS 15+. |
 | `Sources/DJCore/` | `Turntable` (real-time DSP, fed by a lock-free `SPSCRing`), `DJEngine`/`Deck` (AVAudioEngine graph, mixer, cues), `JogAdapter`, `SurfaceProfile`/`SurfaceController` (pads/faders + LEDs), `ControllerHub` (matches ports to profiles, hot-plug), `MIDIIn`/`MIDIOut`. |
+| `Sources/DJCore/Beats/` | beats' generator, share envelopes / URLs and wave engine (`Wave/`, master chain in `Wave/MasterFx/`), ported from the JS. |
+| `Sources/DJCore/Session/`, `Sources/DJCore/Scopes/` | Session record / replay / publish; the scope and stage models. |
 | `Sources/DJCore/Resources/profiles/*.json` | **Device profiles — single source of truth.** `web/jog/profile-parity.test.mjs` fails if the JS copy drifts. |
 | `Sources/djctl/` | Swift CLI for hardware checks. |
 | `Sources/DJApp/` | SwiftUI app; `scripts/bundle-app.sh` wraps it in `build/DJApp.app`. |
-| `Tests/DJCoreTests/` | swift-testing tests. |
+| `Sources/DJViews/` | SwiftUI views (the only SwiftUI outside `DJApp`). |
+| `Tests/DJCoreTests/`, `Tests/DJViewsTests/` | swift-testing tests; views are tested by rendering them to pixels. |
 | `cmd/dj-vevr-se/` | Native CLI over [gomidi](https://gitlab.com/gomidi/midi) + rtmidi (CoreMIDI on macOS, ALSA on Linux). |
 | `internal/capture/` | Captures as `[{t, d, port}]` — the exact shape `web/jog/replay.js` reads, so a native capture replays in the browser demo and feeds `analyze-capture.mjs`. |
 | `web/jog/` | The browser lab as it was in beats: device profile, mock Web MIDI, simulator, adapter, Petri clock, calibration wizard. See its README and ROADMAP. |

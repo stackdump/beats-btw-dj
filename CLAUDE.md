@@ -57,7 +57,10 @@ its copy; the two are now independent. Rules inherited from that split:
   debug build; the app to listen with is `make run-app-release`.
   Traps found so far: a marking array sharing storage with its `initial` copy (CoW on the
   first write), non-escaping closures that became escaping, retiring objects on the
-  audio thread (hand them back through the retire ring).
+  audio thread (hand them back through the retire ring), AUSampler building its
+  AUParameterCache on the render thread at the first note-on after any AVAudioMixerNode is
+  connected in the process (`SamplerInstrument.init` pre-builds it with a throwaway parameter
+  listener; `samplersDoNotAllocateWhenAnotherEngineIsBuilt` guards it).
 - Projects are composed and compiled off the audio thread (`TrackSpec` →
   `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with

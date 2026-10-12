@@ -5,26 +5,30 @@ with something that runs on the Mac with the three controllers plugged in.
 
 Status legend: **done** · **in progress** · **next** · later.
 
-## Where we are (done)
+## Where we are (2026-10-11)
 
-- Swift app (SwiftPM, no Xcode project): two scratchable decks, mixer
-  (volume, filter, ±8 % pitch, crossfader, master), 4 hot cues per deck.
-- Real-time audio path: `Turntable` on the audio thread, fed by a lock-free
-  ring; offline `AVAudioEngine` rendering for tests.
-- Controllers, hot-pluggable: Inpulse 200 MK3 (jog wheels only), APC mini
-  mk2 (default layout + LEDs), MPK Mini Mk II (factory map, unverified).
-- Decks can play beats tracks rendered by the JS wave engine
-  (`scripts/wave-render.mjs` → WAV → load).
+All of it is on `main` (Phase 3 landed there directly; `phase5-scopes` merged in 69f8431).
+README's "Where we are" says what the app does; this is what each phase still has open.
+
+- **Phase 1** — done. Open: the Inpulse hardware pass (checklist below), MPK pad NOTE mode.
+- **Phase 2** — done, 2.1–2.8. Open: raw-`nets` decks, nothing in the app / MCP loads a share
+  link on a deck, the `TrackSpec.payload` traits gap, the counterMelody deviation to confirm
+  (all in 2.8).
+- **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
+  not ported and each needs a design call. Which master macros go on Inpulse pads is open.
+- **Phase 4** — done. Open: the Inpulse headphone-knob mapping; no real set published yet.
+- **Phase 5** — done, 5.1–5.7 (5.7: beats' scopes and Stage, [SCOPES.md](SCOPES.md)). Open:
+  the scopes and Stage have not been checked in a live window ("Needs a person" in SCOPES.md).
 
 ---
 
-## Phase 1 — Every control on all three devices **(done 2026-10-07)**
+## Phase 1 — Every control on all three devices **(done 2026-10-07; Inpulse hardware pass open)**
 
 Goal: every physical control on every device produces a decoded event, and
 every event has either a binding or an explicit "unbound" entry. Nothing a
 hand can touch is silently dropped.
 
-Coverage today:
+Coverage when this phase started (2026-10-07; README has the bindings now):
 
 | Device | Bound | Not bound / not decoded |
 |---|---|---|
@@ -103,7 +107,7 @@ The master-chain macros (3.3) bind through the same `macro` action; which four g
 which pads — or on the LOOP / SAMPLER pad modes once their numbers are known — is a choice
 to make, not a measurement.
 
-## Phase 2 — Native music generation with CID equivalence **(done through 2.8)**
+## Phase 2 — Native music generation with CID equivalence **(done, 2.1–2.8; open items at the end of 2.8)**
 
 Goal: the Swift app composes and renders beats tracks itself, and for the
 same share envelope produces the **same CIDs** as beats.
@@ -208,6 +212,8 @@ behaviour. See GO-DIVERGENCE.md for the beats-side bug.
 
 Left out, and why:
 
+- Loading a share on a deck: `ShareLink.parse` and `TrackSpec(share:)` exist, but no app
+  control, MCP tool or `djctl` command calls them yet (decks are generated from genre + seed).
 - Raw-`nets` decks: `TrackSpec(share:)` is nil for them; playing one needs a new
   `DeckSourceDescriptor` case carrying the nets (and a session payload for it).
   `Share.rawNetsProject()` already builds the project.
@@ -232,7 +238,7 @@ Done when: every genre × {loop, minimal, standard, extended} × cohesion
 {v1, v2} × N seeds matches project JSON and model CID, share CIDs match, and
 renders match the JS engine.
 
-## Phase 3 — Live Petri decks **(done on branch `phase3-live-decks`)**
+## Phase 3 — Live Petri decks **(done on `main`; 3.3 partial — send FX, Pan and Shape macros not ported)**
 
 Goal: a deck can play a *generated net live*, not just a WAV, and the
 controllers perform on the net.
@@ -304,7 +310,7 @@ clock or WAV analysis) — sync, quantized cues and loops to bars.
 3.5 **(done — `WaveHistory`, `WaveRunner.freeze/scrub/release`, Deck JogClock)** Scratching a live net: freeze/scrub/reverse the tick clock (the jog lab's
 reversible Petri clock), and the WAV path stays for imported audio.
 
-## Phase 4 — Performance capture and sharing
+## Phase 4 — Performance capture and sharing **(done; Inpulse headphone-knob mapping unverified)**
 
 Goal: a set is reproducible and content-addressed, like a beats track.
 
@@ -312,14 +318,13 @@ Status: 4.1–4.3 done and proven by test (a scripted set across all three contr
 and the UI replays bit-identical to the live render; two renders are byte-identical).
 4.4: headphone cue (per-deck PFL, post-EQ pre-fader; cue/master mix; level) feeds a
 channel router that puts the master on outputs 1/2 and the cue on 3/4 of a multichannel
-device — verified offline on a 4-channel engine. **Not verified on the Inpulse**: that
-its interface exposes ≥ 4 outputs with the headphones on 3/4, that the device accepts
-the channel layout, and how the hardware headphone knobs map (`mixer.faders[2]` →
-headphone level is from the sweep order, and the mix knob is on APC fader 5 for lack of
-one on the Inpulse). Pressing "Inpulse out" in the app is the first real test; if it
-fails the stereo path is restored. 4.5: sessions are saved as `<cid>.json` (verified on
-load) under Application Support and exported to WAV; uploading to the beats share store
-or CDN needs an endpoint/credentials decision and is not built.
+device — verified offline on a 4-channel engine, and on the Inpulse on 2026-10-08 (one
+4-channel stream, `djctl cue-test` routes cue → 3/4, heard on the headphones; see
+"Verification notes"). Still unverified: how the hardware headphone knobs map
+(`mixer.faders[2]` → headphone level is from the sweep order; the mix knob is on APC
+fader 5 for lack of one on the Inpulse). 4.5: sessions are saved as `<cid>.json` (verified on
+load) under Application Support and exported to WAV, and publish to cdn.stackdump.com over
+ssh (4.5); no real set has been published yet.
 
 4.1 **(done)** Record every controller event (time, device, decoded control, value)
 against the deck clocks.
@@ -327,11 +332,11 @@ against the deck clocks.
 canonical JSON → CID.
 4.3 **(done)** Offline re-render of a session to WAV (same engine, same events) and a
 determinism test (two renders, same bytes).
-4.4 **(done in software; hardware unverified — see below)** Cue/headphone output through the Inpulse's built-in audio interface
+4.4 **(done; on the Inpulse verified 2026-10-08 except the headphone-knob mapping)** Cue/headphone output through the Inpulse's built-in audio interface
 (pre-listen mix on outputs 3/4).
 4.5 **(done — `SessionBundle`/`SSHTransport`/`publishSession`, `djctl publish`, app “Publish…”)** Publish sessions to cdn.stackdump.com the way beats-builder's `publish.cdn.publish_to_cdn` does: stage `blobs/<cid>/{session.json,audio.wav,index.md}` on the CDN master (valoper, over ssh — no new credentials), `POST /admin/reload?cid=`, and only with `--mirror` run `mirror-push.sh` (the step that makes it public). The directory name is the session CID; `index.md` is written last. Verified against the CDN's own indexer (`cdn-stackdump-cli index` on a scratch tree: 1 indexed, 0 errors). No real set has been published yet.
 
-## Phase 5 — Visuals
+## Phase 5 — Visuals **(done, 5.1–5.7; scopes / Stage not yet checked in a live window)**
 
 Platter and waveform rendering, net/marking view, section timeline, APC grid
 mirror, device-map UI. Deferred earlier by decision, started once the core was done;
@@ -347,6 +352,12 @@ bar-line overlay (`Deck.waveformOverlay`), `WaveformStrip`.
 5.4 **(done)** Section timeline.
 5.5 **(done)** APC grid mirror.
 5.6 **(done)** Device-map UI (`SurfaceProfile.deviceMap()` rows, `DeviceMapView`, the touched control highlighted).
+5.7 **(done — merged 69f8431; status per mode in [SCOPES.md](SCOPES.md))** beats' scopes and
+Stage, fed by the engine's deck / master taps and live net state: Scope, Spectro (model and
+measured), Bands, Raster; the Stage window (Constellation, Corona, Sonar, Petal, Shuffle with
+flow / pulse / flame / tilt / bolts and backgrounds); main-window extras (ring, timeline dots,
+structure strip, LED mirror, macro chase, master flame meter). Not ported: card flash (no share
+card), legacy wave / spectrum (absent from the pinned source), fingerprints / feel pad.
 
 Not verified by eye in the running app: the sandbox can't capture other apps' windows
 (`screencapture` returns the desktop only), so each view is checked through
