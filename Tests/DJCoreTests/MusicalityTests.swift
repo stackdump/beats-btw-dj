@@ -153,4 +153,20 @@ struct MusicalityTests {
       NoteLog.capture(without).map { $0.note % 12 }
         == NoteLog.capture(t.played).map { $0.note % 12 })
   }
+
+  /// Melodic parts accented by meter: downbeats louder than off-beat sixteenths, velocities
+  /// that vary (beats plays every note of a part at one velocity).
+  @Test(arguments: ["techno", "edm", "house", "lofi"])
+  func melodicPartsHaveMetricAccents(genre: String) throws {
+    let t = played(genre, 42)
+    let notes = NoteLog.capture(t.played).filter { $0.group == "melody" || $0.group == "bass" }
+    let down = notes.filter { ($0.tick - 1) % 16 == 0 }.map(\.velocity)
+    let offs = notes.filter { ($0.tick - 1) % 2 == 1 }.map(\.velocity)
+    try #require(!down.isEmpty && !offs.isEmpty)
+    let mean = { (v: [Int]) in Double(v.reduce(0, +)) / Double(v.count) }
+    #expect(mean(down) >= mean(offs) + 10, "\(genre): downbeats \(mean(down)) vs off \(mean(offs))")
+    #expect((report(t.played).velocitySpread["melody"] ?? 0) > 4)
+    // The composed track had none (the test must be able to fail).
+    #expect((report(t.composed).velocitySpread["melody"] ?? 0) < 1 || genre == "edm")
+  }
 }

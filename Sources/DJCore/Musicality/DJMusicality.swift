@@ -25,7 +25,11 @@ public enum DJMusicality {
     /// genre's root, C3 for most), the pad above the bass, the melody above the pad.
     public static let register = Fixes(rawValue: 1 << 2)
 
-    public static let all: Fixes = [.key, .timing, .register]
+    /// Bass, melody, arp and pad notes accented by where they fall in the bar (beats gives
+    /// every note of a part one velocity), and each melody bar's highest note leaned on.
+    public static let dynamics = Fixes(rawValue: 1 << 5)
+
+    public static let all: Fixes = [.key, .timing, .register, .dynamics]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.
@@ -35,6 +39,7 @@ public enum DJMusicality {
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
     if fixes.contains(.register) { separateRegisters(&p) }
+    if fixes.contains(.dynamics) { accentByMeter(&p) }
     return p
   }
 
@@ -158,6 +163,45 @@ public enum DJMusicality {
         guard var b = nb.bindings[t], !isDrumChannel(b.channel) else { continue }
         b.note = max(0, min(127, b.note + shift))
         nb.bindings[t] = b
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: dynamics
+
+  /// Velocity offset by position in the bar (sixteenths): the downbeat strongest, then beat 3,
+  /// beats 2 and 4, the off-beat eighths, the sixteenths in between softest.
+  static let meterAccent = [10, -8, -3, -8, 3, -8, -3, -8, 6, -8, -3, -8, 3, -8, -3, -8]
+  /// Extra for the highest note of each melody bar: the line's peak, where the ear goes.
+  static let peakAccent = 5
+
+  /// Accent the tonal parts' ring nets by meter. A ring's transition `ti` fires on step `i`
+  /// of its cycle, and every ring here is a whole number of 16-step bars, so `i % 16` is the
+  /// step in the bar. Drums keep beats' accents (they have their own); stingers stay flat.
+  static func accentByMeter(_ p: inout Project) {
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control",
+        ["bass", "melody", "arp", "harmony"].contains(part(nb)),
+        nb.transitions.count % 16 == 0, nb.places.count == nb.transitions.count
+      else { continue }
+      var steps: [(key: String, step: Int, note: Int)] = []
+      for t in nb.bindings.keys {
+        guard t.hasPrefix("t"), let i = Int(t.dropFirst()), let b = nb.bindings[t],
+          !isDrumChannel(b.channel)
+        else { continue }
+        steps.append((t, i, b.note))
+      }
+      var peak: [Int: Int] = [:]  // bar → highest note
+      if part(nb) == "melody" {
+        for s in steps { peak[s.step / 16] = max(peak[s.step / 16] ?? 0, s.note) }
+      }
+      for s in steps {
+        var b = nb.bindings[s.key]!
+        var v = b.velocity + meterAccent[s.step % 16]
+        if peak[s.step / 16] == s.note { v += peakAccent }
+        b.velocity = clampVelocity(v)
+        nb.bindings[s.key] = b
       }
       p.nets[id] = nb
     }
