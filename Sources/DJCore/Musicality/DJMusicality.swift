@@ -111,10 +111,17 @@ public enum DJMusicality {
     /// the open hat.
     public static let openHats = Fixes(rawValue: 1 << 18)
 
+    /// A stereo picture (beats' engine is mono, every part dead centre): hats right, crash left,
+    /// the pad's voices spread wide, the arp's alternating sides; kick, snare, bass and lead
+    /// stay in the middle, so the low end is mono. Panned as mid/side (left = mid + side,
+    /// right = mid − side): the mono sum is the mix as before. Applied by the runner
+    /// (`stereoPlacement`); sampled instruments keep their own (centred) image.
+    public static let stereo = Fixes(rawValue: 1 << 19)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
-      .openHats,
+      .openHats, .stereo,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -123,7 +130,7 @@ public enum DJMusicality {
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
-      "bassLine": .bassLine, "openHats": .openHats,
+      "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo,
       "none": [],
     ]
   }
@@ -759,6 +766,27 @@ public enum DJMusicality {
         nb.bindings[t]?.note = openHatNote
       }
       p.nets[id] = nb
+    }
+  }
+
+  // MARK: stereo
+
+  /// Where a lane sits (`.stereo`): `pan` from −1 (left) to 1 (right), as the side gain of a
+  /// mid/side pan, and `spread`, a tonal lane's voices alternating that far either side of it
+  /// (a chord's notes across the field; an arp's successive notes left, right, left). `kind`
+  /// is the lane's drum kind or "tonal"; `group` the net's part.
+  public static func stereoPlacement(kind: String, group: String) -> (pan: Double, spread: Double)
+  {
+    switch kind {
+    case "hat", "openhat": return (0.3, 0)
+    case "crash": return (-0.3, 0)
+    case "tonal":
+      switch group {
+      case "harmony": return (0, 0.5)
+      case "arp": return (0, 0.45)
+      default: return (0, 0)
+      }
+    default: return (0, 0)
     }
   }
 

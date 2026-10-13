@@ -103,6 +103,10 @@ public struct AudioMetrics: Sendable {
   /// RMS of 400 ms windows, dB, 10th and 95th percentile (quiet parts vs the loud ones).
   public var shortTermP10DB = -200.0
   public var shortTermP95DB = -200.0
+  /// Side over mid energy, dB (side = (L − R) / 2): −200 for mono, around −10 for a wide mix.
+  public var sideDB = -200.0
+  /// The same below 150 Hz, where a mix should stay mono (kick and bass in the middle).
+  public var lowSideDB = -200.0
 
   public static let bandEdges: [(String, Double, Double)] = [
     ("sub", 20, 60), ("low", 60, 250), ("lowMid", 250, 2000), ("high", 2000, 6000),
@@ -155,6 +159,22 @@ public struct AudioMetrics: Sendable {
     }
     let total = energy.values.reduce(0, +)
     if total > 0 { bands = energy.mapValues { $0 / total } }
+
+    var side = [Double](repeating: 0, count: n)
+    for i in 0..<n { side[i] = (Double(left[i]) - Double(right[i])) / 2 }
+    func ratio(_ s: [Double], _ m: [Double]) -> Double {
+      let es = s.reduce(0) { $0 + $1 * $1 }
+      let em = m.reduce(0) { $0 + $1 * $1 }
+      return es > 0 && em > 0 ? 10 * log10(es / em) : -200
+    }
+    sideDB = ratio(side, mono)
+    var lowS = side
+    var lowM = mono
+    for _ in 0..<2 {
+      Self.filter(&lowS, biquad(type: "lowpass", fc: 150, q: 0.7071, sr: sr))
+      Self.filter(&lowM, biquad(type: "lowpass", fc: 150, q: 0.7071, sr: sr))
+    }
+    lowSideDB = ratio(lowS, lowM)
   }
 
   private static func filter(_ x: inout [Double], _ b: [Double]) {
@@ -174,6 +194,7 @@ public struct AudioMetrics: Sendable {
       "peakDB": round3(peakDB), "rmsDB": round3(rmsDB), "crestDB": round3(crestDB),
       "clippedSamples": clipped, "bands": bands.mapValues(round3),
       "shortTermP10DB": round3(shortTermP10DB), "shortTermP95DB": round3(shortTermP95DB),
+      "sideDB": round3(sideDB), "lowSideDB": round3(lowSideDB),
     ]
   }
 }

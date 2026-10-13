@@ -45,6 +45,8 @@ COLUMNS = [
     ("crashOnSections", "crash", "{:5.2f}"),
     ("bassLeap", "bLeap", "{:5.1f}"),
     ("sectionSpreadDB", "sprd", "{:4.1f}"),
+    ("sideDB", "side", "{:6.1f}"),
+    ("lowSideDB", "lowSd", "{:6.1f}"),
     ("lra", "LRA", "{:4.1f}"),
 ]
 
@@ -71,6 +73,8 @@ def flat(doc):
         "low+sub": 100 * (b.get("low", 0) + b.get("sub", 0)),
         "high+air": 100 * (b.get("high", 0) + b.get("air", 0)),
         "melodyVel": m.get("velocitySpread", {}).get("melody"),
+        "sideDB": a.get("sideDB"),
+        "lowSideDB": a.get("lowSideDB"),
     }
     for k in ("inKey", "bassOnRoot", "bassOnKick", "harmonyInBassRange", "semitoneClashesPer100",
               "melodyRecurrence", "sectionContrast", "changesOnBars", "changesOnPhrases",
