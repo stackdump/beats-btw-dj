@@ -88,6 +88,15 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
      ticks plus the tick its gate takes (one sixteenth later per event), and even the first
      fires on the downbeat's own tick, after the music nets have played it, so entering parts
      lose their first beat. dj starts every stage with `gap − 1` (`.timing`).
+   - drum fills never sound: `drumFillNet` is a `control` net (no voice), starts muted and its
+     `struct-fill-N` net carries no unmute; its toms (45 / 48 / 43) have no wave-engine voice
+     either (they fall to hat / kick). dj unmutes them, voices `fill-*` nets and plays them as a
+     swelling snare roll (`.fills`).
+   - the section energy arc is lost: the composer writes each section's `energy` /
+     `filterOpen` as `set-feel` controls; the wave engine drops them, and the Tone path feeds
+     them to the feel pad, whose axes are tone and **tempo**, so a breakdown (filterOpen 0.25)
+     plays at 0.8× BPM. dj plays them as level and a tonal lowpass with buildup sweeps
+     (`.energy`, `EnergyCurve`).
 
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX

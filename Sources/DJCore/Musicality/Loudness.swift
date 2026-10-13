@@ -26,9 +26,10 @@ public enum Loudness {
     return min(range.max, max(range.min, g))
   }
 
-  /// K-weighted mean square (dB) of the voices, times the master gain, over the probe.
-  static func measure(_ project: Project) -> Double? {
-    let start = busiestStart(project)
+  /// K-weighted mean square (dB) of the voices, times the master gain, over the probe: two
+  /// bars from `start` (a step), else from the busiest section's start.
+  static func measure(_ project: Project, start: Int? = nil) -> Double? {
+    let start = start ?? busiestStart(project)
     var o = WaveOptions()
     o.instruments = .shared
     o.master = "linear"

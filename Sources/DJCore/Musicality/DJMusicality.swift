@@ -58,16 +58,22 @@ public enum DJMusicality {
     /// same order.
     public static let voicing = Fixes(rawValue: 1 << 9)
 
+    /// The arrangement's energy arc: each section's `energy` and `filterOpen` from the
+    /// composer's feel curve played as level and a lowpass on the tonal parts, buildups
+    /// sweeping into what follows (`EnergyCurve`). Applied by the runner.
+    public static let energy = Fixes(rawValue: 1 << 10)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing,
+      .voicing, .energy,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
-      "fills": .fills, "voicing": .voicing, "none": [],
+      "fills": .fills, "voicing": .voicing, "energy": .energy,
+      "none": [],
     ]
   }
 

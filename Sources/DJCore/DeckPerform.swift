@@ -85,10 +85,11 @@ extension Deck {
   }
 
   /// `opts` for another start of the song this deck plays: it keeps the playing project's
-  /// loudness gain instead of measuring it again.
+  /// loudness gain and energy curve instead of measuring them again.
   func sameSongOptions(_ opts: WaveOptions) -> WaveOptions {
     var o = opts
     if let g = wave.latest?.gain { o.trackGain = g }
+    if let e = wave.latest?.energy { o.trackEnergy = e }
     return o
   }
 

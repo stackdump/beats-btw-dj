@@ -74,6 +74,9 @@ public struct WaveOptions {
   /// The gain to prepare with instead of measuring one (`Loudness`): a section jump or a
   /// relocation of the song already playing reuses that project's.
   public var trackGain: Double?
+  /// Likewise the energy curve (`EnergyCurve`, measured from the project): another start of the
+  /// same song reuses the playing project's.
+  public var trackEnergy: EnergyCurve?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -227,15 +230,18 @@ public final class WaveProject: @unchecked Sendable {
   /// Gain on everything this project plays, before the master curve (`Loudness`; 1 = as
   /// beats has it).
   public let gain: Double
+  /// The section energy arc the deck plays (`DJMusicality.Fixes.energy`); nil = none.
+  public let energy: EnergyCurve?
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
   init(
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
-    geometry: Project? = nil, gain: Double = 1
+    geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil
   ) {
     self.gain = gain
+    self.energy = energy
     let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     let track =
       trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
@@ -261,7 +267,7 @@ public final class WaveProject: @unchecked Sendable {
 
 private func buildLanes(
   _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
-  geometry: Project? = nil, gain: Double = 1
+  geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil
 ) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
@@ -332,7 +338,7 @@ private func buildLanes(
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
-    gain: gain)
+    gain: gain, energy: energy)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -428,6 +434,17 @@ public final class WaveRunner {
   private var grooveNext = Double.infinity
   /// Sample index within the block being rendered (0 between blocks).
   private var blockOffset = 0
+  // Section energy (`DJMusicality.Fixes.energy`): tonal voices sum apart (`accTone`) so their
+  // lowpass leaves the drums alone; level and cutoff follow the project's `EnergyCurve`,
+  // smoothed once a block.
+  private let energyOn: Bool
+  private var splitTone = false
+  private var accTone = 0.0
+  private var toneL = [Float](repeating: 0, count: 4096)
+  private var energyPrimed = false
+  private var energyGain = 1.0
+  private var energyCut = EnergyCurve.openHz
+  private var toneLP = (SweepFilter(), SweepFilter())
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
@@ -435,6 +452,7 @@ public final class WaveRunner {
     samplers = opts.samplers
     samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
     grooveOn = opts.musicality.contains(.groove)
+    energyOn = opts.musicality.contains(.energy)
     masterGain = opts.masterGain
     linear = opts.master == "linear"
     clock[clkTempo] = 120
@@ -460,9 +478,11 @@ public final class WaveRunner {
     // layout takes the net positions from the project itself)
     let gain =
       opts.trackGain ?? (opts.musicality.contains(.loudness) ? Loudness.gain(for: project) : 1)
+    let energy =
+      opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     return buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
-      geometry: project, gain: gain)
+      geometry: project, gain: gain, energy: energy)
   }
 
   public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())
@@ -496,6 +516,7 @@ public final class WaveRunner {
 
   private func install(_ next: WaveProject) {
     flushGroove()
+    energyPrimed = false
     if let old = current {
       if let f = fading { retire(f) }
       fading = old
@@ -521,6 +542,9 @@ public final class WaveRunner {
     macroHoldTicks = 0
     graph?.reset()
     samplersAllOff()
+    energyPrimed = false
+    toneLP.0.reset()
+    toneLP.1.reset()
   }
 
   public func setTempo(_ bpm: Double) {
@@ -1040,6 +1064,62 @@ public final class WaveRunner {
     lane.excite[v] = max(1, Int(lane.voice.attackNoise * len))
   }
 
+  // MARK: section energy
+
+  /// The end of a block under `.energy`: drums (`preL`) plus the lowpassed tonal voices
+  /// (`toneL`, and the samplers when they join the curve), times the section's gain, through
+  /// the master curve. Gain glides across the block; the cutoff moves once a block.
+  private func finishEnergy(
+    _ curve: EnergyCurve, _ left: UnsafeMutablePointer<Float>,
+    _ right: UnsafeMutablePointer<Float>?,
+    frames: Int, samplersIn: Bool
+  ) {
+    let step = max(0, (current?.graph.tick ?? 1) - 1)
+    let target = curve.at(step: step)
+    if !energyPrimed {
+      energyGain = target.gain
+      energyCut = target.cutoff
+      energyPrimed = true
+    }
+    let a = 1 - exp(-Double(frames) / (0.02 * sampleRate))
+    let g0 = energyGain
+    energyGain += (target.gain - energyGain) * a
+    energyCut *= pow(target.cutoff / energyCut, a)
+    toneLP.0.tune(energyCut, sampleRate: sampleRate)
+    toneLP.1.tune(energyCut, sampleRate: sampleRate)
+    let trackGain = Float(current?.gain ?? 1)
+    if samplersIn {
+      for i in 0..<frames {
+        smpL[i] = 0
+        smpR[i] = 0
+      }
+      smpL.withUnsafeMutableBufferPointer { l in
+        smpR.withUnsafeMutableBufferPointer { r in
+          flushSamplers(l.baseAddress!, r.baseAddress!, frames: frames)
+        }
+      }
+    }
+    let step1 = (energyGain - g0) / Double(frames)
+    for i in 0..<frames {
+      let g = g0 + step1 * Double(i + 1)
+      let tone = Double(toneL[i])
+      let dry = Double(preL[i])
+      if let right {
+        let sl = samplersIn ? Double(trackGain * smpL[i]) : 0
+        let sr = samplersIn ? Double(trackGain * smpR[i]) : 0
+        let l = (dry + toneLP.0.process(tone + sl)) * g
+        let r = (dry + toneLP.1.process(tone + sr)) * g
+        left[i] = Float(linear ? l : tanh(l))
+        right[i] = Float(linear ? r : tanh(r))
+      } else {
+        let s = samplersIn ? Double(trackGain * 0.5 * (smpL[i] + smpR[i])) : 0
+        let l = (dry + toneLP.0.process(tone + s)) * g
+        left[i] = Float(linear ? l : tanh(l))
+      }
+    }
+    if !samplersIn { flushSamplers(left, right, frames: frames) }
+  }
+
   // MARK: per-sample
 
   /// One sample of `lane`, added into `acc`.
@@ -1144,7 +1224,7 @@ public final class WaveRunner {
     if let amod = lane.am {
       out *= 1 - lane.st[slotAmDepth] + lane.st[slotAmDepth] * amod.st[slotPrev]
     }
-    acc += out
+    if splitTone { accTone += out } else { acc += out }
   }
 
   /// One sample of string `k` (Karplus-Strong: a delay of one period, a lowpass and
@@ -1303,6 +1383,8 @@ public final class WaveRunner {
     let gain = masterGain * (current?.gain ?? 1)
     // Samplers join the voices before the curve when asked (and the block fits the scratch).
     let inCurve = samplersInCurve && frames <= preL.count
+    let energy = energyOn && frames <= preL.count ? current?.energy : nil
+    splitTone = energy != nil
     for i in 0..<frames {
       blockOffset = i
       if scrubbing {
@@ -1317,6 +1399,7 @@ public final class WaveRunner {
       }
       if grooveCount > 0 && clock[clkSamples] >= grooveNext { serviceGroove() }
       acc = 0
+      accTone = 0
       if let proj = current {
         for lane in proj.lanes {
           if lane.active {
@@ -1328,7 +1411,10 @@ public final class WaveRunner {
       }
       if let f = fading { for lane in f.lanes where lane.active { laneSample(lane) } }
       if let proj = current { for lane in proj.sources { lane.st[slotPrev] = lane.st[slotEnv] } }
-      if inCurve {
+      if energy != nil {
+        preL[i] = Float(acc * gain)
+        toneL[i] = Float(accTone * gain)
+      } else if inCurve {
         preL[i] = Float(acc * gain)
       } else {
         let y = linear ? acc : tanh(acc * gain)
@@ -1337,7 +1423,9 @@ public final class WaveRunner {
       }
       clock[clkSamples] += 1
     }
-    if inCurve {
+    if let energy {
+      finishEnergy(energy, left, right, frames: frames, samplersIn: inCurve)
+    } else if inCurve {
       // The bank renders adding into a cleared scratch pair; each sampler's level is the one
       // it had after the curve at unity, so it joins scaled by the track gain only.
       let trackGain = Float(current?.gain ?? 1)
