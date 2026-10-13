@@ -198,7 +198,8 @@ public enum DJMusicality {
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
-      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo, "kickTune": .kickTune, "motif": .motif, "balance": .balance,
+      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo,
+      "kickTune": .kickTune, "motif": .motif, "balance": .balance,
       "none": [],
     ]
   }
@@ -1314,8 +1315,7 @@ public enum DJMusicality {
             // note on a tone that is not the root
             if j == first.count - 1 && (pc(n) == chord[0] || !chord.contains(pc(n))) {
               n = snap(n, prev: prev, sign: sign, avoid: chord[0])
-            } else if (step % 4 == 0 || next[j] - s.step >= phraseRest) && !chord.contains(pc(n))
-            {
+            } else if (step % 4 == 0 || next[j] - s.step >= phraseRest) && !chord.contains(pc(n)) {
               n = snap(n, prev: prev, sign: sign)
             }
             if let prev, (n - prev).signum() != sign { turns += 1 }

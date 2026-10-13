@@ -47,6 +47,7 @@ struct BalanceTests {
     n.track.channel = 10
     kickOnly.nets["kick"] = n
     #expect(MixBalance.trims(for: kickOnly).isEmpty)
-    #expect(PreparedTrack(spec: spec, sampleRate: 22_050).prepared.balance == track.prepared.balance)
+    #expect(
+      PreparedTrack(spec: spec, sampleRate: 22_050).prepared.balance == track.prepared.balance)
   }
 }

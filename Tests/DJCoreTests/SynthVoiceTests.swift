@@ -111,12 +111,19 @@ struct SynthVoiceTests {
     let guitar = oneNote("melody", note: 64, steps: 4, instrument: "acoustic-guitar")
     var o = WaveOptions()
     o.instruments = .shared
-    #expect(FilterEnvelope.forVoice(o.instruments!.voice(instrument: "acoustic-guitar", group: "melody"), group: "melody") == nil)
-    #expect(render(guitar, [], instruments: true) == render(guitar, .subtractive, instruments: true))
+    #expect(
+      FilterEnvelope.forVoice(
+        o.instruments!.voice(instrument: "acoustic-guitar", group: "melody"), group: "melody")
+        == nil)
+    #expect(
+      render(guitar, [], instruments: true) == render(guitar, .subtractive, instruments: true))
     let kick = oneNote("drums", note: 36, steps: 1, channel: 10)
     #expect(render(kick, []) == render(kick, .subtractive))
-    #expect(FilterEnvelope.forVoice(tonalVoice(instrument: "", group: "bass"), group: "bass") == .bass)
-    #expect(FilterEnvelope.forVoice(tonalVoice(instrument: "piano", group: "melody"), group: "melody") == .pluck)
+    #expect(
+      FilterEnvelope.forVoice(tonalVoice(instrument: "", group: "bass"), group: "bass") == .bass)
+    #expect(
+      FilterEnvelope.forVoice(tonalVoice(instrument: "piano", group: "melody"), group: "melody")
+        == .pluck)
   }
 }
 
