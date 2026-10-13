@@ -524,6 +524,16 @@ and stays dry of echo.
   `--fixes key,timing,register,dynamics,loudness,groove,offbeatBass,phrases,fills,voicing,energy,duck,contour,color,arpeggio,buildup,crash,bassLine,openHats,stereo,legato,cadence,approach,dropGap,choke,space`
   (part E), or that list plus one of `subtractive`, `unison`, `echo`, `kickTune`, `motif`, `balance`.
 
+### Visual (part F)
+
+From the offscreen window shot: the mixer card (made as tall as the decks in part E so the faders
+line up) had ~550 pt of nothing between its cue controls and the crossfader. It now holds a
+**Sync** panel: per deck its BPM and four beat lamps (the current beat lit in the deck's tint while
+it plays, outlined when stopped, the downbeat lamp wider), and which deck is faster and by how much
+("A +8.0 BPM", "in sync") — what a DJ reads to beat-match, between the two platters
+(`SyncPanel`, `BeatLamps`; `SyncPanelTests` render the lamps). A net deck's readout says
+"bar 10 of 56" where it showed the song's length to the hundredth: a song is counted in bars.
+
 ### Next ideas
 
 - The chill family's missing beat (above): rewrite the role control nets so verse / chorus unmute
