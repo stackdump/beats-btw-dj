@@ -164,6 +164,10 @@ its copy; the two are now independent. Rules inherited from that split:
 - `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
   renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
   musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+- Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
+  measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
+  `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
+  `.color` (the pass may bind free pad steps). New flags go in `Fixes.all` and `Fixes.named`.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)

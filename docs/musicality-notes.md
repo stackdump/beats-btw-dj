@@ -170,3 +170,83 @@ with the tint while playing; cue + four small hot cues share its row; Song / Per
 Channel group the rest; the platter's beat dot eases; the app's windows are dark. Offscreen
 before / after renders: `WindowShotTests` with `DJ_SHOT_DIR` (AppKit sliders, menus and
 bordered buttons draw as yellow placeholders offscreen; the custom views are exact).
+
+## 5. Part C (2026-10-13, run b5b3bf39): form, harmony, mix
+
+Built on part A/B (merged from `val/dj-musicality-2026-10-12`). Six more `Fixes` flags, all in
+`.all` (so `WaveOptions.extended`), all off on the parity path. The pass now also *adds*
+bindings to free steps of the pad (`.color`), still never places / transitions / arcs.
+
+| fix | what it does | where |
+|---|---|---|
+| `.fills` | the `fill-N` nets beats builds before every section change and never plays (muted, `control` role, toms with no voice) sound as a snare roll that swells into the change | pass (bindings, `initialMutes`) + runner voices `fill-*` |
+| `.voicing` | pad chords re-voiced by octaves to the cheapest cycle of chord changes inside the pad's range (no semitone clusters) | pass |
+| `.energy` | the composer's per-section `energy` / `filterOpen` (the `feel-curve` net) played: section level against what it already plays (probed like `Loudness`; peak section at unity, a thinned breakdown lifted ≤ 4 dB), a lowpass on the tonal voices only (drums stay full-band, intros stay mixable), buildups sweeping up into the next section | `EnergyCurve`, runner |
+| `.duck` | bass and pad dip on each kick (2 ms attack, back within an eighth): depth 0.5 under four-on-the-floor dance kicks, 0.35 broken dance beats, 0.4 synthwave, 0 elsewhere | runner (synth lanes and their sampler slots) |
+| `.contour` | an off-beat melody note repeating the one before steps to a scale neighbour towards the next note, never a semitone against the bar's pad chord; beat notes stay | pass |
+| `.color` | jazz, bossa, house, garage, funk pads play sevenths (the scale's seventh, struck after the triad) | pass |
+
+Tried and dropped: rotating slot rings so a phrase enters at its motif's first note. Slot
+rings are locked to the pad's 4-bar chord cycle, so a slot entering on a 2-bar line *should*
+play the second half of its cell; rotating it would put the bass on the wrong root.
+`slotsFromTheTop` stays in the report as information.
+
+New measurements (`MusicalityReport`, `djctl render`, the matrix): `fillsBeforeSections`,
+`slotsFromTheTop`, `padMotion` (semitones per chord change), `padColor` (chords with ≥ 4 pitch
+classes), `melodyRepeats` / `melodySteps`, per-section RMS and `sectionSpreadDB`, and ffmpeg's
+loudness range (LRA). `djctl render --fixes` names come from `DJMusicality.Fixes.named`.
+
+Before → after, 12 genres × 2 seeds, whole songs (`--seconds 300`), synth voices; sampled in
+brackets:
+
+| metric | before (part B) | after |
+|---|---|---|
+| section changes with a fill in the bar before | 0 | 1.00 |
+| pad motion per chord change (semitones, 3-voice chords) | 5.6 | 4.0 |
+| pad chords with a seventh (jazz/bossa/house/garage/funk) | 0 | 0.75–1.00 |
+| melody intervals that repeat the pitch | 0.54 | 0.29 |
+| semitone rubs per 100 overlapping pairs | 2.8 | 2.7 |
+| section level spread, min … max | 0.2 … 13.8 dB (0.3 … 13.0) | 3.5 … 9.2 dB (2.8 … 8.4) |
+| loudness range (LRA), mean / min | 2.4 / 0.6 LU (2.2 / 0.6) | 4.7 / 2.6 LU (4.7 / 2.5) |
+| integrated loudness, range | −18.0 … −13.9 LUFS | −19.6 … −15.3 (the peak section is unchanged; quieter intros and breakdowns pull the integral down ~1.3 dB) |
+| clipped samples | 0 (0) | 0 (0) |
+| in key, bass on root, changes on bars / 2-bar lines | 0.99, 1.00, 1.00 / 1.00 | unchanged |
+
+Examples, seed 42: techno's sections were 0.2 dB apart and are now intro −5, buildup −1.6,
+drop 0, verse −3 dB; trance's breakdown was 12 dB under the drop (pads alone) and is 8 dB;
+ambient's pad moved 8.6 semitones per change and moves 4.0.
+
+Tests: `MusicalityTests` (fills, voicing, contour, colour; topology allows harmony bindings to
+grow), `EnergyTests` (curve shape, rendered contour, loops/parity untouched),
+`DuckTests` (pad −6 dB just after a kick, back before the next; depth 0 bit-identical),
+`EnergyRealTimeTests` / `DuckRealTimeTests` (release: no allocation). `make swift-rt-test`
+green.
+
+### Listen checklist (`make run-app-release`, or `djctl render <g> 42 --out f.wav`)
+
+- trance / edm 42: a snare roll swelling into each drop; the buildup's pads opening up into the
+  drop; the breakdown darker and quieter but not buried; bass and pad pumping on the kick.
+- techno 42: the intro clearly under the drop (drums crisp, pads muffled), then the drop.
+- jazz / bossa 7: sevenths in the pad, and the melody moving by step instead of hammering one note.
+- house 42: seventh chords + pump; check the 7th never sits in the bass.
+- `--fixes all` vs `--fixes key,timing,register,dynamics,loudness,groove,offbeatBass,phrases`
+  (part B only) for A/B.
+
+### Visual (part C)
+
+Stinger rings (hit1–4) moved from the parts' grid to a short row of small rings; the section
+timeline's playhead is drawn under the labels with caps at both edges; 4-bar intro/outro
+blocks show their initial.
+
+### Next ideas
+
+- Stereo: everything is bit-identical mono. Per-part pan (hats, arp, melody off-centre, bass
+  and kick centre) and a wide pad, mono below ~120 Hz; measure side/mid.
+- DJ-length intros / outros (16–32 bars, drums only) — needs the control nets' delays *and* the
+  section lengths changed, so it belongs in beats' structure tables (GO-DIVERGENCE §5).
+- Section harmony: a per-section progression (the pad is one unslotted ring), cadences at
+  phrase ends, harmonic rhythm per section.
+- Hats: the "smile" spectrum (raw high-passed noise at 0.32) — a brightness / hat-level pass by ear.
+- Build-up gestures beyond the sweep: snare density doubling, kick dropped in the last bar.
+- `Loudness.targetDB` could rise ~1 dB to put integrated loudness back near −16 LUFS now that
+  non-peak sections sit lower (check jazz's −0.3 dBFS peak first).
