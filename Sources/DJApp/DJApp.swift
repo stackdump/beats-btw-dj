@@ -17,6 +17,8 @@ struct DJApp: App {
     WindowGroup("dj-vevr-se") {
       ContentView(model: model)
         .frame(minWidth: 720, minHeight: 460)
+        // A DJ booth is dark: the decks' tints and the rings are drawn for it.
+        .preferredColorScheme(.dark)
         .task { model.start() }
         .onReceive(
           NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
@@ -32,6 +34,7 @@ struct DJApp: App {
     Window(StageWindow.title, id: StageWindow.id) {
       StageWindowView(app: model)
         .frame(minWidth: 760, minHeight: 480)
+        .preferredColorScheme(.dark)
     }
     .defaultSize(width: 1100, height: 760)
   }

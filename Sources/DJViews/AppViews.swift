@@ -549,10 +549,10 @@ public struct ContentView: View {
 
   private var panels: some View {
     VStack(spacing: 16) {
-      HStack(alignment: .top, spacing: 24) {
-        DeckView(name: "A", model: model, tint: .orange)
-        MixerView(model: model)
-        DeckView(name: "B", model: model, tint: .cyan)
+      HStack(alignment: .top, spacing: DJStyle.l) {
+        DeckView(name: "A", model: model, tint: DJStyle.deckA).djCard(tint: DJStyle.deckA)
+        MixerView(model: model).djCard()
+        DeckView(name: "B", model: model, tint: DJStyle.deckB).djCard(tint: DJStyle.deckB)
       }
       if let w = model.walk {
         WalkPanel(
@@ -651,75 +651,50 @@ struct DeckView: View {
   var state: DeckState { model.decks[name] ?? .init() }
 
   var body: some View {
-    VStack(spacing: 10) {
-      HStack {
-        Text("Deck \(name)").font(.title3.bold())
-        Spacer()
-        Menu("Load") {
-          Button("Audio file…") { importing = true }
-          Button("Demo loop") { model.loadDemo(name) }
-          Button("Generate…") { generating = true }
-          Button("Share link from clipboard") {
-            model.loadShare(name, NSPasteboard.general.string(forType: .string) ?? "")
-          }
-        }
-        .fixedSize()
-      }
-      Text(state.title).font(.callout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+    VStack(spacing: DJStyle.m) {
+      header
       PlatterView(
         seconds: state.platterSeconds, touching: state.touching, tint: tint,
         beatInBar: state.bpm == nil ? nil : state.beatInBar
       )
       .frame(width: 150, height: 150)
-      Text(
-        String(
-          format: "%@ / %@  ·  %.3f×", clock(state.positionSeconds), clock(state.duration),
-          state.rate)
-      )
-      .font(.caption.monospacedDigit())
-      HStack {
-        Button(state.playing ? "Pause" : "Play") { model.togglePlay(name) }
-          .keyboardShortcut(name == "A" ? "a" : "b", modifiers: [])
-        Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
-          .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
-        ForEach(0..<4, id: \.self) { slot in
-          Button("\(slot + 1)") { model.hotCue(name, slot) }
-            .tint(state.cues.contains(slot) ? tint : nil)
-            .buttonStyle(.borderedProminent)
-            .contextMenu { Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) } }
-            .help(
-              state.cues.contains(slot)
-                ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
-        }
-      }
+      readout
+      transport
       if !state.isNet {
         WaveformStrip(overview: state.overview, overlay: state.overlay, tint: tint)
           .frame(height: 46)
       }
-      BeatStripView(
-        bpm: state.bpm, beatInBar: state.beatInBar, scrubbing: state.scrubbing, tint: tint)
       if state.isNet {
-        SectionTimelineView(timeline: state.timeline) { model.launchSection(name, $0) }
-          .frame(height: 26)
-        if let scopes = model.scopeHub {
-          TimelineDotsView(
-            feed: scopes.feed(.deck(name)), hub: scopes, active: state.playing || state.scrubbing)
+        VStack(spacing: DJStyle.s) {
+          SectionLabel("Song")
+          SectionTimelineView(timeline: state.timeline) { model.launchSection(name, $0) }
+            .frame(height: 26)
+          if let scopes = model.scopeHub {
+            TimelineDotsView(
+              feed: scopes.feed(.deck(name)), hub: scopes, active: state.playing || state.scrubbing)
+          }
+          NetRingsView(snapshot: state.snapshot, tint: tint, arcs: state.ringArcs)
         }
-        NetRingsView(snapshot: state.snapshot, tint: tint, arcs: state.ringArcs)
-        NetPanel(name: name, state: state, model: model, tint: tint)
+        VStack(spacing: DJStyle.s) {
+          SectionLabel("Perform")
+          NetPanel(name: name, state: state, model: model, tint: tint)
+        }
       }
-      LabeledSlider(
-        label: "Vol", value: Binding(get: { state.volume }, set: { model.setVolume(name, $0) }),
-        range: 0...1)
-      LabeledSlider(
-        label: "Filter", value: Binding(get: { state.filter }, set: { model.setFilter(name, $0) }),
-        range: 0...1)
-      LabeledSlider(
-        label: String(format: "Pitch %+.1f%%", state.pitch * Deck.pitchRange * 100),
-        value: Binding(get: { state.pitch }, set: { model.setPitch(name, $0) }), range: -1...1)
-      if state.nudge != 0 {
-        Text(String(format: "nudge %+.1f%%", state.nudge * 100)).font(.caption).foregroundStyle(
-          tint)
+      VStack(spacing: DJStyle.xs) {
+        SectionLabel("Channel")
+        LabeledSlider(
+          label: "Vol", value: Binding(get: { state.volume }, set: { model.setVolume(name, $0) }),
+          range: 0...1)
+        LabeledSlider(
+          label: "Filter",
+          value: Binding(get: { state.filter }, set: { model.setFilter(name, $0) }), range: 0...1)
+        LabeledSlider(
+          label: String(format: "Pitch %+.1f%%", state.pitch * Deck.pitchRange * 100),
+          value: Binding(get: { state.pitch }, set: { model.setPitch(name, $0) }), range: -1...1)
+        if state.nudge != 0 {
+          Text(String(format: "nudge %+.1f%%", state.nudge * 100)).font(.caption)
+            .foregroundStyle(tint)
+        }
       }
     }
     .frame(width: 260)
@@ -727,6 +702,96 @@ struct DeckView: View {
       if case .success(let url) = result { model.load(name, url: url) }
     }
     .sheet(isPresented: $generating) { GenerateSheet(name: name, model: model) }
+  }
+
+  /// The deck's letter, what it plays (the most important line on the deck) and the Load menu.
+  private var header: some View {
+    HStack(spacing: DJStyle.s) {
+      DeckBadge(name: name, tint: tint)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(state.title).font(.headline).lineLimit(1).truncationMode(.tail)
+          .contentTransition(.opacity)
+        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .animation(.easeOut(duration: 0.25), value: state.title)
+      Menu {
+        Button("Audio file…") { importing = true }
+        Button("Demo loop") { model.loadDemo(name) }
+        Button("Generate…") { generating = true }
+        Button("Share link from clipboard") {
+          model.loadShare(name, NSPasteboard.general.string(forType: .string) ?? "")
+        }
+      } label: {
+        Text("Load")
+      }
+      .menuStyle(.borderlessButton).fixedSize()
+    }
+  }
+
+  /// "live net · 6 sections", "audio · 0.0 s"…: what kind of source, at a glance.
+  private var subtitle: String {
+    if state.isNet {
+      let n = state.sections.count
+      return n > 0 ? "live net · \(n) sections" : "live net · loop"
+    }
+    return state.duration > 0 ? "audio · \(clock(state.duration))" : "audio"
+  }
+
+  /// Position, tempo and beat: big enough to read from the controller.
+  private var readout: some View {
+    HStack(alignment: .firstTextBaseline, spacing: DJStyle.s) {
+      Text(clock(state.positionSeconds)).font(DJStyle.readout)
+      Text("/ \(clock(state.duration))").font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+      Spacer(minLength: DJStyle.s)
+      if let bpm = state.bpm {
+        Text(String(format: "%.1f", bpm)).font(DJStyle.readout).foregroundStyle(tint)
+        Text("BPM").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+      }
+    }
+    .overlay(alignment: .bottomLeading) {
+      // the turntable's rate is meaningful only for audio decks
+      if !state.isNet && state.rate != 0 && abs(state.rate - 1) > 0.0005 {
+        Text(String(format: "%.3f×", state.rate)).font(.caption2.monospacedDigit())
+          .foregroundStyle(.secondary).offset(y: 14)
+      }
+    }
+  }
+
+  /// Play / pause, cue (PFL) and the four hot cues, in one row.
+  private var transport: some View {
+    HStack(spacing: DJStyle.s) {
+      Button {
+        model.togglePlay(name)
+      } label: {
+        Image(systemName: state.playing ? "pause.fill" : "play.fill")
+          .contentTransition(.symbolEffect(.replace))
+      }
+      .buttonStyle(TransportButtonStyle(tint: tint, active: state.playing))
+      .keyboardShortcut(name == "A" ? "a" : "b", modifiers: [])
+      .help(state.playing ? "Pause" : "Play")
+      .accessibilityLabel(state.playing ? "Pause" : "Play")
+      Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
+        .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
+      Spacer(minLength: 0)
+      HStack(spacing: DJStyle.xs) {
+        ForEach(0..<4, id: \.self) { slot in
+          Button("\(slot + 1)") { model.hotCue(name, slot) }
+            .tint(state.cues.contains(slot) ? tint : nil)
+            .buttonStyle(.borderedProminent).controlSize(.small)
+            .contextMenu { Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) } }
+            .help(
+              state.cues.contains(slot)
+                ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
+        }
+      }
+    }
+    .overlay(alignment: .trailing) {
+      if state.scrubbing {
+        Text("SCRATCH").font(.caption2.bold()).foregroundStyle(tint).offset(y: -26)
+      }
+    }
   }
 
   func clock(_ s: Double) -> String {
@@ -739,7 +804,7 @@ struct MixerView: View {
 
   var body: some View {
     VStack(spacing: 14) {
-      Text("Mixer").font(.title3.bold())
+      SectionLabel("Mixer")
       LabeledSlider(
         label: "Master", value: Binding(get: { model.master }, set: { model.setMaster($0) }),
         range: 0...1)
@@ -764,7 +829,7 @@ struct MixerView: View {
         )
         .font(.caption).help("[UNVERIFIED on hardware] needs the Inpulse's own audio interface")
       }
-      Spacer().frame(height: 40)
+      Spacer().frame(height: DJStyle.xl)
       VStack(spacing: 2) {
         Slider(
           value: Binding(get: { model.crossfader }, set: { model.setCrossfader($0) }), in: 0...1)
@@ -789,7 +854,8 @@ struct LabeledSlider: View {
 
   var body: some View {
     HStack {
-      Text(label).font(.caption).frame(width: 84, alignment: .leading)
+      Text(label).font(.caption).foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
+        .monospacedDigit()
       Slider(value: value, in: range)
     }
   }

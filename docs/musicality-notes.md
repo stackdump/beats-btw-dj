@@ -140,7 +140,7 @@ musicality-matrix.py`; synth voices; sampled renders in brackets):
 | semitone rubs per 100 overlapping pairs | 4.9 | 2.8 |
 | melody velocity spread | 3.7 | 8.2 |
 | melody bars recurring 4 / 8 bars later | 0.63 | 0.84 |
-| integrated loudness range across genres | −25.5 … −13.0 LUFS (sampled −25.3 … −12.9) | −18.1 … −14.3 (sampled −16.9 … −12.5) |
+| integrated loudness range across genres | −25.5 … −13.0 LUFS (sampled −25.3 … −12.9) | −18.1 … −14.3 (sampled −17.1 … −12.6) |
 | clipped samples | 0 (sampled: 6, trance-7 at +0.4 dBFS) | 0 (sampled 0) |
 | swing / humanize | ignored | off-beat 16ths late by swing% × ½ tick, ± jitter |
 

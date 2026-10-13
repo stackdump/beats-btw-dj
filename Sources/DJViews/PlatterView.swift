@@ -48,6 +48,8 @@ public struct PlatterView: View {
             let p = PlatterGeometry.rimDot(i, of: 4, size: size, inset: 12)
             Circle().fill(i == beat ? tint : .gray.opacity(0.35))
               .frame(width: i == 0 ? 10 : 7, height: i == 0 ? 10 : 7)
+              .scaleEffect(i == beat ? 1.25 : 1)
+              .animation(.easeOut(duration: 0.12), value: beat)
               .position(p)
           }
         }
