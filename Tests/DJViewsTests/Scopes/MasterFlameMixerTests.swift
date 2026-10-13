@@ -79,10 +79,12 @@ struct MasterFlameMixerTests {
     }.environment(\.displayScale, 1)
     savePNG(view, width: 160, height: 300, name: "mixer-playing")
     let px = try #require(renderPixels(view, width: 160, height: 300))
-    // the idle line is gone from the middle of the box: bars, not a flat line
+    // the idle line is gone from the middle of the box: bars, not a flat line. The box's rows
+    // are the ones whose middle column is not the grey behind it: dark, or a lit bar standing
+    // there (a track with open hats lights the bins in the middle of the box).
     let dark = (0..<px.height).filter { y in
       let c = px.color(80, y)
-      return c.r + c.g + c.b < 140
+      return c.r + c.g + c.b < 140 || max(c.r, c.g, c.b) - min(c.r, c.g, c.b) > 60
     }
     let mid = ((dark.first ?? 0) + (dark.last ?? 0)) / 2
     let flat = (4..<156).filter { px.near($0, mid, (26, 42, 58), tol: 8) }.count
