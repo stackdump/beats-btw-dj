@@ -64,6 +64,10 @@ public struct MusicalityReport: Sendable {
   /// Arp notes struck with a melody note of the same pitch class (unison or octaves): an arp
   /// that doubles the lead instead of playing a part of its own; nil without an arp.
   public var arpDoublesMelody: Double?
+  /// Buildups (followed by another section) whose last eight bars (four, if shorter) carry a
+  /// snare roll that never slows down and gets faster (fill-net hits per bar non-decreasing, the
+  /// first bar at most quarters, the last at least eighths); nil for a song without one.
+  public var buildupsBuild: Double?
 
   public init() {}
 
@@ -264,6 +268,24 @@ public struct MusicalityReport: Sendable {
         }
       }
       fillsBeforeSections = Double(filled) / Double(sections.count - 1)
+      var end = 0
+      var buildups = 0
+      var building = 0
+      for s in sections.dropLast() {
+        end += s.steps
+        guard s.name == "buildup", s.steps >= 64 else { continue }
+        buildups += 1
+        let bars = min(8, s.steps / 16)
+        let perBar = (0..<bars).map { bar in
+          log.filter {
+            $0.isDrum && $0.net.hasPrefix("fill-") && ($0.tick - 1) / 16 == end / 16 - bars + bar
+          }.count
+        }
+        if perBar == perBar.sorted(), perBar[0] > 0, perBar[0] <= 4, perBar[bars - 1] >= 8 {
+          building += 1
+        }
+      }
+      if buildups > 0 { buildupsBuild = Double(building) / Double(buildups) }
     }
     if !sections.isEmpty {
       sectionsOnPhrases =
@@ -304,6 +326,7 @@ public struct MusicalityReport: Sendable {
     if let v = padColor { d["padColor"] = round3(v) }
     if let v = arpChordTones { d["arpChordTones"] = round3(v) }
     if let v = arpDoublesMelody { d["arpDoublesMelody"] = round3(v) }
+    if let v = buildupsBuild { d["buildupsBuild"] = round3(v) }
     return d
   }
 }

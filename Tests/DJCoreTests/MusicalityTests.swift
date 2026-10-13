@@ -43,8 +43,11 @@ struct MusicalityTests {
         #expect(a.transitions.keys == b.transitions.keys, "\(genre) \(id) transitions")
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
         // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
-        // steps; nothing else gains or loses notes
-        if b.track.group == "arp" {
+        // steps, `.buildup` the fill chains' (a roll); nothing else gains or
+        // loses notes
+        if id.hasPrefix("fill-") {
+          continue
+        } else if b.track.group == "arp" {
           #expect(!b.bindings.keys.isEmpty, "\(genre) \(id)")
         } else if b.track.group == "harmony" {
           #expect(Set(a.bindings.keys).isSubset(of: Set(b.bindings.keys)), "\(genre) \(id)")
@@ -333,5 +336,35 @@ struct MusicalityTests {
       }
       #expect(try #require(b.medianNote["arp"]) > (b.medianNote["harmony"] ?? 0))
     }
+  }
+
+  /// Every buildup builds into what follows: a snare roll over its last bars that only gets
+  /// faster and louder, ending in sixteenths on the section change; songs without a buildup
+  /// are untouched, and the deck voices the roll.
+  @Test(arguments: ["techno", "edm", "trance", "dnb", "dubstep"])
+  func buildupsRollIntoTheDrop(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      guard t.played.structure.dropLast().contains(where: { $0.name == "buildup" }) else {
+        continue
+      }
+      #expect(try #require(report(t.played).buildupsBuild) == 1, "\(genre)/\(seed)")
+      let without = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.buildup))
+      #expect(try #require(report(without).buildupsBuild) == 0)
+      var end = 0
+      for s in t.played.structure.dropLast() {
+        end += s.steps
+        guard s.name == "buildup" else { continue }
+        let roll = NoteLog.capture(t.played)
+          .filter { $0.net.hasPrefix("fill-") && $0.tick > end - 128 && $0.tick <= end }
+          .sorted { $0.tick < $1.tick }
+        let v = roll.map(\.velocity)
+        #expect(v == v.sorted() && v.first! + 40 < v.last!, "\(genre)/\(seed): \(v)")
+        #expect(roll.last?.tick == end, "the roll lands on the change")
+        #expect(roll.suffix(16).map(\.tick) == Array((end - 15)...end), "sixteenths at the end")
+      }
+    }
+    #expect(WaveRunner.prepare(played("edm", 42).played, sampleRate: 22_050, opts: .extended)
+      .byNet.keys.contains { $0.hasPrefix("fill-") })
   }
 }

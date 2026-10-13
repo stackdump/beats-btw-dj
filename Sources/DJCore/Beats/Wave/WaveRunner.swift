@@ -287,8 +287,8 @@ private func buildLanes(
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
-  // `.fills`: beats' drum-fill nets are control nets with notes; give them a voice.
-  let voiceFills = opts.musicality.contains(.fills)
+  // `.fills` / `.buildup`: beats' drum-fill nets are control nets with notes; give them a voice.
+  let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup])
   for n in g.nets {
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track

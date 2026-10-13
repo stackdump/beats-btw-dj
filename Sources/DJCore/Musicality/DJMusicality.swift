@@ -88,9 +88,14 @@ public enum DJMusicality {
     /// composed slot is silent stay silent.
     public static let arpeggio = Fixes(rawValue: 1 << 14)
 
+    /// A buildup builds: a snare roll through its last eight bars that doubles its rate on the
+    /// way (quarters, eighths, sixteenths) and swells into the drop. It is the fill net before
+    /// the section change, which spans the song up to it, so it is voiced as `.fills` voices.
+    public static let buildup = Fixes(rawValue: 1 << 15)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy, .duck, .contour, .color, .arpeggio,
+      .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -98,7 +103,7 @@ public enum DJMusicality {
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
-      "color": .color, "arpeggio": .arpeggio,
+      "color": .color, "arpeggio": .arpeggio, "buildup": .buildup,
       "none": [],
     ]
   }
@@ -118,6 +123,7 @@ public enum DJMusicality {
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
+    if fixes.contains(.buildup) { rollIntoDrops(&p, genre: genre) }
     return p
   }
 
@@ -419,6 +425,59 @@ public enum DJMusicality {
         b.velocity = clampVelocity(Int((Double(from) + Double(to - from) * x).rounded()))
         nb.bindings["t\(i)"] = b
       }
+      p.nets[id] = nb
+      sounding.insert(id)
+    }
+    p.initialMutes.removeAll { sounding.contains($0) }
+  }
+
+  // MARK: buildup
+
+  /// Sixteenths between roll hits, by bars left in the buildup (1 = its last bar).
+  static func rollSpacing(barsLeft: Int) -> Int {
+    switch barsLeft {
+    case 1...2: 1
+    case 3...4: 2
+    default: 4
+    }
+  }
+
+  /// Each `buildup` section followed by another: the fill net that ends on its last tick
+  /// (`drumFillNet` binds the chain's last steps; its transitions are the song's ticks up to the
+  /// boundary) plays a snare roll over the section's last eight bars at `rollSpacing`, velocity
+  /// rising from soft to the fill's peak, unmuted. The steps it had stay inside the roll.
+  static func rollIntoDrops(_ p: inout Project, genre: GenreDef) {
+    var ends: [Int: Int] = [:]  // boundary tick → steps of a buildup ending there
+    var t = 0
+    for (k, s) in p.structure.enumerated() {
+      t += s.steps
+      if s.name == "buildup" && k + 1 < p.structure.count { ends[t] = s.steps }
+    }
+    guard !ends.isEmpty else { return }
+    let (_, peak) = fillVelocities(genre)
+    let soft = 36
+    var sounding = Set<String>()
+    for id in p.nets.keys where id.hasPrefix("fill-") {
+      guard var nb = p.nets[id], let steps = ends[nb.transitions.count],
+        let template = nb.bindings.pairs.first(where: { isDrumChannel($0.value.channel) })?.value
+      else { continue }
+      let boundary = nb.transitions.count
+      let length = min(steps, 128)
+      var hits: [Int] = []
+      var s = boundary - length
+      while s < boundary {
+        hits.append(s)
+        s += rollSpacing(barsLeft: (boundary - s + 15) / 16)
+      }
+      var bound = OrderedMap<MidiBinding>()
+      for (k, step) in hits.enumerated() {
+        var b = template
+        b.note = 38
+        let x = hits.count > 1 ? Double(k) / Double(hits.count - 1) : 1
+        b.velocity = clampVelocity(Int((Double(soft) + Double(peak - soft) * x * x).rounded()))
+        bound["t\(step)"] = b
+      }
+      nb.bindings = bound
       p.nets[id] = nb
       sounding.insert(id)
     }
