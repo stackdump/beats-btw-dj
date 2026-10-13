@@ -340,3 +340,93 @@ medium while the part plays. `NetRingsTests.aFlashStaysInsideItsCell`.
 - Choke the open hat with the next closed hat (a real hat's pedal) instead of letting it ring
   over.
 - Section harmony and cadences (part C's list) are still open.
+
+## 7. Part E (2026-10-13, run e7cdf25f): phrasing, the drop, a room
+
+Built on part D (merged from `val/run-9ff0e9f8`, a fast-forward). Six more `Fixes` flags, all in
+`.all`, all off on the parity path. Chosen by reading note logs again: every melody note in every
+genre was a sixteenth long (`durationSteps` 1: a line of quarter notes is four blips), phrases
+ended on whatever passing tone the motif walk left, funk 42's bass hammered one root per bar
+and leapt at each change, nothing marked the moment before a drop, and the whole engine is dry.
+
+| fix | what it does | where |
+|---|---|---|
+| `.legato` | each melody note lasts until the next note of its ring, at most a beat (`legatoMax`); onsets, pitches, velocities unchanged | pass |
+| `.cadence` | a melody phrase end — a note followed by half a bar of rest, or the last note before a 2-bar line of its ring — moves to the nearest tone of the bar's pad chord (≤ a fourth; the root, a falling step and not the note before win ties) | pass |
+| `.approach` | where a bass bar moves (≥ 3 notes) and the next bar has another root, its last note (second half of the bar) becomes the scale step next to that root, from the side the line comes from. Not in the offbeat-bass dance genres (their one-note pulse is the style) nor jazz (already walks) | pass |
+| `.dropGap` | the last beat of every buildup / pre-chorus that lands on a drop / chorus: kick, snare, hats and bass lanes skip their hits; the fill roll, the crash and the pads play on, so the drop's downbeat comes out of a gap | runner (`DJMusicality.dropGaps`, `WaveProject.gaps`, `Lane.gapped`) |
+| `.choke` | a hihat net's closed hat cuts its open hat off (10 ms), as a hat pedal does | runner (`Lane.choke`) |
+| `.space` | a send reverb: 8-line feedback delay network (`Space.swift`), per runner, buffers allocated at init. Pads 0.5, arp 0.4, leads 0.3, clap 0.3, crash 0.25, snare 0.22, open hat 0.1, hat 0.05, kick and bass 0. Room by genre (`SpaceSpec.forGenre`: ambient 4 s, trance / synthwave 2.4 s bright, edm 2 s, lofi 1.8 s dark, jazz / bossa 1.6 s, techno / house 1.3 s, funk 1 s). Input highpassed at 200 Hz (12 dB/oct), the return's side at 300 Hz (4th order). Sampled slots that send render as their own group (`flushSamplers`) and reach the room a block later (`sendFifo`) | runner, `PreparedTrack` sets the room like `duckDepth` |
+
+New measurements: `MusicalityReport.melodyLegato` (sounding share of the time to the next melody
+note, ≤ a beat ahead), `phraseEndsOnChordTones` (phrase ends as defined above, within a section),
+`bassStepwise` (arrivals at a new root from ≤ 2 semitones); `djctl render` adds
+`audio.preDropDipDB` (the last beat before a drop against the beat before it, below 200 Hz) and,
+with `--room`, `audio.roomReturnDB` (renders again without `.space`; the difference against the
+dry mix). The matrix prints `bStep`, `legato`, `pEnd`, `gapDB`.
+
+Before → after, 12 genres × 2 seeds, whole songs, synth voices. "Before" is the same djctl with
+part D's 20 fixes (`--fixes key,…,stereo`):
+
+| metric | before (part D) | after |
+|---|---|---|
+| melody legato (1 = held to the next note) | 0.60 | 1.00 |
+| melody phrase ends on a chord tone | 0.71 (techno 42 0.60, dubstep 42 0.00) | 0.99 |
+| bass arrivals at a new root by step | 0.50 (funk, house, dnb, synthwave 0–0.6) | 0.79 (those 1.00; techno / trance / jazz untouched) |
+| bass motion at chord changes, mean semitones | 3.4 | 2.4 (funk 42 5.0 → 1.5) |
+| last beat before a drop, < 200 Hz, against the beat before | +0.2 dB | −11.6 dB (edm 42 +0.4 → −12.0) |
+| side / mid, dB | −19.0 | −16.2 (the room's return is wide) |
+| side / mid below 150 Hz, dB | −38.8 | −37.9 |
+| semitone rubs per 100 overlapping pairs | 2.4 | 2.4 (techno 42: 4.9 → 4.2) |
+| integrated loudness, mean; peak | −16.9 LUFS; −2.2 dBFS | −17.0; −2.4 |
+| clipped samples | 0 | 0 |
+| in key, bass on root, changes on bars / 2-bar lines, fills, crashes | 0.99, 1.00, 1.00 / 1.00, 1.00, 1.00 | unchanged |
+
+Room returns against the dry mix (`--room`, seed 42, 60 s, synth): ambient −8.0 dB, trance −14.7,
+synthwave −14.5, lofi −13.5, jazz −14.9, bossa −16.2, edm −16.7, dnb −17.3, funk −19.5, dubstep
+−20.9, house −21.4, techno −22.3. Sampled jazz 42: −15.7 dB, low side −15.1 → −14.9 dB (the room
+adds nothing under the mix's own low end). Before the side highpass went to 300 Hz the return
+widened the low end (techno low side −49 → −30 dB; `StereoTests` caught it on jazz).
+
+Tests: `MusicalityTests` `melodiesAreHeld`, `phrasesEndOnChordTones`,
+`bassApproachesChordChanges` (each checks its "before" was wrong and that only what the fix
+names moved); `DropGapTests` (gaps sit before drops; the rhythm section > 20 dB down in the gap,
+the drop's downbeat as loud as an earlier one, everything before bit-identical; pads untouched;
+the choke > 20 dB off the open hat's tail, nets without an open hat bit-identical);
+`SpaceTests` (a tail that falls at the room's rate; wide above, mono below 100 Hz; kick and bass
+bit-identical with the room on; rooms by genre, `PreparedTrack` gets its genre's);
+`DropGapRealTimeTests`, `SpaceRealTimeTests` (release: no allocation). Three older A/B tests now
+leave `.cadence` / `.approach` out of both sides (`playedWithout`): which neighbour those pick
+depends on the octave or step the earlier fix chose, so the "same pitch classes" checks no longer
+held across them. `EnergyTests.sectionsHaveALevelContour` checks the intro ≥ 3 dB under the
+peak and ≥ 2 dB under its flat level (it was 3 under flat): held melody notes lift lofi's melodic
+sections, which lowers its loudness gain, so its flat intro already sits 1.2 dB lower; the
+intro against the peak is 4.1 dB, as it was (4.4).
+
+### Listen checklist (`make run-app-release`, or `djctl render <g> 42 --out f.wav`)
+
+- any genre with a lead (trance 42, funk 42, lofi 42): the melody sings — notes held into the
+  next, not ticked — and each phrase settles on a chord tone.
+- funk 42 / house 42 / dnb 42: the bass walks into each chord change (a step before the new
+  root) instead of jumping to it.
+- edm 42 / trance 42: the beat before each drop drops out — snare roll and pads alone — then the
+  drop and its crash land.
+- house 42 / techno 7: the open hat's "tss" stops on the next closed hat.
+- trance 42 / ambient 42: pads and lead in a hall, the kick and bass still dry and centred;
+  techno 42: a short, tight room on snare and pads only. Fold to mono: nothing hollows out.
+- A/B: `--fixes all` against
+  `--fixes key,timing,register,dynamics,loudness,groove,offbeatBass,phrases,fills,voicing,energy,duck,contour,color,arpeggio,buildup,crash,bassLine,openHats,stereo`,
+  or one flag at a time (`all` minus one is not a CLI form; list the others).
+
+### Next ideas
+
+- A synth filter envelope (saws open on the note and close as it decays): the synth leads and
+  basses are raw saws at a fixed brightness.
+- Arp patterns per genre (trance up-down sixteenths, synthwave eighths with octave jumps).
+- Echo: a tempo-synced ping-pong delay send for leads and arps in trance / synthwave / dub.
+- Question / answer across 8 bars: rings repeat every 4 bars, so the second phrase cannot answer
+  the first without new slot topology; the runner could transpose or rest alternate cycles.
+- `.dropGap` in the song family: a pre-chorus into a chorus gets it; a band "stop" (everything
+  but the vocal-like lead) would suit rock / pop better than cutting only the rhythm section.
+- The room's level was set by measurement, not by ear: worth a listen on monitors, lofi and
+  ambient especially.
