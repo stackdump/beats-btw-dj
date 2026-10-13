@@ -140,6 +140,16 @@ public func drumVoice(kind: String, instrument: String) -> VoiceSpec {
     v.pulse = pulse(attack: 0.002, decay: 0.06)
     v.level = 0.6
     return v
+  case "crash":
+    // Not in beats (its drum map plays note 49 as the open hat): dj's section crash
+    // (`DJMusicality.Fixes.crash`). Bright noise with a cymbal's long tail.
+    var v = VoiceSpec(kind: "crash", carrier: "noise")
+    v.filter = "highpass"
+    v.fc = 4200
+    v.q = 0.5
+    v.pulse = pulse(attack: 0.002, decay: 0.7)
+    v.level = 0.2
+    return v
   case "openhat":
     var v = VoiceSpec(kind: "openhat", carrier: "noise")
     v.filter = "highpass"

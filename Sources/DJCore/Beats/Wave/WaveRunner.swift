@@ -287,8 +287,10 @@ private func buildLanes(
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
-  // `.fills` / `.buildup`: beats' drum-fill nets are control nets with notes; give them a voice.
-  let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup])
+  // `.fills` / `.buildup` / `.crash`: beats' drum-fill nets are control nets with notes; give
+  // them a voice.
+  let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup, .crash])
+  let voiceCrash = opts.musicality.contains(.crash)
   for n in g.nets {
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
@@ -298,7 +300,13 @@ private func buildLanes(
     for t in 0..<n.nTrans where n.midi[t] {
       let b = n.bundle.bindings[n.transIds[t]]!
       let ch = b.channel != 0 ? b.channel : tr.channel
-      let key = override != nil ? "v" : (isDrumChannel(ch) ? drumKind(n.note[t]) : "tonal")
+      var key = override != nil ? "v" : (isDrumChannel(ch) ? drumKind(n.note[t]) : "tonal")
+      // `.crash`: the section crashes on fill nets get a crash, not beats' short open hat
+      if voiceCrash && key == "openhat" && n.id.hasPrefix("fill-")
+        && n.note[t] == DJMusicality.crashNote
+      {
+        key = "crash"
+      }
       if kindLane[key] == nil {
         let lane: Lane
         if let override {

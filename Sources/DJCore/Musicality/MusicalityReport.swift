@@ -68,6 +68,9 @@ public struct MusicalityReport: Sendable {
   /// snare roll that never slows down and gets faster (fill-net hits per bar non-decreasing, the
   /// first bar at most quarters, the last at least eighths); nil for a song without one.
   public var buildupsBuild: Double?
+  /// Section starts (after the first) marked by a crash cymbal on their downbeat; nil for a
+  /// song without sections.
+  public var crashOnSections: Double?
 
   public init() {}
 
@@ -286,6 +289,14 @@ public struct MusicalityReport: Sendable {
         }
       }
       if buildups > 0 { buildupsBuild = Double(building) / Double(buildups) }
+      let crashes = Set(log.filter { $0.isDrum && ($0.note == 49 || $0.note == 57) }.map(\.tick))
+      var downbeat = 0
+      var crashed = 0
+      for s in sections.dropLast() {
+        downbeat += s.steps
+        if crashes.contains(downbeat + 1) { crashed += 1 }
+      }
+      crashOnSections = Double(crashed) / Double(sections.count - 1)
     }
     if !sections.isEmpty {
       sectionsOnPhrases =
@@ -327,6 +338,7 @@ public struct MusicalityReport: Sendable {
     if let v = arpChordTones { d["arpChordTones"] = round3(v) }
     if let v = arpDoublesMelody { d["arpDoublesMelody"] = round3(v) }
     if let v = buildupsBuild { d["buildupsBuild"] = round3(v) }
+    if let v = crashOnSections { d["crashOnSections"] = round3(v) }
     return d
   }
 }

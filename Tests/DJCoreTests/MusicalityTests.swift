@@ -43,7 +43,7 @@ struct MusicalityTests {
         #expect(a.transitions.keys == b.transitions.keys, "\(genre) \(id) transitions")
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
         // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
-        // steps, `.buildup` the fill chains' (a roll); nothing else gains or
+        // steps, `.buildup` / `.crash` the fill chains' (a roll, a crash); nothing else gains or
         // loses notes
         if id.hasPrefix("fill-") {
           continue
@@ -244,7 +244,10 @@ struct MusicalityTests {
     let t = played(genre, 42)
     #expect(try #require(report(t.played).fillsBeforeSections) == 1, "\(genre)")
     #expect(try #require(report(t.composed).fillsBeforeSections) == 0)
-    let fills = NoteLog.capture(t.played).filter { $0.net.hasPrefix("fill-") }
+    // (the section crashes `.crash` puts on the same chains are not the fill)
+    let fills = NoteLog.capture(t.played).filter {
+      $0.net.hasPrefix("fill-") && $0.note != DJMusicality.crashNote
+    }
     for (_, roll) in Dictionary(grouping: fills, by: \.net) {
       let v = roll.sorted { $0.tick < $1.tick }.map(\.velocity)
       #expect(v == v.sorted() && v.first! < v.last!, "\(genre): a fill swells: \(v)")
@@ -366,5 +369,27 @@ struct MusicalityTests {
     }
     #expect(WaveRunner.prepare(played("edm", 42).played, sampleRate: 22_050, opts: .extended)
       .byNet.keys.contains { $0.hasPrefix("fill-") })
+  }
+
+  /// A crash on the downbeat of every section after the first, louder into a drop, played by a
+  /// crash voice (a long bright tail, not beats' 0.1 s open hat); the parity path has none.
+  @Test(arguments: ["techno", "edm", "jazz", "lofi", "funk"])
+  func sectionsStartWithACrash(genre: String) throws {
+    let t = played(genre, 42)
+    #expect(try #require(report(t.played).crashOnSections) == 1, "\(genre)")
+    #expect(try #require(report(t.composed).crashOnSections) == 0)
+    let crashes = NoteLog.capture(t.played).filter { $0.isDrum && $0.note == 49 }
+    #expect(crashes.count == t.played.structure.count - 1, "one per section change")
+    if let drop = t.played.structure.firstIndex(where: { $0.name == "drop" }), drop > 0 {
+      let at = t.played.structure.prefix(drop).reduce(0) { $0 + $1.steps } + 1
+      let loud = try #require(crashes.first { $0.tick == at }).velocity
+      #expect(crashes.allSatisfy { $0.velocity <= loud })
+    }
+    let deck = WaveRunner.prepare(t.played, sampleRate: 22_050, opts: .extended)
+    let crash = deck.lanes.filter { $0.voice.kind == "crash" }
+    #expect(!crash.isEmpty && crash.allSatisfy { $0.netId.hasPrefix("fill-") })
+    #expect(crash.allSatisfy { $0.voice.pulse.tau.max()! > 0.5 })
+    let parity = WaveRunner.prepare(t.played, sampleRate: 22_050)
+    #expect(!parity.lanes.contains { $0.voice.kind == "crash" })
   }
 }

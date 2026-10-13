@@ -42,6 +42,7 @@ COLUMNS = [
     ("arpChordTones", "arpCT", "{:5.2f}"),
     ("arpDoublesMelody", "arpDbl", "{:6.2f}"),
     ("buildupsBuild", "build", "{:5.2f}"),
+    ("crashOnSections", "crash", "{:5.2f}"),
     ("sectionSpreadDB", "sprd", "{:4.1f}"),
     ("lra", "LRA", "{:4.1f}"),
 ]
@@ -73,7 +74,8 @@ def flat(doc):
     for k in ("inKey", "bassOnRoot", "bassOnKick", "harmonyInBassRange", "semitoneClashesPer100",
               "melodyRecurrence", "sectionContrast", "changesOnBars", "changesOnPhrases",
               "fillsBeforeSections", "slotsFromTheTop", "padMotion", "melodyRepeats", "padColor",
-              "arpChordTones", "arpDoublesMelody", "buildupsBuild"):
+              "arpChordTones", "arpDoublesMelody", "buildupsBuild",
+              "crashOnSections"):
         row[k] = m.get(k)
     return row
 

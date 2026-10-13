@@ -93,9 +93,15 @@ public enum DJMusicality {
     /// the section change, which spans the song up to it, so it is voiced as `.fills` voices.
     public static let buildup = Fixes(rawValue: 1 << 15)
 
+    /// A crash cymbal on the downbeat of every section after the first: the ear hears where a
+    /// section starts (beats marks it with nothing but the parts changing). It goes on the fill
+    /// net of the section's own end, which spans the song up to there, and the runner gives
+    /// note 49 on a fill net a crash voice (beats has only a short open hat for it).
+    public static let crash = Fixes(rawValue: 1 << 16)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup,
+      .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -103,7 +109,7 @@ public enum DJMusicality {
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
-      "color": .color, "arpeggio": .arpeggio, "buildup": .buildup,
+      "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "none": [],
     ]
   }
@@ -124,6 +130,7 @@ public enum DJMusicality {
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
     if fixes.contains(.buildup) { rollIntoDrops(&p, genre: genre) }
+    if fixes.contains(.crash) { crashOnSections(&p, genre: genre) }
     return p
   }
 
@@ -480,6 +487,51 @@ public enum DJMusicality {
       nb.bindings = bound
       p.nets[id] = nb
       sounding.insert(id)
+    }
+    p.initialMutes.removeAll { sounding.contains($0) }
+  }
+
+  // MARK: crash
+
+  /// The note a crash is bound to (GM crash cymbal 1).
+  static let crashNote = 49
+
+  /// Sections that start with the full band, where the crash is loudest.
+  static let peakSections: Set<String> = ["drop", "chorus"]
+
+  /// Each section start after the first gets a crash on its downbeat, on the fill net whose
+  /// chain runs through it (the one ending at that section's end). Loud into a drop or chorus,
+  /// softer elsewhere, softer still outside the dance genres. A fill net still muted (the one
+  /// at the song's end, or all of them without `.fills`) keeps only its crash.
+  static func crashOnSections(_ p: inout Project, genre: GenreDef) {
+    guard p.structure.count > 1 else { return }
+    var starts: [Int: String] = [:]  // downbeat tick → section
+    var t = 0
+    for s in p.structure {
+      if t > 0 { starts[t] = s.name }
+      t += s.steps
+    }
+    let dance = BeatsTables.shared.family(of: genre.name) == 0
+    var fillNets: [(id: String, end: Int)] = []
+    for id in p.nets.keys where id.hasPrefix("fill-") {
+      if let n = p.nets[id]?.transitions.count { fillNets.append((id, n)) }
+    }
+    var sounding = Set<String>()
+    for (tick, name) in starts {
+      // the shortest fill chain that reaches the downbeat
+      guard let host = fillNets.filter({ $0.end > tick }).min(by: { $0.end < $1.end }),
+        var nb = p.nets[host.id],
+        let template = nb.bindings.pairs.first(where: { isDrumChannel($0.value.channel) })?.value
+      else { continue }
+      if p.initialMutes.contains(host.id) {
+        nb.bindings = OrderedMap<MidiBinding>()  // its toms have no voice; keep only crashes
+      }
+      var b = template
+      b.note = crashNote
+      b.velocity = peakSections.contains(name) ? (dance ? 118 : 96) : (dance ? 92 : 76)
+      nb.bindings["t\(tick)"] = b
+      p.nets[host.id] = nb
+      sounding.insert(host.id)
     }
     p.initialMutes.removeAll { sounding.contains($0) }
   }
