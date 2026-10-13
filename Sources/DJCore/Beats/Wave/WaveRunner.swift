@@ -68,6 +68,9 @@ public struct WaveOptions {
   /// Seeds which sampled instrument each role gets (`VoiceCatalog`): the track's seed, so a
   /// track keeps its instruments across section jumps and replays.
   public var voicingSeed = 0.0
+  /// dj's fixes to a composed track (`DJMusicality`), run by `PreparedTrack`; none = the
+  /// project exactly as composed (parity).
+  public var musicality: DJMusicality.Fixes = []
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }

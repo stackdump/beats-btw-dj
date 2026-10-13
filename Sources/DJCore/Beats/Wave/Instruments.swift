@@ -74,7 +74,8 @@ extension VoiceSpec {
 }
 
 extension WaveOptions {
-  /// What the app plays: beats' wave engine plus the instrument table.
+  /// What the app plays: beats' wave engine plus the instrument table and dj's musicality
+  /// fixes.
   public static var extended: WaveOptions { extended(samplers: nil) }
 
   /// The app's options for one deck: its sampler bank plays the sampled instruments, voiced
@@ -82,6 +83,7 @@ extension WaveOptions {
   public static func extended(samplers: SamplerBank?, seed: Double = 0) -> WaveOptions {
     var o = WaveOptions()
     o.instruments = .shared
+    o.musicality = .all
     o.samplers = samplers
     o.voicingSeed = seed
     return o

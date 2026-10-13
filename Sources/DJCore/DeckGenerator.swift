@@ -95,7 +95,8 @@ public final class PreparedTrack: @unchecked Sendable {
   /// What a session names it by: `.net(spec)` or `.rawNets(payload:)`.
   public let source: DeckSourceDescriptor
   public let project: Project
-  /// What the deck plays: `project` itself for now.
+  /// What the deck plays: `project` after dj's musicality fixes (`DJMusicality`, as
+  /// `opts.musicality` asks), or `project` itself for a raw-`nets` share or without fixes.
   public let played: Project
   public let prepared: WaveProject
 
@@ -143,7 +144,11 @@ public final class PreparedTrack: @unchecked Sendable {
   ) {
     self.source = source
     self.project = project
-    played = project
+    if case .net(let spec) = source, !opts.musicality.isEmpty {
+      played = DJMusicality.apply(project, spec: spec, fixes: opts.musicality)
+    } else {
+      played = project
+    }
     var o = opts
     o.voicingSeed = seed
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o)
@@ -228,7 +233,7 @@ extension Deck {
 
   /// Load a track composed elsewhere.
   public func loadNet(_ track: PreparedTrack) {
-    loadNet(track.prepared, project: track.project)
+    loadNet(track.prepared, project: track.played)
     currentSpec = track.spec
     if case .rawNets(let payload) = track.source { currentRawNets = payload }
   }
