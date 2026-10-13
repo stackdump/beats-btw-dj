@@ -21,7 +21,11 @@ public enum DJMusicality {
     /// every event one tick later than the one before, and after the downbeat's notes).
     public static let timing = Fixes(rawValue: 1 << 1)
 
-    public static let all: Fixes = [.key, .timing]
+    /// Each part in its own octave: the bass down where a bass plays (beats builds it at the
+    /// genre's root, C3 for most), the pad above the bass, the melody above the pad.
+    public static let register = Fixes(rawValue: 1 << 2)
+
+    public static let all: Fixes = [.key, .timing, .register]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.
@@ -30,6 +34,7 @@ public enum DJMusicality {
     var p = project
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
+    if fixes.contains(.register) { separateRegisters(&p) }
     return p
   }
 
@@ -81,6 +86,78 @@ public enum DJMusicality {
         if let gap = place.initial.first, gap >= 1 { place.initial = [gap - 1] }
         nb.places["p_delay_\(i)"] = place
         i += 1
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: register
+
+  /// The bass's median note goes no higher than this (A2, 110 Hz): below it a bass line sits
+  /// under the chords instead of among them.
+  static let bassCeiling = 45
+  /// …and no lower than this (E1, 41 Hz, a bass guitar's lowest string).
+  static let bassFloor = 28
+  /// A pad's median goes no lower than this (F3, 175 Hz): close triads under it are mud.
+  static let padFloor = 53
+
+  /// Move whole parts by octaves (pitch classes, so key and chords, stay as composed):
+  /// the bass down until its median is at most A2, then the pad up until its lowest note
+  /// clears the bass's highest and its median is F3 or higher, then the melody and arp up until their median clears the
+  /// pad's. A part moves as one (every slot by the same octaves), so its phrases keep their
+  /// shape across sections.
+  static func separateRegisters(_ p: inout Project) {
+    let bass = notes(p, group: "bass")
+    var bassShift = 0
+    if let m = median(bass) {
+      while m + bassShift > bassCeiling { bassShift -= 12 }
+      while m + bassShift < bassFloor { bassShift += 12 }
+    }
+    transpose(&p, group: "bass", by: bassShift)
+    let bassTop = (bass.max() ?? 0) + bassShift
+
+    let pad = notes(p, group: "harmony")
+    var padShift = 0
+    if let low = pad.min(), let m = median(pad) {
+      while low + padShift <= bassTop || m + padShift < padFloor { padShift += 12 }
+    }
+    transpose(&p, group: "harmony", by: padShift)
+    let padMedian = median(pad).map { $0 + padShift }
+
+    for lead in ["melody", "arp"] {
+      let ns = notes(p, group: lead)
+      var shift = 0
+      if let m = median(ns), let floor = padMedian {
+        while m + shift <= floor && (ns.max() ?? 0) + shift + 12 <= 96 { shift += 12 }
+      }
+      transpose(&p, group: lead, by: shift)
+    }
+  }
+
+  /// The part a net belongs to: its mixer group, else its riff group.
+  static func part(_ nb: NetBundle) -> String {
+    if let g = nb.track.group, !g.isEmpty { return g }
+    return nb.riffGroup
+  }
+
+  static func notes(_ p: Project, group: String) -> [Int] {
+    var out: [Int] = []
+    for nb in p.nets.values where nb.role != "control" && part(nb) == group {
+      for b in nb.bindings.values where !isDrumChannel(b.channel) { out.append(b.note) }
+    }
+    return out
+  }
+
+  static func median(_ xs: [Int]) -> Int? { xs.isEmpty ? nil : xs.sorted()[xs.count / 2] }
+
+  static func transpose(_ p: inout Project, group: String, by shift: Int) {
+    guard shift != 0 else { return }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == group else { continue }
+      for t in nb.bindings.keys {
+        guard var b = nb.bindings[t], !isDrumChannel(b.channel) else { continue }
+        b.note = max(0, min(127, b.note + shift))
+        nb.bindings[t] = b
       }
       p.nets[id] = nb
     }

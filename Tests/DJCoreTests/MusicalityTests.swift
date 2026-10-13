@@ -126,4 +126,31 @@ struct MusicalityTests {
     let before = NoteLog.captureAll(t.composed).controls
     #expect(before.filter { $0.tick % 16 == 0 }.count < before.count / 2)
   }
+
+  /// Bass, pad and melody each in their own register: the bass's median at most A2, no pad
+  /// note at or below the bass's highest, the melody's median above the pad's.
+  @Test(arguments: [
+    "techno", "house", "edm", "trance", "synthwave", "dubstep", "dnb", "lofi", "jazz", "bossa",
+  ])
+  func partsInTheirOwnRegister(genre: String) throws {
+    let t = played(genre, 42)
+    let r = report(t.played)
+    let bass = try #require(r.medianNote["bass"])
+    #expect(
+      bass <= DJMusicality.bassCeiling && bass >= DJMusicality.bassFloor, "\(genre) bass \(bass)")
+    if let overlap = r.harmonyInBassRange {
+      #expect(overlap == 0, "\(genre): pad in the bass range")
+    }
+    if let pad = r.medianNote["harmony"] {
+      #expect(pad >= DJMusicality.padFloor, "\(genre) pad \(pad)")
+    }
+    if let pad = r.medianNote["harmony"], let lead = r.medianNote["melody"] {
+      #expect(lead > pad, "\(genre): melody \(lead) under the pad \(pad)")
+    }
+    // Octaves only: the same notes in the same order, pitch classes unchanged.
+    let without = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.register))
+    #expect(
+      NoteLog.capture(without).map { $0.note % 12 }
+        == NoteLog.capture(t.played).map { $0.note % 12 })
+  }
 }
