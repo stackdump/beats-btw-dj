@@ -108,3 +108,54 @@ bindings and markings, never net topology, so the net views, section jumps and r
 sessions all see the same nets — plus render-side changes in the runner under
 `WaveOptions.extended`. `WaveOptions()` (the parity path) is untouched. Where a fix is a
 beats bug (1, 2), it goes on GO-DIVERGENCE.md §5 to backport.
+
+## 3. What changed (2026-10-13)
+
+Each fix is one `DJMusicality.Fixes` flag, all on in `WaveOptions.extended` (what the app
+plays) and off in `WaveOptions()` (parity: every beats fixture still passes). `djctl render
+--fixes none|all|key,timing,…` renders any combination, for A/B listening.
+
+| fix | what it does | where |
+|---|---|---|
+| `.key` | B / C tension variants moved back into the home key | pass, bindings |
+| `.timing` | every structure change fires on the last sixteenth before its bar (no drift, no lost downbeats) | pass, control-net markings |
+| `.phrases` | phrase switches on 2 / 4-bar lines (12 bars = 4 + 4 + 2 + 2, not 3 × 4) | pass, control-net markings |
+| `.register` | bass median ≤ A2 (≥ E1), pad clear of the bass with its median ≥ F3, melody / arp above the pad; octaves only | pass, bindings |
+| `.offbeatBass` | four-on-the-floor dance genres (techno, edm, trance, speedcore): bass on the off-beat eighth | pass, bindings |
+| `.dynamics` | bass / melody / arp / pad accented by meter, each melody bar's peak note leaned on | pass, bindings |
+| `.groove` | the project's swing and humanize, as beats' browser plays them, deterministic | runner |
+| `.loudness` | per-track gain to one loudness (measured from the drop, K-weighted); samplers inside the master curve | runner |
+
+Before → after, 12 genres × 2 seeds, 75 s each, `standard` structure (`scripts/
+musicality-matrix.py`; synth voices; sampled renders in brackets):
+
+| metric | before | after |
+|---|---|---|
+| tonal notes in key | 0.93 | 0.99 (the rest: walking-bass chromatic approach notes) |
+| bass on the chord root at each bar | 0.71 | 1.00 |
+| part changes in effect at a bar line | 0.13 | 1.00 |
+| part changes on a 2-bar line from the section start | 0.66 | 1.00 |
+| pad notes inside the bass's range | 0.97 | 0.00 |
+| bass onsets on a kick | 0.54 (techno 1.00) | 0.27 (techno 0.00; the rest are genres whose groove is meant to) |
+| semitone rubs per 100 overlapping pairs | 4.9 | 2.8 |
+| melody velocity spread | 3.7 | 8.2 |
+| melody bars recurring 4 / 8 bars later | 0.63 | 0.84 |
+| integrated loudness range across genres | −25.5 … −13.0 LUFS (sampled −25.3 … −12.9) | −18.1 … −14.3 (sampled −16.9 … −12.5) |
+| clipped samples | 0 (sampled: 6, trance-7 at +0.4 dBFS) | 0 (sampled 0) |
+| swing / humanize | ignored | off-beat 16ths late by swing% × ½ tick, ± jitter |
+
+Tests that hold these: `MusicalityTests` (every note in key, bass on the root, downbeats
+and bar lines, phrase grid, registers, accents, offbeat bass, loudness, the pass keeping
+the net topology and `compose()` untouched) and `GrooveTests` (swing and humanize measured
+from rendered audio; allocation-free in release).
+
+Not done, next candidates:
+
+- Energy above 2 kHz is still 2–3 % in the dance genres (hats at −10 dB under the kick, saw
+  voices with no filter envelope): a brightness / sound-design pass, by ear.
+- The loudness probe hears synth voices only, so sample-heavy genres (lofi, jazz, bossa)
+  come out ~2 LU hot when sampled instruments load.
+- The semitone-rub metric counts pitch classes across any octave distance; a bass note and
+  a melody passing tone three octaves apart count as a rub.
+- Section contrast (busiest / quietest notes per bar) is unchanged at 2.4; the arrangement's
+  energy curve is beats' and untouched.

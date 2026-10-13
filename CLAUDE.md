@@ -155,6 +155,17 @@ its copy; the two are now independent. Rules inherited from that split:
 - Sampled content never enters the repo or the CDN: Apple's licence covers playing it in
   your music, not redistributing the samples. `SamplerTests` re-measure pitch and level.
 
+## Musicality (docs/musicality-notes.md)
+
+- `compose()` stays beats' byte for byte; what a deck plays is `PreparedTrack.played` =
+  `DJMusicality.apply(project, spec:)`: rewrites bindings and initial markings only (never
+  places / transitions / arcs), a pure function of (project, spec). `.groove` and `.loudness`
+  live in the runner. All on in `WaveOptions.extended`, off in `WaveOptions()` (parity).
+- `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
+  renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
+  musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+- Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
+
 ## Visuals (Phase 5)
 
 - SwiftUI lives only in `Sources/DJViews` (and the `DJApp` shell). DJCore has models
