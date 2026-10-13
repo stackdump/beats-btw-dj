@@ -159,3 +159,14 @@ Not done, next candidates:
   a melody passing tone three octaves apart count as a rub.
 - Section contrast (busiest / quietest notes per bar) is unchanged at 2.4; the arrangement's
   energy curve is beats' and untouched.
+
+## 4. Visual polish (part B)
+
+`DJStyle` (spacing scale, card, deck tints for the dark window, small-caps section labels, a
+rounded monospaced readout font). Decks and mixer sit on cards (deck cards carry their tint
+along the top); the deck header is a letter badge + the track title as the headline + what
+it is underneath; position and BPM read large; play / pause is a round button that fills
+with the tint while playing; cue + four small hot cues share its row; Song / Perform /
+Channel group the rest; the platter's beat dot eases; the app's windows are dark. Offscreen
+before / after renders: `WindowShotTests` with `DJ_SHOT_DIR` (AppKit sliders, menus and
+bordered buttons draw as yellow placeholders offscreen; the custom views are exact).
