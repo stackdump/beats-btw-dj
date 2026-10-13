@@ -1,3 +1,4 @@
+import Darwin
 import Testing
 
 @testable import DJCore
@@ -77,6 +78,31 @@ struct StereoTests {
       worst = max(worst, abs((Double(all.l[i]) + Double(all.r[i])) / 2 - Double(mono[i])))
     }
     #expect(worst < 1e-6, "mono sum = mono mix (worst \(worst))")
+  }
+
+  /// The sampler bus's side signal loses its lows (a sine in one channel only: its side is
+  /// more than 20 dB down at 60 Hz, within 1 dB at 2 kHz) and its mid is untouched.
+  @Test func samplerLowsGoMono() {
+    for (hz, lo, hi) in [(60.0, -200.0, -20.0), (2000.0, -1.0, 1.0)] {
+      var f = SideHighpass(hz: 150, sampleRate: sr)
+      var sIn = 0.0
+      var sOut = 0.0
+      var worstMid = 0.0
+      for i in 0..<Int(sr) {
+        var l = Float(0.5 * sin(2 * Double.pi * hz * Double(i) / sr))
+        var r: Float = 0
+        let mid = (Double(l) + Double(r)) / 2
+        let side = (Double(l) - Double(r)) / 2
+        f.process(&l, &r)
+        guard i > Int(sr / 4) else { continue }  // settled
+        sIn += side * side
+        sOut += ((Double(l) - Double(r)) / 2) * ((Double(l) - Double(r)) / 2)
+        worstMid = max(worstMid, abs((Double(l) + Double(r)) / 2 - mid))
+      }
+      let db = 10 * log10(sOut / sIn)
+      #expect(db > lo && db < hi, "\(hz) Hz: side \(db) dB")
+      #expect(worstMid < 1e-6)
+    }
   }
 
   /// Without `.stereo` both channels carry the same signal, exactly as before.

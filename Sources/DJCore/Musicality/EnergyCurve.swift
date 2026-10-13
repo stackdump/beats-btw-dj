@@ -111,6 +111,54 @@ public struct EnergyCurve: Sendable, Equatable {
   }
 }
 
+/// The sampled instruments' bus made mono below `hz` (`DJMusicality.Fixes.stereo`): EXS
+/// instruments carry stereo samples, upright and electric basses included, so their low end
+/// came out of both sides differently. The side signal goes through a fourth-order highpass
+/// (two trapezoidal state-variable stages, Q 0.707); the mid is untouched.
+struct SideHighpass {
+  private var s1 = (0.0, 0.0)
+  private var s2 = (0.0, 0.0)
+  private var a1 = 1.0
+  private var a2 = 0.0
+  private var a3 = 0.0
+  private let k = 2.0.squareRoot()
+
+  init(hz: Double, sampleRate sr: Double) {
+    let g = tan(Double.pi * min(hz, sr * 0.45) / sr)
+    a1 = 1 / (1 + g * (g + k))
+    a2 = g * a1
+    a3 = g * a2
+  }
+
+  @inline(__always)
+  private static func stage(
+    _ x: Double, _ s: inout (Double, Double), _ a1: Double, _ a2: Double, _ a3: Double,
+    _ k: Double
+  ) -> Double {
+    let v3 = x - s.1
+    let v1 = a1 * s.0 + a2 * v3
+    let v2 = s.1 + a2 * s.0 + a3 * v3
+    s.0 = 2 * v1 - s.0
+    s.1 = 2 * v2 - s.1
+    return x - k * v1 - v2
+  }
+
+  /// One stereo sample, in place.
+  @inline(__always)
+  mutating func process(_ l: inout Float, _ r: inout Float) {
+    let m = (Double(l) + Double(r)) / 2
+    let x = Self.stage((Double(l) - Double(r)) / 2, &s1, a1, a2, a3, k)
+    let s = Self.stage(x, &s2, a1, a2, a3, k)
+    l = Float(m + s)
+    r = Float(m - s)
+  }
+
+  mutating func reset() {
+    s1 = (0, 0)
+    s2 = (0, 0)
+  }
+}
+
 /// A two-pole lowpass (Q 0.707) that can be retuned every sample without clicks: the
 /// trapezoidal state-variable filter (Zavalishin / Simper). One channel.
 struct SweepFilter {

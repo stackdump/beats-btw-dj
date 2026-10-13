@@ -510,6 +510,8 @@ public final class WaveRunner {
   private var accToneS = 0.0
   private var preS = [Float](repeating: 0, count: 4096)
   private var toneS = [Float](repeating: 0, count: 4096)
+  /// …and the sampled instruments (stereo samples) mono below 150 Hz.
+  private var samplerSide: SideHighpass
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
@@ -519,6 +521,7 @@ public final class WaveRunner {
     grooveOn = opts.musicality.contains(.groove)
     energyOn = opts.musicality.contains(.energy)
     stereoOn = opts.musicality.contains(.stereo)
+    samplerSide = SideHighpass(hz: 150, sampleRate: sampleRate)
     masterGain = opts.masterGain
     linear = opts.master == "linear"
     clock[clkTempo] = 120
@@ -613,6 +616,12 @@ public final class WaveRunner {
     toneLP.1.reset()
     duckHold = 0
     duckEnv = 0
+    samplerSide.reset()
+  }
+
+  /// `.stereo`: the samplers' block (in `smpL` / `smpR`) mono below 150 Hz.
+  private func monoSamplerLows(frames: Int) {
+    for i in 0..<frames { samplerSide.process(&smpL[i], &smpR[i]) }
   }
 
   public func setTempo(_ bpm: Double) {
@@ -1189,6 +1198,7 @@ public final class WaveRunner {
           flushSamplers(l.baseAddress!, r.baseAddress!, frames: frames)
         }
       }
+      if wide { monoSamplerLows(frames: frames) }
     }
     let step1 = (energyGain - g0) / Double(frames)
     for i in 0..<frames {
@@ -1586,6 +1596,7 @@ public final class WaveRunner {
           flushSamplers(l.baseAddress!, r.baseAddress!, frames: frames)
         }
       }
+      if wide { monoSamplerLows(frames: frames) }
       if let right {
         for i in 0..<frames {
           let s: Float = wide ? preS[i] : 0
