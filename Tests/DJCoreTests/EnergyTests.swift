@@ -14,9 +14,10 @@ private func played(_ genre: String, _ seed: Double = 42, structure: String = "s
   return DJMusicality.apply(spec.project(), spec: spec)
 }
 
-/// The whole song, mono, synth voices, with or without the energy arc.
-private func render(_ p: Project, energy: Bool) -> [Float] {
+/// The whole song, mono, synth voices, with or without the energy arc, in the genre's room.
+private func render(_ p: Project, energy: Bool, genre: String) -> [Float] {
   var o = WaveOptions.extended
+  o.space = SpaceSpec.forGenre(genre)
   if !energy { o.musicality.remove(.energy) }
   let r = WaveRunner(sampleRate: sr, opts: o)
   r.load(prepared: WaveRunner.prepare(p, sampleRate: sr, opts: o))
@@ -80,8 +81,8 @@ struct EnergyTests {
   @Test(arguments: ["techno", "lofi"])
   func sectionsHaveALevelContour(genre: String) throws {
     let p = played(genre)
-    let flat = sectionDB(render(p, energy: false), p)
-    let arc = sectionDB(render(p, energy: true), p)
+    let flat = sectionDB(render(p, energy: false, genre: genre), p)
+    let arc = sectionDB(render(p, energy: true, genre: genre), p)
     // mean depth of the sections under the loudest one
     let depth = { (s: [(name: String, db: Double)]) in
       let top = s.map(\.db).max()!
@@ -90,8 +91,12 @@ struct EnergyTests {
     #expect(depth(flat) < 1.5, "\(genre) was flat: \(flat)")
     #expect(depth(arc) > depth(flat) + 1.5, "\(genre): \(flat) → \(arc)")
     let intro = try #require(arc.firstIndex { $0.name == "intro" })
-    #expect(arc[intro].db < flat[intro].db - 3)
     let loudest = try #require(flat.indices.max { arc[$0].db < arc[$1].db })
+    // the intro comes down, and sits several dB under the peak (how far it comes down from
+    // the flat render depends on how much quieter the composer already made it: held melody
+    // notes, `.legato`, lift lofi's melodic sections and so leave its flat intro lower)
+    #expect(arc[intro].db < flat[intro].db - 2)
+    #expect(arc[intro].db < arc[loudest].db - 3)
     #expect(abs(arc[loudest].db - flat[loudest].db) < 0.75, "the peak section keeps its level")
   }
 

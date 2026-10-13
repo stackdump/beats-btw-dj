@@ -80,6 +80,9 @@ public struct WaveOptions {
   /// Kick-keyed ducking of the bass and pad (`DJMusicality.Fixes.duck`): how far they dip on
   /// each kick (0 = none), set from the track's genre (`DJMusicality.duckDepth`).
   public var duckDepth = 0.0
+  /// The room (`DJMusicality.Fixes.space`), set from the track's genre (`SpaceSpec.forGenre`);
+  /// nil with `.space` on plays `SpaceSpec.room`.
+  public var space: SpaceSpec?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -146,6 +149,8 @@ final class Lane {
   var choke: Lane?
   var choking = false
   var chokeMul = 1.0
+  /// `.space`: how much of the lane goes to the reverb send (`SpaceSpec.send`).
+  var send = 0.0
   // post chain on the voice sum: lowpass biquad, then distortion
   var post: [Double] = []
   var pz1 = 0.0
@@ -256,6 +261,10 @@ public final class WaveProject: @unchecked Sendable {
   let duckSlots: UInt64
   /// First step of each drop gap (`DJMusicality.dropGaps`), ascending; empty without `.dropGap`.
   public let gaps: [Int]
+  /// The room this project plays in (`.space`); nil = dry.
+  public let space: SpaceSpec?
+  /// The sampler slots of lanes that send to the room.
+  let sendSlots: UInt64
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
@@ -263,17 +272,21 @@ public final class WaveProject: @unchecked Sendable {
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
-    gaps: [Int] = []
+    gaps: [Int] = [], space: SpaceSpec? = nil
   ) {
     self.gain = gain
     self.energy = energy
     self.duckDepth = duckDepth
     self.gaps = gaps
+    self.space = space
     var slots: UInt64 = 0
-    for lane in lanes where lane.ducks && lane.samplerSlot >= 0 && lane.samplerSlot < 64 {
-      slots |= 1 << UInt64(lane.samplerSlot)
+    var sending: UInt64 = 0
+    for lane in lanes where lane.samplerSlot >= 0 && lane.samplerSlot < 64 {
+      if lane.ducks { slots |= 1 << UInt64(lane.samplerSlot) }
+      if lane.send > 0 { sending |= 1 << UInt64(lane.samplerSlot) }
     }
     duckSlots = slots
+    sendSlots = space == nil ? 0 : sending
     let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     let track =
       trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
@@ -317,6 +330,7 @@ private func buildLanes(
   let voiceCrash = opts.musicality.contains(.crash)
   let voiceOpenHats = opts.musicality.contains(.openHats)
   let stereo = opts.musicality.contains(.stereo)
+  let space = opts.musicality.contains(.space)
   for n in g.nets {
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
@@ -366,6 +380,9 @@ private func buildLanes(
           lane.ducks = key == "tonal" && (tr.group == "bass" || tr.group == "harmony")
           lane.isKick = key == "kick" && (n.bundle.riffGroup == "kick" || n.id == "kick")
         }
+        if space {
+          lane.send = SpaceSpec.send(kind: key, group: tr.group ?? n.bundle.riffGroup)
+        }
         if !gaps.isEmpty && override == nil && !g.isStingerNet[n.index] {
           lane.gapped =
             key == "tonal"
@@ -409,12 +426,14 @@ private func buildLanes(
   let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
   bindSampler(live, liveInstrument, "melody", opts)
   live.netId = "<live>"
+  if space { live.send = SpaceSpec.send(kind: "tonal", group: "melody") }
   let liveIndex = lanes.count
   lanes.append(live)
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
-    gain: gain, energy: energy, duckDepth: opts.duckDepth, gaps: gaps)
+    gain: gain, energy: energy, duckDepth: opts.duckDepth, gaps: gaps,
+    space: space ? opts.space ?? .room : nil)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -541,10 +560,22 @@ public final class WaveRunner {
   private var toneS = [Float](repeating: 0, count: 4096)
   /// …and the sampled instruments (stereo samples) mono below 150 Hz.
   private var samplerSide: SideHighpass
+  // Room (`DJMusicality.Fixes.space`): each sample's send (`accSend`, the lanes' `send` share)
+  // into the reverb, whose stereo return joins the mix as mid and side. Sampled instruments
+  // render a block at a time, after the samples: their send waits in `sendFifo` and goes in
+  // during the next block (a block's delay, inside the room's pre-delay).
+  private let reverb: FDNReverb?
+  private var accSend = 0.0
+  private var sendFifo = [Float](repeating: 0, count: 8192)
+  private var fifoRead = 0
+  private var fifoCount = 0
+  private var sendBuf = [Float](repeating: 0, count: 4096)
+  private var sendingSlots: UInt64 = 0
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
     self.opts = opts
+    reverb = opts.musicality.contains(.space) ? FDNReverb(sampleRate: sampleRate) : nil
     samplers = opts.samplers
     samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
     grooveOn = opts.musicality.contains(.groove)
@@ -621,6 +652,7 @@ public final class WaveRunner {
       fading = old
     }
     current = next
+    reverb?.tune(next.space)
     setTempo(next.graph.tempo)
   }
 
@@ -1149,25 +1181,49 @@ public final class WaveRunner {
         at: min(evOffset[e], frames - 1))
     }
     evCount = 0
-    let ducked = frames <= duckL.count ? live & duckingSlots : 0
-    bank.renderAll(live & ~ducked, frames: frames, left, right)
-    if ducked != 0 {
+    let fits = frames <= duckL.count
+    let ducked = fits ? live & duckingSlots : 0
+    let sent = fits ? live & sendingSlots : 0
+    bank.renderAll(live & ~ducked & ~sent, frames: frames, left, right)
+    // the slots that duck, send, or both, a group at a time through the scratch pair
+    if sent != 0 { for i in 0..<frames { sendBuf[i] = 0 } }
+    for group in 0..<3 {
+      let mask = group == 0 ? ducked & ~sent : group == 1 ? sent & ~ducked : ducked & sent
+      guard mask != 0 else { continue }
       for i in 0..<frames {
         duckL[i] = 0
         duckR[i] = 0
       }
       duckL.withUnsafeMutableBufferPointer { l in
         duckR.withUnsafeMutableBufferPointer { r in
-          bank.renderAll(
-            ducked, frames: frames, l.baseAddress!, right == nil ? nil : r.baseAddress!)
+          bank.renderAll(mask, frames: frames, l.baseAddress!, right == nil ? nil : r.baseAddress!)
         }
       }
+      let ducks = group != 1
       for i in 0..<frames {
-        left[i] += duckL[i] * duckBuf[i]
-        right?[i] += duckR[i] * duckBuf[i]
+        let g: Float = ducks ? duckBuf[i] : 1
+        let l = duckL[i] * g
+        let r = duckR[i] * g
+        left[i] += l
+        right?[i] += r
+        if group != 0 { sendBuf[i] += right == nil ? l : 0.5 * (l + r) }
       }
     }
     bank.endBlock()
+    if sent != 0 { queueSamplerSend(frames: frames) }
+  }
+
+  /// The sampled instruments' send of the block just rendered, into `sendFifo` for the room to
+  /// take during the next block. They join the voices at the track gain alone (the voices go
+  /// through the master gain as well), so the send is lifted by that to match.
+  private func queueSamplerSend(frames: Int) {
+    let level = Float(SpaceSpec.samplerSend / max(0.05, masterGain))
+    for i in 0..<frames where fifoCount < sendFifo.count {
+      var w = fifoRead + fifoCount
+      if w >= sendFifo.count { w -= sendFifo.count }
+      sendFifo[w] = sendBuf[i] * level
+      fifoCount += 1
+    }
   }
 
   /// Tune voice `v` to `note`; a string is damped and plucked again.
@@ -1312,6 +1368,7 @@ public final class WaveRunner {
       }
       acc += out
       accS += out * lane.pan
+      accSend += out * lane.send
       if abs(lane.s[0]) < silent && (lane.numExp < 2 || abs(lane.s[1]) < silent) {
         lane.active = false
         lane.st[slotEnv] = 0
@@ -1381,6 +1438,7 @@ public final class WaveRunner {
       out *= duckGain
       side *= duckGain
     }
+    accSend += out * lane.send
     // a spread lane has no post chain (`buildLanes`), so its voices' side sum is still in step
     let s = spread ? side : out * lane.pan
     if splitTone {
@@ -1557,6 +1615,7 @@ public final class WaveRunner {
     let wide = stereoOn && right != nil && frames <= preS.count
     let depth = frames <= duckBuf.count ? current?.duckDepth ?? 0 : 0
     duckingSlots = depth > 0 ? current?.duckSlots ?? 0 : 0
+    sendingSlots = reverb != nil && frames <= sendBuf.count ? current?.sendSlots ?? 0 : 0
     // the dip recovers over about an eighth note (3 time constants), attack 2 ms
     let duckRelease = exp(-6 * clock[clkTempo] / (60 * sampleRate))
     let duckAttack = 1 - exp(-1 / (0.002 * sampleRate))
@@ -1584,6 +1643,7 @@ public final class WaveRunner {
       accTone = 0
       accS = 0
       accToneS = 0
+      accSend = 0
       if let proj = current {
         for lane in proj.lanes {
           if lane.active {
@@ -1595,6 +1655,24 @@ public final class WaveRunner {
       }
       if let f = fading { for lane in f.lanes where lane.active { laneSample(lane) } }
       if let proj = current { for lane in proj.sources { lane.st[slotPrev] = lane.st[slotEnv] } }
+      if let reverb {
+        var x = accSend
+        if fifoCount > 0 {
+          x += Double(sendFifo[fifoRead])
+          fifoRead = fifoRead + 1 == sendFifo.count ? 0 : fifoRead + 1
+          fifoCount -= 1
+        }
+        let (wl, wr) = reverb.process(x)
+        let mid = 0.5 * (wl + wr)
+        let side = 0.5 * (wl - wr)
+        if splitTone {
+          accTone += mid
+          accToneS += side
+        } else {
+          acc += mid
+          accS += side
+        }
+      }
       if energy != nil {
         preL[i] = Float(acc * gain)
         toneL[i] = Float(accTone * gain)

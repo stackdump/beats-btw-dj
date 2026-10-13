@@ -145,10 +145,15 @@ public enum DJMusicality {
     /// the next "ts" instead of ringing under it. Applied by the runner, per hihat net.
     public static let choke = Fixes(rawValue: 1 << 24)
 
+    /// A room: a send reverb (`SpaceSpec`, `FDNReverb`) the pads, leads, arp, snare and claps
+    /// send to, by genre (a long bright hall for trance, a short room for techno, a dark one for
+    /// lofi); kick and bass stay dry. beats' engine has no space at all. Applied by the runner.
+    public static let space = Fixes(rawValue: 1 << 25)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
-      .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke,
+      .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -159,6 +164,7 @@ public enum DJMusicality {
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
+      "space": .space,
       "none": [],
     ]
   }

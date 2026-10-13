@@ -317,9 +317,10 @@ case "ctl":
   }
 
 case "render":
-  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth]
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
-  // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments.
+  // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
+  // --room renders it a second time without the reverb and reports the room's return level.
   let seconds = option("--seconds") ?? 90
   var structure: String? = "standard"
   var out: String?
@@ -352,7 +353,8 @@ case "render":
     positional.removeSubrange(i...(i + 1))
   }
   let synth = positional.contains("--synth")
-  positional.removeAll { $0 == "--synth" }
+  let room = positional.contains("--room")
+  positional.removeAll { $0 == "--synth" || $0 == "--room" }
   guard positional.count >= 2, let seed = Double(positional[1]) else {
     stderr(
       "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--synth]"
@@ -388,6 +390,26 @@ case "render":
   }
   let dips = render.preDropDips(track.played)
   if !dips.isEmpty { audio["preDropDipDB"] = round3(dips.reduce(0, +) / Double(dips.count)) }
+  // --room: render it again without `.space`; what the room adds, against the dry mix
+  if room && fixes.contains(.space) {
+    var dryDeck = deckOpts
+    dryDeck.musicality.remove(.space)
+    let drySource = WaveDeckSource(sampleRate: sr, opts: dryDeck)
+    var dryOpts = WaveOptions.extended(samplers: synth ? nil : drySource.samplers)
+    dryOpts.musicality = fixes.subtracting(.space)
+    let dry = OfflineRender(
+      track: PreparedTrack(spec: spec, sampleRate: sr, opts: dryOpts), source: drySource,
+      seconds: seconds)
+    var wet = 0.0
+    var base = 0.0
+    for i in 0..<min(dry.left.count, render.left.count) {
+      let dl = Double(render.left[i] - dry.left[i])
+      let dr = Double(render.right[i] - dry.right[i])
+      wet += dl * dl + dr * dr
+      base += Double(dry.left[i] * dry.left[i] + dry.right[i] * dry.right[i])
+    }
+    if wet > 0 && base > 0 { audio["roomReturnDB"] = round3(10 * log10(wet / base)) }
+  }
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,

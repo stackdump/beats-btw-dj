@@ -174,6 +174,17 @@ its copy; the two are now independent. Rules inherited from that split:
   hat in the runner) and `.stereo` (mid/side pan per lane in the runner, `stereoPlacement`; the
   sampler bus's side highpassed at 150 Hz). Stereo only renders with a right channel: mono
   callers get the old mix.
+- Part E adds `.legato` (melody notes held to the next, ≤ a beat), `.cadence` (phrase ends —
+  half a bar of rest, or the last note before a 2-bar line — on a chord tone), `.approach`
+  (a moving bass line steps into the next root; not offbeat-bass genres or jazz), and in the
+  runner `.dropGap` (kick / snare / hats / bass skip the last beat of a buildup into a drop:
+  `DJMusicality.dropGaps`, `WaveProject.gaps`), `.choke` (a net's closed hat chokes its open
+  hat) and `.space` (`Space.swift`: an 8-line FDN send reverb per runner, allocated at init;
+  room by genre `SpaceSpec.forGenre`, set by `PreparedTrack` like `duckDepth`; per-lane
+  `send`; sampled slots that send render as their own group and reach the room a block late
+  through `sendFifo`; input highpassed at 200 Hz, return side at 300 Hz). `djctl render
+  --room` measures the return against a dry render. Tests that A/B an earlier note-level fix
+  leave `.cadence` / `.approach` out of both sides (`playedWithout` in MusicalityTests).
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)

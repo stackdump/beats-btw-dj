@@ -85,12 +85,13 @@ extension Deck {
   }
 
   /// `opts` for another start of the song this deck plays: it keeps the playing project's
-  /// loudness gain, energy curve and duck depth instead of measuring them again.
+  /// loudness gain, energy curve, duck depth and room instead of measuring them again.
   func sameSongOptions(_ opts: WaveOptions) -> WaveOptions {
     var o = opts
     if let g = wave.latest?.gain { o.trackGain = g }
     if let e = wave.latest?.energy { o.trackEnergy = e }
     if let d = wave.latest?.duckDepth { o.duckDepth = d }
+    if let s = wave.latest?.space { o.space = s }
     return o
   }
 

@@ -154,6 +154,9 @@ public final class PreparedTrack: @unchecked Sendable {
     if case .net(let spec) = source, opts.musicality.contains(.duck) {
       o.duckDepth = DJMusicality.duckDepth(genre: spec.genre)
     }
+    if case .net(let spec) = source, opts.musicality.contains(.space) {
+      o.space = SpaceSpec.forGenre(spec.genre)
+    }
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o)
   }
 }
