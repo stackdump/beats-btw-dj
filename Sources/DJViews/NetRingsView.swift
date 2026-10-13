@@ -155,7 +155,9 @@ public struct RingNetView: View {
   }
 }
 
-/// Every audible ring of a net deck, labelled by role.
+/// Every audible ring of a net deck, labelled by role: the parts in a grid of four, the
+/// stingers (`hit1`…, one-shots fired by hand) after them in a smaller, quieter row, so the
+/// parts that play read first.
 public struct NetRingsView: View {
   public var snapshot: NetSnapshot?
   public var tint: Color
@@ -167,13 +169,35 @@ public struct NetRingsView: View {
     self.arcs = arcs
   }
 
+  /// `hit1`, `hit2`…: beats' stinger nets.
+  static func isStinger(_ role: String) -> Bool {
+    role.hasPrefix("hit") && role.count > 3 && role.dropFirst(3).allSatisfy(\.isNumber)
+  }
+
   public var body: some View {
     let rings = snapshot?.rings ?? []
-    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-      ForEach(rings, id: \.role) { r in
-        VStack(spacing: 1) {
-          RingNetView(ring: r, tint: tint, arcs: arcs)
-          Text(r.role).font(.system(size: 9)).foregroundStyle(r.muted ? .secondary : .primary)
+    let parts = rings.filter { !Self.isStinger($0.role) }
+    let stingers = rings.filter { Self.isStinger($0.role) }
+    VStack(spacing: DJStyle.s) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6)
+      {
+        ForEach(parts, id: \.role) { r in
+          VStack(spacing: 1) {
+            RingNetView(ring: r, tint: tint, arcs: arcs)
+            Text(r.role).font(.system(size: 9)).foregroundStyle(r.muted ? .secondary : .primary)
+          }
+        }
+      }
+      if !stingers.isEmpty {
+        HStack(spacing: 6) {
+          Text("STINGERS").font(.system(size: 8, weight: .semibold)).tracking(1)
+            .foregroundStyle(.tertiary).fixedSize()
+          ForEach(stingers, id: \.role) { r in
+            RingNetView(ring: r, tint: tint, arcs: arcs).frame(width: 30, height: 30)
+              .opacity(0.8)
+              .help(r.role)
+          }
+          Spacer(minLength: 0)
         }
       }
     }

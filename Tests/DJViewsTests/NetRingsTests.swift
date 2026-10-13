@@ -70,4 +70,34 @@ struct NetRingsRenderTests {
     let row2Right = px.count(inX: 160..<320, y: 80..<160) { r, _, _ in r > 150 }
     #expect(row2Left > 20 && row2Right == 0, "left \(row2Left) right \(row2Right)")
   }
+
+  /// Stingers don't take a part's place in the grid: they sit in a short row of small rings
+  /// under it, and every part ring stays full size.
+  @Test func stingersSitInASmallRowUnderTheParts() throws {
+    let rings = ["kick", "bass", "hit1", "hit2", "hit3"].map {
+      RingView(
+        id: $0, role: $0, size: 16, hits: [Bool](repeating: true, count: 16),
+        velocities: [Int](repeating: 100, count: 16), token: 0, lastFired: -1, phase: 0,
+        muted: false)
+    }
+    let px = try #require(
+      renderPixels(
+        NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange), width: 320,
+        height: 160))
+    // bands of rows that hold orange: the parts' row, then the stingers' much shorter one
+    var bands: [Range<Int>] = []
+    for y in 0..<160 where px.count(inX: 0..<320, y: y..<(y + 1), where: { r, _, _ in r > 150 }) > 0
+    {
+      if let last = bands.last, last.upperBound >= y - 2 {
+        bands[bands.count - 1] = last.lowerBound..<(y + 1)
+      } else {
+        bands.append(y..<(y + 1))
+      }
+    }
+    try #require(bands.count == 2, "\(bands)")
+    #expect(bands[0].count > 60 && bands[1].count < 34, "\(bands)")
+    // the parts' row holds kick and bass only (columns 3 and 4 empty)
+    #expect(px.count(inX: 170..<320, y: bands[0], where: { r, _, _ in r > 150 }) == 0)
+    #expect(NetRingsView.isStinger("hit12") && !NetRingsView.isStinger("hihat"))
+  }
 }

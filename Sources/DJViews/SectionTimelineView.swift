@@ -21,6 +21,8 @@ public struct SectionTimelineView: View {
     GeometryReader { g in
       Canvas { ctx, size in
         guard let t = timeline else { return }
+        // blocks first, then the playhead, then the labels: the line never cuts a name
+        var labels: [(rect: CGRect, seg: SectionTimeline.Segment)] = []
         for seg in t.segments {
           let rect = CGRect(
             x: seg.start * size.width + 0.5, y: 0, width: max(1, seg.width * size.width - 1),
@@ -33,6 +35,33 @@ public struct SectionTimelineView: View {
             ctx.fill(
               Path(CGRect(x: x, y: 0, width: 1, height: size.height)),
               with: .color(.white.opacity(0.25)))
+          }
+          labels.append((rect, seg))
+        }
+        let x = t.playhead * size.width
+        var head = Path()
+        head.move(to: CGPoint(x: x, y: 0))
+        head.addLine(to: CGPoint(x: x, y: size.height))
+        ctx.stroke(head, with: .color(.black.opacity(0.45)), lineWidth: 4)
+        ctx.stroke(head, with: .color(.white), lineWidth: 2)
+        // caps, so the position reads even over a pale block
+        for (y, dy) in [(0.0, 4.0), (size.height, -4.0)] {
+          var cap = Path()
+          cap.move(to: CGPoint(x: x - 4, y: y))
+          cap.addLine(to: CGPoint(x: x + 4, y: y))
+          cap.addLine(to: CGPoint(x: x, y: y + dy))
+          cap.closeSubpath()
+          ctx.fill(cap, with: .color(.white))
+        }
+        for (rect, seg) in labels {
+          if rect.width > 10 && rect.width <= 28 {
+            // too narrow for the name (a 4-bar intro): its initial
+            var inside = ctx
+            inside.clip(to: Path(roundedRect: rect, cornerRadius: 3))
+            inside.draw(
+              Text(String(seg.name.prefix(1)).uppercased())
+                .font(.system(size: 9, weight: .semibold)).foregroundColor(.white.opacity(0.85)),
+              at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
           }
           if rect.width > 28 {
             // `.pn-timeline-section { overflow: hidden }`: a label wider than its block is cut
@@ -60,10 +89,6 @@ public struct SectionTimelineView: View {
             }
           }
         }
-        var head = Path()
-        head.move(to: CGPoint(x: t.playhead * size.width, y: 0))
-        head.addLine(to: CGPoint(x: t.playhead * size.width, y: size.height))
-        ctx.stroke(head, with: .color(.white), lineWidth: 2)
       }
       .contentShape(Rectangle())
       .gesture(
