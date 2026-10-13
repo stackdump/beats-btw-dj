@@ -776,8 +776,7 @@ public enum DJMusicality {
   /// (a chord's notes across the field; an arp's successive notes left, right, left), the
   /// runner narrowing it for notes below G4 so nothing at or under E3 leaves the middle. `kind`
   /// is the lane's drum kind or "tonal"; `group` the net's part.
-  public static func stereoPlacement(kind: String, group: String) -> (pan: Double, spread: Double)
-  {
+  public static func stereoPlacement(kind: String, group: String) -> (pan: Double, spread: Double) {
     switch kind {
     case "hat", "openhat": return (0.3, 0)
     case "crash": return (-0.3, 0)

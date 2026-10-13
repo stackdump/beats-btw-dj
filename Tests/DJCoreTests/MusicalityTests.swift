@@ -367,8 +367,9 @@ struct MusicalityTests {
         #expect(roll.suffix(16).map(\.tick) == Array((end - 15)...end), "sixteenths at the end")
       }
     }
-    #expect(WaveRunner.prepare(played("edm", 42).played, sampleRate: 22_050, opts: .extended)
-      .byNet.keys.contains { $0.hasPrefix("fill-") })
+    #expect(
+      WaveRunner.prepare(played("edm", 42).played, sampleRate: 22_050, opts: .extended)
+        .byNet.keys.contains { $0.hasPrefix("fill-") })
   }
 
   /// A crash on the downbeat of every section after the first, louder into a drop, played by a
@@ -428,7 +429,8 @@ struct MusicalityTests {
     #expect(!hats.contains { ($0.tick - 1) % 4 != 2 && $0.note == DJMusicality.openHatNote })
     let closed = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.openHats))
     let before = NoteLog.capture(closed).filter { $0.isDrum && $0.net.hasPrefix("hihat") }
-    #expect(before.map(\.tick) == hats.map(\.tick) && before.map(\.velocity) == hats.map(\.velocity))
+    #expect(
+      before.map(\.tick) == hats.map(\.tick) && before.map(\.velocity) == hats.map(\.velocity))
     let deck = WaveRunner.prepare(t.played, sampleRate: 22_050, opts: .extended)
     #expect(deck.lanes.contains { $0.voice.kind == "openhat" && $0.netId.hasPrefix("hihat") })
     for other in ["dnb", "jazz", "lofi"] {

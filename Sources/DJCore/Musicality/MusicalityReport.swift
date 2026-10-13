@@ -136,7 +136,8 @@ public struct MusicalityReport: Sendable {
       if total > 0 { chordTonesOnBeats = Double(hits) / Double(total) }
       let arp = tonal.filter { $0.group == "arp" && chord[($0.tick - 1) / 16] != nil }
       if !arp.isEmpty {
-        let tones = arp.filter { e in chord[(e.tick - 1) / 16]!.contains { $0 % 12 == e.note % 12 } }
+        let tones = arp.filter { e in chord[(e.tick - 1) / 16]!.contains { $0 % 12 == e.note % 12 }
+        }
         arpChordTones = Double(tones.count) / Double(arp.count)
       }
       var firstBass: [Int: Int] = [:]

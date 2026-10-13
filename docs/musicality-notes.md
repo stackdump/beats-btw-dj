@@ -297,10 +297,13 @@ pad wide, mono sum = mono mix, `.stereo` off is mono, trance / lofi / jazz wide 
 −30 dB side under 150 Hz, the sampler side highpass), `StereoRealTimeTests` (release: no
 allocation). `make swift-rt-test` green.
 
-Test-run note: one full `make swift-test` had a test process die (signal 5) with
-`SamplerTests.aFullBankEvicts…` and `SessionTests.theReplayIsTheSameAudioAsTheLiveSet` failing;
-both suites pass alone (33/33). They load AUSamplers, which looks like contention when the whole
-suite runs in parallel. It has not been traced to this run's changes.
+Test runs: the final full `make swift-test` passed 1829 of 1830. The one failure,
+`MasterFlameMixerTests.theMixerMeterLeavesTheIdleLineWhenADeckPlays`, was bisected to
+`.openHats`: open hats light the meter's middle bins, and the test found the meter box by the
+dark rows of that column. Its box detection was fixed and it passes. An earlier full run had a
+test process die (signal 5) with `SamplerTests.aFullBankEvicts…` and
+`SessionTests.theReplayIsTheSameAudioAsTheLiveSet` failing. Both suites pass alone (33/33) and
+passed in the final full run; they load AUSamplers, so it looks like contention under parallel load.
 
 ### Listen checklist (`make run-app-release`, or `djctl render <g> <seed> --out f.wav`)
 
