@@ -49,6 +49,9 @@ COLUMNS = [
     ("phraseEndsOnChordTones", "pEnd", "{:4.2f}"),
     ("sectionSpreadDB", "sprd", "{:4.1f}"),
     ("preDropDipDB", "gapDB", "{:6.1f}"),
+    ("melodyIdeaRepeats", "idea", "{:4.2f}"),
+    ("balanceErrorDB", "balErr", "{:6.1f}"),
+    ("kickMinusBass", "k-b", "{:5.1f}"),
     ("sideDB", "side", "{:6.1f}"),
     ("lowSideDB", "lowSd", "{:6.1f}"),
     ("lra", "LRA", "{:4.1f}"),
@@ -80,13 +83,17 @@ def flat(doc):
         "melodyVel": m.get("velocitySpread", {}).get("melody"),
         "sideDB": a.get("sideDB"),
         "lowSideDB": a.get("lowSideDB"),
+        "balanceErrorDB": a.get("balanceErrorDB"),
     }
+    bal = a.get("balanceDB", {})
+    if "kick" in bal and "bass" in bal:
+        row["kickMinusBass"] = bal["kick"] - bal["bass"]
     for k in ("inKey", "bassOnRoot", "bassOnKick", "harmonyInBassRange", "semitoneClashesPer100",
               "melodyRecurrence", "sectionContrast", "changesOnBars", "changesOnPhrases",
               "fillsBeforeSections", "slotsFromTheTop", "padMotion", "melodyRepeats", "padColor",
               "arpChordTones", "arpDoublesMelody", "buildupsBuild",
               "crashOnSections", "bassLeap", "bassStepwise", "melodyLegato",
-              "phraseEndsOnChordTones"):
+              "phraseEndsOnChordTones", "melodyIdeaRepeats"):
         row[k] = m.get(k)
     return row
 
@@ -110,7 +117,7 @@ def run(outdir, seconds, sampled, djctl, fixes=None):
         for s in SEEDS:
             name = f"{g}-{s}"
             wav = os.path.join(outdir, name + ".wav")
-            cmd = [djctl, "render", g, str(s), "--seconds", str(seconds), "--out", wav]
+            cmd = [djctl, "render", g, str(s), "--seconds", str(seconds), "--out", wav, "--balance"]
             if not sampled:
                 cmd.append("--synth")
             if fixes:

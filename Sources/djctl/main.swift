@@ -317,10 +317,11 @@ case "ctl":
   }
 
 case "render":
-  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room]
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
-  // --room renders it a second time without the reverb and reports the room's return level.
+  // --room renders it a second time without the reverb and reports the room's return level;
+  // --balance solos each part (`MixBalance`) and reports its level against the mix.
   let seconds = option("--seconds") ?? 90
   var structure: String? = "standard"
   var out: String?
@@ -354,7 +355,8 @@ case "render":
   }
   let synth = positional.contains("--synth")
   let room = positional.contains("--room")
-  positional.removeAll { $0 == "--synth" || $0 == "--room" }
+  let balance = positional.contains("--balance")
+  positional.removeAll { $0 == "--synth" || $0 == "--room" || $0 == "--balance" }
   guard positional.count >= 2, let seed = Double(positional[1]) else {
     stderr(
       "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--synth]"
@@ -409,6 +411,14 @@ case "render":
       base += Double(dry.left[i] * dry.left[i] + dry.right[i] * dry.right[i])
     }
     if wet > 0 && base > 0 { audio["roomReturnDB"] = round3(10 * log10(wet / base)) }
+  }
+  // --balance: each part soloed against the whole mix, K-weighted (synth voices)
+  if balance {
+    var o = WaveOptions.extended
+    o.musicality = fixes
+    let levels = MixBalance.measure(track.played, opts: o.forGenre(spec.genre))
+    audio["balanceDB"] = levels.mapValues(round3)
+    if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
   }
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",

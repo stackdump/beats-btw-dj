@@ -25,22 +25,30 @@ public enum Loudness {
 
   /// The gain for `project` (1 when it plays nothing), measured with the `voiceFixes` among
   /// `fixes` on.
-  public static func gain(for project: Project, fixes: DJMusicality.Fixes = []) -> Double {
-    guard let db = measure(project, fixes: fixes) else { return 1 }
+  public static func gain(
+    for project: Project, fixes: DJMusicality.Fixes = [], balance: [String: Double]? = nil
+  ) -> Double {
+    guard let db = measure(project, fixes: fixes, balance: balance) else { return 1 }
     let g = pow(10, (targetDB - db) / 20)
     return min(range.max, max(range.min, g))
   }
 
   /// K-weighted mean square (dB) of the voices, times the master gain, over the probe: two
-  /// bars from `start` (a step), else from the busiest section's start.
-  static func measure(_ project: Project, start: Int? = nil, fixes: DJMusicality.Fixes = [])
-    -> Double?
-  {
+  /// bars from `start` (a step), else from the busiest section's start. `balance`: the parts'
+  /// trims (`MixBalance.trims`) to play them with.
+  static func measure(
+    _ project: Project, start: Int? = nil, fixes: DJMusicality.Fixes = [],
+    balance: [String: Double]? = nil, sampleRate probeRate: Double = probeRate
+  ) -> Double? {
     let start = start ?? busiestStart(project)
     var o = WaveOptions()
     o.instruments = .shared
     o.master = "linear"
     o.musicality = fixes.intersection(voiceFixes)
+    if let balance {
+      o.musicality.insert(.balance)
+      o.trackBalance = balance
+    }
     let runner = WaveRunner(sampleRate: probeRate, opts: o)
     runner.load(
       prepared: WaveRunner.prepare(project, sampleRate: probeRate, opts: o, startTick: start))

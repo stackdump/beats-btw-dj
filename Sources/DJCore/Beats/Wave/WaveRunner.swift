@@ -86,6 +86,9 @@ public struct WaveOptions {
   /// The echo (`DJMusicality.Fixes.echo`), set from the track's genre (`EchoSpec.forGenre`);
   /// nil = none.
   public var echo: EchoSpec?
+  /// The parts' trims (`DJMusicality.Fixes.balance`, dB by `MixBalance` part) to prepare with
+  /// instead of measuring them: another start of the same song reuses the playing project's.
+  public var trackBalance: [String: Double]?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -328,6 +331,8 @@ public final class WaveProject: @unchecked Sendable {
   let sendSlots: UInt64
   /// The echo this project plays (`.echo`); nil = none.
   public let echo: EchoSpec?
+  /// The parts' trims it plays with (`.balance`), dB; nil = none.
+  public let balance: [String: Double]?
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
@@ -335,10 +340,12 @@ public final class WaveProject: @unchecked Sendable {
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
-    gaps: [Int] = [], space: SpaceSpec? = nil, echo: EchoSpec? = nil
+    gaps: [Int] = [], space: SpaceSpec? = nil, echo: EchoSpec? = nil,
+    balance: [String: Double]? = nil
   ) {
     self.gain = gain
     self.echo = echo
+    self.balance = balance
     self.energy = energy
     self.duckDepth = duckDepth
     self.gaps = gaps
@@ -400,6 +407,7 @@ private func buildLanes(
   let echo = opts.musicality.contains(.echo) && opts.echo != nil
   let kickHz =
     opts.musicality.contains(.kickTune) ? KickTuning.hz(root: g.project.rootNote) : nil
+  let trims = opts.musicality.contains(.balance) ? opts.trackBalance ?? [:] : [:]
   for n in g.nets {
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
@@ -463,6 +471,13 @@ private func buildLanes(
         if echo && lane.samplerSlot < 0 {
           lane.echoSend = EchoSpec.send(kind: key, group: tr.group ?? n.bundle.riffGroup)
         }
+        // `.balance`: the part's trim (fills and crashes are no part's: as composed)
+        if !trims.isEmpty, override == nil, !n.id.hasPrefix("fill-"),
+          let part = MixBalance.part(kind: key, group: tr.group ?? n.bundle.riffGroup),
+          let db = trims[part]
+        {
+          lane.st[slotLevel] *= pow(10, db / 20)
+        }
         if !gaps.isEmpty && override == nil && !g.isStingerNet[n.index] {
           lane.gapped =
             key == "tonal"
@@ -516,7 +531,8 @@ private func buildLanes(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, gaps: gaps,
-    space: space ? opts.space ?? .room : nil, echo: echo ? opts.echo : nil)
+    space: space ? opts.space ?? .room : nil, echo: echo ? opts.echo : nil,
+    balance: trims.isEmpty ? nil : trims)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -691,12 +707,18 @@ public final class WaveRunner {
   ) -> WaveProject {
     let g = WaveGraph(project: project)
     if startTick > 0 { g.fastForward(to: startTick) }
+    var opts = opts
+    if opts.musicality.contains(.balance) && opts.trackBalance == nil {
+      opts.trackBalance = MixBalance.trims(for: project, fixes: opts.musicality)
+    }
     // (the compiled graph is built from the project's JSON, which has no coordinates: the
     // layout takes the net positions from the project itself)
     let gain =
       opts.trackGain
       ?? (opts.musicality.contains(.loudness)
-        ? Loudness.gain(for: project, fixes: opts.musicality) : 1)
+        ? Loudness.gain(
+          for: project, fixes: opts.musicality,
+          balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil) : 1)
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     let gaps = opts.musicality.contains(.dropGap) ? DJMusicality.dropGaps(project) : []

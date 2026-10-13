@@ -177,11 +177,17 @@ public enum DJMusicality {
     /// continue and close as composed. A bar the melody rests in stays a rest.
     public static let motif = Fixes(rawValue: 1 << 30)
 
+    /// The parts balanced against each other (`MixBalance`): beats sets one level per voice
+    /// family, so in the dance genres the kick is the whole mix (K-weighted, bass and lead sit
+    /// 12–19 dB under it). Each part is measured soloed at prepare and trimmed (± 6 dB) toward
+    /// `MixBalance.targetDB`; `.loudness` then sets the track's level. Synth voices only.
+    public static let balance = Fixes(rawValue: 1 << 31)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
       .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space, .subtractive,
-      .unison, .echo, .kickTune, .motif,
+      .unison, .echo, .kickTune, .motif, .balance,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -192,7 +198,7 @@ public enum DJMusicality {
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
-      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo, "kickTune": .kickTune, "motif": .motif,
+      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo, "kickTune": .kickTune, "motif": .motif, "balance": .balance,
       "none": [],
     ]
   }
