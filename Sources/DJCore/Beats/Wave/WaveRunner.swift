@@ -134,8 +134,10 @@ final class Lane {
   var ducks = false
   var isKick = false
   /// `.stereo`: side gain of the whole lane, and per voice when its voices spread (empty: all
-  /// at `pan`). 0 = centre.
+  /// at `pan`). 0 = centre. `voiceSpread` is each voice's offset at full width (±spread);
+  /// `voicePan` what it plays at, narrowed for low notes when the voice is struck.
   var pan = 0.0
+  var voiceSpread: [Double] = []
   var voicePan: [Double] = []
   // post chain on the voice sum: lowpass biquad, then distortion
   var post: [Double] = []
@@ -338,7 +340,8 @@ private func buildLanes(
           lane.pan = at.pan
           // (a voice post chain — lowpass, distortion — runs on the voice sum: one pan for all)
           if at.spread > 0 && lane.isTonal && lane.post.isEmpty && lane.voice.distortion == 0 {
-            lane.voicePan = (0..<lane.poly).map { at.pan + ($0 % 2 == 0 ? at.spread : -at.spread) }
+            lane.voiceSpread = (0..<lane.poly).map { $0 % 2 == 0 ? at.spread : -at.spread }
+            lane.voicePan = [Double](repeating: at.pan, count: lane.poly)
           }
         }
         if opts.duckDepth > 0 {
@@ -1129,6 +1132,11 @@ public final class WaveRunner {
   /// Tune voice `v` to `note`; a string is damped and plucked again.
   private func strike(_ lane: Lane, _ v: Int, note: Int) {
     lane.inc[v] = 440 * pow(2, (Double(note) - 69) / 12) * lane.st[slotInvSr]
+    if !lane.voiceSpread.isEmpty {
+      // centred at E3 and below (the low end stays mono), full width from G4 up
+      let width = min(1, max(0, Double(note - 52) / 15))
+      lane.voicePan[v] = lane.pan + lane.voiceSpread[v] * width
+    }
     guard lane.isPluck else { return }
     let period = 1 / lane.inc[v]
     // The loop lowpass delays the note by its phase delay at f0: take that off the line

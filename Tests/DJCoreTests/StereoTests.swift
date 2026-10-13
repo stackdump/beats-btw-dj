@@ -86,11 +86,13 @@ struct StereoTests {
     #expect(a.l == render(kitAndPad(), fixes: [], right: false).l)
   }
 
-  /// A whole dance track through the deck's options: a wide mix (side 5–25 dB under mid) whose
-  /// low end is mono (side more than 30 dB under mid below 150 Hz).
-  @Test func aTrackIsWideAboveAndMonoBelow() {
+  /// A whole track through the deck's options: a wide mix (side 5–25 dB under mid) whose low
+  /// end is mono (side more than 30 dB under mid below 150 Hz), pads reaching down to C3
+  /// included (lofi, jazz).
+  @Test(arguments: ["trance", "lofi", "jazz"])
+  func aTrackIsWideAboveAndMonoBelow(genre: String) {
     let track = PreparedTrack(
-      spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: sr)
+      spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr)
     let runner = WaveRunner(sampleRate: sr, opts: .extended)
     runner.load(prepared: track.prepared)
     runner.play()
@@ -107,8 +109,8 @@ struct StereoTests {
       }
     }
     let m = AudioMetrics(left: l, right: r, sampleRate: sr)
-    #expect(m.sideDB > -25 && m.sideDB < -5, "side \(m.sideDB) dB")
-    #expect(m.lowSideDB < -30, "low side \(m.lowSideDB) dB")
+    #expect(m.sideDB > -25 && m.sideDB < -5, "\(genre): side \(m.sideDB) dB")
+    #expect(m.lowSideDB < -30, "\(genre): low side \(m.lowSideDB) dB")
     #expect(m.clipped == 0)
   }
 }
