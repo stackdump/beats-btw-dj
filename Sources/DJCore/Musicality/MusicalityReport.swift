@@ -57,6 +57,8 @@ public struct MusicalityReport: Sendable {
   /// step (1–2 semitones) apart.
   public var melodyRepeats: Double?
   public var melodySteps: Double?
+  /// Pad chords with four or more pitch classes (sevenths, added ninths), of all pad chords.
+  public var padColor: Double?
 
   public init() {}
 
@@ -207,6 +209,11 @@ public struct MusicalityReport: Sendable {
       prevChord = c
     }
     if !motion.isEmpty { padMotion = motion.reduce(0, +) / Double(motion.count) }
+    if !chord.isEmpty {
+      padColor =
+        Double(chord.values.filter { Set($0.map { $0 % 12 }).count >= 4 }.count)
+        / Double(chord.count)
+    }
 
     // Melodic intervals, within a net
     var repeats = 0
@@ -277,6 +284,7 @@ public struct MusicalityReport: Sendable {
     if let v = padMotion { d["padMotion"] = round3(v) }
     if let v = melodyRepeats { d["melodyRepeats"] = round3(v) }
     if let v = melodySteps { d["melodySteps"] = round3(v) }
+    if let v = padColor { d["padColor"] = round3(v) }
     return d
   }
 }

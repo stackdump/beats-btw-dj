@@ -42,7 +42,12 @@ struct MusicalityTests {
         #expect(a.places.keys == b.places.keys, "\(genre) \(id) places")
         #expect(a.transitions.keys == b.transitions.keys, "\(genre) \(id) transitions")
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
-        #expect(a.bindings.count == b.bindings.count, "\(genre) \(id) bound transitions")
+        // `.color` binds a free step of the pad (a seventh); nothing else gains or loses notes
+        if b.track.group == "harmony" {
+          #expect(Set(a.bindings.keys).isSubset(of: Set(b.bindings.keys)), "\(genre) \(id)")
+        } else {
+          #expect(a.bindings.count == b.bindings.count, "\(genre) \(id) bound transitions")
+        }
       }
       #expect(t.played.structure.map(\.steps) == t.composed.structure.map(\.steps))
     }
@@ -248,13 +253,17 @@ struct MusicalityTests {
   @Test(arguments: ["techno", "trance", "dubstep", "synthwave", "ambient", "jazz"])
   func padChordsLeadIntoEachOther(genre: String) throws {
     let t = played(genre, 42)
-    let blocks = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.voicing))
+    // triads either way (`.color` adds sevenths in jazz), with and without the voicing
+    let blocks = DJMusicality.apply(
+      t.composed, spec: t.spec, fixes: .all.subtracting([.voicing, .color]))
+    let led = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.color))
     let before = try #require(report(blocks).padMotion)
-    let after = try #require(report(t.played).padMotion)
+    let after = try #require(report(led).padMotion)
     #expect(after < before, "\(genre): \(before) → \(after)")
     #expect(after <= 5, "\(genre): \(after) semitones per chord change")
     let pad = { (p: Project) in NoteLog.capture(p).filter { $0.group == "harmony" } }
-    #expect(pad(blocks).map { $0.note % 12 } == pad(t.played).map { $0.note % 12 })
+    #expect(pad(blocks).map { $0.note % 12 } == pad(led).map { $0.note % 12 })
+    #expect(try #require(report(t.played).padMotion) <= 5)
     #expect(report(t.played).harmonyInBassRange == 0)
   }
 
@@ -277,5 +286,27 @@ struct MusicalityTests {
       NoteLog.capture(p).filter { $0.group == "melody" && ($0.tick - 1) % 4 == 0 }.map(\.note)
     }
     #expect(onBeats(flat) == onBeats(t.played))
+  }
+
+  /// Sevenths where the style has them (jazz, bossa, house, garage, funk): most pad chords get
+  /// their scale seventh, in key, inside the pad's range and clear of the bass, without more
+  /// rubs against the other parts; other genres keep beats' triads untouched.
+  @Test(arguments: ["jazz", "bossa", "house", "garage", "funk"])
+  func padChordsAreSeventhsWhereTheStyleIs(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let triads = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.color))
+      let a = report(triads)
+      let b = report(t.played)
+      #expect(try #require(b.padColor) >= 0.75, "\(genre)/\(seed)")
+      #expect(a.padColor == 0)
+      #expect(b.inKey >= a.inKey)
+      #expect(b.harmonyInBassRange == 0)
+      #expect(b.semitoneClashes <= a.semitoneClashes + 1, "\(genre)/\(seed)")
+    }
+    let techno = played("techno", 42)
+    let plain = DJMusicality.apply(
+      techno.composed, spec: techno.spec, fixes: .all.subtracting(.color))
+    #expect(plain.canonicalJSON == techno.played.canonicalJSON)
   }
 }

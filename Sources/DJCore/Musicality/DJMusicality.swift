@@ -74,9 +74,16 @@ public enum DJMusicality {
     /// the upper neighbour. Notes on the beat, the chord tones the motif is built on, stay.
     public static let contour = Fixes(rawValue: 1 << 12)
 
+    /// Chord colour where the style has it: beats' pads are bare triads in every genre; jazz,
+    /// bossa, house, garage and funk play their chords as sevenths (the scale's own seventh on
+    /// each root). Struck after the triad, before `.voicing` places it. (lofi and ambient are
+    /// pentatonic: their chords are already stacked fourths and doubled tones, and a seventh
+    /// measured worse there.)
+    public static let color = Fixes(rawValue: 1 << 13)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy, .duck, .contour,
+      .voicing, .energy, .duck, .contour, .color,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -84,6 +91,7 @@ public enum DJMusicality {
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
+      "color": .color,
       "none": [],
     ]
   }
@@ -96,6 +104,7 @@ public enum DJMusicality {
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
     if fixes.contains(.register) { separateRegisters(&p) }
+    if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
@@ -447,7 +456,8 @@ public enum DJMusicality {
       guard chords.count > 1, let lo = steps.map(\.note).min(), let top = steps.map(\.note).max()
       else { continue }
       let hi = max(top, lo + 12)
-      // every octave placement of each chord's notes inside the range, no doubled pitch
+      // every octave placement of each chord's notes inside the range, no two a semitone or
+      // less apart (a seventh next to its root is a cluster, not a voicing)
       let candidates: [[[Int]]] = chords.map { chord in
         var out: [[Int]] = []
         func place(_ i: Int, _ acc: [Int]) {
@@ -457,7 +467,9 @@ public enum DJMusicality {
           }
           for k in -2...2 {
             let n = chord[i].note + 12 * k
-            if n >= lo && n <= hi && !acc.contains(n) { place(i + 1, acc + [n]) }
+            if n >= lo && n <= hi && !acc.contains(where: { abs($0 - n) <= 1 }) {
+              place(i + 1, acc + [n])
+            }
           }
         }
         place(0, [])
@@ -590,6 +602,76 @@ public enum DJMusicality {
         else { continue }
         played[k] = n
         nb.bindings[steps[k].key]?.note = n
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: colour
+
+  /// The interval each pad chord gains in `genre` (semitones above its root, by preference),
+  /// or nil for genres that keep triads.
+  static func chordColor(_ genre: String) -> [Int]? {
+    switch genre {
+    case "jazz", "bossa", "house", "garage", "funk": [10, 11]  // the scale's seventh
+    default: nil
+    }
+  }
+
+  /// Give each pad chord (a run of strikes on consecutive sixteenths, root first) one more
+  /// tone, on the sixteenth after its last strike when that step is free and in the same bar:
+  /// the first of `chordColor`'s intervals that is in the key and not already in the chord,
+  /// near the chord's own notes, at its last strike's velocity and length.
+  static func colorChords(_ p: inout Project, genre: GenreDef) {
+    guard let intervals = chordColor(genre.name) else { return }
+    let root = p.rootNote ?? 60
+    let name = p.scaleName.isEmpty ? "Major" : p.scaleName
+    let key = Set(scaleIntervals(name + "Scale").map { (root + $0) % 12 })
+    guard key.count == 7 else { return }  // a seventh is a diatonic scale's
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "harmony" else { continue }
+      var steps: [(step: Int, note: Int)] = []
+      for (t, b) in nb.bindings.pairs where t.hasPrefix("t") && !isDrumChannel(b.channel) {
+        if let i = Int(t.dropFirst()) { steps.append((i, b.note)) }
+      }
+      steps.sort { $0.step < $1.step }
+      guard let lo = steps.map(\.note).min(), let top = steps.map(\.note).max() else { continue }
+      let hi = max(top, lo + 12)  // the range `.voicing` keeps the pad in
+      var chords: [[(step: Int, note: Int)]] = []
+      for s in steps {
+        if let last = chords.last?.last, s.step == last.step + 1 {
+          chords[chords.count - 1].append(s)
+        } else {
+          chords.append([s])
+        }
+      }
+      for chord in chords {
+        let next = chord.last!.step + 1
+        guard next < nb.transitions.count, next / 16 == chord[0].step / 16,
+          nb.transitions["t\(next)"] != nil, nb.bindings["t\(next)"] == nil,
+          let last = nb.bindings["t\(chord.last!.step)"]
+        else { continue }
+        let pcs = Set(chord.map { $0.note % 12 })
+        guard
+          let pc = intervals.map({ (chord[0].note + $0) % 12 }).first(where: {
+            key.contains($0) && !pcs.contains($0)
+          })
+        else { continue }
+        // the octave nearest the chord's middle, inside the pad's range, more than a semitone
+        // from its notes
+        var mid = 0
+        for c in chord { mid += c.note }
+        mid /= chord.count
+        let below = mid - ((mid - pc) % 12 + 12) % 12  // the pitch class at or under the middle
+        var note: Int?
+        for n in [below, below + 12, below - 12, below + 24, below - 24] {
+          let clear = n >= lo && n <= hi && !chord.contains { abs($0.note - n) <= 1 }
+          if clear && (note == nil || abs(n - mid) < abs(note! - mid)) { note = n }
+        }
+        guard let note else { continue }
+        var b = last
+        b.note = note
+        nb.bindings["t\(next)"] = b
       }
       p.nets[id] = nb
     }
