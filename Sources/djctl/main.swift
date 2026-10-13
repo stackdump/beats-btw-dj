@@ -336,6 +336,17 @@ case "render":
     notesOut = positional[i + 1]
     positional.removeSubrange(i...(i + 1))
   }
+  // --fixes key,timing,… (or none / all): which DJMusicality fixes to apply; default all.
+  var fixes = DJMusicality.Fixes.all
+  if let i = positional.firstIndex(of: "--fixes"), positional.indices.contains(i + 1) {
+    fixes = []
+    let names: [String: DJMusicality.Fixes] = [
+      "key": .key, "timing": .timing, "register": .register, "loudness": .loudness,
+      "groove": .groove, "dynamics": .dynamics, "all": .all,
+    ]
+    for n in positional[i + 1].split(separator: ",") { fixes.formUnion(names[String(n)] ?? []) }
+    positional.removeSubrange(i...(i + 1))
+  }
   let synth = positional.contains("--synth")
   positional.removeAll { $0 == "--synth" }
   guard positional.count >= 2, let seed = Double(positional[1]) else {
@@ -346,9 +357,12 @@ case "render":
   }
   let spec = TrackSpec(genre: positional[0], seed: seed, structure: structure)
   let sr = 48_000.0
-  let source = WaveDeckSource(sampleRate: sr, opts: .extended)
-  let track = PreparedTrack(
-    spec: spec, sampleRate: sr, opts: .extended(samplers: synth ? nil : source.samplers))
+  var deckOpts = WaveOptions.extended
+  deckOpts.musicality = fixes
+  let source = WaveDeckSource(sampleRate: sr, opts: deckOpts)
+  var trackOpts = WaveOptions.extended(samplers: synth ? nil : source.samplers)
+  trackOpts.musicality = fixes
+  let track = PreparedTrack(spec: spec, sampleRate: sr, opts: trackOpts)
   let (log, controls) = NoteLog.captureAll(track.played)
   let report = MusicalityReport(project: track.project, log: log, controls: controls)
   if let notesOut {

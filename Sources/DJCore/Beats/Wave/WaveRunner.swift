@@ -413,6 +413,17 @@ public final class WaveRunner {
   private var preL = [Float](repeating: 0, count: 4096)
   private var smpL = [Float](repeating: 0, count: 4096)
   private var smpR = [Float](repeating: 0, count: 4096)
+  // Groove (`DJMusicality.Fixes.groove`): notes held back by swing / humanize, due at a
+  // sample time. Fixed capacity; refer to the current project by net / transition / lane.
+  private let grooveOn: Bool
+  private static let grooveCapacity = 1024
+  private var grooveDue = [Double](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveNet = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveTrans = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveLane = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveVel = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveCount = 0
+  private var grooveNext = Double.infinity
   /// Sample index within the block being rendered (0 between blocks).
   private var blockOffset = 0
 
@@ -421,6 +432,7 @@ public final class WaveRunner {
     self.opts = opts
     samplers = opts.samplers
     samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
+    grooveOn = opts.musicality.contains(.groove)
     masterGain = opts.masterGain
     linear = opts.master == "linear"
     clock[clkTempo] = 120
@@ -481,6 +493,7 @@ public final class WaveRunner {
   }
 
   private func install(_ next: WaveProject) {
+    flushGroove()
     if let old = current {
       if let f = fading { retire(f) }
       fading = old
@@ -500,6 +513,7 @@ public final class WaveRunner {
   public func pause() { playing = false }
 
   public func stop() {
+    grooveCount = 0
     playing = false
     clockBroken = true
     macroHoldTicks = 0
@@ -539,6 +553,7 @@ public final class WaveRunner {
 
   /// Hand on the platter: the tick clock stops following the tempo and follows the hand.
   public func freeze() {
+    flushGroove()
     guard graph != nil, !scrubbing else { return }
     scrubbing = true
     clockBroken = true
@@ -788,9 +803,9 @@ public final class WaveRunner {
 
   // MARK: onsets
 
-  private func hit(_ lane: Lane, _ n: CompiledNet, _ t: Int) {
+  private func hit(_ lane: Lane, _ n: CompiledNet, _ t: Int, velocity: Int? = nil) {
     lane.active = true
-    let w = Double(n.vel[t]) / 127
+    let w = Double(velocity ?? n.vel[t]) / 127
     if !lane.isTonal {
       for e in 0..<lane.numExp { lane.s[e] += lane.alpha[e] * w }
       if lane.carrier == .sweep { lane.st[slotSweep] = 1 }
@@ -825,6 +840,92 @@ public final class WaveRunner {
     lane.md[v] = exp(-lane.st[slotInvSr] / tau)
     lane.sd[v] = w
     lane.sa[v] = cur - w
+  }
+
+  // MARK: groove
+
+  /// beats' browser timing (backend/index.js `swingDelay`, `humanizeNote`), which its wave
+  /// engine leaves out: the off-beat sixteenths (steps 1 and 3 of a beat) late by
+  /// swing% × half a tick; humanize% jitters every note's time (±30 ms × h on the off-beats,
+  /// 0…15 ms × h late on the beat) and velocity (±15 × h). Never early, so a note never
+  /// leaves its tick. The jitter is a hash of (tick, net, transition), not a random draw: a
+  /// replay plays the same groove.
+  private func grooveHit(
+    _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, lane li: Int
+  ) {
+    let p = proj.graph.project
+    let step = proj.graph.tick - 1
+    let tickMs = 60000 / (clock[clkTempo] * ppq)
+    let h = p.humanize / 100
+    var r = grooveHash(step, n.index, t)
+    let r1 = Double(r & 0xFFFF) / 65535 * 2 - 1
+    r >>= 16
+    let r2 = Double(r & 0xFFFF) / 65535 * 2 - 1
+    var delayMs = 0.0
+    if step % 2 == 1 {
+      delayMs = max(0, p.swing / 100 * tickMs * 0.5 + r1 * h * 30)
+    } else if h > 0 {
+      delayMs = max(0, r1 * h * 15)
+    }
+    let vel = h > 0 ? max(1, min(127, Int((Double(n.vel[t]) + r2 * h * 15).rounded()))) : n.vel[t]
+    let delay = delayMs / 1000 * sampleRate
+    guard delay >= 1, grooveCount < Self.grooveCapacity else {
+      hit(lane, n, t, velocity: vel)
+      return
+    }
+    let due = clock[clkSamples] + delay
+    grooveDue[grooveCount] = due
+    grooveNet[grooveCount] = Int32(n.index)
+    grooveTrans[grooveCount] = Int32(t)
+    grooveLane[grooveCount] = Int32(li)
+    grooveVel[grooveCount] = Int32(vel)
+    grooveCount += 1
+    if due < grooveNext { grooveNext = due }
+  }
+
+  private func grooveHash(_ a: Int, _ b: Int, _ c: Int) -> UInt32 {
+    var x = UInt32(truncatingIfNeeded: a &* 73_856_093 ^ b &* 19_349_663 ^ c &* 83_492_791)
+    x ^= x >> 16
+    x = x &* 0x7feb_352d
+    x ^= x >> 15
+    x = x &* 0x846c_a68b
+    x ^= x >> 16
+    return x
+  }
+
+  /// Play the held-back notes that are due.
+  private func serviceGroove() {
+    guard let proj = current else {
+      grooveCount = 0
+      return
+    }
+    let now = clock[clkSamples]
+    var next = Double.infinity
+    var k = 0
+    while k < grooveCount {
+      if grooveDue[k] <= now {
+        let n = proj.graph.nets[Int(grooveNet[k])]
+        hit(proj.lanes[Int(grooveLane[k])], n, Int(grooveTrans[k]), velocity: Int(grooveVel[k]))
+        grooveCount -= 1
+        grooveDue[k] = grooveDue[grooveCount]
+        grooveNet[k] = grooveNet[grooveCount]
+        grooveTrans[k] = grooveTrans[grooveCount]
+        grooveLane[k] = grooveLane[grooveCount]
+        grooveVel[k] = grooveVel[grooveCount]
+      } else {
+        next = min(next, grooveDue[k])
+        k += 1
+      }
+    }
+    grooveNext = next
+  }
+
+  /// Play everything held back now (before a swap or a scratch changes what they refer to).
+  private func flushGroove() {
+    guard grooveCount > 0 else { return }
+    for k in 0..<grooveCount { grooveDue[k] = 0 }
+    serviceGroove()
+    grooveNext = .infinity
   }
 
   // MARK: sampled instruments
@@ -1089,10 +1190,15 @@ public final class WaveRunner {
     // The tick's anchor goes out before its fires (`advance` is exactly one tick): a reader
     // that looks at the fires first and the anchors second finds the anchor of every fire.
     anchor(proj, tick: g.tick + 1, swap: false)
+    let groove = grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 {
-        self.hit(lanes[li], n, t)
+        if groove {
+          self.grooveHit(proj, lanes[li], n, t, lane: li)
+        } else {
+          self.hit(lanes[li], n, t)
+        }
         if let ring { self.report(ring, proj, lanes[li], n, t, macro: macro) }
       }
     }
@@ -1207,6 +1313,7 @@ public final class WaveRunner {
           doTick()
         }
       }
+      if grooveCount > 0 && clock[clkSamples] >= grooveNext { serviceGroove() }
       acc = 0
       if let proj = current {
         for lane in proj.lanes {

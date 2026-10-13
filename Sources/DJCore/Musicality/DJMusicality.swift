@@ -34,7 +34,11 @@ public enum DJMusicality {
     /// Applied by `WaveRunner.prepare`, not by `apply`: the gain is measured from the project.
     public static let loudness = Fixes(rawValue: 1 << 3)
 
-    public static let all: Fixes = [.key, .timing, .register, .dynamics, .loudness]
+    /// The project's `swing` and `humanize`, which beats' browser plays and its wave engine
+    /// does not: applied by the runner (`WaveRunner.grooveHit`).
+    public static let groove = Fixes(rawValue: 1 << 4)
+
+    public static let all: Fixes = [.key, .timing, .register, .dynamics, .loudness, .groove]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.
