@@ -80,14 +80,14 @@ struct NetRingsRenderTests {
         velocities: [Int](repeating: 100, count: 16), token: 0, lastFired: -1, phase: 0,
         muted: false)
     }
-    let px = try #require(
-      renderPixels(
-        NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange), width: 320,
-        height: 160))
-    // bands of rows that hold orange: the parts' row, then the stingers' much shorter one
+    let view = NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange)
+    savePNG(view, width: 320, height: 160, name: "rings-stingers")
+    let px = try #require(renderPixels(view, width: 320, height: 160))
+    // bands of rows that hold orange: the parts' row, then the stingers' much shorter one (the
+    // labels between them are white, and clear of the rings since the rings are padded)
+    let orange = { (r: Int, _: Int, b: Int) in r > 150 && b < 100 }
     var bands: [Range<Int>] = []
-    for y in 0..<160 where px.count(inX: 0..<320, y: y..<(y + 1), where: { r, _, _ in r > 150 }) > 0
-    {
+    for y in 0..<160 where px.count(inX: 0..<320, y: y..<(y + 1), where: orange) > 0 {
       if let last = bands.last, last.upperBound >= y - 2 {
         bands[bands.count - 1] = last.lowerBound..<(y + 1)
       } else {
@@ -99,5 +99,30 @@ struct NetRingsRenderTests {
     // the parts' row holds kick and bass only (columns 3 and 4 empty)
     #expect(px.count(inX: 170..<320, y: bands[0], where: { r, _, _ in r > 150 }) == 0)
     #expect(NetRingsView.isStinger("hit12") && !NetRingsView.isStinger("hihat"))
+  }
+
+  /// A ring's flash reaches past its square (2.4 × base round a dot 6 pt in); the grid pads
+  /// each ring by the most any ring can, so a loud bottom step never paints over the label
+  /// under it.
+  @Test func aFlashStaysInsideItsCell() throws {
+    for n in [1, 4, 8, 16, 32, 64] {
+      for size in stride(from: 20.0, through: 160, by: 10) {
+        #expect(RingGeometry.overflow(steps: n, size: size) <= RingGeometry.maxOverflow)
+      }
+    }
+    #expect(RingGeometry.overflow(steps: 8, size: 60) > 0, "it does overflow unpadded")
+    // one column of four, (320 − 3 × 6) / 4 wide; the step at 3 o'clock fired, loud: its flash
+    // and playhead (orange / gold on the light test background) stay left of the column's edge
+    let cell = Int(((320.0 - 18) / 4).rounded(.down))
+    let ring = RingView(
+      id: "hihat", role: "", size: 8, hits: [Bool](repeating: true, count: 8),
+      velocities: [Int](repeating: 127, count: 8), token: 0, lastFired: 2, phase: 0, muted: false)
+    let view = NetRingsView(snapshot: NetSnapshot(tick: 0, rings: [ring]), tint: .orange)
+    savePNG(view, width: 320, height: 120, name: "ring-flash-cell")
+    let px = try #require(renderPixels(view, width: 320, height: 120))
+    let coloured = { (r: Int, _: Int, b: Int) in r > 200 && b < 170 && r - b > 60 }
+    #expect(px.count(inX: 0..<cell, y: 0..<120, where: coloured) > 100)
+    let spill = px.count(inX: cell..<320, y: 0..<120, where: coloured)
+    #expect(spill == 0, "\(spill) ring pixels past the ring's column")
   }
 }

@@ -14,6 +14,16 @@ public enum RingGeometry {
   public static func baseRadius(steps n: Int, size: CGFloat) -> CGFloat {
     max(1.5, min(5, size / CGFloat(max(n, 1)) * 0.9))
   }
+
+  /// How far a ring drawn with `inset` reaches past its square: the fired step's flash
+  /// (2.4 × base, the largest thing it draws) round a dot `inset` in from the edge.
+  public static func overflow(steps n: Int, size: CGFloat, inset: CGFloat = 6) -> CGFloat {
+    max(0, baseRadius(steps: n, size: size) * 2.4 - inset)
+  }
+
+  /// The most any ring overflows (base is at most 5 pt): what a layout leaves round one so its
+  /// flash never lands on a label or the next ring.
+  public static let maxOverflow: CGFloat = 5 * 2.4 - 6
 }
 
 extension Color {
@@ -183,8 +193,11 @@ public struct NetRingsView: View {
       {
         ForEach(parts, id: \.role) { r in
           VStack(spacing: 1) {
-            RingNetView(ring: r, tint: tint, arcs: arcs)
-            Text(r.role).font(.system(size: 9)).foregroundStyle(r.muted ? .secondary : .primary)
+            // padded by the most a ring draws past its square, so a loud hit's flash stays
+            // off the label under it and the rings beside it
+            RingNetView(ring: r, tint: tint, arcs: arcs).padding(RingGeometry.maxOverflow)
+            Text(r.role).font(.system(size: 10, weight: r.muted ? .regular : .medium))
+              .foregroundStyle(r.muted ? .secondary : .primary)
           }
         }
       }
