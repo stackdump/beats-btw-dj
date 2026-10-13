@@ -49,6 +49,13 @@ public enum DJMusicality {
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases,
     ]
+
+    /// Each fix by the name `djctl render --fixes` takes.
+    public static let named: [String: Fixes] = [
+      "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
+      "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
+      "none": [],
+    ]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.

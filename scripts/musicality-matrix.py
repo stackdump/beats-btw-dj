@@ -34,14 +34,22 @@ COLUMNS = [
     ("sectionContrast", "contr", "{:4.1f}"),
     ("changesOnBars", "onBar", "{:5.2f}"),
     ("changesOnPhrases", "on2Bar", "{:6.2f}"),
+    ("fillsBeforeSections", "fills", "{:5.2f}"),
+    ("slotsFromTheTop", "top", "{:4.2f}"),
+    ("padMotion", "padMv", "{:5.1f}"),
+    ("melodyRepeats", "rep", "{:4.2f}"),
+    ("sectionSpreadDB", "sprd", "{:4.1f}"),
+    ("lra", "LRA", "{:4.1f}"),
 ]
 
 
-def lufs(path):
+def loudness(path):
+    """Integrated loudness (LUFS) and loudness range (LU), from ffmpeg's ebur128."""
     r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-af", "ebur128",
                         "-f", "null", "-"], capture_output=True, text=True)
-    m = re.findall(r"I:\s+(-?[\d.]+) LUFS", r.stderr)
-    return float(m[-1]) if m else None
+    i = re.findall(r"I:\s+(-?[\d.]+) LUFS", r.stderr)
+    lra = re.findall(r"LRA:\s+(-?[\d.]+) LU", r.stderr)
+    return (float(i[-1]) if i else None, float(lra[-1]) if lra else None)
 
 
 def flat(doc):
@@ -50,6 +58,8 @@ def flat(doc):
     b = a.get("bands", {})
     row = {
         "lufs": doc.get("lufs"),
+        "lra": doc.get("lra"),
+        "sectionSpreadDB": a.get("sectionSpreadDB"),
         "peakDB": a["peakDB"],
         "clippedSamples": a["clippedSamples"],
         "low+sub": 100 * (b.get("low", 0) + b.get("sub", 0)),
@@ -57,7 +67,8 @@ def flat(doc):
         "melodyVel": m.get("velocitySpread", {}).get("melody"),
     }
     for k in ("inKey", "bassOnRoot", "bassOnKick", "harmonyInBassRange", "semitoneClashesPer100",
-              "melodyRecurrence", "sectionContrast", "changesOnBars", "changesOnPhrases"):
+              "melodyRecurrence", "sectionContrast", "changesOnBars", "changesOnPhrases",
+              "fillsBeforeSections", "slotsFromTheTop", "padMotion", "melodyRepeats"):
         row[k] = m.get(k)
     return row
 
@@ -87,7 +98,7 @@ def run(outdir, seconds, sampled, djctl, fixes=None):
             if fixes:
                 cmd += ["--fixes", fixes]
             doc = json.loads(subprocess.run(cmd, check=True, capture_output=True, text=True).stdout)
-            doc["lufs"] = lufs(wav)
+            doc["lufs"], doc["lra"] = loudness(wav)
             with open(os.path.join(outdir, name + ".json"), "w") as f:
                 json.dump(doc, f, indent=1, sort_keys=True)
             summary[name] = flat(doc)

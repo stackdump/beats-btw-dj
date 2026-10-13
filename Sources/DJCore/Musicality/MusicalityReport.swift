@@ -43,6 +43,20 @@ public struct MusicalityReport: Sendable {
   /// 2- and 4-bar chord cycles and motifs turn over), or on the section's own phrase line
   /// when its phrases are shorter; nil when the song has none.
   public var changesOnPhrases: Double?
+  /// Section changes (not the song's end) with a drum fill in the bar before them; nil
+  /// for a song without sections.
+  public var fillsBeforeSections: Double?
+  /// Slot switches onto a ring net that bring it in from the top of its cycle (the motif's
+  /// first note, not the middle of it); nil when the song has none.
+  public var slotsFromTheTop: Double?
+  /// Mean semitones the pad's voices move from one chord to the next (sorted voices paired
+  /// lowest to lowest), over bars where the chord changes: big leaps sound like blocks, small
+  /// ones like voice leading.
+  public var padMotion: Double?
+  /// Consecutive melody notes (one net, at most half a bar apart) on the same pitch, and a
+  /// step (1–2 semitones) apart.
+  public var melodyRepeats: Double?
+  public var melodySteps: Double?
 
   public init() {}
 
@@ -69,6 +83,10 @@ public struct MusicalityReport: Sendable {
           return (c.tick - s.start) % s.grid == 0
         }.count
         changesOnPhrases = Double(grid) / Double(controls.count)
+      }
+      let slots = controls.compactMap(\.phase)
+      if !slots.isEmpty {
+        slotsFromTheTop = Double(slots.filter { $0 == 0 }.count) / Double(slots.count)
       }
     }
     notes = log.count
@@ -178,8 +196,51 @@ public struct MusicalityReport: Sendable {
       if counted > 0 { melodyRecurrence = Double(recurring) / Double(counted) }
     }
 
+    // Pad voice leading: sorted voices of each bar's chord against the previous bar's
+    var motion: [Double] = []
+    var prevChord: [Int]?
+    for b in chord.keys.sorted() {
+      let c = chord[b]!.sorted()
+      if let p = prevChord, p.count == c.count, Set(p.map { $0 % 12 }) != Set(c.map { $0 % 12 }) {
+        motion.append(Double(zip(p, c).map { abs($0 - $1) }.reduce(0, +)))
+      }
+      prevChord = c
+    }
+    if !motion.isEmpty { padMotion = motion.reduce(0, +) / Double(motion.count) }
+
+    // Melodic intervals, within a net
+    var repeats = 0
+    var stepwise = 0
+    var intervals = 0
+    for (_, es) in Dictionary(grouping: tonal.filter { $0.group == "melody" }, by: \.net) {
+      let byTick = es.sorted { $0.tick < $1.tick }
+      for (a, b) in zip(byTick, byTick.dropFirst()) where b.tick - a.tick <= 8 {
+        intervals += 1
+        let d = abs(b.note - a.note)
+        if d == 0 { repeats += 1 }
+        if d == 1 || d == 2 { stepwise += 1 }
+      }
+    }
+    if intervals > 0 {
+      melodyRepeats = Double(repeats) / Double(intervals)
+      melodySteps = Double(stepwise) / Double(intervals)
+    }
+
     // Form
     let sections = project.structure
+    if sections.count > 1 {
+      var boundary = 0
+      var filled = 0
+      for s in sections.dropLast() {
+        boundary += s.steps
+        if log.contains(where: {
+          $0.isDrum && $0.net.hasPrefix("fill-") && $0.tick > boundary - 16 && $0.tick <= boundary
+        }) {
+          filled += 1
+        }
+      }
+      fillsBeforeSections = Double(filled) / Double(sections.count - 1)
+    }
     if !sections.isEmpty {
       sectionsOnPhrases =
         Double(sections.filter { $0.steps % 64 == 0 }.count) / Double(sections.count)
@@ -211,8 +272,13 @@ public struct MusicalityReport: Sendable {
     if let v = melodyRecurrence { d["melodyRecurrence"] = round3(v) }
     if let v = changesOnBars { d["changesOnBars"] = round3(v) }
     if let v = changesOnPhrases { d["changesOnPhrases"] = round3(v) }
+    if let v = fillsBeforeSections { d["fillsBeforeSections"] = round3(v) }
+    if let v = slotsFromTheTop { d["slotsFromTheTop"] = round3(v) }
+    if let v = padMotion { d["padMotion"] = round3(v) }
+    if let v = melodyRepeats { d["melodyRepeats"] = round3(v) }
+    if let v = melodySteps { d["melodySteps"] = round3(v) }
     return d
   }
 }
 
-func round3(_ x: Double) -> Double { (x * 1000).rounded() / 1000 }
+public func round3(_ x: Double) -> Double { (x * 1000).rounded() / 1000 }

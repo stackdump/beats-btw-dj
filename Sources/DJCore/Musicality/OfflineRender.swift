@@ -38,6 +38,28 @@ public struct OfflineRender {
     AudioMetrics(left: left, right: right, sampleRate: sampleRate)
   }
 
+  /// RMS (dB) of each section of `project` that the render holds whole, in song order: the
+  /// arrangement's level contour (an intro and a breakdown under the drop).
+  public func sectionLevels(_ project: Project) -> [(name: String, db: Double)] {
+    let tempo = project.tempo > 0 ? project.tempo : 120
+    let perStep = sampleRate * 60 / (tempo * 4)
+    var out: [(String, Double)] = []
+    var step = 0
+    for s in project.structure {
+      let a = Int(Double(step) * perStep)
+      let b = Int(Double(step + s.steps) * perStep)
+      step += s.steps
+      guard b <= left.count, b > a else { break }
+      var sum = 0.0
+      for i in a..<b {
+        let m = (Double(left[i]) + Double(right[i])) / 2
+        sum += m * m
+      }
+      out.append((s.name, 10 * log10(max(sum / Double(b - a), 1e-20))))
+    }
+    return out
+  }
+
   /// 16-bit PCM WAV, stereo.
   public func wav() -> Data {
     var d = Data()

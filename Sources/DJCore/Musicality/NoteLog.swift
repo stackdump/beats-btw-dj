@@ -23,6 +23,9 @@ public struct PartChange: Equatable {
   public var net: String
   public var action: ControlAction
   public var target: String
+  /// For a slot switch onto a ring net (`p0`…`pN-1`): where the ring's token sits after the
+  /// tick, i.e. the step of its cycle the slot plays first. 0 = it comes in from the top.
+  public var phase: Int? = nil
 }
 
 /// The notes a project plays, from simulating its nets tick by tick (no audio): what
@@ -72,10 +75,24 @@ public enum NoteLog {
         let t = Int(g.controls[i + 1])
         let a = n.action[t]
         guard a == .mute || a == .unmute || a == .toggle || a == .slot else { continue }
-        controls.append(PartChange(tick: g.tick, net: n.id, action: a, target: n.actionTarget[t]))
+        var phase: Int?
+        if a == .slot, let ti = g.byId[n.actionTarget[t]] { phase = ringPosition(g.nets[ti]) }
+        controls.append(
+          PartChange(
+            tick: g.tick, net: n.id, action: a, target: n.actionTarget[t], phase: phase))
       }
       if g.stopRequested { break }
     }
     return (out, controls)
+  }
+
+  /// The index of the marked `p<i>` place of a ring net (one token, places `p0`…), else nil.
+  static func ringPosition(_ n: CompiledNet) -> Int? {
+    var at: Int?
+    for (i, id) in n.placeIds.enumerated() where n.state[i] > 0 {
+      guard at == nil, id.hasPrefix("p"), let k = Int(id.dropFirst()) else { return nil }
+      at = k
+    }
+    return at
   }
 }

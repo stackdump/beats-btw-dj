@@ -340,12 +340,15 @@ case "render":
   var fixes = DJMusicality.Fixes.all
   if let i = positional.firstIndex(of: "--fixes"), positional.indices.contains(i + 1) {
     fixes = []
-    let names: [String: DJMusicality.Fixes] = [
-      "key": .key, "timing": .timing, "register": .register, "loudness": .loudness,
-      "groove": .groove, "dynamics": .dynamics, "offbeatBass": .offbeatBass, "phrases": .phrases,
-      "all": .all,
-    ]
-    for n in positional[i + 1].split(separator: ",") { fixes.formUnion(names[String(n)] ?? []) }
+    for n in positional[i + 1].split(separator: ",") {
+      guard let f = n == "all" ? .all : DJMusicality.Fixes.named[String(n)] else {
+        stderr(
+          "unknown fix \(n); one of: all, none, "
+            + DJMusicality.Fixes.named.keys.sorted().joined(separator: ", "))
+        exit(2)
+      }
+      fixes.formUnion(f)
+    }
     positional.removeSubrange(i...(i + 1))
   }
   let synth = positional.contains("--synth")
@@ -377,10 +380,16 @@ case "render":
   }
   let render = OfflineRender(track: track, source: source, seconds: seconds)
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
+  var audio = render.metrics.dictionary
+  let levels = render.sectionLevels(track.played)
+  audio["sections"] = levels.map { ["name": $0.name, "rmsDB": round3($0.db)] }
+  if let lo = levels.map(\.db).min(), let hi = levels.map(\.db).max() {
+    audio["sectionSpreadDB"] = round3(hi - lo)
+  }
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,
-    "audio": render.metrics.dictionary,
+    "audio": audio,
   ]
   let data = try JSONSerialization.data(
     withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
