@@ -118,10 +118,27 @@ public enum DJMusicality {
     /// (`stereoPlacement`); sampled instruments keep their own (centred) image.
     public static let stereo = Fixes(rawValue: 1 << 19)
 
+    /// The melody sings instead of ticking: beats binds every melody note one sixteenth long,
+    /// so a line of quarter notes is four blips with silence between. Each note now lasts until
+    /// the next one in its ring (at most a beat), and the phrase's last note a beat.
+    public static let legato = Fixes(rawValue: 1 << 20)
+
+    /// Phrases end at rest: the last note of each melody phrase (before a rest of half a bar or
+    /// more, or the end of its ring) lands on a tone of the bar's chord, the root if it is as
+    /// near. beats' motif walk ends wherever its random steps leave it (often a passing tone,
+    /// which leaves the phrase hanging on a clash with the pad).
+    public static let cadence = Fixes(rawValue: 1 << 21)
+
+    /// The bass leads into each chord change: where a bar's line moves (three notes or more)
+    /// and the next bar has another root, its last note becomes the scale step next to that
+    /// root, approached from the side it comes from. Not in the offbeat-bass dance genres, whose
+    /// one-note pulse is the style, nor in jazz, which already walks.
+    public static let approach = Fixes(rawValue: 1 << 22)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
-      .openHats, .stereo,
+      .openHats, .stereo, .legato, .cadence, .approach,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -130,7 +147,8 @@ public enum DJMusicality {
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
-      "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo,
+      "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
+      "cadence": .cadence, "approach": .approach,
       "none": [],
     ]
   }
@@ -149,6 +167,9 @@ public enum DJMusicality {
     if fixes.contains(.arpeggio) { arpeggiate(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
+    if fixes.contains(.cadence) { resolvePhraseEnds(&p) }
+    if fixes.contains(.approach) { approachChordChanges(&p, genre: genre) }
+    if fixes.contains(.legato) { holdMelodyNotes(&p) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
     if fixes.contains(.buildup) { rollIntoDrops(&p, genre: genre) }
@@ -1017,6 +1038,133 @@ public enum DJMusicality {
       }
       guard !bound.keys.isEmpty else { continue }
       nb.bindings = bound
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: shared
+
+  /// The project's key, as pitch classes.
+  static func keyPitchClasses(_ p: Project) -> Set<Int> {
+    let root = p.rootNote ?? 60
+    let name = p.scaleName.isEmpty ? "Major" : p.scaleName
+    return Set(scaleIntervals(name + "Scale").map { (root + $0) % 12 })
+  }
+
+  /// A ring net of whole bars (one place per transition, `ti` firing on step `i` of the cycle).
+  static func isBarRing(_ nb: NetBundle) -> Bool {
+    nb.role != "control" && nb.transitions.count % 16 == 0
+      && nb.places.count == nb.transitions.count
+  }
+
+  /// The tonal notes bound on a ring's steps, in step order.
+  static func ringNotes(_ nb: NetBundle) -> [(key: String, step: Int, note: Int)] {
+    var out: [(key: String, step: Int, note: Int)] = []
+    for (t, b) in nb.bindings.pairs where t.hasPrefix("t") && !isDrumChannel(b.channel) {
+      if let i = Int(t.dropFirst()) { out.append((t, i, b.note)) }
+    }
+    return out.sorted { $0.step < $1.step }
+  }
+
+  @inline(__always) static func pc(_ n: Int) -> Int { ((n % 12) + 12) % 12 }
+
+  // MARK: legato
+
+  /// The longest a melody note is held (sixteenths): a beat.
+  static let legatoMax = 4
+
+  /// Every note of a melody ring lasts until the next note of the ring (round the cycle), at
+  /// most `legatoMax`; a note bound longer keeps its length.
+  static func holdMelodyNotes(_ p: inout Project) {
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], isBarRing(nb), part(nb) == "melody" else { continue }
+      let steps = ringNotes(nb)
+      let n = nb.transitions.count
+      for (k, s) in steps.enumerated() {
+        let next = k + 1 < steps.count ? steps[k + 1].step : steps[0].step + n
+        let len = min(next - s.step, legatoMax)
+        guard var b = nb.bindings[s.key], b.durationSteps < len else { continue }
+        b.durationSteps = len
+        b.duration = 0
+        nb.bindings[s.key] = b
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: cadence
+
+  /// Sixteenths of rest after a note that end its phrase: half a bar.
+  static let phraseRest = 8
+
+  /// In each melody ring, a note followed by `phraseRest` or more of silence (round the cycle)
+  /// ends a phrase, and so does the last note before each 2-bar line of a ring of two bars or
+  /// more (the motif's half and whole phrase; a section, or a 2-bar phrase slot, ends on one
+  /// of them). One that is not a tone of the bar's pad
+  /// chord moves to the nearest one, at most a fourth away and inside the part's range; the
+  /// chord's root wins a tie, then the note below (a falling close), and the note before it is
+  /// avoided (no stalled ending).
+  static func resolvePhraseEnds(_ p: inout Project) {
+    let (chords, padBars) = padChords(p)
+    guard padBars > 0 else { return }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], isBarRing(nb), part(nb) == "melody" else { continue }
+      let steps = ringNotes(nb)
+      guard steps.count > 1 else { continue }
+      let n = nb.transitions.count
+      let lo = steps.map(\.note).min()! - 2
+      let hi = steps.map(\.note).max()! + 2
+      for (k, s) in steps.enumerated() {
+        let next = k + 1 < steps.count ? steps[k + 1].step : steps[0].step + n
+        let end = next - s.step >= phraseRest || (n >= 32 && next / 32 > s.step / 32)
+        guard end, let chord = chords[(s.step / 16) % padBars], !chord.isEmpty,
+          !chord.contains(pc(s.note))
+        else { continue }
+        let before = steps[(k + steps.count - 1) % steps.count].note
+        var best: (score: Int, note: Int)?
+        for d in -5...5 where d != 0 {
+          let c = s.note + d
+          guard c >= lo, c <= hi, chord.contains(pc(c)) else { continue }
+          // two points a semitone; the root, a fall and a new pitch each earn one back
+          var score = 2 * abs(d)
+          if pc(c) == chord[0] { score -= 1 }
+          if d < 0 { score -= 1 }
+          if c == before { score += 3 }
+          if best == nil || score < best!.score { best = (score, c) }
+        }
+        guard let best else { continue }
+        nb.bindings[s.key]?.note = best.note
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: approach
+
+  /// In each bass ring (not in the offbeat-bass dance genres, nor jazz), a bar of three notes
+  /// or more whose next bar (round the cycle) starts on another pitch class ends on the scale
+  /// step next to that note, from below when the line comes up to it, from above when it comes
+  /// down. Only a last note in the second half of the bar, more than a whole tone from the
+  /// target, moves; the downbeats, and so the roots, stay.
+  static func approachChordChanges(_ p: inout Project, genre: GenreDef) {
+    guard genre.name != "jazz", !bassLockedToFourOnTheFloor(genre) else { return }
+    let key = keyPitchClasses(p)
+    guard !key.isEmpty else { return }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], isBarRing(nb), part(nb) == "bass" else { continue }
+      let count = nb.transitions.count / 16
+      guard count > 1 else { continue }
+      var bars = [[(key: String, step: Int, note: Int)]](repeating: [], count: count)
+      for s in ringNotes(nb) { bars[s.step / 16].append(s) }
+      for b in 0..<count where bars[b].count >= 3 {
+        guard let target = bars[(b + 1) % count].first, let last = bars[b].last,
+          pc(target.note) != pc(bars[b][0].note), last.step % 16 >= 8,
+          abs(last.note - target.note) > 2,
+          let c = neighbour(target.note, up: last.note > target.note, key: key),
+          abs(c - target.note) <= 2, c >= bassFloor
+        else { continue }
+        nb.bindings[last.key]?.note = c
+      }
       p.nets[id] = nb
     }
   }

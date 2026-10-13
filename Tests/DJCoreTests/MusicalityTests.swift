@@ -24,6 +24,19 @@ private func scalePCs(_ p: Project) -> Set<Int> {
   return Set(scaleIntervals(p.scaleName + "Scale").map { (root + $0) % 12 })
 }
 
+/// Fixes that rewrite single notes by their neighbours (`.cadence`, `.approach`): a test that
+/// isolates an earlier fix by A/B leaves them out of both sides, since which note they pick
+/// depends on the octave or the step that fix chose.
+private let phrasing: DJMusicality.Fixes = [.cadence, .approach]
+
+/// `t` played with every fix except `without` and `phrasing`.
+private func playedWithout(
+  _ t: (spec: TrackSpec, composed: Project, played: Project), _ without: DJMusicality.Fixes = []
+) -> Project {
+  DJMusicality.apply(
+    t.composed, spec: t.spec, fixes: .all.subtracting(phrasing).subtracting(without))
+}
+
 /// Genres whose B / C sections are tension variants (the ones `.key` repairs).
 private let tensionGenres = BeatsTables.shared.genreIDs.filter {
   BeatsTables.shared.genres[$0]!.tensionCurve
@@ -159,10 +172,10 @@ struct MusicalityTests {
       #expect(lead > pad, "\(genre): melody \(lead) under the pad \(pad)")
     }
     // Octaves only: the same notes in the same order, pitch classes unchanged.
-    let without = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.register))
+    let without = playedWithout(t, .register)
     #expect(
       NoteLog.capture(without).map { $0.note % 12 }
-        == NoteLog.capture(t.played).map { $0.note % 12 })
+        == NoteLog.capture(playedWithout(t)).map { $0.note % 12 })
   }
 
   /// Melodic parts accented by meter: downbeats louder than off-beat sixteenths, velocities
@@ -282,9 +295,10 @@ struct MusicalityTests {
   @Test(arguments: ["techno", "trance", "jazz", "dubstep"])
   func melodiesStepRatherThanRepeat(genre: String) throws {
     let t = played(genre, 42)
-    let flat = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.contour))
+    let flat = playedWithout(t, .contour)
+    let stepped = playedWithout(t)
     let a = report(flat)
-    let b = report(t.played)
+    let b = report(stepped)
     let before = try #require(a.melodyRepeats)
     let after = try #require(b.melodyRepeats)
     #expect(after < 0.7 * before && after < 0.45, "\(genre): repeats \(before) → \(after)")
@@ -294,7 +308,7 @@ struct MusicalityTests {
     let onBeats = { (p: Project) in
       NoteLog.capture(p).filter { $0.group == "melody" && ($0.tick - 1) % 4 == 0 }.map(\.note)
     }
-    #expect(onBeats(flat) == onBeats(t.played))
+    #expect(onBeats(flat) == onBeats(stepped))
   }
 
   /// Sevenths where the style has them (jazz, bossa, house, garage, funk): most pad chords get
@@ -401,15 +415,16 @@ struct MusicalityTests {
   func bassStepsBetweenRoots(genre: String) throws {
     for seed in [7.0, 42] {
       let t = played(genre, seed)
-      let leaping = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.bassLine))
+      let leaping = playedWithout(t, .bassLine)
+      let stepping = playedWithout(t)
       let a = report(leaping)
-      let b = report(t.played)
+      let b = report(stepping)
       let before = try #require(a.bassLeap)
       let after = try #require(b.bassLeap)
       #expect(after <= before, "\(genre)/\(seed): \(before) → \(after)")
       #expect(after <= 5, "\(genre)/\(seed): \(after) semitones per change")
       let bass = { (p: Project) in NoteLog.capture(p).filter { $0.group == "bass" } }
-      #expect(bass(leaping).map { $0.note % 12 } == bass(t.played).map { $0.note % 12 })
+      #expect(bass(leaping).map { $0.note % 12 } == bass(stepping).map { $0.note % 12 })
       #expect(try #require(b.bassOnRoot) >= (a.bassOnRoot ?? 0))
       #expect(b.harmonyInBassRange == 0)
       let median = try #require(b.medianNote["bass"])
@@ -438,6 +453,81 @@ struct MusicalityTests {
       #expect(
         o.played.canonicalJSON
           == DJMusicality.apply(o.composed, spec: o.spec, fixes: .all.subtracting(.openHats))
+          .canonicalJSON, "\(other)")
+    }
+  }
+
+  /// Melody notes last until the next one (at most a beat) instead of a sixteenth each; the
+  /// line's onsets, pitches and velocities are the same.
+  @Test(arguments: ["techno", "trance", "funk", "lofi", "jazz", "ambient"])
+  func melodiesAreHeld(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let blips = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.legato))
+      let before = try #require(report(blips).melodyLegato)
+      let after = try #require(report(t.played).melodyLegato)
+      #expect(before < 0.9, "\(genre)/\(seed): already held (\(before))")
+      #expect(after >= 0.99, "\(genre)/\(seed): \(after)")
+      let melody = { (p: Project) in NoteLog.capture(p).filter { $0.group == "melody" } }
+      let a = melody(blips)
+      let b = melody(t.played)
+      #expect(a.map(\.tick) == b.map(\.tick) && a.map(\.note) == b.map(\.note))
+      #expect(a.map(\.velocity) == b.map(\.velocity))
+      #expect(b.allSatisfy { $0.steps <= Double(DJMusicality.legatoMax) })
+    }
+  }
+
+  /// A melody phrase (before half a bar of rest, or a 4-bar line) ends on a tone of the bar's
+  /// chord; only those notes move, by a fourth at most, and stay in key.
+  @Test(arguments: ["techno", "house", "edm", "trance", "dnb", "dubstep", "synthwave", "funk"])
+  func phrasesEndOnChordTones(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let open = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.cadence))
+      let after = try #require(report(t.played).phraseEndsOnChordTones)
+      #expect(after >= 0.95, "\(genre)/\(seed): \(after)")
+      let melody = { (p: Project) in NoteLog.capture(p).filter { $0.group == "melody" } }
+      let a = melody(open)
+      let b = melody(t.played)
+      #expect(a.map(\.tick) == b.map(\.tick))
+      #expect(zip(a, b).allSatisfy { abs($0.note - $1.note) <= 5 })
+      #expect(report(t.played).inKey >= report(open).inKey)
+    }
+    // the open endings were really there
+    let t = played("techno", 42)
+    let open = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.cadence))
+    #expect(try #require(report(open).phraseEndsOnChordTones) < 0.8)
+  }
+
+  /// Where the bass line moves, it walks into the next chord: the arrival at a new root comes
+  /// from a scale step away. Downbeats (the roots) and every onset stay; the offbeat-bass
+  /// genres and jazz's walking bass are left alone.
+  @Test(arguments: ["house", "dnb", "dubstep", "synthwave", "funk"])
+  func bassApproachesChordChanges(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let plain = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.approach))
+      let before = try #require(report(plain).bassStepwise)
+      let after = try #require(report(t.played).bassStepwise)
+      #expect(after >= 0.95, "\(genre)/\(seed): \(before) → \(after)")
+      #expect(after >= before)
+      let bass = { (p: Project) in NoteLog.capture(p).filter { $0.group == "bass" } }
+      let a = bass(plain)
+      let b = bass(t.played)
+      #expect(a.map(\.tick) == b.map(\.tick))
+      let pcs = scalePCs(t.played)
+      for (x, y) in zip(a, b) where x.note != y.note {
+        #expect((x.tick - 1) % 16 >= 8, "\(genre)/\(seed): moved a first-half note at \(x.tick)")
+        #expect(pcs.contains(y.note % 12))
+      }
+      let rooted = try #require(report(plain).bassOnRoot)
+      #expect(try #require(report(t.played).bassOnRoot) >= rooted)
+    }
+    for other in ["techno", "trance", "jazz"] {
+      let o = played(other, 42)
+      #expect(
+        o.played.canonicalJSON
+          == DJMusicality.apply(o.composed, spec: o.spec, fixes: .all.subtracting(.approach))
           .canonicalJSON, "\(other)")
     }
   }

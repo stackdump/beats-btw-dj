@@ -74,6 +74,15 @@ public struct MusicalityReport: Sendable {
   /// Mean semitones the bass moves from the last note of a bar to the first of the next, where
   /// the chord changes (the pitch class differs); nil without a bass.
   public var bassLeap: Double?
+  /// …and the share of those arrivals that come by step (two semitones or less): a line that
+  /// leads into the chord change.
+  public var bassStepwise: Double?
+  /// How much of the time to the next melody note (in its net, at most a beat ahead) each note
+  /// sounds, averaged: 1 = legato, 0.25 = a sixteenth blip in a line of quarters.
+  public var melodyLegato: Double?
+  /// Melody phrase ends (a note followed by half a bar or more of rest in its net within the
+  /// section, or its net's last note before a 4-bar line) that are tones of the bar's chord.
+  public var phraseEndsOnChordTones: Double?
 
   public init() {}
 
@@ -192,7 +201,10 @@ public struct MusicalityReport: Sendable {
     where (a.tick - 1) / 16 + 1 == (b.tick - 1) / 16 && a.note % 12 != b.note % 12 {
       leaps.append(abs(b.note - a.note))
     }
-    if !leaps.isEmpty { bassLeap = Double(leaps.reduce(0, +)) / Double(leaps.count) }
+    if !leaps.isEmpty {
+      bassLeap = Double(leaps.reduce(0, +)) / Double(leaps.count)
+      bassStepwise = Double(leaps.filter { $0 <= 2 }.count) / Double(leaps.count)
+    }
     let harmony = tonal.filter { $0.group == "harmony" }
     if let top = bass.map(\.note).max(), !harmony.isEmpty {
       harmonyInBassRange =
@@ -267,6 +279,36 @@ public struct MusicalityReport: Sendable {
       melodyRepeats = Double(repeats) / Double(intervals)
       melodySteps = Double(stepwise) / Double(intervals)
     }
+
+    // Phrasing: notes held, phrases closed. A phrase ends at half a bar of rest inside a
+    // section, or on a net's last note before a 4-bar line.
+    var sectionStarts: [Int] = []
+    var at = 0
+    for s in project.structure {
+      sectionStarts.append(at)
+      at += s.steps
+    }
+    func section(_ step: Int) -> Int { sectionStarts.lastIndex { $0 <= step } ?? 0 }
+    var held: [Double] = []
+    var ends = 0
+    var resolved = 0
+    for (_, es) in Dictionary(grouping: tonal.filter { $0.group == "melody" }, by: \.net) {
+      let byTick = es.sorted { $0.tick < $1.tick }
+      for (k, e) in byTick.enumerated() {
+        let next = k + 1 < byTick.count ? byTick[k + 1].tick : nil
+        if let next, next > e.tick, next - e.tick <= 4 {
+          held.append(min(1, e.steps / Double(next - e.tick)))
+        }
+        let rest = next.map { $0 - e.tick >= 8 && section($0 - 1) == section(e.tick - 1) } ?? false
+        let line = next.map { ($0 - 1) / 64 > (e.tick - 1) / 64 } ?? true
+        if rest || line, let c = chord[(e.tick - 1) / 16] {
+          ends += 1
+          if c.contains(where: { $0 % 12 == e.note % 12 }) { resolved += 1 }
+        }
+      }
+    }
+    if !held.isEmpty { melodyLegato = held.reduce(0, +) / Double(held.count) }
+    if ends > 0 { phraseEndsOnChordTones = Double(resolved) / Double(ends) }
 
     // Form
     let sections = project.structure
@@ -351,6 +393,9 @@ public struct MusicalityReport: Sendable {
     if let v = buildupsBuild { d["buildupsBuild"] = round3(v) }
     if let v = crashOnSections { d["crashOnSections"] = round3(v) }
     if let v = bassLeap { d["bassLeap"] = round3(v) }
+    if let v = bassStepwise { d["bassStepwise"] = round3(v) }
+    if let v = melodyLegato { d["melodyLegato"] = round3(v) }
+    if let v = phraseEndsOnChordTones { d["phraseEndsOnChordTones"] = round3(v) }
     return d
   }
 }
