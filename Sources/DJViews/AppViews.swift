@@ -24,6 +24,9 @@ struct DeckState: Equatable {
   var beatPhase = 0.0
   var sections: [Deck.SectionInfo] = []
   var currentSection: Int?
+  /// Net decks: the bar the song is in (1-based) and how many it has.
+  var bar = 0
+  var bars = 0
   var roles: [String] = []
   var rolesOn: Set<String> = []
   var nextReady = false
@@ -269,6 +272,8 @@ public final class AppModel {
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
+        state.bars = d.sections.map(\.steps).reduce(0, +) / 16
+        state.bar = d.wave.tick / 16 + 1
       }
       decks[name] = state
     }
@@ -749,8 +754,13 @@ struct DeckView: View {
   private var readout: some View {
     HStack(alignment: .firstTextBaseline, spacing: DJStyle.s) {
       Text(clock(state.positionSeconds)).font(DJStyle.readout)
-      Text("/ \(clock(state.duration))").font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+      // a song is counted in bars (where the phrases turn), a sample in time
+      Text(
+        state.isNet && state.bars > 0
+          ? "bar \(min(state.bar, state.bars)) of \(state.bars)" : "/ \(clock(state.duration))"
+      )
+      .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+      .contentTransition(.numericText())
       Spacer(minLength: DJStyle.s)
       if let bpm = state.bpm {
         Text(String(format: "%.1f", bpm)).font(DJStyle.readout).foregroundStyle(tint)
@@ -829,6 +839,14 @@ struct MixerView: View {
         label: "Cue ↔ Mix",
         value: Binding(get: { model.headphoneMix }, set: { model.setHeadphoneMix($0) }),
         range: 0...1)
+      SyncPanel(
+        rows: [("A", DJStyle.deckA), ("B", DJStyle.deckB)].map { name, tint in
+          let s = model.decks[name] ?? .init()
+          return SyncPanel.Row(
+            name: name, tint: tint, bpm: s.bpm, beat: s.beatInBar, playing: s.playing)
+        }
+      )
+      .padding(.top, DJStyle.s)
       if model.inpulseOutput != nil || model.inpulseRouted {
         Toggle(
           "Inpulse out (1/2 master, 3/4 cue)",
