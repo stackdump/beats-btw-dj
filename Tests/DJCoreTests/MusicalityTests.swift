@@ -257,4 +257,25 @@ struct MusicalityTests {
     #expect(pad(blocks).map { $0.note % 12 } == pad(t.played).map { $0.note % 12 })
     #expect(report(t.played).harmonyInBassRange == 0)
   }
+
+  /// Melodies step instead of stalling on one pitch: far fewer repeated notes, more steps,
+  /// the notes on the beat (the motif's chord tones) unchanged, no more semitone rubs against
+  /// the other parts than before, the motif still coming back.
+  @Test(arguments: ["techno", "trance", "jazz", "dubstep"])
+  func melodiesStepRatherThanRepeat(genre: String) throws {
+    let t = played(genre, 42)
+    let flat = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.contour))
+    let a = report(flat)
+    let b = report(t.played)
+    let before = try #require(a.melodyRepeats)
+    let after = try #require(b.melodyRepeats)
+    #expect(after < 0.7 * before && after < 0.45, "\(genre): repeats \(before) → \(after)")
+    #expect(try #require(b.melodySteps) > (a.melodySteps ?? 0) + 0.1)
+    #expect(b.semitoneClashes <= a.semitoneClashes + 0.1)
+    #expect(try #require(b.melodyRecurrence) >= (a.melodyRecurrence ?? 0) - 0.1)
+    let onBeats = { (p: Project) in
+      NoteLog.capture(p).filter { $0.group == "melody" && ($0.tick - 1) % 4 == 0 }.map(\.note)
+    }
+    #expect(onBeats(flat) == onBeats(t.played))
+  }
 }

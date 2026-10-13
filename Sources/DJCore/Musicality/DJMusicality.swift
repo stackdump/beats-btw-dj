@@ -68,16 +68,22 @@ public enum DJMusicality {
     /// Depth by genre (`duckDepth`); applied by the runner.
     public static let duck = Fixes(rawValue: 1 << 11)
 
+    /// Fewer melody notes repeating the pitch before them (beats' motif walk stalls at the
+    /// scale's ends and on zero steps: up to 80% of a melody's intervals are unisons). An
+    /// off-beat note that repeats becomes a step: towards the next note when that differs, else
+    /// the upper neighbour. Notes on the beat, the chord tones the motif is built on, stay.
+    public static let contour = Fixes(rawValue: 1 << 12)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy, .duck,
+      .voicing, .energy, .duck, .contour,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
-      "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck,
+      "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
       "none": [],
     ]
   }
@@ -92,6 +98,7 @@ public enum DJMusicality {
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
+    if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
     return p
@@ -516,5 +523,75 @@ public enum DJMusicality {
     let fourOnTheFloor =
       genre.kick.count >= 3 && genre.kick[0] == 4 && genre.kick[1] == 16 && genre.kick[2] == 0
     return fourOnTheFloor ? 0.5 : 0.35
+  }
+
+  // MARK: contour
+
+  /// The nearest note of the project's key above (`up`) or below `note`, at most a minor third
+  /// away; nil when there is none.
+  static func neighbour(_ note: Int, up: Bool, key: Set<Int>) -> Int? {
+    for d in 1...3 {
+      let n = up ? note + d : note - d
+      if key.contains(((n % 12) + 12) % 12) { return n }
+    }
+    return nil
+  }
+
+  /// In each melody ring, walk its notes in step order: an off-beat note (not on a quarter)
+  /// at the pitch of the note before it, at most a beat earlier, moves a scale step towards the
+  /// note after it, or up when that one repeats too — a passing or neighbour tone. A step that
+  /// would rub a semitone against the bar's pad chord is not taken (the other direction is
+  /// tried, else the repeat stays). The note before is the one as played (already moved), so a
+  /// run of repeats becomes a turn.
+  static func stepRepeatedNotes(_ p: inout Project) {
+    let root = p.rootNote ?? 60
+    let name = p.scaleName.isEmpty ? "Major" : p.scaleName
+    let key = Set(scaleIntervals(name + "Scale").map { (root + $0) % 12 })
+    guard !key.isEmpty else { return }
+    // the pad's pitch classes in each bar of its cycle (every ring runs from tick 0, locked)
+    var chordAt: [Int: Set<Int>] = [:]
+    var padBars = 0
+    for nb in p.nets.values where nb.role != "control" && part(nb) == "harmony" {
+      padBars = max(padBars, nb.transitions.count / 16)
+      for (t, b) in nb.bindings.pairs where t.hasPrefix("t") && !isDrumChannel(b.channel) {
+        if let i = Int(t.dropFirst()) { chordAt[i / 16, default: []].insert(b.note % 12) }
+      }
+    }
+    func rubs(_ note: Int, step: Int) -> Bool {
+      guard padBars > 0, let chord = chordAt[(step / 16) % padBars] else { return false }
+      return chord.contains { c in
+        let d = ((note - c) % 12 + 12) % 12
+        return d == 1 || d == 11
+      }
+    }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "melody",
+        nb.transitions.count % 16 == 0, nb.places.count == nb.transitions.count
+      else { continue }
+      var steps: [(key: String, step: Int, note: Int)] = []
+      for t in nb.bindings.keys {
+        guard t.hasPrefix("t"), let i = Int(t.dropFirst()), let b = nb.bindings[t],
+          !isDrumChannel(b.channel)
+        else { continue }
+        steps.append((t, i, b.note))
+      }
+      steps.sort { $0.step < $1.step }
+      guard steps.count > 2 else { continue }
+      let lo = steps.map(\.note).min()! - 2
+      let hi = steps.map(\.note).max()! + 2
+      var played = steps.map(\.note)
+      for k in 1..<steps.count where steps[k].step % 4 != 0 {
+        guard played[k] == played[k - 1], steps[k].step - steps[k - 1].step <= 4 else { continue }
+        let next = k + 1 < steps.count ? steps[k + 1].note : steps[0].note
+        let up = next == played[k] ? true : next > played[k]
+        let options = [up, !up].compactMap { neighbour(played[k], up: $0, key: key) }
+        guard
+          let n = options.first(where: { $0 >= lo && $0 <= hi && !rubs($0, step: steps[k].step) })
+        else { continue }
+        played[k] = n
+        nb.bindings[steps[k].key]?.note = n
+      }
+      p.nets[id] = nb
+    }
   }
 }
