@@ -291,6 +291,7 @@ private func buildLanes(
   // them a voice.
   let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup, .crash])
   let voiceCrash = opts.musicality.contains(.crash)
+  let voiceOpenHats = opts.musicality.contains(.openHats)
   for n in g.nets {
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
@@ -307,6 +308,8 @@ private func buildLanes(
       {
         key = "crash"
       }
+      // `.openHats`: beats voices notes 42–46 as one closed hat
+      if voiceOpenHats && key == "hat" && n.note[t] == DJMusicality.openHatNote { key = "openhat" }
       if kindLane[key] == nil {
         let lane: Lane
         if let override {

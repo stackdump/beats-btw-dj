@@ -415,4 +415,28 @@ struct MusicalityTests {
       #expect(median >= DJMusicality.bassFloor && median <= DJMusicality.bassCeiling + 2)
     }
   }
+
+  /// Four-on-the-floor dance genres open the hat on every off-beat eighth it plays and nowhere
+  /// else, and the deck gives those an open-hat voice; other genres' hats are untouched.
+  @Test(arguments: ["techno", "house", "edm", "trance"])
+  func offbeatHatsOpen(genre: String) throws {
+    let t = played(genre, 42)
+    let hats = NoteLog.capture(t.played).filter { $0.isDrum && $0.net.hasPrefix("hihat") }
+    let offbeat = hats.filter { ($0.tick - 1) % 4 == 2 }
+    try #require(!offbeat.isEmpty)
+    #expect(offbeat.allSatisfy { $0.note == DJMusicality.openHatNote }, "\(genre)")
+    #expect(!hats.contains { ($0.tick - 1) % 4 != 2 && $0.note == DJMusicality.openHatNote })
+    let closed = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.openHats))
+    let before = NoteLog.capture(closed).filter { $0.isDrum && $0.net.hasPrefix("hihat") }
+    #expect(before.map(\.tick) == hats.map(\.tick) && before.map(\.velocity) == hats.map(\.velocity))
+    let deck = WaveRunner.prepare(t.played, sampleRate: 22_050, opts: .extended)
+    #expect(deck.lanes.contains { $0.voice.kind == "openhat" && $0.netId.hasPrefix("hihat") })
+    for other in ["dnb", "jazz", "lofi"] {
+      let o = played(other, 42)
+      #expect(
+        o.played.canonicalJSON
+          == DJMusicality.apply(o.composed, spec: o.spec, fixes: .all.subtracting(.openHats))
+          .canonicalJSON, "\(other)")
+    }
+  }
 }

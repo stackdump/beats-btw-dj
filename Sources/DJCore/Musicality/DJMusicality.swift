@@ -105,9 +105,16 @@ public enum DJMusicality {
     /// `.register` gave the bass, so the line steps (A1 down to F1, G1, A1).
     public static let bassLine = Fixes(rawValue: 1 << 17)
 
+    /// Open hats on the off-beat eighths in the four-on-the-floor dance genres: the "tss"
+    /// between kicks that drives house, techno and trance. beats plays every hat closed (its
+    /// drum map voices 42–46 alike); this binds those hats to note 46 and the runner gives it
+    /// the open hat.
+    public static let openHats = Fixes(rawValue: 1 << 18)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
+      .openHats,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -116,7 +123,7 @@ public enum DJMusicality {
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
-      "bassLine": .bassLine,
+      "bassLine": .bassLine, "openHats": .openHats,
       "none": [],
     ]
   }
@@ -139,6 +146,7 @@ public enum DJMusicality {
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
     if fixes.contains(.buildup) { rollIntoDrops(&p, genre: genre) }
     if fixes.contains(.crash) { crashOnSections(&p, genre: genre) }
+    if fixes.contains(.openHats) { openOffbeatHats(&p, genre: genre) }
     return p
   }
 
@@ -721,6 +729,34 @@ public enum DJMusicality {
       guard let path = best?.path else { continue }
       for (c, chord) in chords.enumerated() {
         for (s, n) in zip(chord, candidates[c][path[c]]) { nb.bindings[s.key]?.note = n }
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: open hats
+
+  /// The note an open hat is bound to (GM open hi-hat).
+  static let openHatNote = 46
+
+  /// Dance-family genres with a kick on every beat.
+  static func fourOnTheFloor(_ genre: GenreDef) -> Bool {
+    BeatsTables.shared.family(of: genre.name) == 0 && genre.kick.count >= 3 && genre.kick[0] == 4
+      && genre.kick[1] == 16 && genre.kick[2] == 0
+  }
+
+  /// In each hihat ring of a four-on-the-floor dance genre, the hats on the off-beat eighth
+  /// (step 2 of every beat) become open hats; the rest stay closed, velocities as composed.
+  static func openOffbeatHats(_ p: inout Project, genre: GenreDef) {
+    guard fourOnTheFloor(genre) else { return }
+    for id in p.nets.keys {
+      // (a ring of 8 or 16 sixteenths: step % 4 is the place in the beat either way)
+      guard var nb = p.nets[id], nb.role != "control", nb.riffGroup == "hihat" || id == "hihat",
+        nb.transitions.count % 4 == 0
+      else { continue }
+      for (t, b) in nb.bindings.pairs where isDrumChannel(b.channel) && drumKind(b.note) == "hat" {
+        guard t.hasPrefix("t"), let i = Int(t.dropFirst()), i % 4 == 2 else { continue }
+        nb.bindings[t]?.note = openHatNote
       }
       p.nets[id] = nb
     }
