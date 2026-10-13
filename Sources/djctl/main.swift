@@ -389,7 +389,8 @@ case "render":
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,
-    "audio": audio,
+    "audio": audio, "tempo": track.played.tempo,
+    "sectionSteps": track.played.structure.map(\.steps),
   ]
   let data = try JSONSerialization.data(
     withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
