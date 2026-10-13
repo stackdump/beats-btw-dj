@@ -71,6 +71,9 @@ public struct WaveOptions {
   /// dj's fixes to a composed track (`DJMusicality`), run by `PreparedTrack`; none = the
   /// project exactly as composed (parity).
   public var musicality: DJMusicality.Fixes = []
+  /// The gain to prepare with instead of measuring one (`Loudness`): a section jump or a
+  /// relocation of the song already playing reuses that project's.
+  public var trackGain: Double?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -221,14 +224,18 @@ public final class WaveProject: @unchecked Sendable {
   /// The bank its sampled lanes play from; each holds a reference on its slot until this
   /// project is freed (off the audio thread), which is what keeps the slot from eviction.
   let samplers: SamplerBank?
+  /// Gain on everything this project plays, before the master curve (`Loudness`; 1 = as
+  /// beats has it).
+  public let gain: Double
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
   init(
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
-    geometry: Project? = nil
+    geometry: Project? = nil, gain: Double = 1
   ) {
+    self.gain = gain
     let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     let track =
       trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
@@ -254,7 +261,7 @@ public final class WaveProject: @unchecked Sendable {
 
 private func buildLanes(
   _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
-  geometry: Project? = nil
+  geometry: Project? = nil, gain: Double = 1
 ) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
@@ -322,7 +329,8 @@ private func buildLanes(
   lanes.append(live)
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
-    samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry)
+    samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
+    gain: gain)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -400,6 +408,11 @@ public final class WaveRunner {
   private var evWord = [UInt32](repeating: 0, count: 1024)
   private var evOffset = [Int](repeating: 0, count: 1024)
   private var evCount = 0
+  /// With `.loudness`: the samplers render here and join the voices before the master curve.
+  private let samplersInCurve: Bool
+  private var preL = [Float](repeating: 0, count: 4096)
+  private var smpL = [Float](repeating: 0, count: 4096)
+  private var smpR = [Float](repeating: 0, count: 4096)
   /// Sample index within the block being rendered (0 between blocks).
   private var blockOffset = 0
 
@@ -407,6 +420,7 @@ public final class WaveRunner {
     self.sampleRate = sampleRate
     self.opts = opts
     samplers = opts.samplers
+    samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
     masterGain = opts.masterGain
     linear = opts.master == "linear"
     clock[clkTempo] = 120
@@ -430,9 +444,11 @@ public final class WaveRunner {
     if startTick > 0 { g.fastForward(to: startTick) }
     // (the compiled graph is built from the project's JSON, which has no coordinates: the
     // layout takes the net positions from the project itself)
+    let gain =
+      opts.trackGain ?? (opts.musicality.contains(.loudness) ? Loudness.gain(for: project) : 1)
     return buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
-      geometry: project)
+      geometry: project, gain: gain)
   }
 
   public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())
@@ -1176,7 +1192,9 @@ public final class WaveRunner {
   ) {
     ticksInBlock = 0
     serviceTempoFx()
-    let gain = masterGain
+    let gain = masterGain * (current?.gain ?? 1)
+    // Samplers join the voices before the curve when asked (and the block fits the scratch).
+    let inCurve = samplersInCurve && frames <= preL.count
     for i in 0..<frames {
       blockOffset = i
       if scrubbing {
@@ -1201,12 +1219,45 @@ public final class WaveRunner {
       }
       if let f = fading { for lane in f.lanes where lane.active { laneSample(lane) } }
       if let proj = current { for lane in proj.sources { lane.st[slotPrev] = lane.st[slotEnv] } }
-      let y = linear ? acc : tanh(acc * gain)
-      left[i] = Float(y)
-      right?[i] = Float(y)
+      if inCurve {
+        preL[i] = Float(acc * gain)
+      } else {
+        let y = linear ? acc : tanh(acc * gain)
+        left[i] = Float(y)
+        right?[i] = Float(y)
+      }
       clock[clkSamples] += 1
     }
-    flushSamplers(left, right, frames: frames)
+    if inCurve {
+      // The bank renders adding into a cleared scratch pair; each sampler's level is the one
+      // it had after the curve at unity, so it joins scaled by the track gain only.
+      let trackGain = Float(current?.gain ?? 1)
+      for i in 0..<frames {
+        smpL[i] = 0
+        smpR[i] = 0
+      }
+      smpL.withUnsafeMutableBufferPointer { l in
+        smpR.withUnsafeMutableBufferPointer { r in
+          flushSamplers(l.baseAddress!, r.baseAddress!, frames: frames)
+        }
+      }
+      if let right {
+        for i in 0..<frames {
+          let a = preL[i] + trackGain * smpL[i]
+          let b = preL[i] + trackGain * smpR[i]
+          left[i] = linear ? a : Float(tanh(Double(a)))
+          right[i] = linear ? b : Float(tanh(Double(b)))
+        }
+      } else {
+        // mono, as the bank renders it without a right channel: the mean of its two
+        for i in 0..<frames {
+          let a = preL[i] + trackGain * 0.5 * (smpL[i] + smpR[i])
+          left[i] = linear ? a : Float(tanh(Double(a)))
+        }
+      }
+    } else {
+      flushSamplers(left, right, frames: frames)
+    }
     blockOffset = 0
     if let f = fading, !f.lanes.contains(where: { $0.active }) {
       fading = nil

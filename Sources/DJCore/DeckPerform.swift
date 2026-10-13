@@ -57,12 +57,11 @@ extension Deck {
     let seed = voicingSeed
     let start = secs[index].startTick
     let song = wave.latest?.trackSerial
+    let opts = sameSongOptions(.extended(samplers: bank, seed: seed))
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
-      WaveRunner.prepare(
-        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed), startTick: start,
-        trackSerial: song)
+      WaveRunner.prepare(project, sampleRate: sr, opts: opts, startTick: start, trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)
@@ -77,12 +76,20 @@ extension Deck {
     if deterministic {
       wave.load(
         WaveRunner.prepare(
-          project, sampleRate: wave.sampleRate, opts: waveOptions, startTick: max(0, tick),
-          trackSerial: wave.latest?.trackSerial))
+          project, sampleRate: wave.sampleRate, opts: sameSongOptions(waveOptions),
+          startTick: max(0, tick), trackSerial: wave.latest?.trackSerial))
       applyNetTempo()
     } else {
       Task { @MainActor in await self.jumpToTick(tick) }
     }
+  }
+
+  /// `opts` for another start of the song this deck plays: it keeps the playing project's
+  /// loudness gain instead of measuring it again.
+  func sameSongOptions(_ opts: WaveOptions) -> WaveOptions {
+    var o = opts
+    if let g = wave.latest?.gain { o.trackGain = g }
+    return o
   }
 
   /// Fire-and-forget section launch for controllers (callable from any thread).
@@ -116,12 +123,12 @@ extension Deck {
     let bank = wave.samplers
     let seed = voicingSeed
     let song = wave.latest?.trackSerial
+    let opts = sameSongOptions(.extended(samplers: bank, seed: seed))
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
       WaveRunner.prepare(
-        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed),
-        startTick: max(0, tick), trackSerial: song)
+        project, sampleRate: sr, opts: opts, startTick: max(0, tick), trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
     wave.load(prepared)

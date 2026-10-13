@@ -126,3 +126,6 @@ func gridDeviations(
     return best.cents
   }
 }
+
+/// An amplitude ratio in dB.
+func ampDB(_ x: Double) -> Double { 20 * log10(x) }

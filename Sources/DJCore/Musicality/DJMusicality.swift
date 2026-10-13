@@ -29,7 +29,12 @@ public enum DJMusicality {
     /// every note of a part one velocity), and each melody bar's highest note leaned on.
     public static let dynamics = Fixes(rawValue: 1 << 5)
 
-    public static let all: Fixes = [.key, .timing, .register, .dynamics]
+    /// Every track at about one loudness (`Loudness`), and sampled instruments through the
+    /// master curve with the synth voices instead of added after it (where they could clip).
+    /// Applied by `WaveRunner.prepare`, not by `apply`: the gain is measured from the project.
+    public static let loudness = Fixes(rawValue: 1 << 3)
+
+    public static let all: Fixes = [.key, .timing, .register, .dynamics, .loudness]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.

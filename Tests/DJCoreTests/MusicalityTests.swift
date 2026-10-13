@@ -169,4 +169,28 @@ struct MusicalityTests {
     // The composed track had none (the test must be able to fail).
     #expect((report(t.composed).velocitySpread["melody"] ?? 0) < 1 || genre == "edm")
   }
+
+  /// Every genre's busiest section at about one loudness: the gain `Loudness` picks brings
+  /// genres that were 10 dB apart to within 1.5 dB of the target, and the deck applies it.
+  @Test func tracksPlayAtOneLoudness() {
+    var raw: [Double] = []
+    for genre in ["techno", "lofi", "ambient", "edm"] {
+      let p = played(genre, 42).played
+      guard let db = Loudness.measure(p) else {
+        Issue.record("\(genre) measured silent")
+        continue
+      }
+      raw.append(db)
+      let g = Loudness.gain(for: p)
+      let after = db + ampDB(g)
+      #expect(abs(after - Loudness.targetDB) < 1.5, "\(genre): \(db) dB × \(g) → \(after)")
+    }
+    #expect((raw.max() ?? 0) - (raw.min() ?? 0) > 6, "the genres must start apart: \(raw)")
+    // The deck plays with the gain: prepared with .loudness the project carries it.
+    let p = played("lofi", 42).played
+    var o = WaveOptions.extended
+    #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain > 1.5)
+    o.musicality = []
+    #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain == 1)
+  }
 }
