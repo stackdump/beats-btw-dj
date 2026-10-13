@@ -235,8 +235,9 @@ green.
 ### Visual (part C)
 
 Stinger rings (hit1–4) moved from the parts' grid to a short row of small rings; the section
-timeline's playhead is drawn under the labels with caps at both edges; 4-bar intro/outro
-blocks show their initial.
+timeline's playhead is drawn under the labels with caps at both edges. (Initials in 4-bar
+intro / outro blocks were tried and taken out: SPEC mode 24, beats' `renderTimeline`, leaves
+blocks of 28 pt or less unlabelled, and `StructureStripTests` holds the port to it.)
 
 ### Next ideas
 

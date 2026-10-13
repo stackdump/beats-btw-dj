@@ -54,15 +54,6 @@ public struct SectionTimelineView: View {
           ctx.fill(cap, with: .color(.white))
         }
         for (rect, seg) in labels {
-          if rect.width > 10 && rect.width <= 28 {
-            // too narrow for the name (a 4-bar intro): its initial
-            var inside = ctx
-            inside.clip(to: Path(roundedRect: rect, cornerRadius: 3))
-            inside.draw(
-              Text(String(seg.name.prefix(1)).uppercased())
-                .font(.system(size: 9, weight: .semibold)).foregroundColor(.white.opacity(0.85)),
-              at: CGPoint(x: rect.midX, y: rect.midY), anchor: .center)
-          }
           if rect.width > 28 {
             // `.pn-timeline-section { overflow: hidden }`: a label wider than its block is cut
             // at the block's edges, not spilled over its neighbours

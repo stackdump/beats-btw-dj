@@ -33,19 +33,12 @@ struct SectionTimelineRenderTests {
     #expect(px.count(inX: 0..<100, y: 0..<20) { r, g, b in r > 40 || g > 40 || b > 40 } == 0)
   }
 
-  /// A section too narrow for its name shows its initial; the playhead's caps mark it at the
-  /// top and bottom edges.
-  @Test func narrowSectionsShowTheirInitialAndThePlayheadHasCaps() throws {
-    let t = SectionTimeline(
-      segments: [
-        .init(name: "intro", start: 0, width: 0.06, isCurrent: false),
-        .init(name: "drop", start: 0.06, width: 0.94, isCurrent: true),
-      ], playhead: 0.5, totalTicks: 200)
-    let px = try #require(renderPixels(SectionTimelineView(timeline: t), width: 400, height: 30))
-    // the "I" in the 24 px intro block: bright pixels in its middle
-    let letter = px.count(inX: 8..<16, y: 10..<20) { r, g, b in r > 180 && g > 180 && b > 180 }
-    #expect(letter > 3, "initial \(letter)")
-    // caps: white 3 px either side of the line at the top edge
+  /// The playhead's caps mark it at the top and bottom edges, so it reads over a pale block.
+  @Test func thePlayheadHasCaps() throws {
+    let px = try #require(
+      renderPixels(SectionTimelineView(timeline: timeline), width: 400, height: 30))
     #expect(px.near(197, 0, (255, 255, 255), tol: 60) && px.near(202, 0, (255, 255, 255), tol: 60))
+    #expect(
+      px.near(197, 29, (255, 255, 255), tol: 60) && px.near(202, 29, (255, 255, 255), tol: 60))
   }
 }
