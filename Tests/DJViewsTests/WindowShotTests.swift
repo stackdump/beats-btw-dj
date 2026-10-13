@@ -31,6 +31,19 @@ struct WindowShotTests {
       ContentView(model: m)
     }.environment(\.colorScheme, .dark)
     savePNG(view, width: 1100, height: 980, name: "window-dark")
-    #expect(try renderPixels(view, width: 1100, height: 980) != nil)
+    let px = try #require(try renderPixels(view, width: 1100, height: 980))
+    // deck A, the mixer and deck B end on one row: the lowest card pixel (lighter than the
+    // window's 0.1 grey) in a column through each card's middle is the same
+    func bottom(_ x: Int) -> Int {
+      var last = 0
+      for y in 100..<880 {
+        let c = px.color(x, y)
+        if c.r + c.g + c.b > 3 * 31 { last = y }
+      }
+      return last
+    }
+    let edges = [297, 550, 803].map(bottom)
+    #expect(edges.max()! - edges.min()! <= 2, "card bottoms \(edges)")
+    #expect(edges.min()! > 700)
   }
 }

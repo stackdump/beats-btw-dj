@@ -22,7 +22,7 @@ public struct SectionTimelineView: View {
       Canvas { ctx, size in
         guard let t = timeline else { return }
         // blocks first, then the playhead, then the labels: the line never cuts a name
-        var labels: [(rect: CGRect, seg: SectionTimeline.Segment)] = []
+        var labels: [Label] = []
         for seg in t.segments {
           let rect = CGRect(
             x: seg.start * size.width + 0.5, y: 0, width: max(1, seg.width * size.width - 1),
@@ -36,12 +36,23 @@ public struct SectionTimelineView: View {
               Path(CGRect(x: x, y: 0, width: 1, height: size.height)),
               with: .color(.white.opacity(0.25)))
           }
-          labels.append((rect, seg))
+          if rect.width > 28 { labels.append(Self.layout(seg, in: rect, ctx: ctx)) }
         }
         let x = t.playhead * size.width
+        // the line breaks where it crosses a name (its caps and stubs still mark the position)
+        var spans: [ClosedRange<CGFloat>] = []
+        var from: CGFloat = 0
+        for l in labels.sorted(by: { $0.text.minY < $1.text.minY })
+        where l.text.insetBy(dx: -2, dy: 0).contains(CGPoint(x: x, y: l.text.midY)) {
+          spans.append(from...max(from, l.text.minY - 1))
+          from = l.text.maxY + 1
+        }
+        spans.append(from...max(from, size.height))
         var head = Path()
-        head.move(to: CGPoint(x: x, y: 0))
-        head.addLine(to: CGPoint(x: x, y: size.height))
+        for s in spans where s.upperBound > s.lowerBound {
+          head.move(to: CGPoint(x: x, y: s.lowerBound))
+          head.addLine(to: CGPoint(x: x, y: s.upperBound))
+        }
         ctx.stroke(head, with: .color(.black.opacity(0.45)), lineWidth: 4)
         ctx.stroke(head, with: .color(.white), lineWidth: 2)
         // caps, so the position reads even over a pale block
@@ -53,31 +64,16 @@ public struct SectionTimelineView: View {
           cap.closeSubpath()
           ctx.fill(cap, with: .color(.white))
         }
-        for (rect, seg) in labels {
-          if rect.width > 28 {
-            // `.pn-timeline-section { overflow: hidden }`: a label wider than its block is cut
-            // at the block's edges, not spilled over its neighbours
-            var inside = ctx
-            inside.clip(to: Path(roundedRect: rect, cornerRadius: 3))
-            let name = inside.resolve(
-              Text(seg.name).font(.system(size: 9, weight: seg.isCurrent ? .bold : .regular))
-                .foregroundColor(.white))
-            // `.pn-timeline-phrases`: 8 px, 0.7 opacity, letter-spacing 1 px
-            let letters = seg.phraseLabel.map {
-              inside.resolve(
-                Text($0).font(.system(size: 8)).tracking(1).foregroundColor(.white.opacity(0.7)))
-            }
-            let wide = CGSize(width: 10_000, height: size.height)
-            let nameW = Double(name.measure(in: wide).width)
-            let lettersW = letters.map { Double($0.measure(in: wide).width) }
-            let run = SectionTimeline.LabelLayout.run(
-              blockWidth: Double(rect.width), nameWidth: nameW, lettersWidth: lettersW)
-            inside.draw(
-              name, at: CGPoint(x: rect.minX + CGFloat(run.nameX), y: rect.midY), anchor: .leading)
-            if let letters, let lx = run.lettersX {
-              inside.draw(
-                letters, at: CGPoint(x: rect.minX + CGFloat(lx), y: rect.midY), anchor: .leading)
-            }
+        for l in labels {
+          // `.pn-timeline-section { overflow: hidden }`: a label wider than its block is cut
+          // at the block's edges, not spilled over its neighbours
+          var inside = ctx
+          inside.clip(to: Path(roundedRect: l.block, cornerRadius: 3))
+          // a soft dark halo: white names read on the pale blocks (a current buildup) too
+          inside.addFilter(.shadow(color: .black.opacity(0.55), radius: 1.5))
+          inside.draw(l.name, at: CGPoint(x: l.text.minX, y: l.block.midY), anchor: .leading)
+          if let letters = l.letters, let lx = l.lettersX {
+            inside.draw(letters, at: CGPoint(x: lx, y: l.block.midY), anchor: .leading)
           }
         }
       }
@@ -90,5 +86,39 @@ public struct SectionTimelineView: View {
         })
     }
     .accessibilityLabel("section timeline")
+  }
+
+  /// A block's label, laid out: its name (and phrase letters), and where the name's text sits.
+  struct Label {
+    var block: CGRect
+    var name: GraphicsContext.ResolvedText
+    var letters: GraphicsContext.ResolvedText?
+    var lettersX: CGFloat?
+    /// The name's text, vertically centred in the block.
+    var text: CGRect
+  }
+
+  static func layout(_ seg: SectionTimeline.Segment, in rect: CGRect, ctx: GraphicsContext)
+    -> Label
+  {
+    let name = ctx.resolve(
+      Text(seg.name).font(.system(size: 9, weight: seg.isCurrent ? .bold : .regular))
+        .foregroundColor(.white))
+    // `.pn-timeline-phrases`: 8 px, 0.7 opacity, letter-spacing 1 px
+    let letters = seg.phraseLabel.map {
+      ctx.resolve(Text($0).font(.system(size: 8)).tracking(1).foregroundColor(.white.opacity(0.7)))
+    }
+    let wide = CGSize(width: 10_000, height: rect.height)
+    let nameSize = name.measure(in: wide)
+    let lettersW = letters.map { Double($0.measure(in: wide).width) }
+    let run = SectionTimeline.LabelLayout.run(
+      blockWidth: Double(rect.width), nameWidth: Double(nameSize.width), lettersWidth: lettersW)
+    let text = CGRect(
+      x: rect.minX + CGFloat(run.nameX), y: rect.midY - nameSize.height / 2,
+      width: nameSize.width, height: nameSize.height)
+    return Label(
+      block: rect, name: name, letters: letters,
+      lettersX: run.lettersX.map { rect.minX + CGFloat($0) },
+      text: text)
   }
 }

@@ -549,11 +549,16 @@ public struct ContentView: View {
 
   private var panels: some View {
     VStack(spacing: 16) {
+      // the three cards share one height (the tallest's), so their edges line up as one row
       HStack(alignment: .top, spacing: DJStyle.l) {
-        DeckView(name: "A", model: model, tint: DJStyle.deckA).djCard(tint: DJStyle.deckA)
-        MixerView(model: model).djCard()
-        DeckView(name: "B", model: model, tint: DJStyle.deckB).djCard(tint: DJStyle.deckB)
+        DeckView(name: "A", model: model, tint: DJStyle.deckA)
+          .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckA)
+        MixerView(model: model)
+          .frame(maxHeight: .infinity, alignment: .top).djCard()
+        DeckView(name: "B", model: model, tint: DJStyle.deckB)
+          .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckB)
       }
+      .fixedSize(horizontal: false, vertical: true)
       if let w = model.walk {
         WalkPanel(
           walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
@@ -680,6 +685,8 @@ struct DeckView: View {
           NetPanel(name: name, state: state, model: model, tint: tint)
         }
       }
+      // the channel strip sits at the card's foot: both decks' faders and the crossfader in a row
+      Spacer(minLength: 0)
       VStack(spacing: DJStyle.xs) {
         SectionLabel("Channel")
         LabeledSlider(
@@ -829,7 +836,8 @@ struct MixerView: View {
         )
         .font(.caption).help("[UNVERIFIED on hardware] needs the Inpulse's own audio interface")
       }
-      Spacer().frame(height: DJStyle.xl)
+      // the crossfader sits at the card's foot, level with the decks' channel faders
+      Spacer(minLength: DJStyle.xl)
       VStack(spacing: 2) {
         Slider(
           value: Binding(get: { model.crossfader }, set: { model.setCrossfader($0) }), in: 0...1)

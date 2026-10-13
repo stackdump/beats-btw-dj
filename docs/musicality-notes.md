@@ -418,6 +418,18 @@ intro against the peak is 4.1 dB, as it was (4.4).
   `--fixes key,timing,register,dynamics,loudness,groove,offbeatBass,phrases,fills,voicing,energy,duck,contour,color,arpeggio,buildup,crash,bassLine,openHats,stereo`,
   or one flag at a time (`all` minus one is not a CLI form; list the others).
 
+### Visual (part E)
+
+From the offscreen window shot (`make swift-shots SHOT_DIR=… FILTER=WindowShot`, a new target:
+`DJ_SHOT_DIR` through make): the section timeline's playhead ran straight through the current
+section's name (white on white: "bu|ldup"). Labels are now laid out first; the line breaks
+where it crosses a name (caps and stubs still mark it) and names carry a soft dark halo, so they
+read on pale blocks too (`SectionTimelineRenderTests.thePlayheadBreaksOverAName`). The three
+cards were ragged (deck A ~1500 pt tall, mixer ~500, deck B ~800): they now share the tallest's
+height, and each deck's Channel strip and the mixer's crossfader sit at the card's foot, so the
+faders of A, the crossfader and B's faders read as one row, as on a hardware mixer
+(`WindowShotTests` asserts the card bottoms within 2 pt).
+
 ### Next ideas
 
 - A synth filter envelope (saws open on the note and close as it decays): the synth leads and

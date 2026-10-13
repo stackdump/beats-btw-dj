@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-test-filter swift-rt-test app run-app app-release run-app-release djctl \
+        swift-build swift-test swift-test-filter swift-shots swift-rt-test app run-app app-release run-app-release djctl \
         mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
@@ -39,6 +39,10 @@ swift-test:
 # One suite or test: make swift-test-filter FILTER='ScopeLive'
 swift-test-filter:
 	swift test $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
+
+# The render tests' PNGs for a human (`savePNG`): make swift-shots SHOT_DIR=/tmp/shots FILTER=WindowShot
+swift-shots:
+	DJ_SHOT_DIR='$(SHOT_DIR)' swift test $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
 
 # The audio-thread contract ("render allocates nothing") is only meaningful with the
 # optimizer on, so those tests skip in debug and run here in a release build. (Forced on in a
