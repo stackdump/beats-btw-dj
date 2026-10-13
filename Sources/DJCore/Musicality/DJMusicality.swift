@@ -38,7 +38,13 @@ public enum DJMusicality {
     /// does not: applied by the runner (`WaveRunner.grooveHit`).
     public static let groove = Fixes(rawValue: 1 << 4)
 
-    public static let all: Fixes = [.key, .timing, .register, .dynamics, .loudness, .groove]
+    /// In four-on-the-floor dance genres the bass moves off the kick to the off-beat eighth
+    /// (beats locks it to the kick's steps: two low sounds starting together on every beat).
+    public static let offbeatBass = Fixes(rawValue: 1 << 6)
+
+    public static let all: Fixes = [
+      .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass,
+    ]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.
@@ -48,6 +54,7 @@ public enum DJMusicality {
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
     if fixes.contains(.register) { separateRegisters(&p) }
+    if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     return p
   }
@@ -212,6 +219,37 @@ public enum DJMusicality {
         b.velocity = clampVelocity(v)
         nb.bindings[s.key] = b
       }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: kick and bass
+
+  /// The genres whose bass is locked to a four-on-the-floor kick: dance family, groove
+  /// template 0 (`grooveLock` copies the kick mask), kick on every beat.
+  static func bassLockedToFourOnTheFloor(_ genre: GenreDef) -> Bool {
+    let t = BeatsTables.shared
+    return t.family(of: genre.name) == 0 && t.themeTable(genre.name)?.groove == Groove.fourOnFloor
+      && genre.kick.count >= 3 && genre.kick[0] == 4 && genre.kick[1] == 16 && genre.kick[2] == 0
+  }
+
+  /// Every bass note on a beat moves to that beat's off-beat eighth (step + 2): the
+  /// trance / techno offbeat bass, which leaves the kick alone in the low end. Notes, lengths
+  /// and the slot nets stay as composed; only the transition they are bound to changes.
+  static func moveBassOffTheKick(_ p: inout Project, genre: GenreDef) {
+    guard bassLockedToFourOnTheFloor(genre) else { return }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "bass",
+        nb.transitions.count % 16 == 0, nb.places.count == nb.transitions.count
+      else { continue }
+      let n = nb.transitions.count
+      var moved = OrderedMap<MidiBinding>()
+      for t in nb.bindings.keys {
+        guard let b = nb.bindings[t], t.hasPrefix("t"), let i = Int(t.dropFirst()) else { continue }
+        let target = i % 4 == 0 ? "t\((i + 2) % n)" : t
+        if moved[target] == nil { moved[target] = b }
+      }
+      nb.bindings = moved
       p.nets[id] = nb
     }
   }

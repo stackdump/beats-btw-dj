@@ -42,7 +42,7 @@ struct MusicalityTests {
         #expect(a.places.keys == b.places.keys, "\(genre) \(id) places")
         #expect(a.transitions.keys == b.transitions.keys, "\(genre) \(id) transitions")
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
-        #expect(a.bindings.keys == b.bindings.keys, "\(genre) \(id) bound transitions")
+        #expect(a.bindings.count == b.bindings.count, "\(genre) \(id) bound transitions")
       }
       #expect(t.played.structure.map(\.steps) == t.composed.structure.map(\.steps))
     }
@@ -192,5 +192,23 @@ struct MusicalityTests {
     #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain > 1.5)
     o.musicality = []
     #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain == 1)
+  }
+
+  /// In four-on-the-floor dance genres the bass leaves the kick's steps (it was on every
+  /// kick), and still starts each bar on the chord's root.
+  @Test(arguments: ["techno", "edm", "trance"])
+  func bassOffTheKickInFourOnTheFloor(genre: String) throws {
+    let t = played(genre, 42)
+    #expect(try #require(report(t.composed).bassOnKick) > 0.7)
+    let r = report(t.played)
+    #expect(try #require(r.bassOnKick) < 0.1, "\(genre)")  // a rotated kick variant may meet it
+    #expect(try #require(r.bassOnRoot) >= 0.95)
+    // House (its own groove), dnb, dubstep keep their bass lines.
+    let h = played("house", 42)
+    #expect(
+      NoteLog.capture(h.played).filter { $0.group == "bass" }.map(\.tick)
+        == NoteLog.capture(
+          DJMusicality.apply(h.composed, spec: h.spec, fixes: .all.subtracting(.offbeatBass))
+        ).filter { $0.group == "bass" }.map(\.tick))
   }
 }
