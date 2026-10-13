@@ -107,6 +107,20 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
    - no open hats: the wave engine's drum map voices notes 42–46 as one closed hat, so the
      four-on-the-floor genres have no off-beat open hat. dj binds those to 46 and voices it
      (`.openHats`).
+   - motifs never repeat inside a phrase: `generateMotif` walks every one of the 4 bars at
+     random, so no bar of a phrase sounds like another. dj restates bar 1 in bar 2 as a diatonic
+     sequence onto bar 2's chord (`.motif`); the generator could do it at the source.
+   - the mix is the kick: one fixed level per voice family puts bass and lead 12–19 dB
+     (K-weighted) under the kick in the dance genres. dj measures each part soloed and trims it
+     (`.balance`, `MixBalance`); beats' voice levels want the same rebalancing.
+   - the wave engine's saws stop at the 8th partial and never move (no filter envelope), the
+     kick ends on 48 Hz in every key, and there is no delay: dj adds band-limited tables and a
+     filter envelope (`.subtractive`), detuned pairs (`.unison`), a key-tuned kick
+     (`.kickTune`) and a tempo echo (`.echo`).
+   - the chill family (lofi, and jazz / bossa likewise) activates kick and snare only in
+     buildup / drop / pre-chorus / solo, which their `standard` songs do not have: a lofi song
+     is hats, bass, keys and no beat. Not fixed in dj yet (it needs the role control nets'
+     unmutes rewritten); a table change in beats is the simple fix.
 
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX

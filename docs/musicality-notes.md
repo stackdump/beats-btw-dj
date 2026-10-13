@@ -442,3 +442,99 @@ faders of A, the crossfader and B's faders read as one row, as on a hardware mix
   but the vocal-like lead) would suit rock / pop better than cutting only the rhythm section.
 - The room's level was set by measurement, not by ear: worth a listen on monitors, lofi and
   ambient especially.
+
+## 8. Part F (2026-10-13, run 1b7960bf): sound design, a motif, a balanced mix
+
+Built on part E (merged from `val/run-e7cdf25f`, a fast-forward). Six more `Fixes` flags, all in
+`.all`, all off on the parity path. Chosen by listening for what the earlier parts left alone —
+the voices themselves and the mix — and by soloing parts (`djctl render --balance`, new): in the
+dance genres the kick *was* the mix, everything else 12–19 dB under it.
+
+| fix | what it does | where |
+|---|---|---|
+| `.subtractive` | saw / square voices read band-limited tables, one per octave (`MipTables`: every partial under 0.45 × the rate, ≤ 128, at beats' fundamental level; beats' tables stop at the 8th partial, so an A1 bass had nothing above 440 Hz), through a two-pole SVF lowpass per voice: cutoff = note × `base` + velocity² × `amount` × an envelope that closes over `seconds` (`FilterEnvelope`: bass 2.5× + 1.4 kHz / 0.16 s, lead 4× + 5 kHz / 0.35 s, pluck 3× + 6 kHz / 0.12 s). Pads (soft table), bells, subs, Karplus-Strong strings and instruments with their own lowpass are left alone | runner (`shapeVoice`, `filterSample`) |
+| `.unison` | pads (±7 cents) and saw leads (±6) as two detuned oscillators at equal power; under `.stereo` a pad's pair goes either side (0.35, none at A3 and below, full from C5), its difference highpassed at 300 Hz so the low end stays mono. Leads stay mono (they are filtered, and the filter takes the pair's sum) | runner (`detune`) |
+| `.echo` | a ping-pong delay send (`PingPong`): dotted eighths in trance (fb 0.42), synthwave, edm, dnb / dubstep / trap; eighths in lofi; dotted quarters in ambient; none in techno, house, funk, jazz, bossa. Lead sends 0.4, arp 0.22; repeats darken (loop lowpass) and go on into the room (0.3). Follows the tempo, gliding over 50 ms. Synth lanes only (sampled slots render as one bus) | runner; `EchoSpec.forGenre` via `WaveOptions.forGenre` |
+| `.kickTune` | the kick's sweep lands on the key's root or fifth nearest 50 Hz (A → 55, C → G1 49, F → 43.7) instead of 48 Hz in every key | runner (`KickTuning`) |
+| `.motif` | in each melody ring, bar 2 of every 4-bar phrase (2-bar ring: of every 2 bars) restates bar 1 — same sixteenths, lengths, velocities — moved along the scale so it starts on a tone of bar 2's chord near where bar 2 began; beat notes and phrase ends snap to the chord in the direction that keeps bar 1's up / down / same shape; bar 2 ends open (a chord tone, not the root), so bar 4's close (beats ends it on the tonic) answers it. The shift with the fewest turned intervals wins; range: down a minor third, up a fifth | pass (`stateIdeasTwice`, after `.cadence`) |
+| `.balance` | each part (kick, snare/clap, hats, bass, pad, lead, arp) soloed through the loudness probe at 22 kHz, then trimmed ± 6 dB toward `MixBalance.targetDB` (kick 0, bass −3, lead −4, snare −6, pad −7, arp −8, hats −10, K-weighted) around the median; `.loudness` measures the track's gain with the trims on. Synth lanes only | runner (lane level), `MixBalance.trims` at prepare; `WaveOptions.trackBalance` kept on section jumps |
+
+New measurements: `MusicalityReport.melodyIdeaRepeats` (4-bar melody phrases whose bar 2 has bar
+1's rhythm and, within a third of its moves, its shape); `djctl render --balance`
+(`audio.balanceDB`, each part soloed against the mix, and `balanceErrorDB`, the spread of the parts
+around their targets); the matrix prints `idea`, `balErr`, `k-b` (kick minus bass) and runs
+`--balance`.
+
+Before → after, 12 genres × 2 seeds, whole songs (`--seconds 300`), synth voices. "Before" is the
+same djctl with part E's 26 fixes:
+
+| metric | before (part E) | after |
+|---|---|---|
+| melody phrases stating their idea twice | 0.00 | 1.00 |
+| kick − bass, K-weighted (kick genres) | 14.5 dB (edm 42: 20.8) | 5.4 dB (edm 42: 8.6) |
+| parts against the kick: snare / hats / bass / pad / lead / arp | −12.7 / −11.7 / −14.5 / −13.6 / −13.3 / −9.0 | −7.0 / −8.6 / −5.4 / −7.7 / −4.7 / −7.9 |
+| balance error (spread around the targets), mean / worst | 4.2 / 6.3 dB | 1.3 / 3.7 dB |
+| energy below 250 Hz | 66 % | 60 % |
+| energy above 2 kHz | 6.4 % | 7.0 % |
+| side / mid | −16.2 dB | −14.7 dB (pads' detuned pairs) |
+| side / mid below 150 Hz | −37.9 dB | −37.5 dB |
+| integrated loudness, mean; peak | −17.0 LUFS; −2.4 dBFS | −16.8; −1.9 |
+| clipped samples | 0 | 0 |
+| last beat before a drop, < 200 Hz, against the beat before | −11.6 dB | −7.5 dB (the kick is 6 dB lower in the mix and the pads, which play on through the gap, higher: still a clear gap) |
+| in key, bass on root, changes on bars / 2-bar lines, fills, crashes, legato, phrase ends | 0.99, 1.00, 1.00 / 1.00, 1.00, 1.00, 1.00, 0.99 | unchanged |
+
+The voice fixes barely move the mix-wide band shares (the kick dominated the energy); they are
+measured per note instead (`SynthVoiceTests`, `UnisonTests`, `KickTuneTests`, `EchoTests`):
+
+- an A1 bass note: 12th harmonic (660 Hz) at the attack under −60 dB before, over −40 dB after;
+  its 8th harmonic falls over 10 dB in the first half second after (within 2 dB before);
+- a lead A4 at velocity 120 against 50: 7th harmonic within 0.5 dB before, over 3 dB stronger after;
+- a held C5 pad: one partial at the 4th harmonic before; two, 17 Hz apart (±7 cents), after; left /
+  right correlation 1.0 → under 0.9 under `.stereo`, mono fold within 1.5 dB, a C3 note still 1.0;
+- the kick's tail at the key's frequency within 15 cents (it was 48 Hz, 65 cents off A1 55 Hz);
+- the echo: nothing before the first repeat, then dotted eighths left, right, left, each lower,
+  silence between; a bass or pad renders bit-identically with it on.
+
+Tests: `SynthVoiceTests`, `UnisonTests`, `KickTuneTests`, `EchoTests`, `BalanceTests`,
+`MusicalityTests.ideasAreStatedTwice` (each with its "before was wrong" check), and the
+`…RealTime…` suites for the filter and the echo (release: no allocation; `.balance` and the
+tables are built at prepare). `.motif` joins `.cadence` / `.approach` in `phrasing`, the fixes
+older A/B tests leave out of both sides. `StereoTests.aTrackIsWideAboveAndMonoBelow` caught two
+things on the way: the first band-limited tables were normalised by their peak, which lowered the
+fundamental and thinned the low end (now they keep beats' fundamental level), and the pads' pair
+widened the low mids (now its side is highpassed at 300 Hz).
+
+Found, not fixed: the chill-family theme table activates kick and snare only in buildup / drop /
+pre-chorus / solo, so lofi, jazz and bossa `standard` songs never play a kick or snare (GO-DIVERGENCE
+§5). And `.balance` / `.echo` see synth voices only: a sampled bass or lead keeps its own level
+and stays dry of echo.
+
+### Listen checklist (`make run-app-release`, or `djctl render <g> <seed> --out f.wav`)
+
+- techno 42 / house 42 / edm 42: the bass is a part now, not a rumble under the kick; the kick
+  still leads but no longer swallows the mix. Compare with `--fixes` = part E's list.
+- trance 42 / synthwave 42: the lead bites on accented notes and mellows as it holds (filter
+  envelope); dotted-eighth echoes bounce left-right after each phrase; the pads shimmer and spread.
+- any genre with a lead: bar 2 answers bar 1 with the same rhythm a step or two away — a hook you
+  can hum — then bars 3–4 go on and close.
+- techno / trance basses: you hear the notes on small speakers (harmonics up to ~1 kHz on the
+  attack), then they darken.
+- headphones: fold to mono; nothing hollows out, the low end is centred.
+- `--fixes all` against
+  `--fixes key,timing,register,dynamics,loudness,groove,offbeatBass,phrases,fills,voicing,energy,duck,contour,color,arpeggio,buildup,crash,bassLine,openHats,stereo,legato,cadence,approach,dropGap,choke,space`
+  (part E), or that list plus one of `subtractive`, `unison`, `echo`, `kickTune`, `motif`, `balance`.
+
+### Next ideas
+
+- The chill family's missing beat (above): rewrite the role control nets so verse / chorus unmute
+  kick and snare in lofi (a boom-bap pattern with swing), or fix beats' table.
+- `.balance` and `.echo` for sampled instruments: a per-slot level (the bank renders slots as
+  groups already: ducking, room) and an echo group.
+- Filter envelope on the arp too (a trance pluck arp), and a resonance sweep in buildups (the
+  energy curve's lowpass opens; the voices' own filters could follow it).
+- A sub-octave sine under the bass in dnb / dubstep (reese / 808 weight) now that the bass sits in
+  the mix.
+- Motif in the arp and bass: the same statement / repetition shape (the bass's bar 2 could echo
+  bar 1's rhythm).
+- Balance targets by genre (jazz and lofi want the bass and keys forward and the hats lower; the
+  dance targets are a single rule of thumb).

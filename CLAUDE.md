@@ -185,6 +185,16 @@ its copy; the two are now independent. Rules inherited from that split:
   through `sendFifo`; input highpassed at 200 Hz, return side at 300 Hz). `djctl render
   --room` measures the return against a dry render. Tests that A/B an earlier note-level fix
   leave `.cadence` / `.approach` out of both sides (`playedWithout` in MusicalityTests).
+- Part F adds sound design in the runner — `.subtractive` (`SynthVoice.swift`: `MipTables`,
+  band-limited per octave with beats' fundamental level, and `FilterEnvelope`, a per-voice SVF
+  lowpass opened by velocity²), `.unison` (detuned pairs; a pad's pair spreads under `.stereo`,
+  its side highpassed at 300 Hz), `.echo` (`Echo.swift`: `PingPong`, tempo-synced, set by genre
+  like the room, synth lanes only), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
+  pass's `.motif` (bar 2 of each 4-bar melody phrase restates bar 1 as a diatonic sequence; runs
+  after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
+  toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
+  --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
+  Per-genre settings come from `WaveOptions.forGenre`.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
