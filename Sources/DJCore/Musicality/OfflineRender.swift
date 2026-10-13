@@ -60,6 +60,43 @@ public struct OfflineRender {
     return out
   }
 
+  /// For each drop gap of `project` (`DJMusicality.dropGaps`) the render holds, the level of
+  /// the beat before the drop against the beat before that, below 200 Hz (kick and bass), dB:
+  /// about 0 when the rhythm section plays through, well under it when it stops.
+  public func preDropDips(_ project: Project) -> [Double] {
+    let tempo = project.tempo > 0 ? project.tempo : 120
+    let perStep = sampleRate * 60 / (tempo * 4)
+    var low = [Double](repeating: 0, count: left.count)
+    for i in 0..<left.count { low[i] = (Double(left[i]) + Double(right[i])) / 2 }
+    for _ in 0..<2 {
+      let b = biquad(type: "lowpass", fc: 200, q: 0.7071, sr: sampleRate)
+      var z1 = 0.0
+      var z2 = 0.0
+      for i in 0..<low.count {
+        let v = low[i]
+        let y = b[0] * v + z1
+        z1 = b[1] * v - b[3] * y + z2
+        z2 = b[2] * v - b[4] * y
+        low[i] = y
+      }
+    }
+    func level(_ a: Int, _ b: Int) -> Double {
+      var s = 0.0
+      for i in a..<b { s += low[i] * low[i] }
+      return 10 * log10(max(s / Double(max(1, b - a)), 1e-20))
+    }
+    var out: [Double] = []
+    let beat = DJMusicality.dropGapSteps
+    for g in DJMusicality.dropGaps(project) {
+      let a = Int(Double(g - beat) * perStep)
+      let b = Int(Double(g) * perStep)
+      let c = Int(Double(g + beat) * perStep)
+      guard a >= 0, c <= low.count else { continue }
+      out.append(level(b, c) - level(a, b))
+    }
+    return out
+  }
+
   /// 16-bit PCM WAV, stereo.
   public func wav() -> Data {
     var d = Data()

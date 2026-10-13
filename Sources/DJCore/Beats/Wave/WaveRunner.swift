@@ -139,6 +139,13 @@ final class Lane {
   var pan = 0.0
   var voiceSpread: [Double] = []
   var voicePan: [Double] = []
+  /// `.dropGap`: a rhythm-section lane (non-fill drums, bass) that rests in the gap before a drop.
+  var gapped = false
+  /// `.choke`: the open hat a hit on this (closed hat) lane chokes; on the open hat lane,
+  /// whether it is being choked and how fast it dies then (per sample).
+  var choke: Lane?
+  var choking = false
+  var chokeMul = 1.0
   // post chain on the voice sum: lowpass biquad, then distortion
   var post: [Double] = []
   var pz1 = 0.0
@@ -247,17 +254,21 @@ public final class WaveProject: @unchecked Sendable {
   /// How far bass and pad dip on each kick (0: no ducking), and the sampler slots they play.
   public let duckDepth: Double
   let duckSlots: UInt64
+  /// First step of each drop gap (`DJMusicality.dropGaps`), ascending; empty without `.dropGap`.
+  public let gaps: [Int]
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
   init(
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
-    geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0
+    geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
+    gaps: [Int] = []
   ) {
     self.gain = gain
     self.energy = energy
     self.duckDepth = duckDepth
+    self.gaps = gaps
     var slots: UInt64 = 0
     for lane in lanes where lane.ducks && lane.samplerSlot >= 0 && lane.samplerSlot < 64 {
       slots |= 1 << UInt64(lane.samplerSlot)
@@ -284,11 +295,18 @@ public final class WaveProject: @unchecked Sendable {
     guard let samplers else { return }
     for lane in lanes where lane.samplerSlot >= 0 { samplers.release(lane.samplerSlot) }
   }
+
+  /// Is `step` inside a drop gap? Allocation-free.
+  @inline(__always)
+  func inGap(_ step: Int) -> Bool {
+    for s in gaps where step >= s && step < s + DJMusicality.dropGapSteps { return true }
+    return false
+  }
 }
 
 private func buildLanes(
   _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
-  geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil
+  geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, gaps: [Int] = []
 ) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
@@ -348,6 +366,12 @@ private func buildLanes(
           lane.ducks = key == "tonal" && (tr.group == "bass" || tr.group == "harmony")
           lane.isKick = key == "kick" && (n.bundle.riffGroup == "kick" || n.id == "kick")
         }
+        if !gaps.isEmpty && override == nil && !g.isStingerNet[n.index] {
+          lane.gapped =
+            key == "tonal"
+            ? (tr.group ?? n.bundle.riffGroup) == "bass"
+            : key != "crash" && !n.id.hasPrefix("fill-")
+        }
         kindLane[key] = lanes.count
         kindOrder.append(key)
         lanes.append(lane)
@@ -355,6 +379,11 @@ private func buildLanes(
       n.lane[t] = kindLane[key]!
     }
     if !kindOrder.isEmpty { byNet[n.id] = kindOrder.map { kindLane[$0]! } }
+    // `.choke`: the net's closed hat cuts its open hat off (10 ms)
+    if opts.musicality.contains(.choke), let h = kindLane["hat"], let o = kindLane["openhat"] {
+      lanes[h].choke = lanes[o]
+      lanes[o].chokeMul = exp(-1 / (0.01 * sr))
+    }
   }
   var sources: [Lane] = []
   for m in opts.mods {
@@ -385,7 +414,7 @@ private func buildLanes(
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
-    gain: gain, energy: energy, duckDepth: opts.duckDepth)
+    gain: gain, energy: energy, duckDepth: opts.duckDepth, gaps: gaps)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -549,9 +578,10 @@ public final class WaveRunner {
       opts.trackGain ?? (opts.musicality.contains(.loudness) ? Loudness.gain(for: project) : 1)
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
+    let gaps = opts.musicality.contains(.dropGap) ? DJMusicality.dropGaps(project) : []
     return buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
-      geometry: project, gain: gain, energy: energy)
+      geometry: project, gain: gain, energy: energy, gaps: gaps)
   }
 
   public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())
@@ -911,6 +941,8 @@ public final class WaveRunner {
     let w = Double(velocity ?? n.vel[t]) / 127
     if lane.isKick { duckHold = 1 }
     if !lane.isTonal {
+      if let open = lane.choke, open.active { open.choking = true }
+      lane.choking = false
       for e in 0..<lane.numExp { lane.s[e] += lane.alpha[e] * w }
       if lane.carrier == .sweep { lane.st[slotSweep] = 1 }
       return
@@ -1240,9 +1272,10 @@ public final class WaveRunner {
     }
     if !lane.isTonal {
       var env = 0.0
+      let choke = lane.choking ? lane.chokeMul : 1
       for e in 0..<lane.numExp {
         env += lane.s[e]
-        lane.s[e] *= lane.mul[e]
+        lane.s[e] *= lane.mul[e] * choke
       }
       lane.st[slotEnv] = env
       var c = 1.0
@@ -1405,9 +1438,12 @@ public final class WaveRunner {
     // that looks at the fires first and the anchors second finds the anchor of every fire.
     anchor(proj, tick: g.tick + 1, swap: false)
     let groove = grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
+    // `.dropGap`: the step about to play (`advance` moves the tick past it)
+    let gap = !proj.gaps.isEmpty && proj.inGap(g.tick)
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 {
+        if gap && lanes[li].gapped { return }
         if groove {
           self.grooveHit(proj, lanes[li], n, t, lane: li)
         } else {

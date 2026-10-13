@@ -386,6 +386,8 @@ case "render":
   if let lo = levels.map(\.db).min(), let hi = levels.map(\.db).max() {
     audio["sectionSpreadDB"] = round3(hi - lo)
   }
+  let dips = render.preDropDips(track.played)
+  if !dips.isEmpty { audio["preDropDipDB"] = round3(dips.reduce(0, +) / Double(dips.count)) }
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,

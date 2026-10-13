@@ -135,10 +135,20 @@ public enum DJMusicality {
     /// one-note pulse is the style, nor in jazz, which already walks.
     public static let approach = Fixes(rawValue: 1 << 22)
 
+    /// The breath before the drop: in the last beat of a buildup (or pre-chorus) that lands on
+    /// a drop or chorus, kick, snare, hats and bass stop, leaving the roll and the pads, so the
+    /// drop's downbeat (with its crash) hits out of a gap. Applied by the runner
+    /// (`DJMusicality.dropGaps`); the nets play on as composed.
+    public static let dropGap = Fixes(rawValue: 1 << 23)
+
+    /// A closed hat chokes the open hat before it, as a hi-hat pedal does: the "tss" stops on
+    /// the next "ts" instead of ringing under it. Applied by the runner, per hihat net.
+    public static let choke = Fixes(rawValue: 1 << 24)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
-      .openHats, .stereo, .legato, .cadence, .approach,
+      .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -148,7 +158,7 @@ public enum DJMusicality {
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
-      "cadence": .cadence, "approach": .approach,
+      "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
       "none": [],
     ]
   }
@@ -788,6 +798,29 @@ public enum DJMusicality {
       }
       p.nets[id] = nb
     }
+  }
+
+  // MARK: drop gap
+
+  /// How long the rhythm section stops before a drop (`.dropGap`): a beat, in sixteenths.
+  public static let dropGapSteps = 4
+  static let risingSections: Set<String> = ["buildup", "pre-chorus"]
+  static let payoffSections: Set<String> = ["drop", "chorus"]
+
+  /// First step of each gap: the last beat of every buildup / pre-chorus followed by a drop or
+  /// chorus, ascending.
+  public static func dropGaps(_ p: Project) -> [Int] {
+    var out: [Int] = []
+    var t = 0
+    for (k, s) in p.structure.enumerated() {
+      if k > 0, t >= dropGapSteps, payoffSections.contains(s.name),
+        risingSections.contains(p.structure[k - 1].name)
+      {
+        out.append(t - dropGapSteps)
+      }
+      t += s.steps
+    }
+    return out
   }
 
   // MARK: stereo
