@@ -52,15 +52,22 @@ public enum DJMusicality {
     /// snare roll swelling into the change (the runner voices `fill-*` nets under this flag).
     public static let fills = Fixes(rawValue: 1 << 8)
 
+    /// The pad's chords voiced to move as little as they can from one to the next (beats
+    /// stacks every chord root-up in one octave, so each change jumps as a block), within the
+    /// register `.register` gave the pad. Octaves only: the same pitch classes, struck in the
+    /// same order.
+    public static let voicing = Fixes(rawValue: 1 << 9)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
+      .voicing,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
-      "fills": .fills, "none": [],
+      "fills": .fills, "voicing": .voicing, "none": [],
     ]
   }
 
@@ -72,6 +79,7 @@ public enum DJMusicality {
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
     if fixes.contains(.register) { separateRegisters(&p) }
+    if fixes.contains(.voicing) { voiceLeadPads(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
@@ -380,5 +388,107 @@ public enum DJMusicality {
       sounding.insert(id)
     }
     p.initialMutes.removeAll { sounding.contains($0) }
+  }
+
+  // MARK: voicing
+
+  /// Semitones the voices move from chord `a` to chord `b`, lowest paired with lowest; a voice
+  /// that appears or vanishes counts an octave.
+  static func motion(_ a: [Int], _ b: [Int]) -> Int {
+    let x = a.sorted()
+    let y = b.sorted()
+    var d = 12 * abs(x.count - y.count)
+    for (u, v) in zip(x, y) { d += abs(u - v) }
+    return d
+  }
+
+  /// Re-voice each pad net's chords by octaves so the cycle of chords (the ring loops, so the
+  /// last leads back to the first) moves least, every note kept inside the pad's range: from
+  /// its lowest note to an octave above it, or its highest if that is more. A chord is the run
+  /// of notes struck on consecutive sixteenths (`chordPadNet` rolls each one root first).
+  /// Ties go to the voicing nearest the composed one.
+  static func voiceLeadPads(_ p: inout Project) {
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "harmony" else { continue }
+      var steps: [(key: String, step: Int, note: Int)] = []
+      for t in nb.bindings.keys {
+        guard t.hasPrefix("t"), let i = Int(t.dropFirst()), let b = nb.bindings[t],
+          !isDrumChannel(b.channel)
+        else { continue }
+        steps.append((t, i, b.note))
+      }
+      steps.sort { $0.step < $1.step }
+      var chords: [[(key: String, step: Int, note: Int)]] = []
+      for s in steps {
+        if let last = chords.last?.last, s.step == last.step + 1 {
+          chords[chords.count - 1].append(s)
+        } else {
+          chords.append([s])
+        }
+      }
+      guard chords.count > 1, let lo = steps.map(\.note).min(), let top = steps.map(\.note).max()
+      else { continue }
+      let hi = max(top, lo + 12)
+      // every octave placement of each chord's notes inside the range, no doubled pitch
+      let candidates: [[[Int]]] = chords.map { chord in
+        var out: [[Int]] = []
+        func place(_ i: Int, _ acc: [Int]) {
+          if i == chord.count {
+            out.append(acc)
+            return
+          }
+          for k in -2...2 {
+            let n = chord[i].note + 12 * k
+            if n >= lo && n <= hi && !acc.contains(n) { place(i + 1, acc + [n]) }
+          }
+        }
+        place(0, [])
+        return out.isEmpty ? [chord.map(\.note)] : out
+      }
+      // distance from the composed voicing, to break ties
+      func drift(_ c: Int, _ v: [Int]) -> Int {
+        var d = 0
+        for (s, n) in zip(chords[c], v) { d += abs(s.note - n) }
+        return d
+      }
+      // cheapest cycle: fix the first chord's voicing, dynamic programming over the rest
+      var best: (cost: Int, path: [Int])?
+      for first in candidates[0].indices {
+        let unreachable = Int.max / 4
+        var cost = [Int](repeating: unreachable, count: candidates[0].count)
+        cost[first] = drift(0, candidates[0][first])
+        var back: [[Int]] = [Array(cost.indices)]
+        for c in 1..<chords.count {
+          var next = [Int](repeating: unreachable, count: candidates[c].count)
+          var from = [Int](repeating: 0, count: candidates[c].count)
+          for (j, v) in candidates[c].enumerated() {
+            for (i, u) in candidates[c - 1].enumerated() where cost[i] < unreachable {
+              let x = cost[i] + 100 * motion(u, v) + drift(c, v)
+              if x < next[j] {
+                next[j] = x
+                from[j] = i
+              }
+            }
+          }
+          cost = next
+          back.append(from)
+        }
+        for (j, v) in candidates[chords.count - 1].enumerated() where cost[j] < unreachable {
+          let total = cost[j] + 100 * motion(v, candidates[0][first])
+          if best == nil || total < best!.cost {
+            var path = [j]
+            for c in stride(from: chords.count - 1, to: 0, by: -1) {
+              path.append(back[c][path.last!])
+            }
+            best = (total, path.reversed())
+          }
+        }
+      }
+      guard let path = best?.path else { continue }
+      for (c, chord) in chords.enumerated() {
+        for (s, n) in zip(chord, candidates[c][path[c]]) { nb.bindings[s.key]?.note = n }
+      }
+      p.nets[id] = nb
+    }
   }
 }

@@ -242,4 +242,19 @@ struct MusicalityTests {
     #expect(deck.byNet["fill-0"] != nil)
     #expect(WaveRunner.prepare(t.played, sampleRate: 22_050).byNet["fill-0"] == nil)
   }
+
+  /// The pad's chords lead into each other: less motion than beats' root-position blocks,
+  /// the same pitch classes in the same order, still clear of the bass and in the pad's range.
+  @Test(arguments: ["techno", "trance", "dubstep", "synthwave", "ambient", "jazz"])
+  func padChordsLeadIntoEachOther(genre: String) throws {
+    let t = played(genre, 42)
+    let blocks = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.voicing))
+    let before = try #require(report(blocks).padMotion)
+    let after = try #require(report(t.played).padMotion)
+    #expect(after < before, "\(genre): \(before) → \(after)")
+    #expect(after <= 5, "\(genre): \(after) semitones per chord change")
+    let pad = { (p: Project) in NoteLog.capture(p).filter { $0.group == "harmony" } }
+    #expect(pad(blocks).map { $0.note % 12 } == pad(t.played).map { $0.note % 12 })
+    #expect(report(t.played).harmonyInBassRange == 0)
+  }
 }
