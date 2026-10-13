@@ -168,6 +168,12 @@ its copy; the two are now independent. Rules inherited from that split:
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
   `.color` (the pass may bind free pad steps). New flags go in `Fixes.all` and `Fixes.named`.
+- Part D adds `.arpeggio` (rebinds arp slots), `.buildup` / `.crash` (bind on `fill-N` chains,
+  which span the song from tick 0 to their boundary, so any bar before it can carry a drum
+  hit; the runner voices note 49 there as a crash), `.bassLine`, `.openHats` (note 46 → open
+  hat in the runner) and `.stereo` (mid/side pan per lane in the runner, `stereoPlacement`; the
+  sampler bus's side highpassed at 150 Hz). Stereo only renders with a right channel: mono
+  callers get the old mix.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)

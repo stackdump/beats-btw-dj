@@ -97,6 +97,16 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
      them to the feel pad, whose axes are tone and **tempo**, so a breakdown (filterOpen 0.25)
      plays at 0.8× BPM. dj plays them as level and a tonal lowpass with buildup sweeps
      (`.energy`, `EnergyCurve`).
+   - the arp doubles the melody: with sections, `expandVariants` builds each arp slot from the
+     melody's motif (`motifNet`) or a Markov line, so it plays the lead's notes in unison
+     (synthwave) or an octave under it (trance) and arpeggiates nothing. dj plays the bar's pad
+     chord in sixteenths (`.arpeggio`).
+   - basses leap: `chordBassRing` takes every root from one octave of the scale, so a
+     progression that comes back round jumps a sixth or seventh (and some land under E1, C1 in
+     techno 42). dj moves whole bars by octaves to the smallest motion (`.bassLine`).
+   - no open hats: the wave engine's drum map voices notes 42–46 as one closed hat, so the
+     four-on-the-floor genres have no off-beat open hat. dj binds those to 46 and voices it
+     (`.openHats`).
 
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX

@@ -251,3 +251,89 @@ blocks of 28 pt or less unlabelled, and `StructureStripTests` holds the port to 
 - Build-up gestures beyond the sweep: snare density doubling, kick dropped in the last bar.
 - `Loudness.targetDB` could rise ~1 dB to put integrated loudness back near −16 LUFS now that
   non-peak sections sit lower (check jazz's −0.3 dBFS peak first).
+
+## 6. Part D (2026-10-13, run 9ff0e9f8): parts that do their job, gestures, stereo
+
+Built on part C (merged from `val/run-b5b3bf39`, a fast-forward). Six more `Fixes` flags, all in
+`.all`, all off on the parity path. Found by reading note logs bar by bar
+(`djctl render … --notes`), not just the matrix: the arp in every section-structured
+synthwave / trance / edm song was the melody again, and the bass jumped an octave-ish at
+every chord change.
+
+| fix | what it does | where |
+|---|---|---|
+| `.arpeggio` | arp slots play the bar's pad chord, rising through five chord tones in sixteenths (eighths in a C variant), in the arp's own register; bars the composed slot left silent stay silent. beats builds arp slots from the melody's motif, so the arp doubled the lead (unison in synthwave, an octave under in trance) | pass (rebinds the arp ring's steps) |
+| `.buildup` | every `buildup` section rolls into what follows: a snare roll over its last 8 bars at quarters → eighths → sixteenths, velocity rising (quadratically) from 36 to the fill's peak | pass, on the `fill-N` net ending at the buildup (its chain spans the song up to there) |
+| `.crash` | a crash on the downbeat of every section after the first, loudest into a drop / chorus, softer outside the dance genres; a crash voice (highpassed noise, 0.7 s tail) instead of beats' 0.1 s open hat for note 49 | pass (the next section's fill chain) + runner voice |
+| `.bassLine` | each bass bar moved by octaves to the cheapest cycle of motion between roots, E1 up to A2 (or the part's top) and under the pad; also lifts bars `.register` left under E1 (techno 42 sat on C1, 33 Hz) | pass |
+| `.openHats` | four-on-the-floor dance genres (techno, house, edm, trance, speedcore): the hats on each beat's off-beat eighth become open hats (note 46, voiced as beats' open hat) | pass + runner key |
+| `.stereo` | mid/side pan per lane: hats +0.3, crash −0.3, pad voices ±0.5 and arp voices ±0.45 alternating (a wide chord, a ping-pong arp), kick / snare / bass / lead centre. A voice's spread narrows with pitch (centred at E3 and below, full from G4), and the sampler bus's side is highpassed at 150 Hz (EXS samples are stereo, basses too). left + right = 2 × the mono mix before the curve | runner (`stereoPlacement`, `SideHighpass`) |
+
+Before → after, 12 genres × 2 seeds, whole songs, synth voices. "Before" is the same djctl with
+part C's 14 fixes only (`--fixes key,…,color`), so every measure has a value on both sides:
+
+| metric | before (part C) | after |
+|---|---|---|
+| arp notes that are tones of the bar's chord (trance / edm / synthwave) | 0.80 | 1.00 |
+| arp notes doubling the melody's pitch class at the same moment | 0.86 | 0.09 |
+| buildups whose last 8 bars roll faster and faster | 0 | 1.00 |
+| section starts with a crash | 0 | 1.00 |
+| bass motion at chord changes, mean semitones | 5.5 (techno 11, synthwave 7.4) | 3.4 (techno 1, synthwave 4.6) |
+| energy above 2 kHz, % (mean; four-on-the-floor genres) | 5.2 (techno 1.8–2.1, edm 2.0–3.3, trance 2.4–3.6) | 6.7 (techno 4.1–5.0, edm 4.7–7.2, trance 5.6–8.2) |
+| side / mid, dB | mono (−∞) | −19.0 (dance −17 … −27, jazz / lofi / ambient −8 … −14) |
+| side / mid below 150 Hz, dB | mono | −38.8 mean, −26 worst (ambient 42); sampled jazz 42 −8.6 → −16.4 |
+| semitone rubs per 100 overlapping pairs | 2.7 | 2.4 |
+| integrated loudness, mean | −17.2 LUFS | −16.9 (crashes, open hats; peaks −2.6 → −2.2 dBFS) |
+| clipped samples (synth; sampled jazz 42) | 0 (0) | 0 (0) |
+| in key, bass on root, changes on bars / 2-bar lines, fills | 0.99, 1.00, 1.00 / 1.00, 1.00 | unchanged |
+
+Audio at the section edges (`edm 42`, 0.5 s after vs before each section start, > 4 kHz): +2 …
+−4.7 dB without the crash, +1.2 … +7.5 dB with it, peaks within 0.5 dB.
+
+Tests: `MusicalityTests` `arpPlaysTheChords`, `buildupsRollIntoTheDrop`,
+`sectionsStartWithACrash`, `bassStepsBetweenRoots`, `offbeatHatsOpen` (each also checks the
+fix's "before" really was wrong); `StereoTests` (kick bit-identical in both channels, hats right,
+pad wide, mono sum = mono mix, `.stereo` off is mono, trance / lofi / jazz wide above and below
+−30 dB side under 150 Hz, the sampler side highpass), `StereoRealTimeTests` (release: no
+allocation). `make swift-rt-test` green.
+
+Test-run note: one full `make swift-test` had a test process die (signal 5) with
+`SamplerTests.aFullBankEvicts…` and `SessionTests.theReplayIsTheSameAudioAsTheLiveSet` failing;
+both suites pass alone (33/33). They load AUSamplers, which looks like contention when the whole
+suite runs in parallel. It has not been traced to this run's changes.
+
+### Listen checklist (`make run-app-release`, or `djctl render <g> <seed> --out f.wav`)
+
+- synthwave 42 / trance 42, any section with the arp: a chord arpeggio under the lead, bouncing
+  left-right, instead of the lead doubled.
+- edm 42 / trance 42 buildups: the snare roll speeding up through the last 8 bars, then a crash
+  on the drop's downbeat.
+- house 42 / techno 7: off-beat open hats ("tss") between kicks, leaning right.
+- techno 42: the bass is now C2/B1 (it was C1, felt more than heard) and steps a semitone.
+- trance 42: the bass steps A1 → F1 → G1 → A1 instead of A1 → F2 → G2 → A1.
+- headphones, any genre: pads wide, kick and bass dead centre; fold to mono and nothing
+  disappears.
+- `--fixes all` against `--fixes key,timing,register,dynamics,loudness,groove,offbeatBass,phrases,fills,voicing,energy,duck,contour,color` for A/B.
+
+### Visual (part D)
+
+Net rings: a loud step's flash (2.4 × base round a dot 6 pt in) ran over the role label under
+the ring and the ring beside it, on 8-step rings especially (techno / house hats). The grid now
+pads each ring by the most any ring overflows (`RingGeometry.maxOverflow`); labels are 10 pt,
+medium while the part plays. `NetRingsTests.aFlashStaysInsideItsCell`.
+
+### Next ideas
+
+- Sampled instruments' stereo between 150 and 300 Hz (stereo piano / pad samples) is still
+  wide (sampled jazz: side −16 dB under 150 Hz in a fourth-order measurement); a per-category
+  width (keys and pads wide, bass mono outright) would place them as the synth lanes are.
+- Arp patterns per genre (trance up-down sixteenths, synthwave eighths with octave jumps) and
+  an arp that follows a phrase's density curve rather than a fixed rate.
+- Pre-drop gap: the last beat before a drop with kick and bass cut. It needs a bar-specific
+  mute, and ring nets repeat every bar, so the cut would have to come from the runner
+  (EnergyCurve knows the section edges).
+- Ambient 42's low side (−26 dB): its pad reaches down to C3 with long tails; a narrower
+  spread there, or width by genre.
+- Choke the open hat with the next closed hat (a real hat's pedal) instead of letting it ring
+  over.
+- Section harmony and cadences (part C's list) are still open.
