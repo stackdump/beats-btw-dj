@@ -83,6 +83,12 @@ public struct MusicalityReport: Sendable {
   /// Melody phrase ends (a note followed by half a bar or more of rest in its net within the
   /// section, or its net's last note before a 4-bar line) that are tones of the bar's chord.
   public var phraseEndsOnChordTones: Double?
+  /// 4-bar melody phrases (one net, on the 4-bar grid, both first bars playing, the first two
+  /// notes or more) whose second bar repeats the first's rhythm and shape: the same sixteenths,
+  /// moving up, down or staying in the same places (at most a third of the moves turned
+  /// otherwise: a beat note bent onto the new chord). A phrase that states an idea and
+  /// repeats it.
+  public var melodyIdeaRepeats: Double?
 
   public init() {}
 
@@ -310,6 +316,26 @@ public struct MusicalityReport: Sendable {
     if !held.isEmpty { melodyLegato = held.reduce(0, +) / Double(held.count) }
     if ends > 0 { phraseEndsOnChordTones = Double(resolved) / Double(ends) }
 
+    // Ideas stated twice: bar 2 of each 4-bar phrase against bar 1
+    var phrases = 0
+    var restated = 0
+    for (_, es) in Dictionary(grouping: tonal.filter { $0.group == "melody" }, by: \.net) {
+      for (_, block) in Dictionary(grouping: es, by: { ($0.tick - 1) / 64 }) {
+        let sorted = block.sorted { $0.tick < $1.tick }
+        let a = sorted.filter { ($0.tick - 1) % 64 < 16 }
+        let b = sorted.filter { ($0.tick - 1) % 64 >= 16 && ($0.tick - 1) % 64 < 32 }
+        guard a.count >= 2, !b.isEmpty else { continue }
+        phrases += 1
+        func directions(_ x: [NoteEvent]) -> [Int] {
+          zip(x, x.dropFirst()).map { ($1.note - $0.note).signum() }
+        }
+        guard a.map({ ($0.tick - 1) % 16 }) == b.map({ ($0.tick - 1) % 16 }) else { continue }
+        let turns = zip(directions(a), directions(b)).filter { $0 != $1 }.count
+        if 3 * turns <= a.count - 1 { restated += 1 }
+      }
+    }
+    if phrases > 0 { melodyIdeaRepeats = Double(restated) / Double(phrases) }
+
     // Form
     let sections = project.structure
     if sections.count > 1 {
@@ -396,6 +422,7 @@ public struct MusicalityReport: Sendable {
     if let v = bassStepwise { d["bassStepwise"] = round3(v) }
     if let v = melodyLegato { d["melodyLegato"] = round3(v) }
     if let v = phraseEndsOnChordTones { d["phraseEndsOnChordTones"] = round3(v) }
+    if let v = melodyIdeaRepeats { d["melodyIdeaRepeats"] = round3(v) }
     return d
   }
 }

@@ -24,10 +24,10 @@ private func scalePCs(_ p: Project) -> Set<Int> {
   return Set(scaleIntervals(p.scaleName + "Scale").map { (root + $0) % 12 })
 }
 
-/// Fixes that rewrite single notes by their neighbours (`.cadence`, `.approach`): a test that
-/// isolates an earlier fix by A/B leaves them out of both sides, since which note they pick
-/// depends on the octave or the step that fix chose.
-private let phrasing: DJMusicality.Fixes = [.cadence, .approach]
+/// Fixes that rewrite single notes by their neighbours (`.cadence`, `.approach`) or bars by
+/// others (`.motif`): a test that isolates an earlier fix by A/B leaves them out of both sides,
+/// since which note they pick depends on the octave or the step that fix chose.
+private let phrasing: DJMusicality.Fixes = [.cadence, .approach, .motif]
 
 /// `t` played with every fix except `without` and `phrasing`.
 private func playedWithout(
@@ -56,11 +56,11 @@ struct MusicalityTests {
         #expect(a.transitions.keys == b.transitions.keys, "\(genre) \(id) transitions")
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
         // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
-        // steps, `.buildup` / `.crash` the fill chains' (a roll, a crash); nothing else gains or
-        // loses notes
+        // steps, `.motif` a melody's second bars (bar 1's rhythm), `.buildup` / `.crash` the
+        // fill chains' (a roll, a crash); nothing else gains or loses notes
         if id.hasPrefix("fill-") {
           continue
-        } else if b.track.group == "arp" {
+        } else if b.track.group == "arp" || b.track.group == "melody" {
           #expect(!b.bindings.keys.isEmpty, "\(genre) \(id)")
         } else if b.track.group == "harmony" {
           #expect(Set(a.bindings.keys).isSubset(of: Set(b.bindings.keys)), "\(genre) \(id)")
@@ -483,15 +483,19 @@ struct MusicalityTests {
   func phrasesEndOnChordTones(genre: String) throws {
     for seed in [7.0, 42] {
       let t = played(genre, seed)
-      let open = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.cadence))
+      // (`.motif` rewrites bar 2 from bar 1: left out of both sides of the A/B)
+      let open = DJMusicality.apply(
+        t.composed, spec: t.spec, fixes: .all.subtracting([.cadence, .motif]))
+      let closed = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.motif))
       let after = try #require(report(t.played).phraseEndsOnChordTones)
       #expect(after >= 0.95, "\(genre)/\(seed): \(after)")
+      #expect(try #require(report(closed).phraseEndsOnChordTones) >= 0.95)
       let melody = { (p: Project) in NoteLog.capture(p).filter { $0.group == "melody" } }
       let a = melody(open)
-      let b = melody(t.played)
+      let b = melody(closed)
       #expect(a.map(\.tick) == b.map(\.tick))
       #expect(zip(a, b).allSatisfy { abs($0.note - $1.note) <= 5 })
-      #expect(report(t.played).inKey >= report(open).inKey)
+      #expect(report(closed).inKey >= report(open).inKey)
     }
     // the open endings were really there
     let t = played("techno", 42)
@@ -529,6 +533,35 @@ struct MusicalityTests {
         o.played.canonicalJSON
           == DJMusicality.apply(o.composed, spec: o.spec, fixes: .all.subtracting(.approach))
           .canonicalJSON, "\(other)")
+    }
+  }
+
+  /// Each 4-bar melody phrase states its idea twice: bar 2 has bar 1's rhythm and shape (beats'
+  /// random walk almost never repeats one), on bar 2's chord, ending open (a chord tone, not the
+  /// root). Bars 1, 3 and 4 and every other part are as before; notes stay in key, beats on
+  /// chord tones.
+  @Test(arguments: ["techno", "house", "edm", "trance", "dnb", "synthwave", "lofi", "funk", "jazz"])
+  func ideasAreStatedTwice(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let plain = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.motif))
+      let a = report(plain)
+      let b = report(t.played)
+      let before = try #require(a.melodyIdeaRepeats)
+      let after = try #require(b.melodyIdeaRepeats)
+      #expect(before < 0.4, "\(genre)/\(seed): already repeats (\(before))")
+      #expect(after >= 0.8, "\(genre)/\(seed): \(before) → \(after)")
+      #expect(b.inKey >= a.inKey - 0.005)
+      #expect(try #require(b.chordTonesOnBeats) >= (a.chordTonesOnBeats ?? 0) - 0.02)
+      #expect(
+        try #require(b.phraseEndsOnChordTones) >= (a.phraseEndsOnChordTones ?? 0) - 0.02)
+      // only melody bars 2 (mod 4) changed
+      let other = { (p: Project) in
+        NoteLog.capture(p).filter { $0.group != "melody" || ($0.tick - 1) % 64 / 16 != 1 }
+      }
+      let x = other(plain)
+      let y = other(t.played)
+      #expect(x.map(\.tick) == y.map(\.tick) && x.map(\.note) == y.map(\.note), "\(genre)/\(seed)")
     }
   }
 }

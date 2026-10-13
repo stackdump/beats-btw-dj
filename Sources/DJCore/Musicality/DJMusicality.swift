@@ -170,11 +170,18 @@ public enum DJMusicality {
     /// of beats' 48 Hz in every track, so its tail and the bass agree. Applied by the runner.
     public static let kickTune = Fixes(rawValue: 1 << 29)
 
+    /// A melody you can remember: each 4-bar phrase states its idea twice. beats' motif walks
+    /// at random through all four bars, so no bar sounds like another and nothing in a phrase
+    /// comes back. Here bar 2 replays bar 1's rhythm and shape, moved along the scale onto bar
+    /// 2's chord (a sequence), ending open on a chord tone that is not the root; bars 3–4
+    /// continue and close as composed. A bar the melody rests in stays a rest.
+    public static let motif = Fixes(rawValue: 1 << 30)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
       .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space, .subtractive,
-      .unison, .echo, .kickTune,
+      .unison, .echo, .kickTune, .motif,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -185,7 +192,7 @@ public enum DJMusicality {
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
-      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo, "kickTune": .kickTune,
+      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo, "kickTune": .kickTune, "motif": .motif,
       "none": [],
     ]
   }
@@ -205,6 +212,7 @@ public enum DJMusicality {
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.cadence) { resolvePhraseEnds(&p) }
+    if fixes.contains(.motif) { stateIdeasTwice(&p) }
     if fixes.contains(.approach) { approachChordChanges(&p, genre: genre) }
     if fixes.contains(.legato) { holdMelodyNotes(&p) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
@@ -1224,6 +1232,100 @@ public enum DJMusicality {
           abs(c - target.note) <= 2, c >= bassFloor
         else { continue }
         nb.bindings[last.key]?.note = c
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: motif
+
+  /// `note` moved `k` steps along the key (`scale`: every MIDI note in the key, ascending);
+  /// nil when the note is not in the key or the move leaves the keyboard.
+  static func diatonic(_ note: Int, _ k: Int, _ scale: [Int]) -> Int? {
+    guard let i = scale.firstIndex(of: note), scale.indices.contains(i + k) else { return nil }
+    return scale[i + k]
+  }
+
+  /// In each melody ring of whole bars, every 4-bar phrase (2-bar, in a 2-bar ring) whose first
+  /// two bars both play: bar 2's notes are replaced by bar 1's, on the same sixteenths with the
+  /// same lengths and velocities, moved `k` scale steps — the `k` (within an octave) that puts
+  /// its first note on a tone of bar 2's pad chord nearest the note bar 2 began on, keeping
+  /// bar 1's up / down / same shape where it can, inside the ring's range (down a minor third,
+  /// up a fifth: a sequence may climb, but not into the pad). Beat notes and
+  /// phrase ends that then miss bar 2's chord step to its nearest tone (as beats snaps its
+  /// motif's beats, and `.cadence` its phrase ends); the last note goes to the nearest tone of
+  /// the chord that is not its root (bar 2 ends open, as beats composes it, so bar 4's close
+  /// answers it). Runs after `.contour` and `.cadence`, so bar 2 repeats bar 1 as it will be
+  /// played.
+  static func stateIdeasTwice(_ p: inout Project) {
+    let (chords, padBars) = padChords(p)
+    let key = keyPitchClasses(p)
+    guard padBars > 0, !key.isEmpty else { return }
+    let scale = (0...127).filter { key.contains(pc($0)) }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], isBarRing(nb), part(nb) == "melody" else { continue }
+      let count = nb.transitions.count
+      let block = count % 64 == 0 ? 64 : 32
+      guard count % block == 0 else { continue }
+      let steps = ringNotes(nb)
+      guard let lo = steps.map(\.note).min(), let hi = steps.map(\.note).max() else { continue }
+      for start in stride(from: 0, to: count, by: block) {
+        let first = steps.filter { $0.step >= start && $0.step < start + 16 }
+        let second = steps.filter { $0.step >= start + 16 && $0.step < start + 32 }
+        guard first.count >= 2, let opening = second.first,
+          let chord = chords[((start + 16) / 16) % padBars], !chord.isEmpty
+        else { continue }
+        // the moves that land bar 1's first note on bar 2's chord, nearest where bar 2 began
+        // first; the first whose copy stays in range is taken
+        var moves: [(k: Int, d: Int)] = []
+        for k in -7...7 {
+          guard let n = diatonic(first[0].note, k, scale), chord.contains(pc(n)) else { continue }
+          moves.append((k, abs(n - opening.note)))
+        }
+        moves.sort { ($0.d, abs($0.k)) < ($1.d, abs($1.k)) }
+        // the sixteenth after each note of bar 1 (the next note, or bar 2's first)
+        let next = first.indices.map { j in j + 1 < first.count ? first[j + 1].step : start + 16 }
+        // A note that has to be a chord tone goes to the nearest one that keeps the line's
+        // direction from the note before (up, down, or the same), else the nearest.
+        func snap(_ n: Int, prev: Int?, sign: Int, avoid: Int? = nil) -> Int {
+          let options = (-6...6).map { n + $0 }.filter {
+            chord.contains(pc($0)) && pc($0) != avoid
+          }
+          let keep = options.filter { o in prev.map { (o - $0).signum() == sign } ?? true }
+          let pool = keep.isEmpty ? options : keep
+          return pool.min { abs($0 - n) < abs($1 - n) } ?? n
+        }
+        var chosen: (copy: [(step: Int, binding: MidiBinding)], cost: Int)?
+        for (k, d) in moves {
+          var copy: [(step: Int, binding: MidiBinding)] = []
+          var turns = 0  // intervals whose direction differs from bar 1's
+          for (j, s) in first.enumerated() {
+            guard var n = diatonic(s.note, k, scale), var b = nb.bindings[s.key] else { break }
+            let step = s.step + 16
+            let prev = copy.last?.binding.note
+            let sign = j > 0 ? (s.note - first[j - 1].note).signum() : 0
+            // beats on the chord; a phrase end (half a bar of rest after it) too; the last
+            // note on a tone that is not the root
+            if j == first.count - 1 && (pc(n) == chord[0] || !chord.contains(pc(n))) {
+              n = snap(n, prev: prev, sign: sign, avoid: chord[0])
+            } else if (step % 4 == 0 || next[j] - s.step >= phraseRest) && !chord.contains(pc(n))
+            {
+              n = snap(n, prev: prev, sign: sign)
+            }
+            if let prev, (n - prev).signum() != sign { turns += 1 }
+            b.note = n
+            copy.append((step, b))
+          }
+          guard copy.count == first.count,
+            copy.allSatisfy({ $0.binding.note >= lo - 3 && $0.binding.note <= hi + 7 })
+          else { continue }
+          // the shape first, then nearness to where bar 2 began
+          let cost = 100 * turns + d
+          if chosen == nil || cost < chosen!.cost { chosen = (copy, cost) }
+        }
+        guard let chosen = chosen?.copy else { continue }
+        for s in second { nb.bindings[s.key] = nil }
+        for c in chosen { nb.bindings["t\(c.step)"] = c.binding }
       }
       p.nets[id] = nb
     }
