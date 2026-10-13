@@ -42,8 +42,12 @@ public enum DJMusicality {
     /// (beats locks it to the kick's steps: two low sounds starting together on every beat).
     public static let offbeatBass = Fixes(rawValue: 1 << 6)
 
+    /// Phrase changes on the 2 / 4-bar grid the chords and motifs repeat on (a 12-bar section
+    /// with four phrases is cut 3 + 3 + 3 + 3; this makes it 4 + 4 + 2 + 2).
+    public static let phrases = Fixes(rawValue: 1 << 7)
+
     public static let all: Fixes = [
-      .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass,
+      .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases,
     ]
   }
 
@@ -52,6 +56,7 @@ public enum DJMusicality {
     guard !fixes.isEmpty, let genre = BeatsTables.shared.genres[spec.genre] else { return project }
     var p = project
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
+    if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
@@ -250,6 +255,82 @@ public enum DJMusicality {
         if moved[target] == nil { moved[target] = b }
       }
       nb.bindings = moved
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: phrases
+
+  /// Phrase lengths for a section of `steps` split into `count` phrases: unchanged when the
+  /// even split is whole 4-bar phrases (or 2 bars or less), else 2-bar units handed out longest first in
+  /// powers of two (12 bars in 4 phrases: 4 + 4 + 2 + 2; in 2: 8 + 4).
+  static func phraseLengths(steps: Int, count: Int) -> [Int] {
+    guard count > 1, steps % count == 0 || steps % 32 == 0 else {
+      return [Int](repeating: steps / max(1, count), count: max(1, count))
+    }
+    if steps % count == 0, (steps / count) % 64 == 0 || steps / count <= 32 {
+      return [Int](repeating: steps / count, count: count)
+    }
+    guard steps % 32 == 0, steps / 32 >= count else {
+      return [Int](repeating: steps / count, count: count)
+    }
+    var units = steps / 32
+    var out: [Int] = []
+    for left in stride(from: count, to: 0, by: -1) {
+      var p = 1
+      while p * 2 <= units - (left - 1) { p *= 2 }
+      if left == 1 { p = units }
+      out.append(p * 32)
+      units -= p
+    }
+    return out
+  }
+
+  /// Move the phrase-start events of the role control nets (`roleControlNet`: one stage per
+  /// change, `p_delay_i` = ticks since the previous one) from the even split onto
+  /// `phraseLengths`. Section starts stay where they are; a net whose events don't sit on the
+  /// even split is left alone.
+  static func alignPhrases(_ p: inout Project) {
+    var sections: [(start: Int, steps: Int, count: Int)] = []
+    var t = 0
+    for s in p.structure {
+      let count = s.phrases.values.map(\.count).max() ?? 1
+      sections.append((t, s.steps, count))
+      t += s.steps
+    }
+    guard !sections.isEmpty else { return }
+    func remap(_ tick: Int) -> Int? {
+      guard let s = sections.first(where: { tick > $0.start && tick < $0.start + $0.steps }) else {
+        return tick  // a section start (or past the end): unchanged
+      }
+      let even = s.steps / max(1, s.count)
+      let offset = tick - s.start
+      guard even > 0, offset % even == 0 else { return nil }
+      let lengths = phraseLengths(steps: s.steps, count: s.count)
+      return s.start + lengths.prefix(offset / even).reduce(0, +)
+    }
+    for id in p.nets.keys where id.hasPrefix("struct-") {
+      guard var nb = p.nets[id], nb.role == "control", nb.places["p_delay_0"] != nil else {
+        continue
+      }
+      var gaps: [Double] = []
+      while let d = nb.places["p_delay_\(gaps.count)"]?.initial.first { gaps.append(d) }
+      var ticks: [Int] = []
+      var acc = 0
+      for g in gaps {
+        acc += Int(g)
+        ticks.append(acc)
+      }
+      let moved = ticks.map(remap)
+      guard !moved.contains(where: { $0 == nil }) else { continue }
+      let new = moved.map { $0! }
+      guard zip(new, new.dropFirst()).allSatisfy({ $0 < $1 }), new.first.map({ $0 > 0 }) ?? false
+      else { continue }
+      var prev = 0
+      for (i, tick) in new.enumerated() {
+        nb.places["p_delay_\(i)"]!.initial = [Double(tick - prev)]
+        prev = tick
+      }
       p.nets[id] = nb
     }
   }

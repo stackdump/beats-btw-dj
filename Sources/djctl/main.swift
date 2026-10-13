@@ -342,7 +342,8 @@ case "render":
     fixes = []
     let names: [String: DJMusicality.Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "loudness": .loudness,
-      "groove": .groove, "dynamics": .dynamics, "all": .all,
+      "groove": .groove, "dynamics": .dynamics, "offbeatBass": .offbeatBass, "phrases": .phrases,
+      "all": .all,
     ]
     for n in positional[i + 1].split(separator: ",") { fixes.formUnion(names[String(n)] ?? []) }
     positional.removeSubrange(i...(i + 1))

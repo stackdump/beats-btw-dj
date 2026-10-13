@@ -39,6 +39,10 @@ public struct MusicalityReport: Sendable {
   /// bar line: fired on a bar's last tick, after its notes, so the next bar's downbeat already
   /// plays the new parts. nil when the song has none.
   public var changesOnBars: Double?
+  /// Part changes in effect on a 2-bar line counted from their section's start (where the
+  /// 2- and 4-bar chord cycles and motifs turn over), or on the section's own phrase line
+  /// when its phrases are shorter; nil when the song has none.
+  public var changesOnPhrases: Double?
 
   public init() {}
 
@@ -50,6 +54,22 @@ public struct MusicalityReport: Sendable {
     if !controls.isEmpty {
       let on = controls.filter { $0.tick % 16 == 0 }.count
       changesOnBars = Double(on) / Double(controls.count)
+      var starts: [(start: Int, grid: Int)] = []
+      var t = 0
+      for sec in project.structure {
+        // 2 bars, or the section's own phrase when it is shorter (a solo trading single bars)
+        let count = max(1, sec.phrases.values.map(\.count).max() ?? 1)
+        starts.append((t, max(1, min(32, sec.steps / count))))
+        t += sec.steps
+      }
+      if !starts.isEmpty {
+        // a change fired on tick T is in effect from step T (the next sixteenth)
+        let grid = controls.filter { c in
+          let s = starts.last { $0.start <= c.tick } ?? starts[0]
+          return (c.tick - s.start) % s.grid == 0
+        }.count
+        changesOnPhrases = Double(grid) / Double(controls.count)
+      }
     }
     notes = log.count
     let tonal = log.filter(Self.isTonal)
@@ -190,6 +210,7 @@ public struct MusicalityReport: Sendable {
     if let v = harmonyInBassRange { d["harmonyInBassRange"] = round3(v) }
     if let v = melodyRecurrence { d["melodyRecurrence"] = round3(v) }
     if let v = changesOnBars { d["changesOnBars"] = round3(v) }
+    if let v = changesOnPhrases { d["changesOnPhrases"] = round3(v) }
     return d
   }
 }

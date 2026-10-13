@@ -211,4 +211,18 @@ struct MusicalityTests {
           DJMusicality.apply(h.composed, spec: h.spec, fixes: .all.subtracting(.offbeatBass))
         ).filter { $0.group == "bass" }.map(\.tick))
   }
+
+  /// Phrase changes on the 2-bar grid from their section's start (the composer's even split
+  /// gives 3-bar phrases in 12-bar sections), and the phrase lengths that make it.
+  @Test func phraseChangesOnTheTwoBarGrid() throws {
+    #expect(DJMusicality.phraseLengths(steps: 192, count: 4) == [64, 64, 32, 32])
+    #expect(DJMusicality.phraseLengths(steps: 192, count: 2) == [128, 64])
+    #expect(DJMusicality.phraseLengths(steps: 128, count: 4) == [32, 32, 32, 32])
+    #expect(DJMusicality.phraseLengths(steps: 64, count: 2) == [32, 32])
+    for genre in ["techno", "edm", "jazz"] {
+      let t = played(genre, 42)
+      #expect(try #require(report(t.played).changesOnPhrases) == 1, "\(genre)")
+      #expect(try #require(report(t.composed).changesOnPhrases) < 0.8, "\(genre) composed")
+    }
+  }
 }

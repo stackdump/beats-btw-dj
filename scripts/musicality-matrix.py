@@ -33,6 +33,7 @@ COLUMNS = [
     ("melodyRecurrence", "motif", "{:4.2f}"),
     ("sectionContrast", "contr", "{:4.1f}"),
     ("changesOnBars", "onBar", "{:5.2f}"),
+    ("changesOnPhrases", "on2Bar", "{:6.2f}"),
 ]
 
 
@@ -56,7 +57,7 @@ def flat(doc):
         "melodyVel": m.get("velocitySpread", {}).get("melody"),
     }
     for k in ("inKey", "bassOnRoot", "bassOnKick", "harmonyInBassRange", "semitoneClashesPer100",
-              "melodyRecurrence", "sectionContrast", "changesOnBars"):
+              "melodyRecurrence", "sectionContrast", "changesOnBars", "changesOnPhrases"):
         row[k] = m.get(k)
     return row
 
