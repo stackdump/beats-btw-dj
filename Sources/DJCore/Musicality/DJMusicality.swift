@@ -150,10 +150,31 @@ public enum DJMusicality {
     /// lofi); kick and bass stay dry. beats' engine has no space at all. Applied by the runner.
     public static let space = Fixes(rawValue: 1 << 25)
 
+    /// Saw and square voices as an analogue synth plays them: band-limited oscillators with
+    /// every partial that fits under Nyquist (beats' tables stop at the 8th, so a 55 Hz bass has
+    /// nothing above 440 Hz), through a lowpass per voice that opens on the note — further the
+    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Applied by the runner.
+    public static let subtractive = Fixes(rawValue: 1 << 26)
+
+    /// Pads and saw leads as two oscillators detuned a few cents apart (`Unison`): a held
+    /// chord moves and a lead is full instead of one static oscillator. With `.stereo` the
+    /// pad's pair spreads across the field. Applied by the runner.
+    public static let unison = Fixes(rawValue: 1 << 27)
+
+    /// A tempo-synced ping-pong echo on the lead and arp where the style has one (`EchoSpec`:
+    /// dotted eighths in trance, synthwave, edm; eighths in lofi; a long wash in ambient):
+    /// phrases ring on into the gaps between them. Applied by the runner; set by genre.
+    public static let echo = Fixes(rawValue: 1 << 28)
+
+    /// The kick's body tuned to the key (`KickTuning`: the root or fifth nearest 50 Hz) instead
+    /// of beats' 48 Hz in every track, so its tail and the bass agree. Applied by the runner.
+    public static let kickTune = Fixes(rawValue: 1 << 29)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
-      .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space,
+      .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space, .subtractive,
+      .unison, .echo, .kickTune,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -164,7 +185,7 @@ public enum DJMusicality {
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
       "bassLine": .bassLine, "openHats": .openHats, "stereo": .stereo, "legato": .legato,
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
-      "space": .space,
+      "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo, "kickTune": .kickTune,
       "none": [],
     ]
   }

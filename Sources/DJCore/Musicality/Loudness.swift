@@ -19,20 +19,28 @@ public enum Loudness {
   static let probeBars = 2
   static let probeRate = 8_000.0
 
-  /// The gain for `project` (1 when it plays nothing).
-  public static func gain(for project: Project) -> Double {
-    guard let db = measure(project) else { return 1 }
+  /// The fixes that change how the voices themselves sound (and so how loud they are): the
+  /// probe plays those of the deck's, so the gain is measured on the voices the deck plays.
+  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison]
+
+  /// The gain for `project` (1 when it plays nothing), measured with the `voiceFixes` among
+  /// `fixes` on.
+  public static func gain(for project: Project, fixes: DJMusicality.Fixes = []) -> Double {
+    guard let db = measure(project, fixes: fixes) else { return 1 }
     let g = pow(10, (targetDB - db) / 20)
     return min(range.max, max(range.min, g))
   }
 
   /// K-weighted mean square (dB) of the voices, times the master gain, over the probe: two
   /// bars from `start` (a step), else from the busiest section's start.
-  static func measure(_ project: Project, start: Int? = nil) -> Double? {
+  static func measure(_ project: Project, start: Int? = nil, fixes: DJMusicality.Fixes = [])
+    -> Double?
+  {
     let start = start ?? busiestStart(project)
     var o = WaveOptions()
     o.instruments = .shared
     o.master = "linear"
+    o.musicality = fixes.intersection(voiceFixes)
     let runner = WaveRunner(sampleRate: probeRate, opts: o)
     runner.load(
       prepared: WaveRunner.prepare(project, sampleRate: probeRate, opts: o, startTick: start))

@@ -151,13 +151,20 @@ public final class PreparedTrack: @unchecked Sendable {
     }
     var o = opts
     o.voicingSeed = seed
-    if case .net(let spec) = source, opts.musicality.contains(.duck) {
-      o.duckDepth = DJMusicality.duckDepth(genre: spec.genre)
-    }
-    if case .net(let spec) = source, opts.musicality.contains(.space) {
-      o.space = SpaceSpec.forGenre(spec.genre)
-    }
+    if case .net(let spec) = source { o = o.forGenre(spec.genre) }
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o)
+  }
+}
+
+extension WaveOptions {
+  /// These options with the settings a track of `genre` plays with, for the fixes they hold:
+  /// the duck depth, the room, the echo.
+  public func forGenre(_ genre: String) -> WaveOptions {
+    var o = self
+    if musicality.contains(.duck) { o.duckDepth = DJMusicality.duckDepth(genre: genre) }
+    if musicality.contains(.space) { o.space = SpaceSpec.forGenre(genre) }
+    if musicality.contains(.echo) { o.echo = EchoSpec.forGenre(genre) }
+    return o
   }
 }
 
