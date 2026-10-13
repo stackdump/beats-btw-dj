@@ -316,9 +316,64 @@ case "ctl":
     exit(1)
   }
 
+case "render":
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth]
+  // Composes the track as a deck would, renders it offline (nothing on the speakers) and
+  // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments.
+  let seconds = option("--seconds") ?? 90
+  var structure: String? = "standard"
+  var out: String?
+  if let i = positional.firstIndex(of: "--structure"), positional.indices.contains(i + 1) {
+    structure = positional[i + 1] == "loop" ? nil : positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
+  if let i = positional.firstIndex(of: "--out"), positional.indices.contains(i + 1) {
+    out = positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
+  var notesOut: String?
+  if let i = positional.firstIndex(of: "--notes"), positional.indices.contains(i + 1) {
+    notesOut = positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
+  let synth = positional.contains("--synth")
+  positional.removeAll { $0 == "--synth" }
+  guard positional.count >= 2, let seed = Double(positional[1]) else {
+    stderr(
+      "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--synth]"
+    )
+    exit(2)
+  }
+  let spec = TrackSpec(genre: positional[0], seed: seed, structure: structure)
+  let sr = 48_000.0
+  let source = WaveDeckSource(sampleRate: sr, opts: .extended)
+  let track = PreparedTrack(
+    spec: spec, sampleRate: sr, opts: .extended(samplers: synth ? nil : source.samplers))
+  let (log, controls) = NoteLog.captureAll(track.played)
+  let report = MusicalityReport(project: track.project, log: log, controls: controls)
+  if let notesOut {
+    // one note per line: tick net group note velocity channel steps
+    let lines = log.map {
+      "\($0.tick) \($0.net) \($0.group) \($0.note) \($0.velocity) \($0.channel) \($0.steps)"
+    }
+    let changes = controls.map { "\($0.tick) \($0.net) <\($0.action)> \($0.target) 0 0 0" }
+    try ((lines + changes).joined(separator: "\n") + "\n").write(
+      toFile: notesOut, atomically: true, encoding: .utf8)
+  }
+  let render = OfflineRender(track: track, source: source, seconds: seconds)
+  if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
+  let doc: [String: Any] = [
+    "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
+    "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,
+    "audio": render.metrics.dictionary,
+  ]
+  let data = try JSONSerialization.data(
+    withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
+  print(String(decoding: data, as: UTF8.self))
+
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | render <genre> <seed> | mcp | ctl <method> [json]"
   )
   exit(2)
 }

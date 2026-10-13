@@ -95,6 +95,8 @@ public final class PreparedTrack: @unchecked Sendable {
   /// What a session names it by: `.net(spec)` or `.rawNets(payload:)`.
   public let source: DeckSourceDescriptor
   public let project: Project
+  /// What the deck plays: `project` itself for now.
+  public let played: Project
   public let prepared: WaveProject
 
   /// The composed track's spec; nil for a raw-`nets` share.
@@ -141,9 +143,10 @@ public final class PreparedTrack: @unchecked Sendable {
   ) {
     self.source = source
     self.project = project
+    played = project
     var o = opts
     o.voicingSeed = seed
-    prepared = WaveRunner.prepare(project, sampleRate: sampleRate, opts: o)
+    prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o)
   }
 }
 
