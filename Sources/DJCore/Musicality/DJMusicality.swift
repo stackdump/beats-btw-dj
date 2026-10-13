@@ -81,9 +81,16 @@ public enum DJMusicality {
     /// measured worse there.)
     public static let color = Fixes(rawValue: 1 << 13)
 
+    /// The arp plays the chords. In a song with sections beats builds each arp slot from the
+    /// melody's motif (or a Markov line), so it doubles the lead in unison or an octave under
+    /// it and arpeggiates nothing. This plays the bar's pad chord, rising through its tones in
+    /// sixteenths (eighths in a sparse C variant), in the arp's own register; bars where the
+    /// composed slot is silent stay silent.
+    public static let arpeggio = Fixes(rawValue: 1 << 14)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy, .duck, .contour, .color,
+      .voicing, .energy, .duck, .contour, .color, .arpeggio,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -91,7 +98,7 @@ public enum DJMusicality {
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
-      "color": .color,
+      "color": .color, "arpeggio": .arpeggio,
       "none": [],
     ]
   }
@@ -106,6 +113,7 @@ public enum DJMusicality {
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
+    if fixes.contains(.arpeggio) { arpeggiate(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
@@ -673,6 +681,82 @@ public enum DJMusicality {
         b.note = note
         nb.bindings["t\(next)"] = b
       }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: arpeggio
+
+  /// The pad's chord in each bar of its cycle, as pitch classes in the order it strikes them
+  /// (root first), and the cycle's length in bars; empty without a pad.
+  static func padChords(_ p: Project) -> (chords: [Int: [Int]], bars: Int) {
+    var bars = 0
+    var struck: [Int: [(step: Int, pc: Int)]] = [:]
+    for nb in p.nets.values where nb.role != "control" && part(nb) == "harmony" {
+      bars = max(bars, nb.transitions.count / 16)
+      for (t, b) in nb.bindings.pairs where t.hasPrefix("t") && !isDrumChannel(b.channel) {
+        if let i = Int(t.dropFirst()) { struck[i / 16, default: []].append((i, b.note % 12)) }
+      }
+    }
+    var chords: [Int: [Int]] = [:]
+    for (bar, s) in struck {
+      var pcs: [Int] = []
+      for x in s.sorted(by: { $0.step < $1.step }) where !pcs.contains(x.pc) { pcs.append(x.pc) }
+      chords[bar] = pcs
+    }
+    return (chords, bars)
+  }
+
+  /// Which of the five chord tones (from the lowest up) each sixteenth of a bar plays: up the
+  /// chord twice, a step higher the third time, then back down to lead into the next bar.
+  static let arpPattern = [0, 1, 2, 3, 1, 2, 3, 4, 2, 3, 4, 3, 2, 1, 2, 1]
+
+  /// Every arp ring whose length is a whole pad cycle is rewritten bar by bar: in a bar where
+  /// it had notes it now plays the bar's pad chord in `arpPattern`, every sixteenth (every
+  /// eighth in a C variant, which beats composes sparser), from the lowest chord tone at or
+  /// above the ring's median less a fourth, one step long, at the velocity it had. Bars it
+  /// left silent stay silent: the arrangement's phrasing is kept, the notes are the chord's.
+  static func arpeggiate(_ p: inout Project) {
+    let (chords, padBars) = padChords(p)
+    guard padBars > 0 else { return }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "arp",
+        nb.transitions.count % (16 * padBars) == 0, nb.places.count == nb.transitions.count
+      else { continue }
+      var steps: [(step: Int, binding: MidiBinding)] = []
+      for (t, b) in nb.bindings.pairs where t.hasPrefix("t") && !isDrumChannel(b.channel) {
+        if let i = Int(t.dropFirst()) { steps.append((i, b)) }
+      }
+      guard let m = median(steps.map(\.binding.note)), let template = steps.first?.binding else {
+        continue
+      }
+      let low = m - 5
+      let rate = nb.riffVariant == "C" ? 2 : 1
+      var bound = OrderedMap<MidiBinding>()
+      for bar in 0..<(nb.transitions.count / 16) {
+        let inBar = steps.filter { $0.step / 16 == bar }
+        guard let chord = chords[bar % padBars], !chord.isEmpty,
+          let velocity = inBar.map(\.binding.velocity).max()
+        else { continue }
+        // the chord's tones from `low` up, five of them
+        var ladder: [Int] = []
+        var n = low
+        while ladder.count < 5 && n < low + 48 {
+          if chord.contains(((n % 12) + 12) % 12) { ladder.append(n) }
+          n += 1
+        }
+        guard ladder.count == 5 else { continue }
+        for s in stride(from: 0, to: 16, by: rate) {
+          var b = template
+          b.note = max(0, min(127, ladder[arpPattern[s]]))
+          b.velocity = velocity
+          b.duration = 0
+          b.durationSteps = 1
+          bound["t\(bar * 16 + s)"] = b
+        }
+      }
+      guard !bound.keys.isEmpty else { continue }
+      nb.bindings = bound
       p.nets[id] = nb
     }
   }

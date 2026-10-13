@@ -42,8 +42,11 @@ struct MusicalityTests {
         #expect(a.places.keys == b.places.keys, "\(genre) \(id) places")
         #expect(a.transitions.keys == b.transitions.keys, "\(genre) \(id) transitions")
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
-        // `.color` binds a free step of the pad (a seventh); nothing else gains or loses notes
-        if b.track.group == "harmony" {
+        // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
+        // steps; nothing else gains or loses notes
+        if b.track.group == "arp" {
+          #expect(!b.bindings.keys.isEmpty, "\(genre) \(id)")
+        } else if b.track.group == "harmony" {
           #expect(Set(a.bindings.keys).isSubset(of: Set(b.bindings.keys)), "\(genre) \(id)")
         } else {
           #expect(a.bindings.count == b.bindings.count, "\(genre) \(id) bound transitions")
@@ -308,5 +311,27 @@ struct MusicalityTests {
     let plain = DJMusicality.apply(
       techno.composed, spec: techno.spec, fixes: .all.subtracting(.color))
     #expect(plain.canonicalJSON == techno.played.canonicalJSON)
+  }
+
+  /// The arp plays the chords: every arp note a tone of the bar's pad chord, hardly ever the
+  /// melody's pitch class at the same moment (beats' arp slots are the melody's motif, doubled),
+  /// a steady run of notes in each bar it plays, above the pad, in key.
+  @Test(arguments: ["trance", "edm", "synthwave"])
+  func arpPlaysTheChords(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let motif = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.arpeggio))
+      let a = report(motif)
+      let b = report(t.played)
+      #expect(try #require(a.arpDoublesMelody) > 0.5, "\(genre)/\(seed): composed arp doubles")
+      #expect(try #require(b.arpChordTones) == 1, "\(genre)/\(seed)")
+      #expect(try #require(b.arpDoublesMelody) < 0.3, "\(genre)/\(seed)")
+      #expect(b.inKey >= a.inKey)
+      let arp = NoteLog.capture(t.played).filter { $0.group == "arp" }
+      for (_, bar) in Dictionary(grouping: arp, by: { ($0.tick - 1) / 16 }) {
+        #expect(bar.count >= 8, "\(genre)/\(seed): \(bar.count) arp notes in a bar")
+      }
+      #expect(try #require(b.medianNote["arp"]) > (b.medianNote["harmony"] ?? 0))
+    }
   }
 }

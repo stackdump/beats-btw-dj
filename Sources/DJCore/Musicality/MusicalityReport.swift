@@ -59,6 +59,11 @@ public struct MusicalityReport: Sendable {
   public var melodySteps: Double?
   /// Pad chords with four or more pitch classes (sevenths, added ninths), of all pad chords.
   public var padColor: Double?
+  /// Arp notes that are tones of the bar's chord; nil without an arp or a pad.
+  public var arpChordTones: Double?
+  /// Arp notes struck with a melody note of the same pitch class (unison or octaves): an arp
+  /// that doubles the lead instead of playing a part of its own; nil without an arp.
+  public var arpDoublesMelody: Double?
 
   public init() {}
 
@@ -119,6 +124,11 @@ public struct MusicalityReport: Sendable {
         if c.contains(where: { $0 % 12 == e.note % 12 }) { hits += 1 }
       }
       if total > 0 { chordTonesOnBeats = Double(hits) / Double(total) }
+      let arp = tonal.filter { $0.group == "arp" && chord[($0.tick - 1) / 16] != nil }
+      if !arp.isEmpty {
+        let tones = arp.filter { e in chord[(e.tick - 1) / 16]!.contains { $0 % 12 == e.note % 12 } }
+        arpChordTones = Double(tones.count) / Double(arp.count)
+      }
       var firstBass: [Int: Int] = [:]
       for e in tonal where e.group == "bass" {
         let b = (e.tick - 1) / 16
@@ -151,6 +161,13 @@ public struct MusicalityReport: Sendable {
       }
     }
     if pairs > 0 { semitoneClashes = 100 * Double(clashes) / Double(pairs) }
+    let arpNotes = tonal.filter { $0.group == "arp" }
+    if !arpNotes.isEmpty {
+      let doubled = arpNotes.filter { a in
+        byStart[a.tick]?.contains { $0.group == "melody" && $0.note % 12 == a.note % 12 } ?? false
+      }
+      arpDoublesMelody = Double(doubled.count) / Double(arpNotes.count)
+    }
 
     // Kick and bass
     let kicks = Set(log.filter { $0.isDrum && ($0.note == 36 || $0.note == 35) }.map(\.tick))
@@ -285,6 +302,8 @@ public struct MusicalityReport: Sendable {
     if let v = melodyRepeats { d["melodyRepeats"] = round3(v) }
     if let v = melodySteps { d["melodySteps"] = round3(v) }
     if let v = padColor { d["padColor"] = round3(v) }
+    if let v = arpChordTones { d["arpChordTones"] = round3(v) }
+    if let v = arpDoublesMelody { d["arpDoublesMelody"] = round3(v) }
     return d
   }
 }
