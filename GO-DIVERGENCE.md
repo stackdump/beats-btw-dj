@@ -78,6 +78,17 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
 3. **FX macros survive a project hand-over** (ROADMAP 3.3). beats' project-sync on regen / swap
    cancels running FX macros; dj lets them finish.
 
+4. **Musicality fixes** (docs/musicality-notes.md; `DJMusicality`, run on the composed project
+   before a deck plays it — dj's `compose()` and the model CID stay beats'). Generator bugs
+   beats should fix at the source:
+   - tension variants change key: `expandVariants` adds `registerShift` (+2 / −3) to the root
+     and rebuilds the scale there, so B / C sections play a whole tone up / a minor third down
+     over the home-key pad. dj moves those notes back (`.key`).
+   - structure changes drift: `buildAccumulatorNet` gives every stage after the first `gap`
+     ticks plus the tick its gate takes (one sixteenth later per event), and even the first
+     fires on the downbeat's own tick, after the music nets have played it, so entering parts
+     lose their first beat. dj starts every stage with `gap − 1` (`.timing`).
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX
   sub-macros), so it is just octave-down for a bar.

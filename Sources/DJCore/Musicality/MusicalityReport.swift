@@ -35,8 +35,9 @@ public struct MusicalityReport: Sendable {
   public var sectionContrast = 1.0
   /// Notes per bar for each group.
   public var density: [String: Double] = [:]
-  /// Part changes (a control net muting, unmuting or switching a part) that land on a bar
-  /// line: the last tick of a bar or the first; nil when the song has none.
+  /// Part changes (a control net muting, unmuting or switching a part) that take effect at a
+  /// bar line: fired on a bar's last tick, after its notes, so the next bar's downbeat already
+  /// plays the new parts. nil when the song has none.
   public var changesOnBars: Double?
 
   public init() {}
@@ -47,7 +48,7 @@ public struct MusicalityReport: Sendable {
   public init(project: Project, log: [NoteEvent], controls: [PartChange] = []) {
     self.init()
     if !controls.isEmpty {
-      let on = controls.filter { $0.tick % 16 == 0 || ($0.tick - 1) % 16 == 0 }.count
+      let on = controls.filter { $0.tick % 16 == 0 }.count
       changesOnBars = Double(on) / Double(controls.count)
     }
     notes = log.count

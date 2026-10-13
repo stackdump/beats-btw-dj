@@ -17,7 +17,11 @@ public enum DJMusicality {
     /// them on a root shifted by +2 / −3 semitones).
     public static let key = Fixes(rawValue: 1 << 0)
 
-    public static let all: Fixes = [.key]
+    /// Structure changes on the beat they were composed for (`buildAccumulatorNet` lands
+    /// every event one tick later than the one before, and after the downbeat's notes).
+    public static let timing = Fixes(rawValue: 1 << 1)
+
+    public static let all: Fixes = [.key, .timing]
   }
 
   /// `project` as the deck should play it. `spec` is the spec it was composed from.
@@ -25,6 +29,7 @@ public enum DJMusicality {
     guard !fixes.isEmpty, let genre = BeatsTables.shared.genres[spec.genre] else { return project }
     var p = project
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
+    if fixes.contains(.timing) { fixStructureTiming(&p) }
     return p
   }
 
@@ -48,6 +53,34 @@ public enum DJMusicality {
         guard var b = nb.bindings[t], !isDrumChannel(b.channel) else { continue }
         b.note = max(0, min(127, b.note - shift))
         nb.bindings[t] = b
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: timing
+
+  /// `buildAccumulatorNet` chains one stage per event: `p_delay_i` holds the gap to the
+  /// previous event, drained one token per tick, then `t_ctrl_i` fires on the next tick and
+  /// opens the next stage's gate. Two things go wrong:
+  /// - every stage after the first starts the tick after the previous control, so each event
+  ///   lands one tick later than the one before (the bass's fifth change is five sixteenths
+  ///   off, the drums', with fewer events, less);
+  /// - even the first lands on the downbeat's own tick, and control nets fire after the music
+  ///   nets within a tick: the mute / slot change applies only after the downbeat's notes, so
+  ///   every part that enters a section loses its first beat (the old slot plays it instead).
+  /// A delay of `gap - 1` on every stage fires each change on the last sixteenth before its
+  /// step, after that sixteenth's notes: the new section starts complete, on the bar.
+  static func fixStructureTiming(_ p: inout Project) {
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role == "control", nb.places["p_delay_0"] != nil,
+        nb.places["p_gate_0"] != nil
+      else { continue }
+      var i = 0
+      while var place = nb.places["p_delay_\(i)"] {
+        if let gap = place.initial.first, gap >= 1 { place.initial = [gap - 1] }
+        nb.places["p_delay_\(i)"] = place
+        i += 1
       }
       p.nets[id] = nb
     }

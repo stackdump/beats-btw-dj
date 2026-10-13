@@ -97,4 +97,33 @@ struct MusicalityTests {
     let onRoot = try #require(r.bassOnRoot)
     #expect(onRoot >= 0.95, "\(genre): bass on the root in \(onRoot) of bars")
   }
+
+  /// Structure changes take effect at bar lines, and a part that enters a section plays its
+  /// downbeat: a kick or pad net that plays the downbeat of a section's second bar also plays
+  /// its first (their patterns repeat every bar).
+  @Test(arguments: ["techno", "edm", "jazz", "lofi"])
+  func sectionsStartOnTheDownbeat(genre: String) {
+    let t = played(genre, 42)
+    let (notes, controls) = NoteLog.captureAll(t.played)
+    #expect(!controls.isEmpty)
+    for c in controls { #expect(c.tick % 16 == 0, "\(genre): \(c.net) changes at tick \(c.tick)") }
+    var start = 0
+    var checked = 0
+    for s in t.played.structure.dropLast() {
+      start += s.steps
+      let parts = notes.filter {
+        ($0.net.hasPrefix("kick") || $0.group == "harmony") && $0.tick == start + 17
+      }
+      for n in parts {
+        checked += 1
+        #expect(
+          notes.contains { $0.net == n.net && $0.tick == start + 1 },
+          "\(genre): \(n.net) misses the downbeat at step \(start)")
+      }
+    }
+    #expect(checked > 0)
+    // The composed project does lose them (else this proves nothing).
+    let before = NoteLog.captureAll(t.composed).controls
+    #expect(before.filter { $0.tick % 16 == 0 }.count < before.count / 2)
+  }
 }

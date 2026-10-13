@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Render a fixed set of tracks offline and summarise how musical / well-staged they are.
 
-    scripts/musicality-matrix.py OUTDIR [--seconds 75] [--sampled] [--djctl PATH]
+    scripts/musicality-matrix.py OUTDIR [--seconds 75] [--sampled] [--fixes key,timing,…]
+                                 [--djctl PATH]
 
 Each track goes through `djctl render` (compose + the deck's net source, nothing on the
 speakers); integrated loudness comes from ffmpeg's ebur128. Writes OUTDIR/<genre>-<seed>.wav
@@ -72,7 +73,7 @@ def table(rows):
         print(name.ljust(15) + " ".join(fmt(row.get(k), f) for k, _, f in COLUMNS))
 
 
-def run(outdir, seconds, sampled, djctl):
+def run(outdir, seconds, sampled, djctl, fixes=None):
     os.makedirs(outdir, exist_ok=True)
     summary = {}
     for g in GENRES:
@@ -82,6 +83,8 @@ def run(outdir, seconds, sampled, djctl):
             cmd = [djctl, "render", g, str(s), "--seconds", str(seconds), "--out", wav]
             if not sampled:
                 cmd.append("--synth")
+            if fixes:
+                cmd += ["--fixes", fixes]
             doc = json.loads(subprocess.run(cmd, check=True, capture_output=True, text=True).stdout)
             doc["lufs"] = lufs(wav)
             with open(os.path.join(outdir, name + ".json"), "w") as f:
@@ -123,6 +126,11 @@ if __name__ == "__main__":
         i = args.index("--djctl")
         djctl = args[i + 1]
         del args[i:i + 2]
+    fixes = None
+    if "--fixes" in args:
+        i = args.index("--fixes")
+        fixes = args[i + 1]
+        del args[i:i + 2]
     sampled = "--sampled" in args
     args = [a for a in args if a != "--sampled"]
-    run(args[0], seconds, sampled, djctl)
+    run(args[0], seconds, sampled, djctl, fixes)
