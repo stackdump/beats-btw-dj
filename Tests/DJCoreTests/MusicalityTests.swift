@@ -392,4 +392,27 @@ struct MusicalityTests {
     let parity = WaveRunner.prepare(t.played, sampleRate: 22_050)
     #expect(!parity.lanes.contains { $0.voice.kind == "crash" })
   }
+
+  /// The bass steps between chord roots instead of leaping: less motion at chord changes than
+  /// beats' one-octave roots, no change bigger than a fifth where it had any, the same pitch
+  /// classes in the same order, still on the root, still under the pad and in a bass register.
+  @Test(arguments: ["techno", "house", "edm", "trance", "dnb", "synthwave", "jazz", "funk"])
+  func bassStepsBetweenRoots(genre: String) throws {
+    for seed in [7.0, 42] {
+      let t = played(genre, seed)
+      let leaping = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.bassLine))
+      let a = report(leaping)
+      let b = report(t.played)
+      let before = try #require(a.bassLeap)
+      let after = try #require(b.bassLeap)
+      #expect(after <= before, "\(genre)/\(seed): \(before) → \(after)")
+      #expect(after <= 5, "\(genre)/\(seed): \(after) semitones per change")
+      let bass = { (p: Project) in NoteLog.capture(p).filter { $0.group == "bass" } }
+      #expect(bass(leaping).map { $0.note % 12 } == bass(t.played).map { $0.note % 12 })
+      #expect(try #require(b.bassOnRoot) >= (a.bassOnRoot ?? 0))
+      #expect(b.harmonyInBassRange == 0)
+      let median = try #require(b.medianNote["bass"])
+      #expect(median >= DJMusicality.bassFloor && median <= DJMusicality.bassCeiling + 2)
+    }
+  }
 }

@@ -99,9 +99,15 @@ public enum DJMusicality {
     /// note 49 on a fill net a crash voice (beats has only a short open hat for it).
     public static let crash = Fixes(rawValue: 1 << 16)
 
+    /// The bass moves to each chord root by the shorter way. beats takes every root from one
+    /// octave of the scale, so a progression that comes back round leaps (A1 up a minor sixth
+    /// to F2, then down a seventh to A1); this moves whole bars by octaves, inside the range
+    /// `.register` gave the bass, so the line steps (A1 down to F1, G1, A1).
+    public static let bassLine = Fixes(rawValue: 1 << 17)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash,
+      .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -110,6 +116,7 @@ public enum DJMusicality {
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
       "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck, "contour": .contour,
       "color": .color, "arpeggio": .arpeggio, "buildup": .buildup, "crash": .crash,
+      "bassLine": .bassLine,
       "none": [],
     ]
   }
@@ -122,6 +129,7 @@ public enum DJMusicality {
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
     if fixes.contains(.register) { separateRegisters(&p) }
+    if fixes.contains(.bassLine) { leadBass(&p) }
     if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     if fixes.contains(.arpeggio) { arpeggiate(&p) }
@@ -254,6 +262,83 @@ public enum DJMusicality {
         guard var b = nb.bindings[t], !isDrumChannel(b.channel) else { continue }
         b.note = max(0, min(127, b.note + shift))
         nb.bindings[t] = b
+      }
+      p.nets[id] = nb
+    }
+  }
+
+  // MARK: bass line
+
+  /// In each bass ring, move every bar that plays by octaves (all its notes together, so a
+  /// walking or bossa bar keeps its shape) to the placement with the least motion from bar to
+  /// bar around the cycle (the ring loops: the last bar leads back to the first), every note
+  /// from E1 up to the bass part's highest note or A2 (`bassCeiling`), whichever is higher, and
+  /// under the pad's lowest note. Ties keep the composed octave. (A bar `.register` left under
+  /// E1, where it is felt more than heard, comes up into the window.)
+  static func leadBass(_ p: inout Project) {
+    guard var top = notes(p, group: "bass").max() else { return }
+    top = max(top, bassCeiling)
+    if let pad = notes(p, group: "harmony").min() { top = min(top, pad - 1) }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "bass",
+        nb.transitions.count % 16 == 0, nb.places.count == nb.transitions.count
+      else { continue }
+      var bars = [[(key: String, step: Int, note: Int)]](
+        repeating: [], count: nb.transitions.count / 16)
+      for (t, b) in nb.bindings.pairs where t.hasPrefix("t") && !isDrumChannel(b.channel) {
+        if let i = Int(t.dropFirst()) { bars[i / 16].append((t, i, b.note)) }
+      }
+      let played = bars.indices.filter { !bars[$0].isEmpty }
+      guard played.count > 1 else { continue }
+      for b in played { bars[b].sort { $0.step < $1.step } }
+      let options: [[Int]] = played.map { b in
+        let ns = bars[b].map(\.note)
+        let fit = [0, -12, 12, -24, 24].filter { s in
+          ns.allSatisfy { $0 + s >= bassFloor && $0 + s <= top }
+        }
+        return fit.isEmpty ? [0] : fit
+      }
+      // the step from bar i placed at u to the next played bar placed at v; an octave moved
+      // costs a little, so ties keep the composed placement
+      func cost(_ i: Int, _ u: Int, _ j: Int, _ v: Int) -> Int {
+        10 * abs(bars[played[i]].last!.note + u - (bars[played[j]].first!.note + v)) + abs(v) / 12
+      }
+      var best: (cost: Int, path: [Int])?
+      for first in options[0].indices {
+        let unreachable = Int.max / 4
+        var acc = [Int](repeating: unreachable, count: options[0].count)
+        acc[first] = abs(options[0][first]) / 12
+        var back: [[Int]] = [Array(acc.indices)]
+        for k in 1..<played.count {
+          var next = [Int](repeating: unreachable, count: options[k].count)
+          var from = [Int](repeating: 0, count: options[k].count)
+          for (j, v) in options[k].enumerated() {
+            for (i, u) in options[k - 1].enumerated() where acc[i] < unreachable {
+              let x = acc[i] + cost(k - 1, u, k, v)
+              if x < next[j] {
+                next[j] = x
+                from[j] = i
+              }
+            }
+          }
+          acc = next
+          back.append(from)
+        }
+        let last = played.count - 1
+        for (j, v) in options[last].enumerated() where acc[j] < unreachable {
+          let total = acc[j] + cost(last, v, 0, options[0][first]) - abs(options[0][first]) / 12
+          if best == nil || total < best!.cost {
+            var path = [j]
+            for k in stride(from: last, to: 0, by: -1) { path.append(back[k][path.last!]) }
+            best = (total, path.reversed())
+          }
+        }
+      }
+      guard let path = best?.path else { continue }
+      for (k, b) in played.enumerated() {
+        let s = options[k][path[k]]
+        guard s != 0 else { continue }
+        for x in bars[b] { nb.bindings[x.key]?.note = x.note + s }
       }
       p.nets[id] = nb
     }

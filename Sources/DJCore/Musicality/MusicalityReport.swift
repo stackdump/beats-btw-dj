@@ -71,6 +71,9 @@ public struct MusicalityReport: Sendable {
   /// Section starts (after the first) marked by a crash cymbal on their downbeat; nil for a
   /// song without sections.
   public var crashOnSections: Double?
+  /// Mean semitones the bass moves from the last note of a bar to the first of the next, where
+  /// the chord changes (the pitch class differs); nil without a bass.
+  public var bassLeap: Double?
 
   public init() {}
 
@@ -182,6 +185,13 @@ public struct MusicalityReport: Sendable {
     if !bass.isEmpty && !kicks.isEmpty {
       bassOnKick = Double(bass.filter { kicks.contains($0.tick) }.count) / Double(bass.count)
     }
+    var leaps: [Int] = []
+    let bassLine = bass.sorted { $0.tick < $1.tick }
+    for (a, b) in zip(bassLine, bassLine.dropFirst())
+    where (a.tick - 1) / 16 + 1 == (b.tick - 1) / 16 && a.note % 12 != b.note % 12 {
+      leaps.append(abs(b.note - a.note))
+    }
+    if !leaps.isEmpty { bassLeap = Double(leaps.reduce(0, +)) / Double(leaps.count) }
     let harmony = tonal.filter { $0.group == "harmony" }
     if let top = bass.map(\.note).max(), !harmony.isEmpty {
       harmonyInBassRange =
@@ -339,6 +349,7 @@ public struct MusicalityReport: Sendable {
     if let v = arpDoublesMelody { d["arpDoublesMelody"] = round3(v) }
     if let v = buildupsBuild { d["buildupsBuild"] = round3(v) }
     if let v = crashOnSections { d["crashOnSections"] = round3(v) }
+    if let v = bassLeap { d["bassLeap"] = round3(v) }
     return d
   }
 }
