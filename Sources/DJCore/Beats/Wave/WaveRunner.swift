@@ -266,8 +266,10 @@ private func buildLanes(
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
+  // `.fills`: beats' drum-fill nets are control nets with notes; give them a voice.
+  let voiceFills = opts.musicality.contains(.fills)
   for n in g.nets {
-    if n.bundle.role == "control" { continue }
+    if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
     let override = opts.voices[n.id]
     var kindOrder: [String] = []

@@ -46,15 +46,21 @@ public enum DJMusicality {
     /// with four phrases is cut 3 + 3 + 3 + 3; this makes it 4 + 4 + 2 + 2).
     public static let phrases = Fixes(rawValue: 1 << 7)
 
+    /// A drum fill into every section change. beats builds a `fill-N` net before each one and
+    /// never lets it sound: it starts muted, nothing unmutes it, and it is a `control` net, which
+    /// gets no voice; its toms have no voice in the wave engine either. This plays it as a
+    /// snare roll swelling into the change (the runner voices `fill-*` nets under this flag).
+    public static let fills = Fixes(rawValue: 1 << 8)
+
     public static let all: Fixes = [
-      .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases,
+      .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
-      "none": [],
+      "fills": .fills, "none": [],
     ]
   }
 
@@ -68,6 +74,7 @@ public enum DJMusicality {
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
+    if fixes.contains(.fills) { playFills(&p, genre: genre) }
     return p
   }
 
@@ -340,5 +347,38 @@ public enum DJMusicality {
       }
       p.nets[id] = nb
     }
+  }
+
+  // MARK: fills
+
+  /// Velocity of a fill's first and last hit: dance genres roll harder.
+  static func fillVelocities(_ genre: GenreDef) -> (from: Int, to: Int) {
+    BeatsTables.shared.family(of: genre.name) == 0 ? (50, 115) : (40, 95)
+  }
+
+  /// Every `fill-N` net that ends before the song does plays its steps as one snare roll
+  /// (sixteenths, the last before the section change loudest), unmuted. Its steps are the
+  /// last 4 or 8 sixteenths of a sink chain as long as the section boundary, so the roll
+  /// lands on the change; the fill at the song's end stays silent.
+  static func playFills(_ p: inout Project, genre: GenreDef) {
+    let total = p.structure.reduce(0) { $0 + $1.steps }
+    let (from, to) = fillVelocities(genre)
+    var sounding = Set<String>()
+    for id in p.nets.keys where id.hasPrefix("fill-") {
+      guard var nb = p.nets[id] else { continue }
+      let steps = nb.bindings.keys.compactMap { $0.hasPrefix("t") ? Int($0.dropFirst()) : nil }
+        .sorted()
+      guard let last = steps.last, last + 1 < total else { continue }
+      for (k, i) in steps.enumerated() {
+        guard var b = nb.bindings["t\(i)"], isDrumChannel(b.channel) else { continue }
+        let x = steps.count > 1 ? Double(k) / Double(steps.count - 1) : 1
+        b.note = 38
+        b.velocity = clampVelocity(Int((Double(from) + Double(to - from) * x).rounded()))
+        nb.bindings["t\(i)"] = b
+      }
+      p.nets[id] = nb
+      sounding.insert(id)
+    }
+    p.initialMutes.removeAll { sounding.contains($0) }
   }
 }

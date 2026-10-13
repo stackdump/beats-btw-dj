@@ -225,4 +225,21 @@ struct MusicalityTests {
       #expect(try #require(report(t.composed).changesOnPhrases) < 0.8, "\(genre) composed")
     }
   }
+
+  /// A drum fill in the bar before every section change, swelling into it, and a voice for it
+  /// on the deck (beats builds the fills, mutes them and gives them none).
+  @Test(arguments: ["techno", "edm", "jazz", "lofi"])
+  func drumFillsBeforeSectionChanges(genre: String) throws {
+    let t = played(genre, 42)
+    #expect(try #require(report(t.played).fillsBeforeSections) == 1, "\(genre)")
+    #expect(try #require(report(t.composed).fillsBeforeSections) == 0)
+    let fills = NoteLog.capture(t.played).filter { $0.net.hasPrefix("fill-") }
+    for (_, roll) in Dictionary(grouping: fills, by: \.net) {
+      let v = roll.sorted { $0.tick < $1.tick }.map(\.velocity)
+      #expect(v == v.sorted() && v.first! < v.last!, "\(genre): a fill swells: \(v)")
+    }
+    let deck = WaveRunner.prepare(t.played, sampleRate: 22_050, opts: .extended)
+    #expect(deck.byNet["fill-0"] != nil)
+    #expect(WaveRunner.prepare(t.played, sampleRate: 22_050).byNet["fill-0"] == nil)
+  }
 }
