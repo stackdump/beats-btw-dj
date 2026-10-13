@@ -63,16 +63,21 @@ public enum DJMusicality {
     /// sweeping into what follows (`EnergyCurve`). Applied by the runner.
     public static let energy = Fixes(rawValue: 1 << 10)
 
+    /// Bass and pad dip on every kick and swell back within an eighth note, the sidechain
+    /// pump of dance music: the kick gets the low end to itself and the groove breathes.
+    /// Depth by genre (`duckDepth`); applied by the runner.
+    public static let duck = Fixes(rawValue: 1 << 11)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
-      .voicing, .energy,
+      .voicing, .energy, .duck,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
       "loudness": .loudness, "groove": .groove, "offbeatBass": .offbeatBass, "phrases": .phrases,
-      "fills": .fills, "voicing": .voicing, "energy": .energy,
+      "fills": .fills, "voicing": .voicing, "energy": .energy, "duck": .duck,
       "none": [],
     ]
   }
@@ -496,5 +501,20 @@ public enum DJMusicality {
       }
       p.nets[id] = nb
     }
+  }
+
+  // MARK: ducking
+
+  /// How far bass and pad dip on a kick (`.duck`): half (−6 dB) under a four-on-the-floor kick
+  /// in the dance genres, less under broken dance beats (dnb, dubstep, garage, trap), synthwave's
+  /// gentler pump; nothing where sidechaining is not the style (jazz, bossa, lofi, ambient, the
+  /// band genres).
+  public static func duckDepth(genre name: String) -> Double {
+    guard let genre = BeatsTables.shared.genres[name] else { return 0 }
+    if name == "synthwave" { return 0.4 }
+    guard BeatsTables.shared.family(of: name) == 0 else { return 0 }
+    let fourOnTheFloor =
+      genre.kick.count >= 3 && genre.kick[0] == 4 && genre.kick[1] == 16 && genre.kick[2] == 0
+    return fourOnTheFloor ? 0.5 : 0.35
   }
 }

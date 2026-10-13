@@ -77,6 +77,9 @@ public struct WaveOptions {
   /// Likewise the energy curve (`EnergyCurve`, measured from the project): another start of the
   /// same song reuses the playing project's.
   public var trackEnergy: EnergyCurve?
+  /// Kick-keyed ducking of the bass and pad (`DJMusicality.Fixes.duck`): how far they dip on
+  /// each kick (0 = none), set from the track's genre (`DJMusicality.duckDepth`).
+  public var duckDepth = 0.0
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -127,6 +130,9 @@ final class Lane {
   var offAt = [Double](repeating: 0, count: 64)
   var offCount = 0
   var nextOff = Double.infinity
+  /// Bass / pad voice that dips on the kick (`WaveOptions.duckDepth`); the kick that keys it.
+  var ducks = false
+  var isKick = false
   // post chain on the voice sum: lowpass biquad, then distortion
   var post: [Double] = []
   var pz1 = 0.0
@@ -232,16 +238,25 @@ public final class WaveProject: @unchecked Sendable {
   public let gain: Double
   /// The section energy arc the deck plays (`DJMusicality.Fixes.energy`); nil = none.
   public let energy: EnergyCurve?
+  /// How far bass and pad dip on each kick (0: no ducking), and the sampler slots they play.
+  public let duckDepth: Double
+  let duckSlots: UInt64
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
   init(
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
-    geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil
+    geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0
   ) {
     self.gain = gain
     self.energy = energy
+    self.duckDepth = duckDepth
+    var slots: UInt64 = 0
+    for lane in lanes where lane.ducks && lane.samplerSlot >= 0 && lane.samplerSlot < 64 {
+      slots |= 1 << UInt64(lane.samplerSlot)
+    }
+    duckSlots = slots
     let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     let track =
       trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
@@ -301,6 +316,10 @@ private func buildLanes(
           lane = gateLane(drumVoice(kind: key, instrument: tr.instrument), sr, lanes.count)
         }
         lane.netId = n.id
+        if opts.duckDepth > 0 {
+          lane.ducks = key == "tonal" && (tr.group == "bass" || tr.group == "harmony")
+          lane.isKick = key == "kick" && (n.bundle.riffGroup == "kick" || n.id == "kick")
+        }
         kindLane[key] = lanes.count
         kindOrder.append(key)
         lanes.append(lane)
@@ -338,7 +357,7 @@ private func buildLanes(
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
-    gain: gain, energy: energy)
+    gain: gain, energy: energy, duckDepth: opts.duckDepth)
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -445,6 +464,17 @@ public final class WaveRunner {
   private var energyGain = 1.0
   private var energyCut = EnergyCurve.openHz
   private var toneLP = (SweepFilter(), SweepFilter())
+  // Kick ducking (`DJMusicality.Fixes.duck`): a kick sets `duckHold` to 1, which falls back
+  // exponentially; `duckEnv` follows it with a 2 ms attack (no click); bass and pad voices are
+  // scaled by `duckGain` = 1 − depth × duckEnv. `duckBuf` keeps each sample's gain for the
+  // sampler slots, which render once a block.
+  private var duckHold = 0.0
+  private var duckEnv = 0.0
+  private var duckGain = 1.0
+  private var duckBuf = [Float](repeating: 1, count: 4096)
+  private var duckL = [Float](repeating: 0, count: 4096)
+  private var duckR = [Float](repeating: 0, count: 4096)
+  private var duckingSlots: UInt64 = 0
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
@@ -545,6 +575,8 @@ public final class WaveRunner {
     energyPrimed = false
     toneLP.0.reset()
     toneLP.1.reset()
+    duckHold = 0
+    duckEnv = 0
   }
 
   public func setTempo(_ bpm: Double) {
@@ -832,6 +864,7 @@ public final class WaveRunner {
   private func hit(_ lane: Lane, _ n: CompiledNet, _ t: Int, velocity: Int? = nil) {
     lane.active = true
     let w = Double(velocity ?? n.vel[t]) / 127
+    if lane.isKick { duckHold = 1 }
     if !lane.isTonal {
       for e in 0..<lane.numExp { lane.s[e] += lane.alpha[e] * w }
       if lane.carrier == .sweep { lane.st[slotSweep] = 1 }
@@ -1039,7 +1072,24 @@ public final class WaveRunner {
         at: min(evOffset[e], frames - 1))
     }
     evCount = 0
-    bank.renderAll(live, frames: frames, left, right)
+    let ducked = frames <= duckL.count ? live & duckingSlots : 0
+    bank.renderAll(live & ~ducked, frames: frames, left, right)
+    if ducked != 0 {
+      for i in 0..<frames {
+        duckL[i] = 0
+        duckR[i] = 0
+      }
+      duckL.withUnsafeMutableBufferPointer { l in
+        duckR.withUnsafeMutableBufferPointer { r in
+          bank.renderAll(
+            ducked, frames: frames, l.baseAddress!, right == nil ? nil : r.baseAddress!)
+        }
+      }
+      for i in 0..<frames {
+        left[i] += duckL[i] * duckBuf[i]
+        right?[i] += duckR[i] * duckBuf[i]
+      }
+    }
     bank.endBlock()
   }
 
@@ -1224,6 +1274,7 @@ public final class WaveRunner {
     if let amod = lane.am {
       out *= 1 - lane.st[slotAmDepth] + lane.st[slotAmDepth] * amod.st[slotPrev]
     }
+    if lane.ducks { out *= duckGain }
     if splitTone { accTone += out } else { acc += out }
   }
 
@@ -1385,6 +1436,12 @@ public final class WaveRunner {
     let inCurve = samplersInCurve && frames <= preL.count
     let energy = energyOn && frames <= preL.count ? current?.energy : nil
     splitTone = energy != nil
+    let depth = frames <= duckBuf.count ? current?.duckDepth ?? 0 : 0
+    duckingSlots = depth > 0 ? current?.duckSlots ?? 0 : 0
+    // the dip recovers over about an eighth note (3 time constants), attack 2 ms
+    let duckRelease = exp(-6 * clock[clkTempo] / (60 * sampleRate))
+    let duckAttack = 1 - exp(-1 / (0.002 * sampleRate))
+    if depth == 0 { duckGain = 1 }
     for i in 0..<frames {
       blockOffset = i
       if scrubbing {
@@ -1398,6 +1455,12 @@ public final class WaveRunner {
         }
       }
       if grooveCount > 0 && clock[clkSamples] >= grooveNext { serviceGroove() }
+      if depth > 0 {
+        duckEnv += (duckHold - duckEnv) * duckAttack
+        duckHold *= duckRelease
+        duckGain = 1 - depth * duckEnv
+        duckBuf[i] = Float(duckGain)
+      }
       acc = 0
       accTone = 0
       if let proj = current {
