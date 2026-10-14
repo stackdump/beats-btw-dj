@@ -196,6 +196,25 @@ case "sessions":
     }
   }
 
+case "export":
+  // djctl export <cid> <out.wav> [--float32]: offline render of a stored set (what the app's
+  // Export does), e.g. to feed `djctl publish --audio`.
+  let store = storeOption()
+  let float32 = positional.contains("--float32")
+  let args = positional.filter { $0 != "--float32" }
+  guard args.count == 2 else {
+    stderr("usage: djctl export <cid> <out.wav> [--float32]")
+    exit(2)
+  }
+  do {
+    let session = try store.load(cid: args[0])
+    try SessionStore.exportWAV(session, to: URL(fileURLWithPath: args[1]), float32: float32)
+    print("wrote \(args[1])")
+  } catch {
+    stderr("export failed: \(error)")
+    exit(1)
+  }
+
 case "publish":
   // djctl publish <cid> [--audio FILE.wav] [--title T] [--draft] [--host H] [--blobs DIR]
   //                     [--no-reload] [--mirror] [--dry-run]
@@ -318,7 +337,7 @@ case "ctl":
 
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }
