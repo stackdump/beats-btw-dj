@@ -22,8 +22,11 @@ struct RingExtrasRenderTests {
       muted: muted)
   }
 
-  /// The four steps of a 4-ring in a 100 pt square: top, right, bottom, left (inset 6).
-  func at(_ i: Int) -> CGPoint { RingGeometry.position(i, of: 4, size: 100, inset: 6) }
+  /// The four steps of a 4-ring in a 100 pt square: top, right, bottom, left (inset 15: room
+  /// for the playhead's glow, `RingGeometry.inset`).
+  func at(_ i: Int) -> CGPoint { RingGeometry.position(i, of: 4, size: 100) }
+  /// The ring's radius in that square: 35 pt.
+  var ringRadius: Double { Double(at(1).x) - 50 }
 
   func render(_ arcs: RingArcs?, ring r: RingView? = nil) throws -> Pixels {
     try #require(
@@ -42,12 +45,14 @@ struct RingExtrasRenderTests {
   @Test func withoutArcsTheRingIsDotsOnly() throws {
     let px = try render(nil)
     // the midpoint of the chord from step 0 to step 1 is empty
-    #expect(px.color(72, 28).a == 0)
+    #expect(px.color(Int(chordMid.x), Int(chordMid.y)).a == 0)
   }
 
-  /// The chord from the top dot (50, 6) to the right dot (94, 50) of a 4-ring in 100 pt: its
-  /// midpoint, and the direction across it.
-  let chordMid = (x: 72.0, y: 28.0)
+  /// The chord from the top dot (50, 15) to the right dot (85, 50) of a 4-ring in 100 pt: its
+  /// midpoint (67.5, 32.5), and the direction across it.
+  var chordMid: (x: Double, y: Double) {
+    (Double(at(0).x + at(1).x) / 2, Double(at(0).y + at(1).y) / 2)
+  }
   let across = (x: 0.7071067811865476, y: -0.7071067811865476)
 
   @Test func arcsAreDimAndThinWhilePlayingAndFullWhenStopped() throws {
@@ -67,7 +72,7 @@ struct RingExtrasRenderTests {
     #expect(abs(width(playing, atLeast: 38) - 1) < 0.5, "\(width(playing, atLeast: 38)) pt wide")
     // the stroke is #4a90d9
     let px = stopped
-    #expect(px.near(Int(72 * 4), Int(28 * 4), (74, 144, 217), tol: 30))
+    #expect(px.near(Int(chordMid.x * 4), Int(chordMid.y * 4), (74, 144, 217), tol: 30))
   }
 
   @Test func aMutedRingsArcsAreAsFaintAsItsDots() throws {
@@ -89,37 +94,41 @@ struct RingExtrasRenderTests {
   }
 
   @Test func theArcLayerTurnsAboutTheCentre() throws {
-    // At 45 degrees the diamond of chords becomes a square: its right edge is x = 81, and the
-    // chord midpoint that was at (72, 28) is off the arcs.
+    // At 45 degrees the diamond of chords becomes a square: its right edge is x = 50 + R cos 45
+    // (74.7 for R = 35), and the chord midpoint (67.5, 32.5) is off the arcs.
+    let edge = Int((50 + ringRadius * 0.5.squareRoot()).rounded())
+    let (mx, my) = (Int(chordMid.x), Int(chordMid.y))
     let px = try render(RingArcs(playing: false, angleDegrees: 45))
-    #expect(px.color(81, 50).a > 150, "the turned chord passes (81, 50): \(px.color(81, 50))")
-    #expect(px.color(72, 28).a < 60, "and has left (72, 28): \(px.color(72, 28))")
+    #expect(px.color(edge, 50).a > 150, "the turned chord passes (\(edge), 50)")
+    #expect(px.color(mx, my).a < 60, "and has left (\(mx), \(my)): \(px.color(mx, my))")
     // a quarter turn maps a regular 4-ring onto itself
     let quarter = try render(RingArcs(playing: false, angleDegrees: 90))
-    #expect(quarter.color(72, 28).a > 150)
+    #expect(quarter.color(mx, my).a > 150)
   }
 
   /// A triangle is not turned onto itself by 30 degrees either way, so the direction shows.
   /// Its corners start at 12, 4 and 8 o'clock; turned 30 degrees clockwise they sit at 1, 5 and
-  /// 9, so a chord runs straight down at x = 72 (corners at 30 and 150 degrees) and none runs
-  /// at x = 28. Counter-clockwise it is the other way round.
+  /// 9, so a chord runs straight down at x = 50 + R/2 (corners at 30 and 150 degrees) and none
+  /// runs at x = 50 - R/2. Counter-clockwise it is the other way round.
   @Test func theSwingTurnsClockwiseForAPositiveAngle() throws {
     let tri = bare(size: 3)
+    let r = Double(RingGeometry.position(0, of: 3, size: 100).y)
+    let (right, left) = (Int(50 + (50 - r) / 2), Int(50 - (50 - r) / 2))  // the pixel holding x
     func lit(_ angle: Double, _ x: Int, _ y: Int) throws -> Int {
       try render(RingArcs(playing: false, angleDegrees: angle), ring: tri).color(x, y).a
     }
-    #expect(try lit(30, 72, 50) > 200, "+30: the chord at x = 72")
-    #expect(try lit(30, 28, 50) < 30, "+30: nothing at x = 28")
-    #expect(try lit(-30, 28, 50) > 200, "-30: the chord at x = 28")
-    #expect(try lit(-30, 72, 50) < 30, "-30: nothing at x = 72")
+    #expect(try lit(30, right, 50) > 200, "+30: the chord at x = \(right)")
+    #expect(try lit(30, left, 50) < 30, "+30: nothing at x = \(left)")
+    #expect(try lit(-30, left, 50) > 200, "-30: the chord at x = \(left)")
+    #expect(try lit(-30, right, 50) < 30, "-30: nothing at x = \(right)")
   }
 
   /// 3 steps in 100 pt: chords of 76 pt, long enough for heads (wings of 4 pt, tips set back
   /// 7 pt from the target dot). Chord 0 runs from the top corner (50, 6) to (88.1, 72).
   @Test func arrowheadsSitAtTheTargetEndAndFlipWithTheDirectionFlag() throws {
     let tri = bare(size: 3)
-    let a = RingGeometry.position(0, of: 3, size: 100, inset: 6)
-    let b = RingGeometry.position(1, of: 3, size: 100, inset: 6)
+    let a = RingGeometry.position(0, of: 3, size: 100)
+    let b = RingGeometry.position(1, of: 3, size: 100)
     let (pa, pb) = ((x: Double(a.x), y: Double(a.y)), (x: Double(b.x), y: Double(b.y)))
     // 85 % of the way to each wing's end: past the chord's own edge, so only a wing lights it
     let atB = arrowheadWingPoints(from: pa, to: pb, setBack: 7, length: 4, fraction: 0.85)
@@ -171,13 +180,17 @@ struct RingExtrasRenderTests {
     #expect(!none.near(Int(p.x + rp), Int(p.y), RingPlayhead.rgb8, tol: 25))
   }
 
-  /// The playhead of a 4-ring in 120 pt, at step 0 (60, 6), dot base 5: a ring of radius 9.5 pt
-  /// drawn 3/20 of that thick (1.425 pt), with a 0.7 glow outside and a 0.35 ramp inside. Looked
-  /// at on the lower half of the ring, at 4 pixels to the point (the top of it is off the image).
+  /// The playhead of a 4-ring in 120 pt, at step 0 (60, 15), dot base 5: a ring of radius
+  /// 9.5 pt drawn 3/20 of that thick (1.425 pt), with a 0.7 glow outside and a 0.35 ramp inside.
+  /// Looked at on the lower half of the ring, at 4 pixels to the point (the arc layer and the
+  /// next steps stay clear of it there).
   func playheadProfile() throws -> Pixels {
     try renderScaled(nil, ring: bare(size: 4, token: 2, lastFired: 0), side: 120)
   }
-  let playheadCentre = (x: 60.0, y: 6.0)
+  var playheadCentre: (x: Double, y: Double) {
+    let p = RingGeometry.position(0, of: 4, size: 120)
+    return (Double(p.x), Double(p.y))
+  }
 
   func meanAlpha(_ px: Pixels, at r: Double) -> Double {
     px.meanAlpha(

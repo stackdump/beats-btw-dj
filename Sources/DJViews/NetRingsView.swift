@@ -14,6 +14,23 @@ public enum RingGeometry {
   public static func baseRadius(steps n: Int, size: CGFloat) -> CGFloat {
     max(1.5, min(5, size / CGFloat(max(n, 1)) * 0.9))
   }
+
+  /// How far the step centres sit from the canvas edge: the largest mark drawn on a step has
+  /// to fit, or the Canvas clips it (the old fixed 6 pt cut a few-step ring's dots flat). The
+  /// biggest are the playhead (its radius, half its stroke and two sigma of its glow) and the
+  /// flash (`base * 2.4`); a full-velocity hit is `base * 2`, the token `base * 1.6` + 1.
+  public static func inset(base: CGFloat) -> CGFloat {
+    let b = Double(base)
+    let playhead =
+      RingPlayhead.radius(base: b) + RingPlayhead.lineWidth(base: b) / 2 + 2
+      * RingPlayhead.outerGlowRadius(base: b)
+    return (max(CGFloat(playhead), base * 2.4, base * 1.6 + 1)).rounded(.up) + 1
+  }
+
+  /// Step `i` placed with the inset its ring's marks need.
+  public static func position(_ i: Int, of n: Int, size: CGFloat) -> CGPoint {
+    position(i, of: n, size: size, inset: inset(base: baseRadius(steps: n, size: size)))
+  }
 }
 
 extension Color {
@@ -57,9 +74,10 @@ public struct RingNetView: View {
       let n = ring.size
       let dim = ring.muted ? 0.35 : 1.0
       let base = RingGeometry.baseRadius(steps: n, size: s)
+      let inset = RingGeometry.inset(base: base)
       if let arcs { drawArcs(&ctx, arcs, n: n, size: s, base: base, dim: dim) }
       for i in 0..<n {
-        let p = RingGeometry.position(i, of: n, size: s, inset: 6)
+        let p = RingGeometry.position(i, of: n, size: s, inset: inset)
         let hit = ring.hits[i]
         let r = hit ? base * (1.2 + CGFloat(ring.velocities[i]) / 127 * 0.8) : base * 0.55
         let rect = CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)
@@ -67,7 +85,7 @@ public struct RingNetView: View {
           Path(ellipseIn: rect), with: .color(hit ? tint.opacity(dim) : .gray.opacity(0.4 * dim)))
       }
       if ring.lastFired >= 0 {
-        let p = RingGeometry.position(ring.lastFired, of: n, size: s, inset: 6)
+        let p = RingGeometry.position(ring.lastFired, of: n, size: s, inset: inset)
         let flash = (1 - ring.phase) * dim
         let r = base * 2.4
         ctx.fill(
@@ -75,7 +93,7 @@ public struct RingNetView: View {
           with: .color(.white.opacity(flash * (ring.hits[ring.lastFired] ? 0.9 : 0.25))))
         drawPlayhead(&ctx, at: p, base: base, dim: dim)
       }
-      let t = RingGeometry.position(ring.token, of: n, size: s, inset: 6)
+      let t = RingGeometry.position(ring.token, of: n, size: s, inset: inset)
       let tr = base * 1.6
       ctx.stroke(
         Path(ellipseIn: CGRect(x: t.x - tr, y: t.y - tr, width: 2 * tr, height: 2 * tr)),
@@ -120,6 +138,7 @@ public struct RingNetView: View {
     dim: Double
   ) {
     guard n > 1 else { return }
+    let inset = RingGeometry.inset(base: base)
     var layer = ctx
     layer.opacity = arcs.alpha * dim
     layer.translateBy(x: s / 2, y: s / 2)
@@ -135,8 +154,8 @@ public struct RingNetView: View {
     let setBack = CGFloat(RingArcs.tipSetBack(base: Double(base)))
     let wing = CGFloat(RingArcs.wingAngle)
     for i in 0..<n {
-      var a = RingGeometry.position(i, of: n, size: s, inset: 6)
-      var b = RingGeometry.position((i + 1) % n, of: n, size: s, inset: 6)
+      var a = RingGeometry.position(i, of: n, size: s, inset: inset)
+      var b = RingGeometry.position((i + 1) % n, of: n, size: s, inset: inset)
       lines.move(to: a)
       lines.addLine(to: b)
       guard let headLen else { continue }
