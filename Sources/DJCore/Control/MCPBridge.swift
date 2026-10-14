@@ -19,7 +19,8 @@ public struct MCPBridge {
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_load_share": "loadShare",
     "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
-    "dj_audition": "audition",
+    "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
+    "dj_set_instrument": "setInstrument",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -179,6 +180,40 @@ public struct MCPBridge {
             + "(e.g. {\"genre\":\"techno\",\"seed\":42})"),
       ],
       required: ["deck", "link"]),
+    tool(
+      "dj_favorites",
+      """
+      The starred tracks (also the star by a deck's title and Load ▸ Favorites in the app). \
+      action list (default) returns them, newest first, with title, cid, genre, seed; add \
+      {deck} stars the net on a deck (instrument changes included); remove {cid | deck}; \
+      load {deck, cid} puts one on a deck (does not start playback).
+      """,
+      [
+        "action": prop("string", "list | add | remove | load"),
+        "deck": prop("string", "A or B"),
+        "cid": prop("string", "A favorite's cid, from list"),
+      ]),
+    tool(
+      "dj_copy_deck",
+      "Load the net track on one deck onto the other, instrument changes included, from its "
+        + "start (at the next bar if that deck is playing). Returns the target deck.",
+      ["from": prop("string", "A or B"), "to": prop("string", "A or B")],
+      required: ["from", "to"]),
+    tool(
+      "dj_set_instrument",
+      """
+      Change the beats instrument a role plays on a net deck (dj_state's `instruments`): it \
+      picks the synth voice and, through its category, the sampled sound. Stored as the \
+      share's `tracks` override, so it records, stars and shares. The track reloads from its \
+      start (at the next bar if playing): use it on the deck that isn't live. Roles sharing a \
+      channel (the drum kit) change together. A wrong instrument lists the choices.
+      """,
+      [
+        "deck": prop("string", "A or B"),
+        "role": prop("string", "e.g. bass, melody, kick"),
+        "instrument": prop("string", "e.g. reese, supersaw (an error lists the choices)"),
+      ],
+      required: ["deck", "role", "instrument"]),
     tool(
       "dj_press_pad",
       "Press a pad on the APC mini grid (the real one, or the on-screen one, which this shows). "

@@ -28,6 +28,10 @@ struct DeckState: Equatable {
   var rolesOn: Set<String> = []
   var nextReady = false
   var nextComposing = false
+  /// The share CID of the net on the deck (what a favorite of it is named by); nil for samples.
+  var sourceCID: String?
+  /// Each role's instrument and what it could play instead (`Deck.roleVoices`).
+  var voices: [RoleVoice] = []
   var quantize = "off"
   var scrubbing = false
   var pfl = false
@@ -74,6 +78,11 @@ public final class AppModel {
   /// The Stage window's model (SPEC modes 7…21); made with the hub.
   public private(set) var stageModel: StageModel?
   var walk: ControlWalk?
+  /// Starred tracks, newest first (`FavoritesStore`).
+  var favorites: [Favorite] = []
+  @ObservationIgnored let favoritesStore: FavoritesStore
+  /// Per deck, the source its `sourceCID` was hashed from, so a poll doesn't re-hash.
+  @ObservationIgnored private var sourceCIDs: [String: (DeckSourceDescriptor, String)] = [:]
   var walkReportPath: String?
   var lastControl: (device: String, group: String, index: Int, at: Date)?
 
@@ -105,9 +114,14 @@ public final class AppModel {
   /// `engine`: drive this engine instead of building the real one (tests, previews). No
   /// controllers are opened and nothing is polled until `poll()` is called. `perf`: the visual
   /// quality monitor for an injected engine (a test's own clock); the default is a plain one.
-  public init(engine: DJEngine? = nil, perf: PerfMonitor? = nil) {
+  /// `favorites`: where starred tracks are kept (tests pass a temporary file).
+  public init(
+    engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore()
+  ) {
     injected = engine
     injectedPerf = perf
+    favoritesStore = favorites
+    self.favorites = favorites.list()
   }
   private let injected: DJEngine?
   private let injectedPerf: PerfMonitor?
@@ -254,6 +268,12 @@ public final class AppModel {
         scrubbing: d.wave.isScrubbing, pfl: d.pfl, overview: d.waveform,
         overlay: d.waveformOverlay, snapshot: refreshRings ? d.netSnapshot : previous?.snapshot,
         timeline: d.sectionTimeline)
+      state.sourceCID = sourceCID(name, d)
+      if let previous, previous.sourceCID == state.sourceCID, previous.title == state.title {
+        state.voices = previous.voices
+      } else {
+        state.voices = d.roleVoices
+      }
       if d.mode == .net {
         var spin = ringSpins[name] ?? RingSpin()
         spin.observe(advances: d.advances, at: now)
@@ -387,6 +407,71 @@ public final class AppModel {
       status = "share: \(error)"
     }
   }
+  // Favorites
+  private func sourceCID(_ name: String, _ d: Deck) -> String? {
+    guard let source = d.netSource else { return nil }
+    if let (s, cid) = sourceCIDs[name], s == source { return cid }
+    guard let cid = source.favoriteCID else { return nil }
+    sourceCIDs[name] = (source, cid)
+    return cid
+  }
+  func isFavorite(_ deck: String) -> Bool {
+    guard let cid = decks[deck]?.sourceCID else { return false }
+    return favorites.contains { $0.cid == cid }
+  }
+  /// Star the net on the deck (a sample can't be one); returns the favorite, nil if none.
+  @discardableResult
+  func addFavorite(_ deck: String) -> Favorite? {
+    guard let d = dj?[deck], let source = d.netSource else { return nil }
+    let f = Favorite(title: d.title, source: source)
+    do {
+      favorites = try favoritesStore.add(f)
+      return f
+    } catch {
+      status = "favorites: \(error)"
+      return nil
+    }
+  }
+  func removeFavorite(cid: String) {
+    do { favorites = try favoritesStore.remove(cid: cid) } catch {
+      status = "favorites: \(error)"
+    }
+  }
+  func toggleFavorite(_ deck: String) {
+    poll()
+    if isFavorite(deck), let cid = decks[deck]?.sourceCID {
+      removeFavorite(cid: cid)
+    } else {
+      addFavorite(deck)
+    }
+  }
+  /// Load a favorite onto a deck, through `perform` like any other load.
+  func loadFavorite(_ deck: String, _ f: Favorite) {
+    status = "loading \(f.title)…"
+    Task { @MainActor in await prepareAndLoad(deck, f.source) }
+  }
+
+  /// Load the net playing on `from` onto `to` (instrument changes included), from its start.
+  @discardableResult
+  func copyDeck(from: String, to: String) async -> Bool {
+    guard let source = dj?[from]?.netSource else {
+      status = "deck \(from) has no net track to copy"
+      return false
+    }
+    return await prepareAndLoad(to, source)
+  }
+  /// Play `instrument` on the deck's nets on `channel`: the track reloads with the share's
+  /// `tracks` override (from its start, at the next bar if playing), so it records, can be
+  /// starred and shares like any other change.
+  @discardableResult
+  func setInstrument(_ deck: String, channel: Int, _ instrument: String) async -> Bool {
+    guard let source = dj?[deck]?.netSource?.withInstrument(instrument, channel: channel) else {
+      status = "deck \(deck) has no net track"
+      return false
+    }
+    return await prepareAndLoad(deck, source)
+  }
+
   func queueNext(_ deck: String, _ spec: TrackSpec) {
     dj?.perform(.queueNext(deck: deck, spec: spec))
   }
@@ -602,12 +687,11 @@ public struct ContentView: View {
       HStack {
         Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
           .toggleStyle(.button)
-        Menu("Check controls") {
-          ForEach(model.devices, id: \.port) { d in
-            Button(d.profile) { model.startWalk(device: d.profile) }
-          }
+        // one button per attached controller: walk through its controls
+        ForEach(model.devices, id: \.port) { d in
+          Button("Check \(d.profile)") { model.startWalk(device: d.profile) }
+            .help("Walk through every control on the \(d.profile)")
         }
-        .disabled(model.devices.isEmpty)
         Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
           .toggleStyle(.button)
         Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
@@ -646,7 +730,6 @@ struct DeckView: View {
   let model: AppModel
   let tint: Color
   @State private var importing = false
-  @State private var generating = false
 
   var state: DeckState { model.decks[name] ?? .init() }
 
@@ -655,17 +738,22 @@ struct DeckView: View {
       HStack {
         Text("Deck \(name)").font(.title3.bold())
         Spacer()
-        Menu("Load") {
-          Button("Audio file…") { importing = true }
-          Button("Demo loop") { model.loadDemo(name) }
-          Button("Generate…") { generating = true }
-          Button("Share link from clipboard") {
-            model.loadShare(name, NSPasteboard.general.string(forType: .string) ?? "")
-          }
-        }
-        .fixedSize()
       }
-      Text(state.title).font(.callout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+      HStack(spacing: 6) {
+        Text(state.title).font(.callout).lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        if state.sourceCID != nil {
+          let starred = model.isFavorite(name)
+          Button {
+            model.toggleFavorite(name)
+          } label: {
+            Image(systemName: starred ? "star.fill" : "star")
+              .foregroundStyle(starred ? Color.yellow : Color.secondary)
+          }
+          .buttonStyle(.borderless)
+          .help(starred ? "Remove from favorites" : "Add to favorites")
+        }
+      }
       PlatterView(
         seconds: state.platterSeconds, touching: state.touching, tint: tint,
         beatInBar: state.bpm == nil ? nil : state.beatInBar
@@ -706,7 +794,6 @@ struct DeckView: View {
             feed: scopes.feed(.deck(name)), hub: scopes, active: state.playing || state.scrubbing)
         }
         NetRingsView(snapshot: state.snapshot, tint: tint, arcs: state.ringArcs)
-        NetPanel(name: name, state: state, model: model, tint: tint)
       }
       LabeledSlider(
         label: "Vol", value: Binding(get: { state.volume }, set: { model.setVolume(name, $0) }),
@@ -721,12 +808,12 @@ struct DeckView: View {
         Text(String(format: "nudge %+.1f%%", state.nudge * 100)).font(.caption).foregroundStyle(
           tint)
       }
+      DeckSections(name: name, state: state, model: model, tint: tint) { importing = true }
     }
     .frame(width: 260)
     .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
       if case .success(let url) = result { model.load(name, url: url) }
     }
-    .sheet(isPresented: $generating) { GenerateSheet(name: name, model: model) }
   }
 
   func clock(_ s: Double) -> String {
@@ -825,7 +912,6 @@ struct NetPanel: View {
         ForEach(0..<4, id: \.self) { n in
           Button("Hit \(n + 1)") { model.stinger(name, n) }.controlSize(.small)
         }
-        MasterMacroMenu(name: name, running: state.masterRunning, model: model)
         Spacer()
         Button("Sync") { model.sync(name) }.controlSize(.small)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)
@@ -835,37 +921,6 @@ struct NetPanel: View {
         .controlSize(.small).disabled(!state.nextReady)
       }
     }
-  }
-}
-
-/// The master chain's macros (beats' FX, Pitch and Feel groups) in one menu; its title shows a
-/// dot while any of them is in effect, and the running ones are checked.
-struct MasterMacroMenu: View {
-  let name: String
-  let running: Set<MasterMacro>
-  let model: AppModel
-
-  var body: some View {
-    Menu {
-      ForEach(["FX", "Pitch", "Feel"], id: \.self) { group in
-        Section(group) {
-          ForEach(MasterMacro.allCases.filter { $0.group == group }, id: \.rawValue) { m in
-            Button {
-              model.fire(name, m)
-            } label: {
-              if running.contains(m) {
-                Label(m.label, systemImage: "checkmark")
-              } else {
-                Text(m.label)
-              }
-            }
-          }
-        }
-      }
-    } label: {
-      Text(running.isEmpty ? "FX" : "FX ●")
-    }
-    .controlSize(.small).fixedSize()
   }
 }
 
@@ -913,59 +968,4 @@ struct FlowRow<Content: View>: View {
   let spacing: CGFloat
   @ViewBuilder let content: Content
   var body: some View { FlowLayout(spacing: spacing) { content } }
-}
-
-struct GenerateSheet: View {
-  let name: String
-  let model: AppModel
-  @Environment(\.dismiss) private var dismiss
-  @State private var genre = "techno"
-  @State private var structure = "standard"
-  @State private var seed = String(Int.random(in: 1...999_999))
-  @State private var cohesion = "v2"
-  @State private var autoAdvance = false
-
-  private var spec: TrackSpec {
-    TrackSpec(
-      genre: genre, seed: Double(seed) ?? 1, structure: structure == "loop" ? nil : structure,
-      cohesion: cohesion)
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Generate on deck \(name)").font(.title3.bold())
-      Picker("Genre", selection: $genre) {
-        ForEach(BeatsTables.shared.genreIDs, id: \.self) { Text($0).tag($0) }
-      }
-      Picker("Structure", selection: $structure) {
-        ForEach(["loop", "minimal", "standard", "extended"], id: \.self) { Text($0).tag($0) }
-      }
-      Picker("Cohesion", selection: $cohesion) {
-        Text("v2 (motif + harmony)").tag("v2")
-        Text("v1 (legacy)").tag("v1")
-      }
-      HStack {
-        TextField("Seed", text: $seed).frame(width: 120)
-        Button("Roll") { seed = String(Int.random(in: 1...999_999)) }
-      }
-      Toggle("Start the next track when this one ends", isOn: $autoAdvance)
-      HStack {
-        Button("Cancel") { dismiss() }
-        Spacer()
-        Button("Queue next") {
-          model.queueNext(name, spec)
-          model.setAutoAdvance(name, autoAdvance)
-          dismiss()
-        }
-        Button("Generate now") {
-          model.generate(name, spec)
-          model.setAutoAdvance(name, autoAdvance)
-          dismiss()
-        }
-        .keyboardShortcut(.defaultAction)
-      }
-    }
-    .padding(20)
-    .frame(width: 360)
-  }
 }

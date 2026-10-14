@@ -135,6 +135,67 @@ extension AppModel {
     case "audition":
       return try audition(p)
 
+    case "favorites":
+      switch p["action"]?.string ?? "list" {
+      case "list": break
+      case "add":
+        let deck = p["deck"]?.string ?? ""
+        _ = try requireDeck(deck)
+        poll()
+        guard addFavorite(deck) != nil else {
+          throw ControlRequestError.bad("deck \(deck) has no net track to star (samples can't be)")
+        }
+      case "remove":
+        guard let cid = try favoriteCID(p) else {
+          throw ControlRequestError.bad("`cid` (or `deck`) is required")
+        }
+        removeFavorite(cid: cid)
+      case "load":
+        let deck = p["deck"]?.string ?? ""
+        _ = try requireDeck(deck)
+        guard let cid = p["cid"]?.string, let f = favorites.first(where: { $0.cid == cid }) else {
+          throw ControlRequestError.bad("no favorite with that `cid` (see action list)")
+        }
+        guard await prepareAndLoad(deck, f.source) else { throw ControlRequestError.bad(status) }
+        poll()
+        return deckJSON(deck) ?? .null
+      case let other:
+        throw ControlRequestError.bad("action must be list | add | remove | load, not \(other)")
+      }
+      poll()
+      return .object(JSONObject([("favorites", .array(favorites.map(favoriteJSON)))]))
+
+    case "copyDeck":
+      let from = p["from"]?.string ?? ""
+      let to = p["to"]?.string ?? ""
+      _ = try requireDeck(from)
+      _ = try requireDeck(to)
+      guard from != to else { throw ControlRequestError.bad("`from` and `to` are the same deck") }
+      guard await copyDeck(from: from, to: to) else { throw ControlRequestError.bad(status) }
+      poll()
+      return deckJSON(to) ?? .null
+
+    case "setInstrument":
+      let deck = p["deck"]?.string ?? ""
+      let d = try requireDeck(deck)
+      guard let role = p["role"]?.string, let instrument = p["instrument"]?.string else {
+        throw ControlRequestError.bad("`role` and `instrument` are required")
+      }
+      let voices = d.roleVoices
+      guard let v = voices.first(where: { $0.role.components(separatedBy: " · ").contains(role) })
+      else {
+        let roles = voices.map(\.role).joined(separator: ", ")
+        throw ControlRequestError.bad("deck \(deck) has no role \(role) to voice (roles: \(roles))")
+      }
+      guard v.options.contains(instrument) else {
+        throw ControlRequestError.bad("\(role) can play: \(v.options.joined(separator: ", "))")
+      }
+      guard await setInstrument(deck, channel: v.channel, instrument) else {
+        throw ControlRequestError.bad(status)
+      }
+      poll()
+      return deckJSON(deck) ?? .null
+
     case "screenshot":
       return try screenshot(to: p["path"]?.string)
 
@@ -284,6 +345,27 @@ extension AppModel {
       ]))
   }
 
+  /// `cid`, or the favorite of what `deck` is playing.
+  private func favoriteCID(_ p: JSONValue) throws -> String? {
+    if let cid = p["cid"]?.string { return cid }
+    guard let deck = p["deck"]?.string else { return nil }
+    _ = try requireDeck(deck)
+    poll()
+    return decks[deck]?.sourceCID
+  }
+
+  func favoriteJSON(_ f: Favorite) -> JSONValue {
+    var o = JSONObject([("title", .string(f.title)), ("cid", .string(f.cid))])
+    if case .net(let spec) = f.source {
+      o["genre"] = .string(spec.genre)
+      o["seed"] = .number(spec.seed)
+      if let st = spec.structure { o["structure"] = .string(st) }
+    } else {
+      o["kind"] = .string("rawNets")
+    }
+    return .object(o)
+  }
+
   private func requireDeck(_ name: String) throws -> Deck {
     guard let d = engine?[name] else {
       let have = (engine?.decks.keys.sorted() ?? []).joined(separator: ", ")
@@ -354,6 +436,24 @@ extension AppModel {
             .string($0)
           })
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
+      // what reloads this track: a favorite, dj_load_share, a copy
+      if let cid = s.sourceCID {
+        var share = JSONObject([("cid", .string(cid))])
+        if let spec = d.currentSpec {
+          share["kind"] = .string("net")
+          share["genre"] = .string(spec.genre)
+          share["seed"] = .number(spec.seed)
+          if let st = spec.structure { share["structure"] = .string(st) }
+          share["cohesion"] = .string(spec.cohesion)
+        } else {
+          share["kind"] = .string("rawNets")
+        }
+        o["share"] = .object(share)
+        o["favorite"] = .bool(favorites.contains { $0.cid == cid })
+      }
+      if !s.voices.isEmpty {
+        o["instruments"] = .object(JSONObject(s.voices.map { ($0.role, .string($0.instrument)) }))
+      }
       // role (riff variants `bass-0`, `bass-1`… folded together) → what it plays on
       var sampled: [String: String] = [:]
       for (net, src) in d.wave.sampledNets {

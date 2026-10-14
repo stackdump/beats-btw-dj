@@ -165,6 +165,15 @@ its copy; the two are now independent. Rules inherited from that split:
   (`savePNG`) to look at.
 - Anything the UI does to a deck goes through `DJEngine.perform` (recorded); on-screen pad
   presses go through `ControllerRouter.press` (recorded as MIDI).
+- No dropdowns on the deck: its controls beyond the core are `DeckSections` — a strip of toggle
+  buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load); which
+  are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s, lit when current.
+- Favorites (`FavoritesStore`, `~/Library/Application Support/dj-vevr-se/favorites.json`) keep
+  the deck's `DeckSourceDescriptor` in the session encoding, named by share CID — never just the
+  title (43×43 names, so ~540 seeds per name in the Generate range).
+- Instrument changes (`Deck.roleVoices`, `withInstrument`) are the share envelope's `tracks`
+  override keyed by MIDI channel, so they record, star and share; applying one reloads the track
+  from its start. Copying a deck loads the same descriptor on the other one.
 
 ## Control socket and MCP
 

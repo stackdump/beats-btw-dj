@@ -20,6 +20,65 @@ struct AppControlTests {
     try await m.control(method, try JSONValue.parse(params))
   }
 
+  func favoritesModel() throws -> AppModel {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites())
+    m.start()
+    return m
+  }
+
+  @Test func favoritesStarListAndReloadATrack() async throws {
+    let m = try favoritesModel()
+    await #expect { try await call(m, "favorites", #"{"action":"add","deck":"A"}"#) } throws: {
+      "\($0)".contains("samples can't be")
+    }
+    let b = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    #expect(b["share"]?["seed"]?.double == 42)
+    #expect(b["favorite"]?.bool == false)
+    let list = try await call(m, "favorites", #"{"action":"add","deck":"B"}"#)
+    let cid = try #require(list["favorites"]?.array?.first?["cid"]?.string)
+    #expect(list["favorites"]?.array?.first?["seed"]?.double == 42)
+    #expect(try await call(m, "state")["decks"]?["B"]?["favorite"]?.bool == true)
+    // load it onto the other deck, recorded as a load
+    let rec = try SessionRecorder.start(on: try #require(m.engine))
+    let a = try await call(
+      m, "favorites", "{\"action\":\"load\",\"deck\":\"A\",\"cid\":\"\(cid)\"}")
+    #expect(a["share"]?["seed"]?.double == 42)
+    #expect(rec.finish().events.count == 1)
+    // the list is on disk
+    #expect(m.favoritesStore.list().count == 1)
+    let after = try await call(m, "favorites", #"{"action":"remove","deck":"B"}"#)
+    #expect(after["favorites"]?.array?.isEmpty == true)
+  }
+
+  @Test func copyADeckThenChangeAnInstrumentOnTheCopy() async throws {
+    let m = try favoritesModel()
+    _ = try await call(
+      m, "generate", #"{"deck":"A","genre":"techno","seed":42,"structure":"minimal"}"#)
+    let b = try await call(m, "copyDeck", #"{"from":"A","to":"B"}"#)
+    let a = try await call(m, "state")["decks"]?["A"]
+    #expect(b["share"]?["cid"] == a?["share"]?["cid"])
+    let bass = try #require(b["instruments"]?["bass"]?.string)
+    let other = try #require(
+      BeatsTables.shared.instrumentSets["techno"]?["bass"]?.first { $0 != bass })
+    let changed = try await call(
+      m, "setInstrument", "{\"deck\":\"B\",\"role\":\"bass\",\"instrument\":\"\(other)\"}")
+    #expect(changed["instruments"]?["bass"]?.string == other)
+    #expect(changed["share"]?["cid"] != a?["share"]?["cid"])
+    // deck A is untouched
+    #expect(try await call(m, "state")["decks"]?["A"]?["instruments"]?["bass"]?.string == bass)
+    await #expect {
+      try await call(m, "setInstrument", #"{"deck":"B","role":"bass","instrument":"kazoo"}"#)
+    } throws: { "\($0)".contains("can play:") }
+    await #expect { try await call(m, "copyDeck", #"{"from":"A","to":"A"}"#) } throws: {
+      "\($0)".contains("same deck")
+    }
+  }
+
   @Test func stateDescribesBothDecks() async throws {
     let s = try await call(try model(), "state")
     #expect(s["decks"]?["A"]?["mode"]?.string == "sample")

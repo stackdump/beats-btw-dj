@@ -34,10 +34,12 @@ struct AppLayoutTests {
   @Test func theWholeWindowLaysOutAndShowsEverything() async throws {
     let m = try await model(pads: true, map: true)
     let view = ContentView(model: m)
-    savePNG(view, width: 1100, height: 1500, name: "app-full")
-    let px = try #require(renderPixels(view, width: 1100, height: 1500))
+    // 1600: a net deck with its section strip and Perform open, plus pads and the map, is ~1540
+    // tall; any shorter and the window scrolls, which `ImageRenderer` draws blank.
+    savePNG(view, width: 1100, height: 1600, name: "app-full")
+    let px = try #require(renderPixels(view, width: 1100, height: 1600))
     // Not blank, and content reaches both deck columns and the bottom bar.
-    let lit = px.count(inX: 0..<1100, y: 0..<1500) { r, g, b in r > 60 || g > 60 || b > 60 }
+    let lit = px.count(inX: 0..<1100, y: 0..<1600) { r, g, b in r > 60 || g > 60 || b > 60 }
     #expect(lit > 20_000, "something is drawn (\(lit) lit pixels)")
     #expect(m.decks["A"]?.isNet == true && m.decks["B"]?.isNet == false)
     #expect(m.decks["A"]?.snapshot?.rings.count ?? 0 >= 6)
