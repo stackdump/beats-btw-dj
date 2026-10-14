@@ -69,7 +69,16 @@ extension AppModel {
       if let structure, !Self.structures.contains(structure) {
         throw ControlRequestError.bad("structure must be one of \(Self.structures)")
       }
-      let spec = TrackSpec(genre: genre, seed: p["seed"]?.double ?? 1, structure: structure)
+      // composition options: an `options` object and/or the same keys flat
+      var options = p["options"]?.object ?? JSONObject()
+      for k in ComposeOptions.keys { if let v = p[k] { options[k] = v } }
+      let spec: TrackSpec
+      do {
+        spec = try ComposeOptions.apply(
+          options, to: TrackSpec(genre: genre, seed: p["seed"]?.double ?? 1, structure: structure))
+      } catch let e as ComposeOptions.Invalid {
+        throw ControlRequestError.bad(e.description)
+      }
       await composeAndLoad(deck, spec)
       poll()
       return deckJSON(deck) ?? .null
@@ -354,6 +363,10 @@ extension AppModel {
             .string($0)
           })
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
+      if let spec = d.currentSpec {
+        let options = ComposeOptions.describe(spec)
+        if !options.entries.isEmpty { o["options"] = .object(options) }
+      }
       // role (riff variants `bass-0`, `bass-1`… folded together) → what it plays on
       var sampled: [String: String] = [:]
       for (net, src) in d.wave.sampledNets {
