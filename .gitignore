@@ -8,3 +8,5 @@
 .swiftpm/
 /tracks/
 .claude/worktrees/
+# A/B kit renders (rebuilt by ab/*/render.sh; ~19 MB each)
+/ab/**/*.wav

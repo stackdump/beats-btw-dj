@@ -1,0 +1,30 @@
+== 00-baseline  {} 
+share z4EBG9jCwTkTjJNAK4dXaooZH8xPC9q9NuBmEZUJxoX59jMLYcB  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard"}
+wrote 00-baseline.wav  106.35 s  peak -4.54 dBFS  rms -19.37 dBFS
+== 01-hook  {"hook":true} 
+share z4EBG9j9MvXADd4hZpJerAFBj6NsN6d6esGZZnWeZgaVim9zicd  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"hook":true}}
+wrote 01-hook.wav  106.35 s  peak -4.07 dBFS  rms -19.39 dBFS
+== 01b-chordSnap  {"chordSnap":"strong"} 
+share z4EBG9j7YyVKxpJjWoRg6bQquLBSG4j3DuLsXG3f4faa5ECRReX  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"chordSnap":"strong"}}
+wrote 01b-chordSnap.wav  106.35 s  peak -4.48 dBFS  rms -19.37 dBFS
+== 01c-keyLock  {"keyLock":true} 
+share z4EBG9jFszVppzu4bP29YVv9DVL2TLoDb7qrf4mSDLy8nXwTfE3  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"keyLock":true}}
+wrote 01c-keyLock.wav  106.35 s  peak -4.52 dBFS  rms -19.38 dBFS
+== 02-hook+chordSnap  {"hook":true,"chordSnap":"strong"} 
+share z4EBG9j44GJVfgZMNRrc4vfxqoLryCTJfx8TkngxUd3B8aLLjDa  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"chordSnap":"strong","hook":true}}
+wrote 02-hook+chordSnap.wav  106.35 s  peak -4.07 dBFS  rms -19.39 dBFS
+== 03-hook+chordSnap+layerBudget-auto  {"hook":true,"chordSnap":"strong","layerBudget":"auto"} 
+share z4EBG9j2GqNwFMgAQAquJEVV5jr3jb4Gh3yrazETjB2P1c5Rn2c  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"chordSnap":"strong","hook":true,"layerBudget":"auto"}}
+wrote 03-hook+chordSnap+layerBudget-auto.wav  106.35 s  peak -4.07 dBFS  rms -19.47 dBFS
+== 04-all  {"hook":true,"chordSnap":"strong","layerBudget":"auto","melodyDensity":0.35,"ghostNotes":0.1,"bassFollow":true} 
+share z4EBG9j8CLGVUD8BcvXQ9FRpZsBJRCBKWXfnTUkUwHrh4XKama1  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"bassFollow":true,"chordSnap":"strong","ghost-notes":0.1,"hook":true,"layerBudget":"auto","melodyDensity":0.35}}
+wrote 04-all.wav  106.35 s  peak -4.84 dBFS  rms -19.51 dBFS
+== 04-stem-drums+bass  {"hook":true,"chordSnap":"strong","layerBudget":"auto","melodyDensity":0.35,"ghostNotes":0.1,"bassFollow":true} --solo drums,bass
+share z4EBG9j8CLGVUD8BcvXQ9FRpZsBJRCBKWXfnTUkUwHrh4XKama1  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"bassFollow":true,"chordSnap":"strong","ghost-notes":0.1,"hook":true,"layerBudget":"auto","melodyDensity":0.35}}
+wrote 04-stem-drums+bass.wav  106.35 s  peak -4.36 dBFS  rms -19.60 dBFS
+== 04-stem-drums+bass+melody  {"hook":true,"chordSnap":"strong","layerBudget":"auto","melodyDensity":0.35,"ghostNotes":0.1,"bassFollow":true} --solo drums,bass,melody
+share z4EBG9j8CLGVUD8BcvXQ9FRpZsBJRCBKWXfnTUkUwHrh4XKama1  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"bassFollow":true,"chordSnap":"strong","ghost-notes":0.1,"hook":true,"layerBudget":"auto","melodyDensity":0.35}}
+wrote 04-stem-drums+bass+melody.wav  106.35 s  peak -4.44 dBFS  rms -19.57 dBFS
+== 04-stem-no-melody  {"hook":true,"chordSnap":"strong","layerBudget":"auto","melodyDensity":0.35,"ghostNotes":0.1,"bassFollow":true} --mute melody
+share z4EBG9j8CLGVUD8BcvXQ9FRpZsBJRCBKWXfnTUkUwHrh4XKama1  {"cohesion":"v2","genre":"edm","seed":4242,"structure":"standard","traits":{"bassFollow":true,"chordSnap":"strong","ghost-notes":0.1,"hook":true,"layerBudget":"auto","melodyDensity":0.35}}
+wrote 04-stem-no-melody.wav  106.35 s  peak -4.59 dBFS  rms -19.55 dBFS
