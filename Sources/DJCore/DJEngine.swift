@@ -328,8 +328,11 @@ public final class Deck: JogClock {
 
   /// How this deck compiles nets: the instrument table, with its own sampler bank.
   public var waveOptions: WaveOptions {
-    .extended(samplers: wave.samplers, seed: voicingSeed)
+    .extended(samplers: wave.samplers, seed: voicingSeed, roleFilter: roleFilter)
   }
+
+  /// Roles this deck leaves out of every net it compiles (offline stems; nil = none).
+  public var roleFilter: RoleFilter?
 
   init(name: String, sampleRate: Double, format: AVAudioFormat) {
     self.name = name

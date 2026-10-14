@@ -68,8 +68,50 @@ public struct WaveOptions {
   /// Seeds which sampled instrument each role gets (`VoiceCatalog`): the track's seed, so a
   /// track keeps its instruments across section jumps and replays.
   public var voicingSeed = 0.0
+  /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
+  /// still run, so everything else plays exactly as it would. nil = all play.
+  public var roleFilter: RoleFilter?
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
+}
+
+/// Which roles a render keeps. A net is named by its id, its riff group (`bass` for
+/// `bass-3`) and its mixer group (`drums`, `bass`, `melody`, `arp`, `harmony`, `stinger`);
+/// drum fills (`fill-N`) count as `drums`.
+public struct RoleFilter: Sendable, Equatable {
+  public var mute: Set<String>
+  /// When set, only these play.
+  public var solo: Set<String>?
+
+  public init(mute: Set<String> = [], solo: Set<String>? = nil) {
+    self.mute = mute
+    self.solo = solo
+  }
+
+  public var isEmpty: Bool { mute.isEmpty && solo == nil }
+
+  func silences(_ id: String, _ nb: NetBundle) -> Bool {
+    var names: Set<String> = [id]
+    if !nb.riffGroup.isEmpty { names.insert(nb.riffGroup) }
+    if let g = nb.track.group, !g.isEmpty { names.insert(g) }
+    if id.hasPrefix("fill-") { names.insert("drums") }
+    if !names.isDisjoint(with: mute) { return true }
+    if let solo { return names.isDisjoint(with: solo) }
+    return false
+  }
+
+  /// `project` with the silenced nets' note bindings removed.
+  public func apply(_ project: Project) -> Project {
+    guard !isEmpty else { return project }
+    var p = project
+    for id in p.nets.keys {
+      guard let nb = p.nets[id], nb.role != "control", !nb.bindings.keys.isEmpty,
+        silences(id, nb)
+      else { continue }
+      p.nets[id]!.bindings = OrderedMap()
+    }
+    return p
+  }
 }
 
 final class Lane {
@@ -423,7 +465,7 @@ public final class WaveRunner {
     _ project: Project, sampleRate: Double, opts: WaveOptions = WaveOptions(), startTick: Int = 0,
     trackSerial: Int32? = nil
   ) -> WaveProject {
-    let g = WaveGraph(project: project)
+    let g = WaveGraph(project: opts.roleFilter?.apply(project) ?? project)
     if startTick > 0 { g.fastForward(to: startTick) }
     // (the compiled graph is built from the project's JSON, which has no coordinates: the
     // layout takes the net positions from the project itself)

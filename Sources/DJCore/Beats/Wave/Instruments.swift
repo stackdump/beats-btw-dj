@@ -86,6 +86,15 @@ extension WaveOptions {
     o.voicingSeed = seed
     return o
   }
+
+  /// A deck's options (`Deck.waveOptions`), from parts that can cross threads.
+  public static func extended(samplers: SamplerBank?, seed: Double = 0, roleFilter: RoleFilter?)
+    -> WaveOptions
+  {
+    var o = extended(samplers: samplers, seed: seed)
+    o.roleFilter = roleFilter
+    return o
+  }
 }
 
 /// Tone.Distortion's waveshaping curve (`amount` 0…1).

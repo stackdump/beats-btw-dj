@@ -161,7 +161,9 @@ final class NextTrackSlot: Sendable {
   var isBusy: Bool { state.withLock { $0.ready != nil || $0.inFlight != nil } }
 
   /// Begin a background compose; a newer request supersedes an older one.
-  func request(_ spec: TrackSpec, sampleRate: Double, samplers: SamplerBank?) {
+  func request(
+    _ spec: TrackSpec, sampleRate: Double, samplers: SamplerBank?, roleFilter: RoleFilter?
+  ) {
     let token = state.withLock { s -> Int in
       s.token += 1
       s.ready = nil
@@ -170,7 +172,8 @@ final class NextTrackSlot: Sendable {
     }
     DispatchQueue.global(qos: .userInitiated).async { [self] in
       let track = PreparedTrack(
-        spec: spec, sampleRate: sampleRate, opts: .extended(samplers: samplers))
+        spec: spec, sampleRate: sampleRate,
+        opts: .extended(samplers: samplers, roleFilter: roleFilter))
       state.withLock { s in
         guard s.token == token else { return }  // superseded or cancelled
         s.ready = track
@@ -180,9 +183,12 @@ final class NextTrackSlot: Sendable {
   }
 
   /// Compose on the calling thread (replay mode).
-  func requestSync(_ spec: TrackSpec, sampleRate: Double, samplers: SamplerBank?) {
+  func requestSync(
+    _ spec: TrackSpec, sampleRate: Double, samplers: SamplerBank?, roleFilter: RoleFilter?
+  ) {
     let track = PreparedTrack(
-      spec: spec, sampleRate: sampleRate, opts: .extended(samplers: samplers))
+      spec: spec, sampleRate: sampleRate,
+      opts: .extended(samplers: samplers, roleFilter: roleFilter))
     state.withLock { s in
       s.token += 1
       s.ready = track
@@ -215,8 +221,10 @@ extension Deck {
     let mine = generation
     let sr = wave.sampleRate
     let bank = wave.samplers
+    let filter = roleFilter
     let track = await Task.detached(priority: .userInitiated) {
-      PreparedTrack(spec: spec, sampleRate: sr, opts: .extended(samplers: bank))
+      PreparedTrack(
+        spec: spec, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter))
     }.value
     guard mine == generation else { return false }
     loadNet(track)
@@ -233,9 +241,11 @@ extension Deck {
   /// Start composing the next track in the background (cancels an earlier request).
   public func queueNext(_ spec: TrackSpec) {
     if deterministic {
-      next.requestSync(spec, sampleRate: wave.sampleRate, samplers: wave.samplers)
+      next.requestSync(
+        spec, sampleRate: wave.sampleRate, samplers: wave.samplers, roleFilter: roleFilter)
     } else {
-      next.request(spec, sampleRate: wave.sampleRate, samplers: wave.samplers)
+      next.request(
+        spec, sampleRate: wave.sampleRate, samplers: wave.samplers, roleFilter: roleFilter)
     }
   }
 

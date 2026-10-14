@@ -55,13 +55,15 @@ extension Deck {
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = voicingSeed
+    let filter = roleFilter
     let start = secs[index].startTick
     let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
       WaveRunner.prepare(
-        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed), startTick: start,
+        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed, roleFilter: filter),
+        startTick: start,
         trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }
@@ -115,12 +117,13 @@ extension Deck {
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = voicingSeed
+    let filter = roleFilter
     let song = wave.latest?.trackSerial
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
       WaveRunner.prepare(
-        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed),
+        project, sampleRate: sr, opts: .extended(samplers: bank, seed: seed, roleFilter: filter),
         startTick: max(0, tick), trackSerial: song)
     }.value
     guard mine == generation, mode == .net else { return false }

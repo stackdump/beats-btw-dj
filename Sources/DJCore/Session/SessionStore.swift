@@ -49,10 +49,11 @@ public struct SessionStore {
 
   /// Render to a WAV file (16-bit PCM by default).
   public static func exportWAV(
-    _ session: Session, to url: URL, float32: Bool = false,
+    _ session: Session, to url: URL, float32: Bool = false, roleFilter: RoleFilter? = nil,
     samples: @escaping (String) -> SampleBuffer? = { _ in nil }
   ) throws {
-    let audio = try SessionPlayer(session: session, samples: samples).render()
+    let audio = try SessionPlayer(session: session, roleFilter: roleFilter, samples: samples)
+      .render()
     try WAV.encode(audio, float32: float32).write(to: url, options: .atomic)
   }
 }
