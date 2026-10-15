@@ -126,3 +126,40 @@ func gridDeviations(
     return best.cents
   }
 }
+
+/// 2^x (Foundation stays out of the Testing files).
+func exp2(_ x: Double) -> Double { pow(2, x) }
+
+/// log₂ x (Foundation stays out of the Testing files).
+func log2d(_ x: Double) -> Double { log2(x) }
+
+/// An amplitude ratio in dB.
+func ampDB(_ x: Double) -> Double { 20 * log10(x) }
+
+/// Amplitude of harmonic `n` of one cycle `x` (a wavetable): its DFT bin `n`, normalised.
+func cycleHarmonic(_ x: ArraySlice<Float>, _ n: Int) -> Double {
+  var re = 0.0
+  var im = 0.0
+  for (i, v) in x.enumerated() {
+    let a = 2 * Double.pi * Double(n * i) / Double(x.count)
+    re += Double(v) * cos(a)
+    im += Double(v) * sin(a)
+  }
+  return (re * re + im * im).squareRoot() / Double(x.count)
+}
+
+/// Level of the component at `hz` in `x` (Hann-windowed DFT at that one frequency), dB.
+func toneDB(_ x: ArraySlice<Float>, _ hz: Double, sampleRate sr: Double) -> Double {
+  let v = Array(x)
+  let n = v.count
+  let k = 2 * Double.pi * hz / sr
+  var re = 0.0
+  var im = 0.0
+  for i in 0..<n {
+    let w = 0.5 - 0.5 * cos(2 * Double.pi * Double(i) / Double(n - 1))
+    let s = Double(v[i]) * w
+    re += s * cos(k * Double(i))
+    im -= s * sin(k * Double(i))
+  }
+  return 10 * log10(max((re * re + im * im) / Double(n * n), 1e-30))
+}

@@ -31,6 +31,16 @@ public enum RingGeometry {
   public static func position(_ i: Int, of n: Int, size: CGFloat) -> CGPoint {
     position(i, of: n, size: size, inset: inset(base: baseRadius(steps: n, size: size)))
   }
+
+  /// How far a ring drawn with `inset` reaches past its square: the fired step's flash
+  /// (2.4 × base, the largest thing it draws) round a dot `inset` in from the edge.
+  public static func overflow(steps n: Int, size: CGFloat, inset: CGFloat = 6) -> CGFloat {
+    max(0, baseRadius(steps: n, size: size) * 2.4 - inset)
+  }
+
+  /// The most any ring overflows (base is at most 5 pt): what a layout leaves round one so its
+  /// flash never lands on a label or the next ring.
+  public static let maxOverflow: CGFloat = 5 * 2.4 - 6
 }
 
 extension Color {
@@ -174,7 +184,9 @@ public struct RingNetView: View {
   }
 }
 
-/// Every audible ring of a net deck, labelled by role.
+/// Every audible ring of a net deck, labelled by role: the parts in a grid of four, the
+/// stingers (`hit1`…, one-shots fired by hand) after them in a smaller, quieter row, so the
+/// parts that play read first.
 public struct NetRingsView: View {
   public var snapshot: NetSnapshot?
   public var tint: Color
@@ -186,13 +198,38 @@ public struct NetRingsView: View {
     self.arcs = arcs
   }
 
+  /// `hit1`, `hit2`…: beats' stinger nets.
+  static func isStinger(_ role: String) -> Bool {
+    role.hasPrefix("hit") && role.count > 3 && role.dropFirst(3).allSatisfy(\.isNumber)
+  }
+
   public var body: some View {
     let rings = snapshot?.rings ?? []
-    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-      ForEach(rings, id: \.role) { r in
-        VStack(spacing: 1) {
-          RingNetView(ring: r, tint: tint, arcs: arcs)
-          Text(r.role).font(.system(size: 9)).foregroundStyle(r.muted ? .secondary : .primary)
+    let parts = rings.filter { !Self.isStinger($0.role) }
+    let stingers = rings.filter { Self.isStinger($0.role) }
+    VStack(spacing: DJStyle.s) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6)
+      {
+        ForEach(parts, id: \.role) { r in
+          VStack(spacing: 1) {
+            // padded by the most a ring draws past its square, so a loud hit's flash stays
+            // off the label under it and the rings beside it
+            RingNetView(ring: r, tint: tint, arcs: arcs).padding(RingGeometry.maxOverflow)
+            Text(r.role).font(.system(size: 10, weight: r.muted ? .regular : .medium))
+              .foregroundStyle(r.muted ? .secondary : .primary)
+          }
+        }
+      }
+      if !stingers.isEmpty {
+        HStack(spacing: 6) {
+          Text("STINGERS").font(.system(size: 8, weight: .semibold)).tracking(1)
+            .foregroundStyle(.tertiary).fixedSize()
+          ForEach(stingers, id: \.role) { r in
+            RingNetView(ring: r, tint: tint, arcs: arcs).frame(width: 30, height: 30)
+              .opacity(0.8)
+              .help(r.role)
+          }
+          Spacer(minLength: 0)
         }
       }
     }

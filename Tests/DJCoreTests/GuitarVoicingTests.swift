@@ -162,7 +162,8 @@ struct GuitarVoicingTests {
         off += n
       }
     }
-    let level = rmsDB(stem[...])
+    // as loud as the sound itself plays: the track's loudness gain (`Loudness`) taken out
+    let level = rmsDB(stem[...]) - ampDB(f.prepared.gain)
     let dev = gridDeviations(stem, sampleRate: sr).map(abs).sorted()
     print("  stem \(level) dB, cents off the grid per window \(dev)")
     #expect(level > -45, "the \(f.role) stem is silent (\(level) dB)")

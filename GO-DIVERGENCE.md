@@ -78,6 +78,50 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
 3. **FX macros survive a project hand-over** (ROADMAP 3.3). beats' project-sync on regen / swap
    cancels running FX macros; dj lets them finish.
 
+4. **Musicality fixes** (docs/musicality-notes.md; `DJMusicality`, run on the composed project
+   before a deck plays it — dj's `compose()` and the model CID stay beats'). Generator bugs
+   beats should fix at the source:
+   - tension variants change key: `expandVariants` adds `registerShift` (+2 / −3) to the root
+     and rebuilds the scale there, so B / C sections play a whole tone up / a minor third down
+     over the home-key pad. dj moves those notes back (`.key`).
+   - structure changes drift: `buildAccumulatorNet` gives every stage after the first `gap`
+     ticks plus the tick its gate takes (one sixteenth later per event), and even the first
+     fires on the downbeat's own tick, after the music nets have played it, so entering parts
+     lose their first beat. dj starts every stage with `gap − 1` (`.timing`).
+   - drum fills never sound: `drumFillNet` is a `control` net (no voice), starts muted and its
+     `struct-fill-N` net carries no unmute; its toms (45 / 48 / 43) have no wave-engine voice
+     either (they fall to hat / kick). dj unmutes them, voices `fill-*` nets and plays them as a
+     swelling snare roll (`.fills`).
+   - the section energy arc is lost: the composer writes each section's `energy` /
+     `filterOpen` as `set-feel` controls; the wave engine drops them, and the Tone path feeds
+     them to the feel pad, whose axes are tone and **tempo**, so a breakdown (filterOpen 0.25)
+     plays at 0.8× BPM. dj plays them as level and a tonal lowpass with buildup sweeps
+     (`.energy`, `EnergyCurve`).
+   - the arp doubles the melody: with sections, `expandVariants` builds each arp slot from the
+     melody's motif (`motifNet`) or a Markov line, so it plays the lead's notes in unison
+     (synthwave) or an octave under it (trance) and arpeggiates nothing. dj plays the bar's pad
+     chord in sixteenths (`.arpeggio`).
+   - basses leap: `chordBassRing` takes every root from one octave of the scale, so a
+     progression that comes back round jumps a sixth or seventh (and some land under E1, C1 in
+     techno 42). dj moves whole bars by octaves to the smallest motion (`.bassLine`).
+   - no open hats: the wave engine's drum map voices notes 42–46 as one closed hat, so the
+     four-on-the-floor genres have no off-beat open hat. dj binds those to 46 and voices it
+     (`.openHats`).
+   - motifs never repeat inside a phrase: `generateMotif` walks every one of the 4 bars at
+     random, so no bar of a phrase sounds like another. dj restates bar 1 in bar 2 as a diatonic
+     sequence onto bar 2's chord (`.motif`); the generator could do it at the source.
+   - the mix is the kick: one fixed level per voice family puts bass and lead 12–19 dB
+     (K-weighted) under the kick in the dance genres. dj measures each part soloed and trims it
+     (`.balance`, `MixBalance`); beats' voice levels want the same rebalancing.
+   - the wave engine's saws stop at the 8th partial and never move (no filter envelope), the
+     kick ends on 48 Hz in every key, and there is no delay: dj adds band-limited tables and a
+     filter envelope (`.subtractive`), detuned pairs (`.unison`), a key-tuned kick
+     (`.kickTune`) and a tempo echo (`.echo`).
+   - the chill family (lofi, and jazz / bossa likewise) activates kick and snare only in
+     buildup / drop / pre-chorus / solo, which their `standard` songs do not have: a lofi song
+     is hats, bass, keys and no beat. Not fixed in dj yet (it needs the role control nets'
+     unmutes rewritten); a table change in beats is the simple fix.
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX
   sub-macros), so it is just octave-down for a bar.

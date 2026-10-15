@@ -563,7 +563,7 @@ public final class ModelEngine {
     let ns = ModelGrid.ns
     kt.kernelFor(note: note, into: &kbuf)
     let v = Double(velocity) / 100
-    var e = v * v
+    var e = v * v * balanceGain(lanes[li], note: note)
     if !kt.drum { e *= max(0.25, min(4, durMs / Double(kt.durMs))) }
     let off = laneFxOffset[li]
     let bar = step >> 4  // floor(step / 16)
@@ -587,6 +587,17 @@ public final class ModelEngine {
       let add = e * Double(kbuf[nb + j]) * Double(fx[off + nb + j]) * inv
       laneState[lo + j] = Float(Double(laneState[lo + j]) + add)
     }
+  }
+
+  /// The energy gain of a note of `lane` from its deck's part trims (`DJMusicality.Fixes.balance`,
+  /// which scale the lane's voice after the kernels were rendered at the voice's own level); 1
+  /// without them (beats' scope-model.js has none).
+  private func balanceGain(_ lane: ScopeLane, note: Int) -> Double {
+    guard let trims = engine?.decks[lane.deck]?.wave.latest?.balance,
+      let part = MixBalance.part(drumNote: lane.drum ? note : nil, group: lane.group),
+      let db = trims[part]
+    else { return 1 }
+    return pow(10, db / 10)
   }
 
   /// scope.js `specAdvance`: finalise the spectrogram columns for the steps before `step`.

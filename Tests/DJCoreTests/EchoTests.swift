@@ -1,0 +1,139 @@
+import Testing
+
+@testable import DJCore
+
+// `DJMusicality.Fixes.echo`: the tempo-synced ping-pong delay, measured on stereo renders of one
+// short lead note through a linear master.
+
+private let sr = 48_000.0
+
+/// One lead note, a sixteenth long, on the first step of a 4-bar ring.
+private func leadOnce(tempo: Double = 120, group: String = "melody") -> Project {
+  var p = Project()
+  p.tempo = tempo
+  var n = NetBundle.ring(64)
+  n.bind(0, note: 72, channel: 4, velocity: 110, duration: 0)
+  n.bindings["t0"]?.durationSteps = 1
+  n.track.channel = 4
+  n.track.group = group
+  p.nets[group] = n
+  return p
+}
+
+private func render(_ p: Project, _ fixes: DJMusicality.Fixes, echo: EchoSpec?, seconds: Double = 2)
+  -> (l: [Float], r: [Float])
+{
+  var o = WaveOptions()
+  o.master = "linear"
+  o.musicality = fixes
+  o.echo = echo
+  let r = WaveRunner(sampleRate: sr, opts: o)
+  r.load(prepared: WaveRunner.prepare(p, sampleRate: sr, opts: o))
+  r.play()
+  var l = [Float](repeating: 0, count: Int(seconds * sr))
+  var rr = l
+  l.withUnsafeMutableBufferPointer { lb in
+    rr.withUnsafeMutableBufferPointer { rb in
+      var off = 0
+      while off < lb.count {
+        let n = min(256, lb.count - off)
+        r.process(lb.baseAddress! + off, rb.baseAddress! + off, frames: n)
+        off += n
+      }
+    }
+  }
+  return (l, rr)
+}
+
+/// RMS (dB) of `x` in a 60 ms window starting `t` seconds after the note (the note lands on the
+/// first tick, a sample in).
+private func at(_ x: [Float], _ t: Double) -> Double {
+  let a = Int(t * sr)
+  return rmsDB(x[a..<(a + Int(0.06 * sr))])
+}
+
+struct EchoTests {
+  /// Dotted eighths at 120 BPM are 375 ms: the first repeat comes back on the left, the second
+  /// on the right, each quieter than the last; dry, there is nothing there at all.
+  @Test func repeatsPingPongOnTheBeatGrid() {
+    let spec = EchoSpec(steps: 3, feedback: 0.42, wet: 0.32, damping: 5000)
+    let dry = render(leadOnce(), [.stereo], echo: spec)
+    let full = render(leadOnce(), [.stereo, .echo], echo: spec)
+    // the echo alone: what the fix adds to the dry render
+    let wet = (l: zip(full.l, dry.l).map { $0 - $1 }, r: zip(full.r, dry.r).map { $0 - $1 })
+    #expect(at(wet.l, 0.1) < -120, "nothing before the first repeat")
+    #expect(at(dry.l, 0.375) < at(wet.l, 0.375) - 20, "the dry note has died by the first repeat")
+    let first = (l: at(wet.l, 0.375), r: at(wet.r, 0.375))
+    let second = (l: at(wet.l, 0.75), r: at(wet.r, 0.75))
+    let third = (l: at(wet.l, 1.125), r: at(wet.r, 1.125))
+    #expect(first.l > -60 && first.l > first.r + 10, "first repeat L \(first.l) R \(first.r)")
+    #expect(second.r > second.l + 10, "second repeat L \(second.l) R \(second.r)")
+    #expect(third.l > third.r + 10, "third repeat L \(third.l) R \(third.r)")
+    #expect(second.r < first.l - 3 && third.l < second.r - 3, "repeats fall")
+    // between the repeats, quiet (a 60 ms window halfway between)
+    #expect(at(wet.l, 0.55) < first.l - 20)
+  }
+
+  /// The delay follows the tempo: at 140 BPM a dotted eighth is 321 ms.
+  @Test func theDelayFollowsTheTempo() {
+    let spec = EchoSpec(steps: 3, feedback: 0.42, wet: 0.32, damping: 5000)
+    let dry = render(leadOnce(tempo: 140), [.stereo], echo: spec)
+    let full = render(leadOnce(tempo: 140), [.stereo, .echo], echo: spec)
+    let wet = zip(full.l, dry.l).map { $0 - $1 }
+    let t = 3 * 60 / (140.0 * 4)
+    #expect(at(wet, t) > -60 && at(wet, t - 0.07) < -120, "the repeat lands at \(t) s")
+  }
+
+  /// Only the lead and arp echo: a bass or pad note renders bit-identically with the echo on,
+  /// and genres without one (jazz, techno) get none.
+  @Test func onlyLeadsEcho() {
+    let spec = EchoSpec.forGenre("trance")!
+    for group in ["bass", "harmony"] {
+      let a = render(leadOnce(group: group), [.stereo], echo: spec)
+      let b = render(leadOnce(group: group), [.stereo, .echo], echo: spec)
+      #expect(a.l == b.l && a.r == b.r, "\(group)")
+    }
+    #expect(EchoSpec.forGenre("jazz") == nil && EchoSpec.forGenre("techno") == nil)
+    #expect(EchoSpec.forGenre("ambient")!.steps > EchoSpec.forGenre("trance")!.steps)
+    let track = PreparedTrack(
+      spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: 22_050)
+    #expect(track.prepared.echo == EchoSpec.forGenre("trance"))
+    let jazz = PreparedTrack(
+      spec: TrackSpec(genre: "jazz", seed: 42, structure: "minimal"), sampleRate: 22_050)
+    #expect(jazz.prepared.echo == nil)
+  }
+}
+
+#if DEBUG
+  private let optimized = false
+#else
+  private let optimized = true
+#endif
+
+struct EchoRealTimeTests {
+  /// The echo renders without allocating: a whole trance song, stereo.
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func theEchoDoesNotAllocate() {
+    let track = PreparedTrack(
+      spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: sr)
+    let r = WaveRunner(sampleRate: sr, opts: .extended)
+    r.load(prepared: track.prepared)
+    r.play()
+    var l = [Float](repeating: 0, count: 128)
+    var rr = l
+    l.withUnsafeMutableBufferPointer { lb in
+      rr.withUnsafeMutableBufferPointer { rb in
+        for _ in 0..<200 { r.process(lb.baseAddress!, rb.baseAddress!, frames: 128) }
+      }
+    }
+    let report = countAllocations {
+      l.withUnsafeMutableBufferPointer { lb in
+        rr.withUnsafeMutableBufferPointer { rb in
+          for _ in 0..<3000 { r.process(lb.baseAddress!, rb.baseAddress!, frames: 128) }
+        }
+      }
+    }
+    #expect(track.prepared.echo != nil)
+    #expect(report.allocations == 0, "process allocated \(report.allocations) times")
+  }
+}

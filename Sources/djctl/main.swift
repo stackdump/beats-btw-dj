@@ -335,9 +335,123 @@ case "ctl":
     exit(1)
   }
 
+case "render":
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance]
+  // Composes the track as a deck would, renders it offline (nothing on the speakers) and
+  // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
+  // --room renders it a second time without the reverb and reports the room's return level;
+  // --balance solos each part (`MixBalance`) and reports its level against the mix.
+  let seconds = option("--seconds") ?? 90
+  var structure: String? = "standard"
+  var out: String?
+  if let i = positional.firstIndex(of: "--structure"), positional.indices.contains(i + 1) {
+    structure = positional[i + 1] == "loop" ? nil : positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
+  if let i = positional.firstIndex(of: "--out"), positional.indices.contains(i + 1) {
+    out = positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
+  var notesOut: String?
+  if let i = positional.firstIndex(of: "--notes"), positional.indices.contains(i + 1) {
+    notesOut = positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
+  // --fixes key,timing,… (or none / all): which DJMusicality fixes to apply; default all.
+  var fixes = DJMusicality.Fixes.all
+  if let i = positional.firstIndex(of: "--fixes"), positional.indices.contains(i + 1) {
+    fixes = []
+    for n in positional[i + 1].split(separator: ",") {
+      guard let f = n == "all" ? .all : DJMusicality.Fixes.named[String(n)] else {
+        stderr(
+          "unknown fix \(n); one of: all, none, "
+            + DJMusicality.Fixes.named.keys.sorted().joined(separator: ", "))
+        exit(2)
+      }
+      fixes.formUnion(f)
+    }
+    positional.removeSubrange(i...(i + 1))
+  }
+  let synth = positional.contains("--synth")
+  let room = positional.contains("--room")
+  let balance = positional.contains("--balance")
+  positional.removeAll { $0 == "--synth" || $0 == "--room" || $0 == "--balance" }
+  guard positional.count >= 2, let seed = Double(positional[1]) else {
+    stderr(
+      "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--synth]"
+    )
+    exit(2)
+  }
+  let spec = TrackSpec(genre: positional[0], seed: seed, structure: structure)
+  let sr = 48_000.0
+  var deckOpts = WaveOptions.extended
+  deckOpts.musicality = fixes
+  let source = WaveDeckSource(sampleRate: sr, opts: deckOpts)
+  var trackOpts = WaveOptions.extended(samplers: synth ? nil : source.samplers)
+  trackOpts.musicality = fixes
+  let track = PreparedTrack(spec: spec, sampleRate: sr, opts: trackOpts)
+  let (log, controls) = NoteLog.captureAll(track.played)
+  let report = MusicalityReport(project: track.project, log: log, controls: controls)
+  if let notesOut {
+    // one note per line: tick net group note velocity channel steps
+    let lines = log.map {
+      "\($0.tick) \($0.net) \($0.group) \($0.note) \($0.velocity) \($0.channel) \($0.steps)"
+    }
+    let changes = controls.map { "\($0.tick) \($0.net) <\($0.action)> \($0.target) 0 0 0" }
+    try ((lines + changes).joined(separator: "\n") + "\n").write(
+      toFile: notesOut, atomically: true, encoding: .utf8)
+  }
+  let render = OfflineRender(track: track, source: source, seconds: seconds)
+  if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
+  var audio = render.metrics.dictionary
+  let levels = render.sectionLevels(track.played)
+  audio["sections"] = levels.map { ["name": $0.name, "rmsDB": round3($0.db)] }
+  if let lo = levels.map(\.db).min(), let hi = levels.map(\.db).max() {
+    audio["sectionSpreadDB"] = round3(hi - lo)
+  }
+  let dips = render.preDropDips(track.played)
+  if !dips.isEmpty { audio["preDropDipDB"] = round3(dips.reduce(0, +) / Double(dips.count)) }
+  // --room: render it again without `.space`; what the room adds, against the dry mix
+  if room && fixes.contains(.space) {
+    var dryDeck = deckOpts
+    dryDeck.musicality.remove(.space)
+    let drySource = WaveDeckSource(sampleRate: sr, opts: dryDeck)
+    var dryOpts = WaveOptions.extended(samplers: synth ? nil : drySource.samplers)
+    dryOpts.musicality = fixes.subtracting(.space)
+    let dry = OfflineRender(
+      track: PreparedTrack(spec: spec, sampleRate: sr, opts: dryOpts), source: drySource,
+      seconds: seconds)
+    var wet = 0.0
+    var base = 0.0
+    for i in 0..<min(dry.left.count, render.left.count) {
+      let dl = Double(render.left[i] - dry.left[i])
+      let dr = Double(render.right[i] - dry.right[i])
+      wet += dl * dl + dr * dr
+      base += Double(dry.left[i] * dry.left[i] + dry.right[i] * dry.right[i])
+    }
+    if wet > 0 && base > 0 { audio["roomReturnDB"] = round3(10 * log10(wet / base)) }
+  }
+  // --balance: each part soloed against the whole mix, K-weighted (synth voices)
+  if balance {
+    var o = WaveOptions.extended
+    o.musicality = fixes
+    let levels = MixBalance.measure(track.played, opts: o.forGenre(spec.genre))
+    audio["balanceDB"] = levels.mapValues(round3)
+    if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
+  }
+  let doc: [String: Any] = [
+    "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
+    "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,
+    "audio": audio, "tempo": track.played.tempo,
+    "sectionSteps": track.played.structure.map(\.steps),
+  ]
+  let data = try JSONSerialization.data(
+    withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
+  print(String(decoding: data, as: UTF8.self))
+
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | render <genre> <seed> | mcp | ctl <method> [json]"
   )
   exit(2)
 }
