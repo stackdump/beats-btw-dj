@@ -74,14 +74,24 @@ var positional = Array(args.dropFirst())
   return Double(positional[i + 1])
 }
 
+/// `--name` present (removed from `positional`).
+@MainActor func flag(_ n: String) -> Bool {
+  guard let i = positional.firstIndex(of: n) else { return false }
+  positional.remove(at: i)
+  return true
+}
+
 /// `--name value` as a string; the pair is removed from `positional`.
-@MainActor func stringOption(_ name: String) -> String? {
-  guard let i = positional.firstIndex(of: name), positional.indices.contains(i + 1) else {
+@MainActor func value(_ n: String) -> String? {
+  guard let i = positional.firstIndex(of: n), positional.indices.contains(i + 1) else {
     return nil
   }
   defer { positional.removeSubrange(i...(i + 1)) }
   return positional[i + 1]
 }
+
+/// `value` under the name the render / bounce options use.
+@MainActor func stringOption(_ name: String) -> String? { value(name) }
 
 /// `--mute a,b` / `--solo a,b` (roles, mixer groups or net ids) as a render filter.
 @MainActor func roleFilterOption() -> RoleFilter? {
@@ -101,6 +111,46 @@ var positional = Array(args.dropFirst())
   print(
     "wrote \(path)  \(String(format: "%.2f", Double(audio.frames) / audio.sampleRate)) s  "
       + "peak \(String(format: "%.2f", peak)) dBFS  rms \(String(format: "%.2f", rms)) dBFS")
+}
+
+/// What `publish` does with a set: bundle it (with its WAV), stage it on the CDN master and
+/// reload its index; public only with `mirror` (then it polls the public URL until the blob
+/// answers, up to ~3 min). `dry` prints the bundle and stops.
+func publish(
+  _ session: Session, audio: String?, title: String?, draft: Bool, host: String,
+  blobs: String?, noReload: Bool, mirror: Bool, dry: Bool
+) throws {
+  let wav = try audio.map { [UInt8](try Data(contentsOf: URL(fileURLWithPath: $0))) }
+  let stamp = ISO8601DateFormatter().string(from: Date())
+  let bundle = try SessionBundle(
+    session: session, title: title, audioWAV: wav, renderedAt: stamp, draft: draft)
+  for f in bundle.files { print("  \(f.name)  \(f.data.count) bytes") }
+  print("public URL (once mirrored): \(bundle.publicURL)")
+  if dry { return }
+  var t = SSHTransport(host: host)
+  if let blobs { t.blobsDir = blobs }
+  if noReload { t.reloadURL = "http://127.0.0.1:1/none" }
+  let r = try publishSession(bundle, via: t, mirror: mirror) { step in
+    switch step {
+    case .staging(let file, let i, let n): stderr("  uploading \(file) (\(i)/\(n))")
+    case .reloading: stderr("  reloading the CDN index")
+    case .mirroring: stderr("  starting mirror-push")
+    case .done: break
+    }
+  }
+  print(
+    "staged on \(host) · index reload \(noReload ? "skipped" : (r.reloaded ? "ok" : "FAILED"))")
+  if mirror {
+    // mirror-push runs in the background on valoper; wait for the blob to appear publicly.
+    stderr("  waiting for \(r.url) …")
+    let live = PublicProbe(attempts: 60, interval: 3).wait(for: bundle)
+    print(
+      live
+        ? "public: \(r.url)"
+        : "mirror-push started, not visible yet (a large WAV can take a while): \(r.url)")
+  } else {
+    print("not public yet: re-run with --mirror")
+  }
 }
 
 switch args.first {
@@ -292,18 +342,6 @@ case "publish":
   // Stages the set into the CDN master's blob tree on valoper (as the render farm does) and
   // reloads its index. Only --mirror makes it public (runs mirror-push.sh -> pflow.dev), and
   // then it polls the public URL until the blob answers (up to ~3 min).
-  func flag(_ n: String) -> Bool {
-    guard let i = positional.firstIndex(of: n) else { return false }
-    positional.remove(at: i)
-    return true
-  }
-  func value(_ n: String) -> String? {
-    guard let i = positional.firstIndex(of: n), positional.indices.contains(i + 1) else {
-      return nil
-    }
-    defer { positional.removeSubrange(i...(i + 1)) }
-    return positional[i + 1]
-  }
   let store = storeOption()
   let dry = flag("--dry-run")
   let mirror = flag("--mirror")
@@ -320,40 +358,82 @@ case "publish":
     exit(2)
   }
   do {
-    let session = try store.load(cid: cid)
-    let wav = try audio.map { [UInt8](try Data(contentsOf: URL(fileURLWithPath: $0))) }
-    let stamp = ISO8601DateFormatter().string(from: Date())
-    let bundle = try SessionBundle(
-      session: session, title: title, audioWAV: wav, renderedAt: stamp, draft: draft)
-    for f in bundle.files { print("  \(f.name)  \(f.data.count) bytes") }
-    print("public URL (once mirrored): \(bundle.publicURL)")
-    if dry { exit(0) }
-    var t = SSHTransport(host: host)
-    if let blobs { t.blobsDir = blobs }
-    if noReload { t.reloadURL = "http://127.0.0.1:1/none" }
-    let r = try publishSession(bundle, via: t, mirror: mirror) { step in
-      switch step {
-      case .staging(let file, let i, let n): stderr("  uploading \(file) (\(i)/\(n))")
-      case .reloading: stderr("  reloading the CDN index")
-      case .mirroring: stderr("  starting mirror-push")
-      case .done: break
-      }
-    }
-    print(
-      "staged on \(host) · index reload \(noReload ? "skipped" : (r.reloaded ? "ok" : "FAILED"))")
-    if mirror {
-      // mirror-push runs in the background on valoper; wait for the blob to appear publicly.
-      stderr("  waiting for \(r.url) …")
-      let live = PublicProbe(attempts: 60, interval: 3).wait(for: bundle)
-      print(
-        live
-          ? "public: \(r.url)"
-          : "mirror-push started, not visible yet (a large WAV can take a while): \(r.url)")
-    } else {
-      print("not public yet: re-run with --mirror")
-    }
+    try publish(
+      try store.load(cid: cid), audio: audio, title: title, draft: draft, host: host,
+      blobs: blobs, noReload: noReload, mirror: mirror, dry: dry)
   } catch {
     stderr("publish failed: \(error)")
+    exit(1)
+  }
+
+case "mix":
+  // djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S]
+  //           [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish]
+  //           [--mirror] [--dry-run] [--store DIR]
+  // Writes a set as a session, offline (`SessionMix`): tracks alternate decks A/B, each plays
+  // its whole song, the next comes in synced to the bar `--xfade` seconds (default 20) before
+  // the end. Saves it to the store; --export renders it; --publish stages it as `publish`
+  // does (--dry-run lists the bundle instead).
+  let store = storeOption()
+  let dry = flag("--dry-run")
+  let mirror = flag("--mirror")
+  let doPublish = flag("--publish") || mirror
+  let structure = value("--structure") ?? "standard"
+  let xfade = value("--xfade").flatMap(Double.init) ?? 20
+  let seedBase = value("--seed-base").flatMap(Double.init) ?? 1
+  let title = value("--title")
+  let export = value("--export")
+  let usage =
+    "usage: djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S] [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish] [--mirror] [--dry-run] [--store DIR]"
+  if let bad = positional.first(where: { $0.hasPrefix("--") }) {
+    stderr("unknown option \(bad)\n\(usage)")
+    exit(2)
+  }
+  guard positional.count >= 2, export != nil || !doPublish else {
+    stderr(positional.count < 2 ? usage : "--publish needs --export out.wav (the audio)")
+    exit(2)
+  }
+  // genre[:seed[:structure]]; a missing seed is --seed-base + the track's index.
+  var specs: [TrackSpec] = []
+  for (i, arg) in positional.enumerated() {
+    let parts = arg.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+    guard parts.count <= 3, !parts[0].isEmpty,
+      let seed = parts.count > 1 && !parts[1].isEmpty ? Double(parts[1]) : seedBase + Double(i)
+    else {
+      stderr("bad track \(arg)\n\(usage)")
+      exit(2)
+    }
+    let s = parts.count > 2 && !parts[2].isEmpty ? parts[2] : structure
+    specs.append(TrackSpec(genre: parts[0], seed: seed, structure: s))
+  }
+  do {
+    let mix = try SessionMix(specs, xfade: xfade)
+    let session = mix.session
+    func clock(_ frame: Int) -> String {
+      let s = Double(frame) / session.sampleRate
+      return String(format: "%d:%05.2f", Int(s) / 60, s.truncatingRemainder(dividingBy: 60))
+    }
+    for (i, t) in mix.tracks.enumerated() {
+      print(
+        "\(i + 1). \(t.deck)  \(t.title)  [\(t.spec.genre):\(Int(t.spec.seed)):\(t.spec.structure ?? "")]"
+          + String(format: "  %.1f s @ %.1f bpm", t.seconds, t.playedBPM)
+          + "  in \(clock(t.inFrame))  out \(clock(t.outFrame))")
+    }
+    let saved = try store.save(session)
+    print(
+      "\(saved.cid)  \(clock(session.frames))  (\(String(format: "%.1f", session.duration)) s, \(session.events.count) events)"
+    )
+    if let export {
+      try SessionStore.exportWAV(session, to: URL(fileURLWithPath: export))
+      print("wrote \(export)")
+    }
+    if doPublish {
+      try publish(
+        session, audio: export, title: title ?? mix.title, draft: false, host: "valoper.local",
+        blobs: nil, noReload: false, mirror: mirror, dry: dry)
+    }
+  } catch {
+    stderr("mix failed: \(error)")
     exit(1)
   }
 
@@ -539,7 +619,7 @@ case "render":
 
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | render <genre> <seed> | bounce <genre> <seed> <out.wav> | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | render <genre> <seed> | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }

@@ -289,11 +289,7 @@ extension Deck {
     wave.drainRetired()
     if let leader, let target = leader.effectiveBPM, let base = baseBPM {
       // Follow tempo changes of the deck we are locked to (same multiplier rule as sync).
-      var ratio = target / base
-      for m in [0.5, 2.0] where abs(target * m / base - 1) < abs(ratio - 1) {
-        ratio = target * m / base
-      }
-      let p = (min(1 + Self.pitchRange, max(1 - Self.pitchRange, ratio)) - 1) / Self.pitchRange
+      let p = (Self.tempoMatch(base: base, target: target).ratio - 1) / Self.pitchRange
       if abs(p - pitch) > 1e-6 { pitch = p }
     }
     guard mode == .net else { return }
