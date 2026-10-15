@@ -107,13 +107,23 @@ public enum PublishError: Error, Equatable, CustomStringConvertible {
 }
 
 /// Where a bundle goes.
-public protocol CDNTransport {
+public protocol CDNTransport: Sendable {
   /// Put the bundle's files under `blobs/<cid>/`.
   func stage(_ bundle: SessionBundle) throws
+  /// As `stage`, reporting each file as it starts (transports that can't stream just call
+  /// `stage`; the default does that).
+  func stage(_ bundle: SessionBundle, progress: (PublishStep) -> Void) throws
   /// Tell the CDN master to index just this CID. Returns whether it said yes.
   func reload(cid: String) throws -> Bool
   /// Push the master's blob tree to the public mirror (pflow.dev). This is what publishes.
   func mirror() throws
+}
+
+extension CDNTransport {
+  public func stage(_ bundle: SessionBundle, progress: (PublishStep) -> Void) throws {
+    progress(.staging(file: bundle.files.map(\.name).joined(separator: ", "), index: 1, of: 1))
+    try stage(bundle)
+  }
 }
 
 /// Writes straight into a blobs directory (tests; a CDN tree mounted locally).
@@ -136,9 +146,10 @@ public struct DirectoryTransport: CDNTransport {
 /// Stages onto valoper over ssh, the way the render farm does locally: nothing but the
 /// existing ssh key is needed. `run` is the process seam (command line, stdin) for tests.
 public struct SSHTransport: CDNTransport {
-  public typealias Runner = (_ argv: [String], _ stdin: [UInt8]?) throws -> (
-    status: Int32, out: String
-  )
+  public typealias Runner =
+    @Sendable (_ argv: [String], _ stdin: [UInt8]?) throws -> (
+      status: Int32, out: String
+    )
 
   public var host: String
   public var blobsDir: String
@@ -169,14 +180,21 @@ public struct SSHTransport: CDNTransport {
   }
 
   private func ssh(_ command: String, stdin: [UInt8]? = nil) throws -> (Int32, String) {
-    let r = try run(["ssh", "-o", "BatchMode=yes", host, command], stdin)
+    let r = try run(
+      [
+        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
+        host, command,
+      ], stdin)
     return (r.status, r.out)
   }
 
-  public func stage(_ bundle: SessionBundle) throws {
+  public func stage(_ bundle: SessionBundle) throws { try stage(bundle, progress: { _ in }) }
+
+  public func stage(_ bundle: SessionBundle, progress: (PublishStep) -> Void) throws {
     guard SessionBundle.isSafeCID(bundle.cid) else { throw PublishError.unsafeCID(bundle.cid) }
     let dir = Self.remotePath(blobsDir) + "/" + bundle.cid
-    for f in bundle.files {
+    for (i, f) in bundle.files.enumerated() {
+      progress(.staging(file: f.name, index: i + 1, of: bundle.files.count))
       // write to a dotfile and rename, so a reader never sees a partial file
       let tmp = "\(dir)/.\(f.name).part"
       let cmd = "mkdir -p \(dir) && cat > \(tmp) && mv \(tmp) \(dir)/\(f.name)"
@@ -201,6 +219,9 @@ public struct SSHTransport: CDNTransport {
   public static func process(_ argv: [String], _ stdin: [UInt8]?) throws -> (
     status: Int32, out: String
   ) {
+    // A write to a pipe whose reader (ssh) already exited is SIGPIPE, which would take the app
+    // down. Ignoring it turns it into an EPIPE error from `write(contentsOf:)` below.
+    signal(SIGPIPE, SIG_IGN)
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
     p.arguments = argv
@@ -210,10 +231,17 @@ public struct SSHTransport: CDNTransport {
     let inp = Pipe()
     p.standardInput = inp
     try p.run()
-    if let stdin { inp.fileHandleForWriting.write(Data(stdin)) }
-    try? inp.fileHandleForWriting.close()
+    // Feed stdin on its own thread so a large WAV can't deadlock against ssh's output pipe.
+    let writer = DispatchQueue(label: "ssh-stdin")
+    let done = DispatchSemaphore(value: 0)
+    writer.async {
+      if let stdin { try? inp.fileHandleForWriting.write(contentsOf: Data(stdin)) }
+      try? inp.fileHandleForWriting.close()
+      done.signal()
+    }
     let data = out.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
+    done.wait()
     return (p.terminationStatus, String(decoding: data, as: UTF8.self))
   }
 }
@@ -225,12 +253,85 @@ public struct PublishResult: Equatable, Sendable {
   public var mirrored: Bool
 }
 
+/// Where `publishSession` is, for a progress line.
+public enum PublishStep: Equatable, Sendable {
+  case staging(file: String, index: Int, of: Int)
+  case reloading
+  case mirroring
+  case done
+}
+
 /// Stage, reload, and (only when asked) mirror. The mirror step is the public one.
 public func publishSession(
-  _ bundle: SessionBundle, via transport: CDNTransport, mirror: Bool
+  _ bundle: SessionBundle, via transport: CDNTransport, mirror: Bool,
+  progress: (PublishStep) -> Void = { _ in }
 ) throws -> PublishResult {
-  try transport.stage(bundle)
+  try transport.stage(bundle, progress: progress)
+  progress(.reloading)
   let reloaded = try transport.reload(cid: bundle.cid)
-  if mirror { try transport.mirror() }
+  if mirror {
+    progress(.mirroring)
+    try transport.mirror()
+  }
+  progress(.done)
   return PublishResult(cid: bundle.cid, url: bundle.publicURL, reloaded: reloaded, mirrored: mirror)
+}
+
+/// Whether a published bundle is reachable at its public URL yet. `mirror-push.sh` runs in the
+/// background on valoper (rsync to pflow.dev), so right after `publishSession` the answer is
+/// usually "not yet"; this polls the last file written (`index.md`) and the audio, if any.
+public struct PublicProbe: Sendable {
+  /// HTTP status of a HEAD request, nil when the request failed. The seam for tests.
+  public typealias Head = @Sendable (URL) -> Int?
+  public var head: Head
+  public var attempts: Int
+  public var interval: TimeInterval
+
+  public init(
+    attempts: Int = 40, interval: TimeInterval = 3, head: @escaping Head = PublicProbe.urlSession
+  ) {
+    self.head = head
+    self.attempts = attempts
+    self.interval = interval
+  }
+
+  /// URLs that must answer 200 before the set counts as public.
+  public static func urls(for bundle: SessionBundle) -> [URL] {
+    bundle.files.compactMap { f in
+      f.name == "session.json" ? nil : URL(string: bundle.publicURL + f.name)
+    }
+  }
+
+  /// Blocks (call it off the main thread). True once every URL is 200, false after the last
+  /// attempt. `onAttempt` gets the 1-based attempt number.
+  public func wait(
+    for bundle: SessionBundle,
+    sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) },
+    onAttempt: (Int) -> Void = { _ in }
+  ) -> Bool {
+    let urls = Self.urls(for: bundle)
+    guard !urls.isEmpty else { return false }
+    for n in 1...max(attempts, 1) {
+      onAttempt(n)
+      if urls.allSatisfy({ head($0) == 200 }) { return true }
+      if n < attempts { sleep(interval) }
+    }
+    return false
+  }
+
+  public static let urlSession: Head = { url in
+    var req = URLRequest(url: url, timeoutInterval: 8)
+    req.httpMethod = "HEAD"
+    req.cachePolicy = .reloadIgnoringLocalCacheData
+    let box = StatusBox()
+    let sem = DispatchSemaphore(value: 0)
+    URLSession.shared.dataTask(with: req) { _, resp, _ in
+      box.status = (resp as? HTTPURLResponse)?.statusCode
+      sem.signal()
+    }.resume()
+    sem.wait()
+    return box.status
+  }
+
+  private final class StatusBox: @unchecked Sendable { var status: Int? }
 }

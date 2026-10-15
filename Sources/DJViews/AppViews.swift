@@ -520,9 +520,28 @@ public final class AppModel {
   // Session recording
   var isRecording = false
   var lastSession: String?
-  var publishedURL: String?
+  /// Where a publish to cdn.stackdump.com is. The bar under the decks shows it.
+  var publishState: PublishState = .idle
   private var recorder: SessionRecorder?
-  private var lastSessionValue: Session?
+  /// The set the Export / Publish buttons act on (settable for tests).
+  var lastSessionValue: Session?
+
+  enum PublishState: Equatable {
+    case idle
+    case working(String)
+    /// `live` is whether the public URL answered before the poll gave up: the mirror runs in
+    /// the background and can take a while for a long WAV.
+    case published(url: String, live: Bool, reloaded: Bool)
+    case failed(String)
+
+    var isWorking: Bool { if case .working = self { true } else { false } }
+  }
+
+  struct PublishOptions: Equatable {
+    var title: String?
+    var draft = false
+    var includeAudio = true
+  }
 
   func toggleRecording() {
     guard let dj else { return }
@@ -550,35 +569,96 @@ public final class AppModel {
     }
   }
 
-  /// Publish the last recorded set to cdn.stackdump.com: render its WAV, stage both on valoper
-  /// (as the render farm does), reload the CDN index and mirror to pflow.dev. Asks first —
-  /// this one is public.
+  /// Publish the last recorded set to cdn.stackdump.com. Asks first, with a title and a draft
+  /// switch: this one is public (a draft is hidden from the feed and search but still
+  /// reachable by its CID). No credentials are involved: it stages over the existing ssh key.
   func publishLastSession() {
-    guard let session = lastSessionValue, let dj else { return }
+    guard let session = lastSessionValue, dj != nil, !publishState.isWorking else { return }
     let alert = NSAlert()
     alert.messageText = "Publish this set to cdn.stackdump.com?"
     alert.informativeText =
-      "Uploads the session and a WAV render, content-addressed as \(session.cid). It becomes public."
+      "Uploads the session and a WAV render, content-addressed as \(session.cid). "
+      + "It becomes public at cdn.stackdump.com/ipfs/\(session.cid)/."
+    let title = NSTextField(string: "Live set \(session.cid.prefix(10))")
+    title.frame = NSRect(x: 0, y: 28, width: 300, height: 24)
+    let draft = NSButton(
+      checkboxWithTitle: "Draft (hidden from the CDN feed and search)", target: nil, action: nil)
+    draft.frame = NSRect(x: 0, y: 0, width: 300, height: 22)
+    let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 56))
+    box.addSubview(title)
+    box.addSubview(draft)
+    alert.accessoryView = box
     alert.addButton(withTitle: "Publish")
     alert.addButton(withTitle: "Cancel")
     guard alert.runModal() == .alertFirstButtonReturn else { return }
+    let name = title.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let options = PublishOptions(title: name.isEmpty ? nil : name, draft: draft.state == .on)
+    Task { @MainActor in await publish(options: options) }
+  }
+
+  /// The publish itself: render the WAV, stage on the CDN master (valoper) over ssh as the
+  /// render farm does, reload the index, start the mirror push, then poll until the public URL
+  /// answers. Everything blocking runs off the main actor; `publishState` narrates it.
+  func publish(
+    options: PublishOptions = PublishOptions(),
+    transport: CDNTransport = SSHTransport(),
+    probe: PublicProbe = PublicProbe(),
+    mirror: Bool = true
+  ) async {
+    guard let session = lastSessionValue, let dj else { return }
+    guard !publishState.isWorking else { return }
     let library = dj.sampleLibrary
     let stamp = ISO8601DateFormatter().string(from: Date())
+    publishState = .working(options.includeAudio ? "rendering the set…" : "preparing…")
     status = "publishing…"
-    Task.detached {
-      do {
-        let audio = try SessionPlayer(session: session, samples: { library[$0] }).render()
-        let wav = [UInt8](try WAV.encode(audio, float32: false))
-        let bundle = try SessionBundle(session: session, audioWAV: wav, renderedAt: stamp)
-        let r = try publishSession(bundle, via: SSHTransport(), mirror: true)
-        await MainActor.run {
-          self.publishedURL = r.url
-          self.status = "published " + (r.reloaded ? "" : "(index reload failed) ") + r.url
-        }
-      } catch {
-        await MainActor.run { self.status = "publish failed: \(error)" }
-      }
+    let report: @Sendable (String) -> Void = { text in
+      Task { @MainActor in self.publishState = .working(text) }
     }
+    let outcome: Result<PublishState, Error> = await Task.detached {
+      do {
+        var wav: [UInt8]?
+        if options.includeAudio {
+          let audio = try SessionPlayer(session: session, samples: { library[$0] }).render()
+          wav = [UInt8](try WAV.encode(audio, float32: false))
+        }
+        let bundle = try SessionBundle(
+          session: session, title: options.title, audioWAV: wav, renderedAt: stamp,
+          draft: options.draft)
+        let r = try publishSession(bundle, via: transport, mirror: mirror) { step in
+          switch step {
+          case .staging(let file, let i, let n): report("uploading \(file) (\(i)/\(n))…")
+          case .reloading: report("reloading the CDN index…")
+          case .mirroring: report("starting the mirror push to pflow.dev…")
+          case .done: break
+          }
+        }
+        guard mirror else {
+          return .success(.published(url: r.url, live: false, reloaded: r.reloaded))
+        }
+        let live = probe.wait(for: bundle) { n in report("waiting for the mirror… (\(n))") }
+        return .success(.published(url: r.url, live: live, reloaded: r.reloaded))
+      } catch {
+        return .failure(error)
+      }
+    }.value
+    switch outcome {
+    case .success(let state):
+      publishState = state
+      if case .published(let url, let live, let reloaded) = state {
+        status =
+          "published " + (reloaded ? "" : "(index reload failed) ")
+          + (live ? "" : "(mirror still syncing) ") + url
+      }
+    case .failure(let error):
+      publishState = .failed("\(error)")
+      status = "publish failed: \(error)"
+    }
+  }
+
+  func copyPublishedURL() {
+    guard case .published(let url, _, _) = publishState else { return }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(url, forType: .string)
   }
 
   /// Re-render the last recorded set to a WAV (off the main thread).
@@ -717,9 +797,11 @@ public struct ContentView: View {
         Button("Export WAV…") { model.exportLastSession() }
           .disabled(model.lastSession == nil || model.isRecording)
         Button("Publish…") { model.publishLastSession() }
-          .disabled(model.lastSession == nil || model.isRecording)
+          .disabled(
+            model.lastSession == nil || model.isRecording || model.publishState.isWorking)
       }
       VStack(alignment: .trailing, spacing: 2) {
+        PublishStatusLine(model: model)
         Text(model.status).font(.caption)
         if let cid = model.lastSession {
           Text(cid).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(
@@ -731,6 +813,38 @@ public struct ContentView: View {
           .tertiary
         ).textSelection(.enabled).help(BuildInfo.current.dateString.map { "built \($0)" } ?? "")
       }
+    }
+  }
+}
+
+/// The publish progress / result under the bottom bar: a spinner and the step while it runs,
+/// then the public URL as a link with a Copy button, or the error.
+struct PublishStatusLine: View {
+  let model: AppModel
+
+  var body: some View {
+    switch model.publishState {
+    case .idle:
+      EmptyView()
+    case .working(let text):
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.small)
+        Text(text).font(.caption)
+      }
+    case .published(let url, let live, let reloaded):
+      HStack(spacing: 6) {
+        if let link = URL(string: url) { Link(url, destination: link).font(.caption) }
+        Button("Copy") { model.copyPublishedURL() }.controlSize(.small)
+        if !live {
+          Text("mirror syncing — the link works once it lands").font(.caption2).foregroundStyle(
+            .secondary)
+        } else if !reloaded {
+          Text("live (index reload failed)").font(.caption2).foregroundStyle(.secondary)
+        }
+      }
+    case .failed(let message):
+      Text("publish failed: \(message)").font(.caption).foregroundStyle(.red).lineLimit(3)
+        .textSelection(.enabled)
     }
   }
 }

@@ -30,7 +30,7 @@ there. In short:
   UI or MCP.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com
-  (`djctl publish`; nothing published yet).
+  (`djctl publish`, or Publish… in the app, which shows the public URL).
 - **Visuals** — waveform, platter, net / marking view, section timeline, APC grid mirror,
   device map, and beats' scopes and Stage ([SCOPES.md](SCOPES.md)). All tested by rendering
   offscreen; the scopes and Stage have not been looked at in a live window yet.

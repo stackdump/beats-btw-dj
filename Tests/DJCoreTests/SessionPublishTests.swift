@@ -90,7 +90,10 @@ import Testing
     #expect(cmds[3].contains("/admin/reload?cid=\(b.cid)"))
     #expect(!cmds.contains { $0.contains("mirror-push") })
     #expect(log.calls[0].stdin == Array(b.files[0].data))
-    #expect(log.calls[0].argv.prefix(4) == ["ssh", "-o", "BatchMode=yes", "valoper.local"])
+    // non-interactive and bounded: an unreachable valoper fails in seconds, never prompts
+    #expect(
+      log.calls[0].argv.prefix(5) == ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"])
+    #expect(log.calls[0].argv.dropLast().last == "valoper.local")
     #expect(cmds[0].hasPrefix("mkdir -p ~/'Workspace/cdn-stackdump-com/data/blobs'/\(b.cid)"))
 
     log.calls = []
@@ -108,5 +111,53 @@ import Testing
     let b = try SessionBundle(session: session(), renderedAt: "t")
     #expect(throws: PublishError.self) { try publishSession(b, via: t, mirror: true) }
     #expect(log.calls.count == 1)
+  }
+
+  @Test func progressNarratesEachStepInOrder() throws {
+    let t = SSHTransport(run: { _, _ in (0, "") })
+    let b = try SessionBundle(session: session(), audioWAV: [9], renderedAt: "t")
+    var steps: [PublishStep] = []
+    _ = try publishSession(b, via: t, mirror: true) { steps.append($0) }
+    #expect(
+      steps == [
+        .staging(file: "session.json", index: 1, of: 3),
+        .staging(file: "audio.wav", index: 2, of: 3),
+        .staging(file: "index.md", index: 3, of: 3),
+        .reloading, .mirroring, .done,
+      ])
+  }
+
+  @Test func probeWaitsForEveryFileThenGivesUp() throws {
+    let b = try SessionBundle(session: session(), audioWAV: [9], renderedAt: "t")
+    let urls = PublicProbe.urls(for: b).map(\.absoluteString)
+    #expect(
+      urls == [b.publicURL + "audio.wav", b.publicURL + "index.md"])  // session.json is not polled
+
+    final class Calls: @unchecked Sendable { var n = 0 }
+    // index.md lands on the 3rd poll round, audio.wav is there from the start
+    let calls = Calls()
+    let probe = PublicProbe(
+      attempts: 5, interval: 0,
+      head: { url in
+        calls.n += 1
+        if url.lastPathComponent == "audio.wav" { return 200 }
+        return calls.n >= 5 ? 200 : 404
+      })
+    var attempts: [Int] = []
+    #expect(probe.wait(for: b, sleep: { _ in }, onAttempt: { attempts.append($0) }))
+    #expect(attempts == [1, 2, 3])
+
+    let never = PublicProbe(attempts: 3, interval: 0, head: { _ in nil })
+    var slept = 0
+    #expect(!never.wait(for: b, sleep: { _ in slept += 1 }))
+    #expect(slept == 2)  // no sleep after the last attempt
+  }
+
+  @Test func stdinWriteToAnExitedProcessFailsInsteadOfCrashing() throws {
+    // `false` exits without reading; a large stdin used to raise SIGPIPE in the app.
+    let r = try SSHTransport.process(["false"], [UInt8](repeating: 7, count: 4_000_000))
+    #expect(r.status == 1)
+    let echo = try SSHTransport.process(["cat"], Array("hello".utf8))
+    #expect(echo.status == 0 && echo.out == "hello")
   }
 }

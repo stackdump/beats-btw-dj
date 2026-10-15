@@ -16,7 +16,7 @@ README's "Where we are" says what the app does; this is what each phase still ha
   "Left out"). The counterMelody deviation is kept and goes back to beats (GO-DIVERGENCE.md §5).
 - **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
   not ported and each needs a design call. Which master macros go on Inpulse pads is open.
-- **Phase 4** — done. Open: the Inpulse headphone-knob mapping; no real set published yet.
+- **Phase 4** — done. Open: the Inpulse headphone-knob mapping.
 - **Phase 5** — done, 5.1–5.7 (5.7: beats' scopes and Stage, [SCOPES.md](SCOPES.md)). Open:
   the scopes and Stage have not been checked in a live window ("Needs a person" in SCOPES.md).
 
@@ -344,7 +344,7 @@ device — verified offline on a 4-channel engine, and on the Inpulse on 2026-10
 (`mixer.faders[2]` → headphone level is from the sweep order; the mix knob is on APC
 fader 5 for lack of one on the Inpulse). 4.5: sessions are saved as `<cid>.json` (verified on
 load) under Application Support and exported to WAV, and publish to cdn.stackdump.com over
-ssh (4.5); no real set has been published yet.
+ssh (4.5); one set ("Obsidian Signal", 101 s) is public.
 
 4.1 **(done)** Record every controller event (time, device, decoded control, value)
 against the deck clocks.
@@ -354,7 +354,7 @@ canonical JSON → CID.
 determinism test (two renders, same bytes).
 4.4 **(done; on the Inpulse verified 2026-10-08 except the headphone-knob mapping)** Cue/headphone output through the Inpulse's built-in audio interface
 (pre-listen mix on outputs 3/4).
-4.5 **(done — `SessionBundle`/`SSHTransport`/`publishSession`, `djctl publish`, app “Publish…”)** Publish sessions to cdn.stackdump.com the way beats-builder's `publish.cdn.publish_to_cdn` does: stage `blobs/<cid>/{session.json,audio.wav,index.md}` on the CDN master (valoper, over ssh — no new credentials), `POST /admin/reload?cid=`, and only with `--mirror` run `mirror-push.sh` (the step that makes it public). The directory name is the session CID; `index.md` is written last. Verified against the CDN's own indexer (`cdn-stackdump-cli index` on a scratch tree: 1 indexed, 0 errors). No real set has been published yet.
+4.5 **(done — `SessionBundle`/`SSHTransport`/`publishSession`, `djctl publish`, app “Publish…”)** Publish sessions to cdn.stackdump.com the way beats-builder's `publish.cdn.publish_to_cdn` does: stage `blobs/<cid>/{session.json,audio.wav,index.md}` on the CDN master (valoper, over ssh — no new credentials), `POST /admin/reload?cid=`, and only with `--mirror` run `mirror-push.sh` (the step that makes it public). The directory name is the session CID; `index.md` is written last. Verified against the CDN's own indexer (`cdn-stackdump-cli index` on a scratch tree: 1 indexed, 0 errors). The app's Publish… asks for a title and a draft switch, narrates each step (render, upload i/n, index reload, mirror push, waiting for the mirror) under the bottom bar, then shows the public URL as a link with Copy — or the error; `PublicProbe` polls `index.md`/`audio.wav` at the public URL until they answer (the mirror runs in the background), and `djctl publish --mirror` does the same. ssh runs with `ConnectTimeout=10`, and the stdin feed ignores SIGPIPE (an unreachable valoper used to be able to kill the app mid-write). Verified 2026-10-14 against the live master: a staged draft is indexed (`draft: true`, hidden from feed/search), and a re-render of the already-public "Obsidian Signal" set (published 08:06 UTC that day) came out byte-identical (audio.wav, session.json) to the copy on the mirror.
 
 ## Phase 5 — Visuals **(done, 5.1–5.7; scopes / Stage not yet checked in a live window)**
 

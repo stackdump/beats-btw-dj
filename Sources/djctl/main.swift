@@ -290,7 +290,8 @@ case "publish":
   // djctl publish <cid> [--audio FILE.wav] [--title T] [--draft] [--host H] [--blobs DIR]
   //                     [--no-reload] [--mirror] [--dry-run]
   // Stages the set into the CDN master's blob tree on valoper (as the render farm does) and
-  // reloads its index. Only --mirror makes it public (runs mirror-push.sh -> pflow.dev).
+  // reloads its index. Only --mirror makes it public (runs mirror-push.sh -> pflow.dev), and
+  // then it polls the public URL until the blob answers (up to ~3 min).
   func flag(_ n: String) -> Bool {
     guard let i = positional.firstIndex(of: n) else { return false }
     positional.remove(at: i)
@@ -330,11 +331,27 @@ case "publish":
     var t = SSHTransport(host: host)
     if let blobs { t.blobsDir = blobs }
     if noReload { t.reloadURL = "http://127.0.0.1:1/none" }
-    let r = try publishSession(bundle, via: t, mirror: mirror)
+    let r = try publishSession(bundle, via: t, mirror: mirror) { step in
+      switch step {
+      case .staging(let file, let i, let n): stderr("  uploading \(file) (\(i)/\(n))")
+      case .reloading: stderr("  reloading the CDN index")
+      case .mirroring: stderr("  starting mirror-push")
+      case .done: break
+      }
+    }
     print(
       "staged on \(host) · index reload \(noReload ? "skipped" : (r.reloaded ? "ok" : "FAILED"))")
-    print(
-      mirror ? "mirror-push started — public at \(r.url)" : "not public yet: re-run with --mirror")
+    if mirror {
+      // mirror-push runs in the background on valoper; wait for the blob to appear publicly.
+      stderr("  waiting for \(r.url) …")
+      let live = PublicProbe(attempts: 60, interval: 3).wait(for: bundle)
+      print(
+        live
+          ? "public: \(r.url)"
+          : "mirror-push started, not visible yet (a large WAV can take a while): \(r.url)")
+    } else {
+      print("not public yet: re-run with --mirror")
+    }
   } catch {
     stderr("publish failed: \(error)")
     exit(1)
