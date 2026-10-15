@@ -128,22 +128,30 @@ extension Deck {
 
   // MARK: sync
 
+  /// The tempo rule `sync` and `follow` share: the same tempo, or half / double time if that
+  /// fits the fader better. `ratio` (effective / base BPM) is clamped to the pitch range.
+  public static func tempoMatch(base: Double, target: Double)
+    -> (mult: Double, ratio: Double, clamped: Bool)
+  {
+    var choice = (mult: 1.0, ratio: target / base)
+    for m in [0.5, 2.0] {
+      let r = target * m / base
+      if abs(r - 1) < abs(choice.ratio - 1) { choice = (m, r) }
+    }
+    let range = pitchRange
+    return (
+      choice.mult, min(1 + range, max(1 - range, choice.ratio)), abs(choice.ratio - 1) > range
+    )
+  }
+
   /// Match tempo (and optionally beat or bar phase) to `other`.
   @discardableResult
   public func sync(to other: Deck, align: SyncAlign = .beat) -> SyncResult? {
     guard let base = baseBPM, let target = other.effectiveBPM, other.beatState != nil else {
       return nil
     }
-    // Same tempo, or half / double time if that fits the fader better.
-    let range = Self.pitchRange
-    var choice = (mult: 1.0, ratio: target / base)
-    for m in [0.5, 2.0] {
-      let r = target * m / base
-      if abs(r - 1) < abs(choice.ratio - 1) { choice = (m, r) }
-    }
-    let clamped = abs(choice.ratio - 1) > range
-    let ratio = min(1 + range, max(1 - range, choice.ratio))
-    pitch = (ratio - 1) / range
+    let choice = Self.tempoMatch(base: base, target: target)
+    pitch = (choice.ratio - 1) / Self.pitchRange
     netNudge = 0
     applyNetTempo()
 
@@ -158,7 +166,7 @@ extension Deck {
       move(beats: shifted)
     }
     return SyncResult(
-      pitch: pitch, multiplier: choice.mult, tempoClamped: clamped, shiftedBeats: shifted)
+      pitch: pitch, multiplier: choice.mult, tempoClamped: choice.clamped, shiftedBeats: shifted)
   }
 
   /// Move the playhead along the beat grid (positive = forward in the music).
