@@ -66,10 +66,17 @@ public struct RenderedAudio: Sendable {
 public final class SessionPlayer {
   public let session: Session
   private let samples: (String) -> SampleBuffer?
+  /// Roles left out of every net deck's render (stems for listening tests). Applied when a
+  /// deck compiles, so the session — and its CID — are untouched.
+  public var roleFilter: RoleFilter?
 
   /// `samples` resolves a sample's content id (the demo loop is built in).
-  public init(session: Session, samples: @escaping (String) -> SampleBuffer? = { _ in nil }) {
+  public init(
+    session: Session, roleFilter: RoleFilter? = nil,
+    samples: @escaping (String) -> SampleBuffer? = { _ in nil }
+  ) {
     self.session = session
+    self.roleFilter = roleFilter
     self.samples = samples
   }
 
@@ -88,6 +95,9 @@ public final class SessionPlayer {
     }
     for id in needed where id != DeckSourceDescriptor.demoID && samples(id) == nil {
       throw SessionError.missingSample(id: id)
+    }
+    if let roleFilter, !roleFilter.isEmpty {
+      for name in session.decks.keys { dj[name]?.roleFilter = roleFilter }
     }
     // Starting state.
     for (name, source) in session.decks.sorted(by: { $0.key < $1.key }) {

@@ -5,6 +5,9 @@
 //   djctl play [fileA] [fileB] [--seconds N] [--volume V]
 //                                     two decks (demo loop where no file), every supported
 //                                     controller connected; Ctrl-C to stop
+//   djctl render <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2]
+//                [--options JSON] [--mute r,…] [--solo r,…] [--seconds N] [--float32]
+//                                     compose a track and render it offline (no app)
 import DJCore
 import Foundation
 
@@ -69,6 +72,35 @@ var positional = Array(args.dropFirst())
   }
   defer { positional.removeSubrange(i...(i + 1)) }
   return Double(positional[i + 1])
+}
+
+/// `--name value` as a string; the pair is removed from `positional`.
+@MainActor func stringOption(_ name: String) -> String? {
+  guard let i = positional.firstIndex(of: name), positional.indices.contains(i + 1) else {
+    return nil
+  }
+  defer { positional.removeSubrange(i...(i + 1)) }
+  return positional[i + 1]
+}
+
+/// `--mute a,b` / `--solo a,b` (roles, mixer groups or net ids) as a render filter.
+@MainActor func roleFilterOption() -> RoleFilter? {
+  func list(_ n: String) -> Set<String>? {
+    stringOption(n).map { Set($0.split(separator: ",").map(String.init)) }
+  }
+  let f = RoleFilter(mute: list("--mute") ?? [], solo: list("--solo"))
+  return f.isEmpty ? nil : f
+}
+
+@MainActor func writeRender(_ session: Session, filter: RoleFilter?, to path: String, float32: Bool)
+  throws
+{
+  let audio = try SessionPlayer(session: session, roleFilter: filter).render()
+  try WAV.encode(audio, float32: float32).write(to: URL(fileURLWithPath: path), options: .atomic)
+  let (peak, rms) = audio.levels
+  print(
+    "wrote \(path)  \(String(format: "%.2f", Double(audio.frames) / audio.sampleRate)) s  "
+      + "peak \(String(format: "%.2f", peak)) dBFS  rms \(String(format: "%.2f", rms)) dBFS")
 }
 
 switch args.first {
@@ -199,19 +231,58 @@ case "sessions":
 case "export":
   // djctl export <cid> <out.wav> [--float32]: offline render of a stored set (what the app's
   // Export does), e.g. to feed `djctl publish --audio`.
+  // --mute / --solo leave roles out of the render (stems); the stored set is unchanged.
   let store = storeOption()
+  let filter = roleFilterOption()
   let float32 = positional.contains("--float32")
   let args = positional.filter { $0 != "--float32" }
   guard args.count == 2 else {
-    stderr("usage: djctl export <cid> <out.wav> [--float32]")
+    stderr("usage: djctl export <cid> <out.wav> [--float32] [--mute r,…] [--solo r,…]")
     exit(2)
   }
   do {
-    let session = try store.load(cid: args[0])
-    try SessionStore.exportWAV(session, to: URL(fileURLWithPath: args[1]), float32: float32)
-    print("wrote \(args[1])")
+    try writeRender(try store.load(cid: args[0]), filter: filter, to: args[1], float32: float32)
   } catch {
     stderr("export failed: \(error)")
+    exit(1)
+  }
+
+case "bounce":
+  // djctl bounce <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2] [--options JSON]
+  //              [--mute r,…] [--solo r,…] [--seconds N] [--float32]
+  // Composes the spec (with `generate`'s options) and renders it offline on one deck, from
+  // the first frame to the end of the song; prints the share CID the deck would carry.
+  let structure = stringOption("--structure")
+  let cohesion = stringOption("--cohesion") ?? "v2"
+  let optionsText = stringOption("--options")
+  let seconds = option("--seconds")
+  let filter = roleFilterOption()
+  let float32 = positional.contains("--float32")
+  let args = positional.filter { $0 != "--float32" }
+  guard args.count == 3, let seed = Double(args[1]) else {
+    stderr(
+      "usage: djctl bounce <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2] "
+        + "[--options JSON] [--mute r,…] [--solo r,…] [--seconds N] [--float32]")
+    exit(2)
+  }
+  do {
+    guard BeatsTables.shared.genres[args[0]] != nil else {
+      throw ComposeOptions.Invalid(description: "unknown genre \(args[0])")
+    }
+    var spec = TrackSpec(genre: args[0], seed: seed, structure: structure, cohesion: cohesion)
+    if let optionsText {
+      guard let o = try JSONValue.parse(optionsText).object else {
+        throw ComposeOptions.Invalid(description: "--options must be a JSON object")
+      }
+      spec = try ComposeOptions.apply(o, to: spec)
+    }
+    guard let session = Session.playing(spec, seconds: seconds) else {
+      throw ComposeOptions.Invalid(description: "a loop (no --structure) needs --seconds")
+    }
+    print("share \(BeatsCID.shareCID(spec.payload))  \(spec.payload.canonicalJS)")
+    try writeRender(session, filter: filter, to: args[2], float32: float32)
+  } catch {
+    stderr("render failed: \(error)")
     exit(1)
   }
 
@@ -451,7 +522,7 @@ case "render":
 
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | render <genre> <seed> | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | render <genre> <seed> | bounce <genre> <seed> <out.wav> | publish <cid> | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }

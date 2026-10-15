@@ -148,6 +148,18 @@ public struct MCPBridge {
         "structure": prop(
           "string",
           "minimal | standard | extended for a song with sections; omit for an endless loop"),
+        "options": prop(
+          "object",
+          """
+          Opt-in composition techniques (all off by default; part of the track's share/CID): \
+          hook (bool: one 1–2 bar chord-tone hook in every melody section) · hookBars (1|2) · \
+          chordSnap (off|strong|all: melody notes on beats 1+3 / every beat moved to the \
+          sounding chord) · chordSnapArp (bool: snap the arp too) · layerBudget ("auto" or \
+          1–8: max melodic roles per section, bass > melody > harmony > arp) · bassFollow \
+          (bool: one bass pattern on the chord plan) · keyLock (bool: tension phrases stay in \
+          key) · melodyDensity, bassDensity (0–1] · ghostNotes, syncopation (0–1) · humanize \
+          (0–100). The same keys are also accepted at the top level.
+          """),
       ],
       required: ["deck", "genre", "seed"]),
     tool(

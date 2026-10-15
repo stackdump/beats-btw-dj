@@ -80,7 +80,7 @@ private func addStingerTracks(_ proj: inout Project, seed: Double) {
 
 private func expandVariants(
   _ proj: inout Project, tmpl: inout SongTemplate, genre: GenreDef, rng: inout Mulberry32,
-  tensionCurve: Bool, theme: TrackTheme?
+  tensionCurve: Bool, theme: TrackTheme?, tech: TechniqueContext? = nil
 ) {
   var rolesInPhrases = OrderedFlags()
   for sec in tmpl.sections { for role in sec.phrases.keys { rolesInPhrases.set(role) } }
@@ -175,15 +175,21 @@ private func expandVariants(
             duration = genre.melodyDuration
           }
           var vel = baseBundle.track.defaultVelocity
-          if tensionCurve {
+          // bassFollow: every bass slot plays the same pattern (no per-letter tension).
+          let follow = role == "bass" && tech?.t.bassFollow == true
+          if tensionCurve && !follow {
             let tension = tensionForVariant(letter)
             density *= tension.densityMul
             if density > 1.0 { density = 1.0 }
             vel += tension.velocityAdd
-            rootNote += tension.registerShift
-            scale = genre.scale(rootNote)
-            if role == "bass" && scale.count > majorIntervals.count {
-              scale = Array(scale[0..<majorIntervals.count])
+            // keyLock: the shift is in semitones and moves the scale's root (a B phrase
+            // plays a tone higher, in another key); with it the phrase stays in key.
+            if tech?.t.keyLock != true {
+              rootNote += tension.registerShift
+              scale = genre.scale(rootNote)
+              if role == "bass" && scale.count > majorIntervals.count {
+                scale = Array(scale[0..<majorIntervals.count])
+              }
             }
           }
           var params = GenParams()
@@ -197,9 +203,23 @@ private func expandVariants(
           params.durationVariation = genre.durationVariation
 
           var nb: NetBundle
-          if let theme {
+          if let tech, let hook = tech.hook, role == "melody" {
+            let cell = renderHook(
+              hook, mode: hookModes[sec.name] ?? MotifMode.play, plan: tech.plan)
+            nb = motifNet(cell, scale: tech.melodyScale, params: params)
+          } else if let tech, let hook = tech.hook, role == "arp", let theme,
+            let mode = theme.energy[sec.name]?.roles[role]?.motifMode, mode != MotifMode.ignore
+          {
+            nb = motifNet(
+              renderHook(hook, mode: mode, plan: tech.plan), scale: tech.melodyScale,
+              params: params)
+          } else if follow, theme == nil, let tech {
+            var p = params
+            p.seed = tech.bassSeed
+            nb = followBassRing(tech.plan, scale: tech.bassScale, params: p)
+          } else if let theme {
             let prof = theme.energy[sec.name]
-            let roleProf = prof?.roles[role]
+            let roleProf = follow ? nil : prof?.roles[role]
             let mode = roleProf?.motifMode
             let harmonicOffset = theme.harmonic[sec.name] ?? 0
             if role == "bass" {
@@ -221,7 +241,8 @@ private func expandVariants(
               if mode == nil || mode == MotifMode.ignore {
                 nb = melodyRiff(variant: letter, params: params)
               } else {
-                let cell = renderMotif(theme.motif, mode: mode!, harmonicOffset: harmonicOffset)
+                var cell = renderMotif(theme.motif, mode: mode!, harmonicOffset: harmonicOffset)
+                if role == "melody", let d = tech?.t.melodyDensity { cell = thinCell(cell, density: d) }
                 nb = motifNet(cell, scale: scale, params: params)
               }
             } else {
@@ -229,6 +250,9 @@ private func expandVariants(
             }
           } else {
             nb = melodyRiff(variant: letter, params: params)
+          }
+          if let tech, role == "melody" || (role == "arp" && tech.t.chordSnapArp) {
+            snapToChords(&nb, tech, mode: tech.t.chordSnap)
           }
           nb.riffGroup = role
           nb.riffVariant = letter
@@ -251,7 +275,10 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
   -> Project
 {
   let tables = BeatsTables.shared
-  let genre = tables.genres[genreName] ?? tables.genres["techno"]!
+  var genre = tables.genres[genreName] ?? tables.genres["techno"]!
+  if let v = ov["melodyDensity"]?.double { genre.melodyDensity = v }
+  if let v = ov["bassDensity"]?.double { genre.bassDensity = v }
+  let tech = ComposeTechniques(ov)
 
   let seed = ov["seed"]?.double ?? Double(Int(Date().timeIntervalSince1970 * 1000))
   var rng = Mulberry32(seed: seed)
@@ -273,12 +300,13 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
   let theme: TrackTheme? =
     (cohesion == "v2" && cohesionGenreSupported(genreName))
     ? buildTrackTheme(genre: genreName, seed: seed) : nil
+  let ctx = techniqueContext(tech, genre: genre, genreName: genreName, seed: seed, theme: theme)
 
   var proj = Project()
   proj.name = generateTrackName(genre: genre.name, seed: seed)
   proj.tempo = bpm
   proj.swing = genre.swing
-  proj.humanize = genre.humanize
+  proj.humanize = ov["humanize"]?.double ?? genre.humanize
   proj.rootNote = genre.rootNote
   proj.scaleName =
     genre.scaleName.hasSuffix("Scale") ? String(genre.scaleName.dropLast(5)) : genre.scaleName
@@ -365,6 +393,10 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
       proj.nets["bass"] = chordBassRing(
         theme.plan, barMask: bMask, scale: bassScale, params: bassP)
     }
+  } else if let ctx, tech.bassFollow {
+    var p = bassP
+    p.seed = ctx.bassSeed
+    proj.nets["bass"] = followBassRing(ctx.plan, scale: ctx.bassScale, params: p)
   } else if wb {
     proj.nets["bass"] = walkingBassLine(bassP)
   } else {
@@ -385,7 +417,8 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
   melodyP.durationVariation = genre.durationVariation
   melodyP.syncopation = sync
   if let theme {
-    proj.nets["melody"] = motifNet(theme.motif, scale: melodyP.scale, params: melodyP)
+    let motif = tech.melodyDensity.map { thinCell(theme.motif, density: $0) } ?? theme.motif
+    proj.nets["melody"] = motifNet(motif, scale: melodyP.scale, params: melodyP)
     let barMs = Int((4.0 * 60000.0 / bpm * 0.95).rounded(.down))
     var padP = GenParams()
     padP.channel = 7
@@ -398,6 +431,14 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
     proj.nets["melody"] = callResponseMelody(melodyP)
   } else {
     proj.nets["melody"] = markovMelody(melodyP)
+  }
+  if let ctx {
+    if let hook = ctx.hook {
+      proj.nets["melody"] = motifNet(
+        renderHook(hook, mode: MotifMode.play, plan: ctx.plan), scale: ctx.melodyScale,
+        params: melodyP)
+    }
+    snapToChords(&proj.nets["melody"]!, ctx, mode: tech.chordSnap)
   }
 
   // Genre-specific extras
@@ -419,6 +460,7 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
     arpP.duration = 60
     proj.nets["arp"] = euclideanMelodic(
       arpScale, steps: 16, seed: Double(rng.nextInt63()), arpP)
+    if let ctx, tech.chordSnapArp { snapToChords(&proj.nets["arp"]!, ctx, mode: tech.chordSnap) }
   }
 
   // Assign instruments
@@ -499,7 +541,9 @@ public func compose(genre genreName: String, overrides ov: JSONValue = .object(J
 
     if theme != nil { df = true }
 
-    expandVariants(&proj, tmpl: &tmpl, genre: genre, rng: &rng, tensionCurve: tc, theme: theme)
+    expandVariants(
+      &proj, tmpl: &tmpl, genre: genre, rng: &rng, tensionCurve: tc, theme: theme, tech: ctx)
+    if let budget = tech.layerBudget { applyLayerBudget(&tmpl, budget: budget) }
 
     if df {
       var pos = 0

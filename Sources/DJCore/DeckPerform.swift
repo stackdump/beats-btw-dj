@@ -55,9 +55,10 @@ extension Deck {
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = voicingSeed
+    let filter = roleFilter
     let start = secs[index].startTick
     let song = wave.latest?.trackSerial
-    let opts = sameSongOptions(.extended(samplers: bank, seed: seed))
+    let opts = sameSongOptions(.extended(samplers: bank, seed: seed, roleFilter: filter))
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
@@ -128,8 +129,9 @@ extension Deck {
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = voicingSeed
+    let filter = roleFilter
     let song = wave.latest?.trackSerial
-    let opts = sameSongOptions(.extended(samplers: bank, seed: seed))
+    let opts = sameSongOptions(.extended(samplers: bank, seed: seed, roleFilter: filter))
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
