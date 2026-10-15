@@ -15,16 +15,20 @@ struct DJApp: App {
 
   var body: some Scene {
     WindowGroup("dj-vevr-se") {
-      ContentView(model: model)
-        .frame(minWidth: 720, minHeight: 460)
-        // A DJ booth is dark: the decks' tints and the rings are drawn for it.
-        .preferredColorScheme(.dark)
-        .task { model.start() }
-        .onReceive(
-          NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
-        ) { _ in
-          model.stop()
-        }
+      // a fixed minimum, not one measured from the content each frame (`WindowRoot`)
+      WindowRoot(
+        minSize: CGSize(width: 720, height: 460), idealSize: CGSize(width: 1440, height: 900)
+      ) {
+        ContentView(model: model)
+      }
+      // A DJ booth is dark: the decks' tints and the rings are drawn for it.
+      .preferredColorScheme(.dark)
+      .task { model.start() }
+      .onReceive(
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+      ) { _ in
+        model.stop()
+      }
     }
     // The content scrolls (ContentView), so the window no longer sizes itself to it: open at a
     // size that shows two decks with their section columns (the wide layout) and the bottom bar,

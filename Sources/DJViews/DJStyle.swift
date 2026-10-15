@@ -93,3 +93,48 @@ struct TransportButtonStyle: ButtonStyle {
       .contentShape(Circle())
   }
 }
+
+/// The window's root: fills whatever size it is given and reports a fixed minimum (and no
+/// alignment guides) without measuring its content. AppKit asks the root for the window's
+/// minimum size, and its alignment, on every display cycle; answered by the content, that measured the whole window (both deck layouts, the scroll
+/// fallback, every button row) each frame, which took most of the main thread and made the
+/// visuals stutter.
+public struct WindowRoot: Layout {
+  public var minSize: CGSize
+  public var idealSize: CGSize
+
+  public init(minSize: CGSize, idealSize: CGSize) {
+    self.minSize = minSize
+    self.idealSize = idealSize
+  }
+
+  public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ())
+    -> CGSize
+  {
+    func side(_ p: CGFloat?, _ lo: CGFloat, _ ideal: CGFloat) -> CGFloat {
+      guard let p else { return ideal }
+      return p.isFinite ? max(lo, p) : .greatestFiniteMagnitude
+    }
+    return CGSize(
+      width: side(proposal.width, minSize.width, idealSize.width),
+      height: side(proposal.height, minSize.height, idealSize.height))
+  }
+
+  public func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    for s in subviews { s.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size)) }
+  }
+
+  // The window asks its root for alignment guides every frame too, and the default answer lays
+  // the content out to find its children's: the root has none of its own.
+  public func explicitAlignment(
+    of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+    subviews: Subviews, cache: inout ()
+  ) -> CGFloat? { nil }
+
+  public func explicitAlignment(
+    of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+    subviews: Subviews, cache: inout ()
+  ) -> CGFloat? { nil }
+}

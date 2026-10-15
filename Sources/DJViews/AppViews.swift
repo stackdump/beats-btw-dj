@@ -694,11 +694,19 @@ public struct ContentView: View {
       // minimum, so decks + Scopes (up to 640 pt) could ask for more than the screen has and the
       // window ran off its bottom edge. When everything fits it is laid out plainly: no scroller,
       // and `ImageRenderer` (the layout tests) cannot draw an NSScrollView-backed ScrollView.
-      ViewThatFits(in: .vertical) {
-        panels.padding()
-        ScrollView(.vertical) { panels.padding() }
+      // Both choices — scroll or not, wide decks or stacked — come from sizes already known (the
+      // space here, the content's last height), not from `ViewThatFits`, which lays out every
+      // candidate in full on every update: at 30 polls a second that took most of the main thread.
+      GeometryReader { geo in
+        let wide = geo.size.width >= Self.wideWidth
+        if panelsHeight > geo.size.height + 1 {
+          ScrollView(.vertical) { measured(panels(wide: wide)) }
+        } else {
+          measured(panels(wide: wide))
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            .clipped()
+        }
       }
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       Divider()
       bottomBar.padding()
     }
@@ -730,13 +738,31 @@ public struct ContentView: View {
     .fixedSize(horizontal: false, vertical: true)
   }
 
-  private var panels: some View {
+  /// The panels' height when last laid out, which decides whether they scroll.
+  @State private var panelsHeight: CGFloat = 0
+
+  /// The narrowest window that takes the wide deck row: both decks at their core plus the
+  /// narrowest sections column, the mixer, the gaps, the cards' padding and the window's.
+  static let wideWidth: CGFloat = {
+    let deck = 260 + DJStyle.l + 260 + 2 * DJStyle.cardPadding
+    let mixer = 160 + 2 * DJStyle.cardPadding
+    return 2 * deck + mixer + 2 * DJStyle.l + 2 * 16
+  }()
+
+  private func measured(_ content: some View) -> some View {
+    content.padding()
+      .frame(maxWidth: .infinity, alignment: .top)
+      .onGeometryChange(for: CGFloat.self) {
+        $0.size.height
+      } action: {
+        panelsHeight = $0
+      }
+  }
+
+  private func panels(wide: Bool) -> some View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
-      ViewThatFits(in: .horizontal) {
-        deckRow(wide: true)
-        deckRow(wide: false)
-      }
+      deckRow(wide: wide)
       if let w = model.walk {
         WalkPanel(
           walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
@@ -1170,28 +1196,50 @@ struct NetPanel: View {
 struct FlowLayout: Layout {
   var spacing: CGFloat = 4
 
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    layout(in: proposal.width ?? 260, subviews: subviews).size
+  /// Each child's ideal size, measured once per change of the children (SwiftUI calls
+  /// `updateCache` then) rather than on every size query: the window asks for sizes many times a
+  /// frame, and measuring a row of buttons means laying out their text each time.
+  struct Cache { var sizes: [CGSize] }
+
+  func makeCache(subviews: Subviews) -> Cache {
+    Cache(sizes: subviews.map { $0.sizeThatFits(.unspecified) })
+  }
+
+  func updateCache(_ cache: inout Cache, subviews: Subviews) {
+    cache = makeCache(subviews: subviews)
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    layout(in: proposal.width ?? 260, sizes: cache.sizes).size
   }
 
   func placeSubviews(
-    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache
   ) {
-    let result = layout(in: bounds.width, subviews: subviews)
+    let result = layout(in: bounds.width, sizes: cache.sizes)
     for (sub, p) in zip(subviews, result.positions) {
       sub.place(at: CGPoint(x: bounds.minX + p.x, y: bounds.minY + p.y), proposal: .unspecified)
     }
   }
 
-  private func layout(in width: CGFloat, subviews: Subviews) -> (size: CGSize, positions: [CGPoint])
-  {
+  // No alignment guides of its own: the default asks every child (and so measures them again).
+  func explicitAlignment(
+    of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+    subviews: Subviews, cache: inout Cache
+  ) -> CGFloat? { nil }
+
+  func explicitAlignment(
+    of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+    subviews: Subviews, cache: inout Cache
+  ) -> CGFloat? { nil }
+
+  private func layout(in width: CGFloat, sizes: [CGSize]) -> (size: CGSize, positions: [CGPoint]) {
     var x: CGFloat = 0
     var y: CGFloat = 0
     var rowHeight: CGFloat = 0
     var maxX: CGFloat = 0
     var positions: [CGPoint] = []
-    for sub in subviews {
-      let size = sub.sizeThatFits(.unspecified)
+    for size in sizes {
       if x > 0 && x + size.width > width {
         x = 0
         y += rowHeight + spacing
