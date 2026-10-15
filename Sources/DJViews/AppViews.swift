@@ -881,7 +881,7 @@ struct DeckView: View {
           if name != "A" { sectionsColumn }
         }
       } else {
-        VStack(spacing: DJStyle.m) {
+        VStack(spacing: DJStyle.s) {
           core
           sections
         }

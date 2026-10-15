@@ -212,9 +212,9 @@ public struct NetRingsView: View {
       {
         ForEach(parts, id: \.role) { r in
           VStack(spacing: 1) {
-            // padded by the most a ring draws past its square, so a loud hit's flash stays
-            // off the label under it and the rings beside it
-            RingNetView(ring: r, tint: tint, arcs: arcs).padding(RingGeometry.maxOverflow)
+            // no padding: the ring insets its own marks (`RingGeometry.inset`), so a loud hit's
+            // flash already stays inside its square, off the label and the rings beside it
+            RingNetView(ring: r, tint: tint, arcs: arcs)
             Text(r.role).font(.system(size: 10, weight: r.muted ? .regular : .medium))
               .foregroundStyle(r.muted ? .secondary : .primary)
           }

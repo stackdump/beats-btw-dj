@@ -56,8 +56,8 @@ struct DeckSections: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      FlowRow(spacing: 4) {
+    VStack(alignment: .leading, spacing: DJStyle.xs) {
+      FlowRow(spacing: DJStyle.xs) {
         ForEach(shown, id: \.self) { s in
           Toggle(
             label(s), isOn: Binding(get: { open.contains(s.rawValue) }, set: { _ in toggle(s) })
@@ -68,7 +68,7 @@ struct DeckSections: View {
       }
       ForEach(shown.filter { open.contains($0.rawValue) }, id: \.self) { s in
         panel(s)
-          .padding(8)
+          .padding(.horizontal, DJStyle.s).padding(.vertical, DJStyle.xs)
           .frame(maxWidth: .infinity, alignment: .leading)
           .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
       }
