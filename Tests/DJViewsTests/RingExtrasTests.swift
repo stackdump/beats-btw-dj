@@ -146,8 +146,9 @@ struct RingExtrasRenderTests {
   }
 
   @Test func aRingTooSmallForHeadsDrawsNoneWhateverTheDirection() throws {
-    // 16 steps in 66 pt: a head would land on the dots (RingArcs.headLength is nil)
-    let r = bare(size: 16)
+    // 32 steps in 66 pt: a head would land on the dots (RingArcs.headLength is nil; at 16
+    // steps the dots are small enough, since they fit their gaps, to leave room for heads)
+    let r = bare(size: 32)
     func render66(_ arcs: RingArcs) throws -> Pixels {
       try #require(
         renderPixels(RingNetView(ring: r, tint: .orange, arcs: arcs), width: 66, height: 66))

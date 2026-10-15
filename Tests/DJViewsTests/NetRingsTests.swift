@@ -83,6 +83,29 @@ struct NetRingsRenderTests {
       width: 260, height: 150, name: "ring-grid-biggest")
   }
 
+  /// Full-velocity hits on neighbouring steps leave a gap: the midpoint between two dots is
+  /// empty (the 8-step hihat in the deck's 62 pt cell ran its dots together, 2026-10-15).
+  @Test func neighbouringHitsDoNotTouch() throws {
+    for (steps, side) in [(3, 62), (4, 62), (6, 62), (8, 62), (8, 100), (12, 62), (16, 62)] {
+      let r = RingView(
+        id: "hihat", role: "hihat", size: steps, hits: [Bool](repeating: true, count: steps),
+        velocities: [Int](repeating: 127, count: steps), token: steps / 2, lastFired: -1,
+        phase: 0, muted: false)
+      let px = try #require(
+        renderPixels(
+          RingNetView(ring: r, tint: Color(red: 1, green: 0.4, blue: 0)), width: side,
+          height: side))
+      var touching: [Int] = []
+      // pairs away from the token (its white ring is drawn over its own dot)
+      for i in 0..<steps where i != steps / 2 && (i + 1) % steps != steps / 2 {
+        let a = RingGeometry.position(i, of: steps, size: CGFloat(side))
+        let b = RingGeometry.position((i + 1) % steps, of: steps, size: CGFloat(side))
+        if px.color(Int((a.x + b.x) / 2), Int((a.y + b.y) / 2)).a > 24 { touching.append(i) }
+      }
+      #expect(touching.isEmpty, "\(steps) steps in \(side) pt: dots touch after \(touching)")
+    }
+  }
+
   @Test func aMutedRingIsDimmer() throws {
     let tint = Color(red: 0, green: 1, blue: 0)
     let on = try #require(

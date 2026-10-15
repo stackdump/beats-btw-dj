@@ -27,9 +27,25 @@ public enum RingGeometry {
     return (max(CGFloat(playhead), base * 2.4, base * 1.6 + 1)).rounded(.up) + 1
   }
 
+  /// The share of the gap between neighbouring step centres a full-velocity hit (2 x base
+  /// radius, so 4 x base across) may fill: the rest is clear space between the dots.
+  public static let dotFill: CGFloat = 0.8
+
+  /// The `base` a ring is drawn with: `baseRadius`, shrunk where full-velocity hits on
+  /// neighbouring steps would touch (few steps in a small cell, e.g. an 8-step hihat in the
+  /// deck's 62 pt grid). Shrinking also shrinks the inset, which only widens the gap, so one
+  /// pass is enough.
+  public static func fittedBase(steps n: Int, size: CGFloat) -> CGFloat {
+    let base = baseRadius(steps: n, size: size)
+    guard n > 1 else { return base }
+    let r = size / 2 - inset(base: base)
+    let gap = 2 * r * CGFloat(sin(Double.pi / Double(n)))
+    return max(1.5, min(base, gap * dotFill / 4))
+  }
+
   /// Step `i` placed with the inset its ring's marks need.
   public static func position(_ i: Int, of n: Int, size: CGFloat) -> CGPoint {
-    position(i, of: n, size: size, inset: inset(base: baseRadius(steps: n, size: size)))
+    position(i, of: n, size: size, inset: inset(base: fittedBase(steps: n, size: size)))
   }
 }
 
@@ -73,7 +89,7 @@ public struct RingNetView: View {
       let s = min(size.width, size.height)
       let n = ring.size
       let dim = ring.muted ? 0.35 : 1.0
-      let base = RingGeometry.baseRadius(steps: n, size: s)
+      let base = RingGeometry.fittedBase(steps: n, size: s)
       let inset = RingGeometry.inset(base: base)
       if let arcs { drawArcs(&ctx, arcs, n: n, size: s, base: base, dim: dim) }
       for i in 0..<n {
@@ -148,7 +164,7 @@ public struct RingNetView: View {
     let width = CGFloat(arcs.lineWidth())
     var lines = Path()
     var heads = Path()
-    let chord = 2 * (s / 2 - 6) * sin(.pi / CGFloat(n))
+    let chord = 2 * (s / 2 - inset) * sin(.pi / CGFloat(n))
     // drawArrowhead: wings at +-30 degrees from a tip set back from the target dot
     let headLen = RingArcs.headLength(chord: Double(chord), base: Double(base)).map { CGFloat($0) }
     let setBack = CGFloat(RingArcs.tipSetBack(base: Double(base)))
