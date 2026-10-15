@@ -1,0 +1,7059 @@
+[
+ {
+  "genre": "techno",
+  "seed": 42,
+  "tempo": 128,
+  "swing": 0,
+  "humanize": 10,
+  "cohesion": "v1",
+  "seconds": 105,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 5.8,
+  "switches": 46,
+  "density": "intro:14/2r buildup:28/6r drop:32/6r verse:27/6r drop:32/6r outro:22/5r",
+  "densContrast": 2.3,
+  "velStats": {
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 645,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "melody": {
+    "n": 271,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 195,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 271,
+   "range": 11,
+   "pcEntropy": 1.59,
+   "distinctPitches": 6,
+   "intervals": {
+    "rep": 0.53,
+    "step": 0.36,
+    "skip": 0.09,
+    "leap": 0.02
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 7,
+   "vlOptimal": 5,
+   "melConsonanceOnBeat": 0.98
+  },
+  "bass": {
+   "n": 195,
+   "distinctPitches": 2,
+   "rootShare": 0.98,
+   "meanInterval": 2.7
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 23,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.19642857142857142
+   },
+   "drums": {
+    "distinct": 9,
+    "bars": 56,
+    "sameAsPrev": 0.6964285714285714,
+    "sameAs4Back": 0.21428571428571427
+   },
+   "melody": {
+    "distinct": 5,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8157894736842105
+   },
+   "bass": {
+    "distinct": 3,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8979591836734694
+   },
+   "deflateRatio": 0.031
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.08,
+  "onGrid": 1
+ },
+ {
+  "genre": "techno",
+  "seed": 7,
+  "tempo": 128,
+  "swing": 0,
+  "humanize": 10,
+  "cohesion": "v1",
+  "seconds": 112.5,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 6.7,
+  "switches": 51,
+  "density": "intro:14/2r verse:27/6r buildup:28/6r drop:31/6r breakdown:16/5r drop:31/6r outro:22/5r",
+  "densContrast": 2.24,
+  "velStats": {
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 659,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 212,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 251,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 251,
+   "range": 9,
+   "pcEntropy": 2.16,
+   "distinctPitches": 6,
+   "intervals": {
+    "rep": 0.68,
+    "step": 0.23,
+    "skip": 0.03,
+    "leap": 0.05
+   },
+   "onBeatShare": 0.63,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7,
+   "vlOptimal": 5,
+   "melConsonanceOnBeat": 0.95
+  },
+  "bass": {
+   "n": 212,
+   "distinctPitches": 4,
+   "rootShare": 0.99,
+   "meanInterval": 2.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 27,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.16666666666666666
+   },
+   "drums": {
+    "distinct": 11,
+    "bars": 60,
+    "sameAsPrev": 0.6833333333333333,
+    "sameAs4Back": 0.18333333333333332
+   },
+   "melody": {
+    "distinct": 9,
+    "bars": 42,
+    "sameAsPrev": 0.023809523809523808,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 7,
+    "bars": 54,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7222222222222222
+   },
+   "deflateRatio": 0.034
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.05,
+  "onGrid": 1
+ },
+ {
+  "genre": "techno",
+  "seed": 2026,
+  "tempo": 128,
+  "swing": 0,
+  "humanize": 10,
+  "cohesion": "v1",
+  "seconds": 112.5,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6,
+  "switches": 47,
+  "density": "intro:14/2r buildup:29/6r drop:32/6r breakdown:15/5r buildup:28/6r drop:32/6r outro:22/5r",
+  "densContrast": 2.29,
+  "velStats": {
+   "kick": {
+    "n": 223,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 674,
+    "distinct": 8,
+    "std": 19.3,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 211,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 283,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 283,
+   "range": 11,
+   "pcEntropy": 2.37,
+   "distinctPitches": 6,
+   "intervals": {
+    "rep": 0.38,
+    "step": 0.31,
+    "skip": 0.26,
+    "leap": 0.05
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7,
+   "vlOptimal": 5,
+   "melConsonanceOnBeat": 0.92
+  },
+  "bass": {
+   "n": 211,
+   "distinctPitches": 4,
+   "rootShare": 0.99,
+   "meanInterval": 2.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 28,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.15
+   },
+   "drums": {
+    "distinct": 12,
+    "bars": 60,
+    "sameAsPrev": 0.6833333333333333,
+    "sameAs4Back": 0.16666666666666666
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 7,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7358490566037735
+   },
+   "deflateRatio": 0.034
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.03,
+  "onGrid": 1
+ },
+ {
+  "genre": "house",
+  "seed": 42,
+  "tempo": 124,
+  "swing": 20,
+  "humanize": 15,
+  "cohesion": "v1",
+  "seconds": 108.4,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.4,
+  "switches": 54,
+  "density": "intro:16/2r buildup:36/6r drop:40/6r verse:36/6r drop:40/6r outro:25/6r",
+  "densContrast": 2.48,
+  "velStats": {
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 759,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "melody": {
+    "n": 259,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 288,
+    "distinct": 3,
+    "std": 0.8,
+    "min": 95,
+    "max": 97
+   },
+   "bass": {
+    "n": 293,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 259,
+   "range": 8,
+   "pcEntropy": 1.66,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.65,
+    "step": 0.12,
+    "skip": 0.13,
+    "leap": 0.1
+   },
+   "onBeatShare": 0.58,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.98
+  },
+  "bass": {
+   "n": 293,
+   "distinctPitches": 4,
+   "rootShare": 0.98,
+   "meanInterval": 0.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 28,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.07142857142857142
+   },
+   "drums": {
+    "distinct": 11,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.08928571428571429
+   },
+   "melody": {
+    "distinct": 5,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8157894736842105
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8979591836734694
+   },
+   "deflateRatio": 0.029
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.48,
+  "onGrid": 1
+ },
+ {
+  "genre": "house",
+  "seed": 7,
+  "tempo": 124,
+  "swing": 20,
+  "humanize": 15,
+  "cohesion": "v1",
+  "seconds": 116.1,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.2,
+  "switches": 59,
+  "density": "intro:16/2r verse:35/6r buildup:36/6r drop:40/6r breakdown:23/6r drop:39/6r outro:26/6r",
+  "densContrast": 2.5,
+  "velStats": {
+   "kick": {
+    "n": 223,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 790,
+    "distinct": 8,
+    "std": 19.3,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 289,
+    "distinct": 3,
+    "std": 0.8,
+    "min": 95,
+    "max": 97
+   },
+   "bass": {
+    "n": 318,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 280,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 280,
+   "range": 8,
+   "pcEntropy": 1.01,
+   "distinctPitches": 3,
+   "intervals": {
+    "rep": 0.67,
+    "step": 0.25,
+    "skip": 0,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.97
+  },
+  "bass": {
+   "n": 318,
+   "distinctPitches": 8,
+   "rootShare": 0.98,
+   "meanInterval": 0.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.1
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.1
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 11,
+    "bars": 54,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7222222222222222
+   },
+   "deflateRatio": 0.033
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.45,
+  "onGrid": 1
+ },
+ {
+  "genre": "house",
+  "seed": 2026,
+  "tempo": 124,
+  "swing": 20,
+  "humanize": 15,
+  "cohesion": "v1",
+  "seconds": 116.1,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.6,
+  "switches": 55,
+  "density": "intro:16/2r buildup:36/6r drop:40/6r breakdown:23/6r buildup:36/6r drop:40/6r outro:26/6r",
+  "densContrast": 2.5,
+  "velStats": {
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 802,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "melody": {
+    "n": 285,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 289,
+    "distinct": 3,
+    "std": 0.8,
+    "min": 95,
+    "max": 97
+   },
+   "bass": {
+    "n": 317,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 285,
+   "range": 8,
+   "pcEntropy": 2.41,
+   "distinctPitches": 6,
+   "intervals": {
+    "rep": 0.61,
+    "step": 0.17,
+    "skip": 0.21,
+    "leap": 0.01
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.93
+  },
+  "bass": {
+   "n": 317,
+   "distinctPitches": 8,
+   "rootShare": 0.98,
+   "meanInterval": 0.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 10,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7358490566037735
+   },
+   "deflateRatio": 0.034
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.46,
+  "onGrid": 1
+ },
+ {
+  "genre": "jazz",
+  "seed": 42,
+  "tempo": 110,
+  "swing": 60,
+  "humanize": 40,
+  "cohesion": "v1",
+  "seconds": 104.7,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 solo:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   1,
+   2,
+   3
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.6,
+  "switches": 47,
+  "density": "intro:14/3r verse:19/4r chorus:22/4r solo:21/4r chorus:22/4r outro:19/5r",
+  "densContrast": 1.62,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "hihat": {
+    "n": 369,
+    "distinct": 8,
+    "std": 19.6,
+    "min": 66,
+    "max": 111
+   },
+   "bass": {
+    "n": 181,
+    "distinct": 3,
+    "std": 5.4,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 262,
+    "distinct": 3,
+    "std": 5.5,
+    "min": 75,
+    "max": 95
+   },
+   "kick": {
+    "n": 15,
+    "distinct": 3,
+    "std": 2.6,
+    "min": 117,
+    "max": 123
+   }
+  },
+  "melody": {
+   "n": 262,
+   "range": 12,
+   "pcEntropy": 2.95,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.58,
+    "step": 0.13,
+    "skip": 0.21,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.55,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.47
+  },
+  "bass": {
+   "n": 181,
+   "distinctPitches": 14,
+   "rootShare": 0.22,
+   "meanInterval": 2.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 44,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "melody": {
+    "distinct": 18,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 46,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.15217391304347827
+   },
+   "deflateRatio": 0.103
+  },
+  "hatVelVariantsPerPos": 1.88,
+  "polyMean": 1.78,
+  "onGrid": 1
+ },
+ {
+  "genre": "jazz",
+  "seed": 7,
+  "tempo": 110,
+  "swing": 60,
+  "humanize": 40,
+  "cohesion": "v1",
+  "seconds": 78.5,
+  "bars": 36,
+  "form": "intro:4 verse:12 solo:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   1,
+   2,
+   3
+  ],
+  "latenessMax": 13,
+  "latenessMean": 6,
+  "switches": 39,
+  "density": "intro:14/3r verse:18/4r solo:21/4r verse:18/4r outro:19/5r",
+  "densContrast": 1.51,
+  "velStats": {
+   "harmony": {
+    "n": 108,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "hihat": {
+    "n": 274,
+    "distinct": 8,
+    "std": 19.7,
+    "min": 66,
+    "max": 111
+   },
+   "bass": {
+    "n": 132,
+    "distinct": 3,
+    "std": 5.5,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 123,
+    "distinct": 3,
+    "std": 5.7,
+    "min": 75,
+    "max": 95
+   },
+   "kick": {
+    "n": 15,
+    "distinct": 3,
+    "std": 2.6,
+    "min": 117,
+    "max": 123
+   }
+  },
+  "melody": {
+   "n": 123,
+   "range": 14,
+   "pcEntropy": 2.88,
+   "distinctPitches": 11,
+   "intervals": {
+    "rep": 0.49,
+    "step": 0.16,
+    "skip": 0.28,
+    "leap": 0.07
+   },
+   "onBeatShare": 0.58,
+   "motifPhaseOff": "13/14",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 35,
+   "notesPerChord": 3,
+   "vlActual": 4.1,
+   "vlOptimal": 3.1,
+   "melConsonanceOnBeat": 0.52
+  },
+  "bass": {
+   "n": 132,
+   "distinctPitches": 13,
+   "rootShare": 0.23,
+   "meanInterval": 3
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 35,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "drums": {
+    "distinct": 16,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "melody": {
+    "distinct": 13,
+    "bars": 18,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "bass": {
+    "distinct": 16,
+    "bars": 33,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.12121212121212122
+   },
+   "deflateRatio": 0.113
+  },
+  "hatVelVariantsPerPos": 1.88,
+  "polyMean": 1.67,
+  "onGrid": 1
+ },
+ {
+  "genre": "jazz",
+  "seed": 2026,
+  "tempo": 110,
+  "swing": 60,
+  "humanize": 40,
+  "cohesion": "v1",
+  "seconds": 104.7,
+  "bars": 48,
+  "form": "intro:4 verse:12 verse:12 bridge:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.9,
+  "switches": 43,
+  "density": "intro:14/3r verse:18/4r verse:18/4r bridge:15/4r verse:18/4r outro:18/5r",
+  "densContrast": 1.33,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "hihat": {
+    "n": 342,
+    "distinct": 7,
+    "std": 19.6,
+    "min": 66,
+    "max": 111
+   },
+   "bass": {
+    "n": 180,
+    "distinct": 3,
+    "std": 5.6,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 156,
+    "distinct": 3,
+    "std": 6.2,
+    "min": 75,
+    "max": 95
+   },
+   "kick": {
+    "n": 15,
+    "distinct": 3,
+    "std": 2.6,
+    "min": 117,
+    "max": 123
+   }
+  },
+  "melody": {
+   "n": 156,
+   "range": 15,
+   "pcEntropy": 2.6,
+   "distinctPitches": 12,
+   "intervals": {
+    "rep": 0.47,
+    "step": 0.34,
+    "skip": 0.08,
+    "leap": 0.12
+   },
+   "onBeatShare": 0.61,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.47
+  },
+  "bass": {
+   "n": 180,
+   "distinctPitches": 16,
+   "rootShare": 0.22,
+   "meanInterval": 2.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 45,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "melody": {
+    "distinct": 13,
+    "bars": 24,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 45,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.13333333333333333
+   },
+   "deflateRatio": 0.09
+  },
+  "hatVelVariantsPerPos": 1.75,
+  "polyMean": 1.65,
+  "onGrid": 1
+ },
+ {
+  "genre": "ambient",
+  "seed": 42,
+  "tempo": 72,
+  "swing": 0,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 160,
+  "bars": 48,
+  "form": "intro:4 verse:12 verse:12 bridge:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.9,
+  "switches": 43,
+  "density": "intro:5/2r verse:11/4r verse:12/4r bridge:13/4r verse:11/4r outro:8/4r",
+  "densContrast": 2.6,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 90,
+    "distinct": 3,
+    "std": 7.1,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 169,
+    "distinct": 3,
+    "std": 7.3,
+    "min": 75,
+    "max": 95
+   },
+   "hihat": {
+    "n": 111,
+    "distinct": 8,
+    "std": 18.7,
+    "min": 66,
+    "max": 111
+   }
+  },
+  "melody": {
+   "n": 169,
+   "range": 17,
+   "pcEntropy": 2.67,
+   "distinctPitches": 11,
+   "intervals": {
+    "rep": 0.42,
+    "step": 0.29,
+    "skip": 0.18,
+    "leap": 0.12
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 8.6,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.56
+  },
+  "bass": {
+   "n": 90,
+   "distinctPitches": 10,
+   "rootShare": 0.5,
+   "meanInterval": 3.2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 29,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.020833333333333332
+   },
+   "drums": {
+    "distinct": 13,
+    "bars": 38,
+    "sameAsPrev": 0.42105263157894735,
+    "sameAs4Back": 0.02631578947368421
+   },
+   "melody": {
+    "distinct": 14,
+    "bars": 24,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "bass": {
+    "distinct": 17,
+    "bars": 45,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.13333333333333333
+   },
+   "deflateRatio": 0.076
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.44,
+  "onGrid": 1
+ },
+ {
+  "genre": "ambient",
+  "seed": 7,
+  "tempo": 72,
+  "swing": 0,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 120,
+  "bars": 36,
+  "form": "intro:4 verse:12 bridge:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 11,
+  "latenessMean": 4.9,
+  "switches": 31,
+  "density": "intro:5/2r verse:11/4r bridge:12/4r verse:11/4r outro:8/4r",
+  "densContrast": 2.45,
+  "velStats": {
+   "harmony": {
+    "n": 108,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 66,
+    "distinct": 3,
+    "std": 7,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 125,
+    "distinct": 3,
+    "std": 7,
+    "min": 75,
+    "max": 95
+   },
+   "hihat": {
+    "n": 73,
+    "distinct": 8,
+    "std": 18.6,
+    "min": 66,
+    "max": 111
+   }
+  },
+  "melody": {
+   "n": 125,
+   "range": 17,
+   "pcEntropy": 2.45,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.76,
+    "step": 0.03,
+    "skip": 0.1,
+    "leap": 0.11
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "11/12",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 35,
+   "notesPerChord": 3,
+   "vlActual": 8.6,
+   "vlOptimal": 3.9,
+   "melConsonanceOnBeat": 0.55
+  },
+  "bass": {
+   "n": 66,
+   "distinctPitches": 10,
+   "rootShare": 0.52,
+   "meanInterval": 3.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 27,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "drums": {
+    "distinct": 12,
+    "bars": 26,
+    "sameAsPrev": 0.3076923076923077,
+    "sameAs4Back": 0
+   },
+   "melody": {
+    "distinct": 13,
+    "bars": 18,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 33,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.09090909090909091
+   },
+   "deflateRatio": 0.099
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.35,
+  "onGrid": 1
+ },
+ {
+  "genre": "ambient",
+  "seed": 2026,
+  "tempo": 72,
+  "swing": 0,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 120,
+  "bars": 36,
+  "form": "intro:4 verse:12 breakdown:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 11,
+  "latenessMean": 4.8,
+  "switches": 29,
+  "density": "intro:5/2r verse:11/4r breakdown:7/4r verse:11/4r outro:7/4r",
+  "densContrast": 2.23,
+  "velStats": {
+   "harmony": {
+    "n": 108,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 58,
+    "distinct": 3,
+    "std": 7,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 103,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 75,
+    "max": 95
+   },
+   "hihat": {
+    "n": 73,
+    "distinct": 8,
+    "std": 18.6,
+    "min": 66,
+    "max": 111
+   }
+  },
+  "melody": {
+   "n": 103,
+   "range": 15,
+   "pcEntropy": 2.5,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.54,
+    "step": 0.23,
+    "skip": 0.2,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.63,
+   "motifPhaseOff": "11/12",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 35,
+   "notesPerChord": 3,
+   "vlActual": 8.6,
+   "vlOptimal": 3.9,
+   "melConsonanceOnBeat": 0.63
+  },
+  "bass": {
+   "n": 58,
+   "distinctPitches": 10,
+   "rootShare": 0.5,
+   "meanInterval": 3.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 26,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "drums": {
+    "distinct": 12,
+    "bars": 26,
+    "sameAsPrev": 0.3076923076923077,
+    "sameAs4Back": 0
+   },
+   "melody": {
+    "distinct": 13,
+    "bars": 18,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 30,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "deflateRatio": 0.096
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.38,
+  "onGrid": 1
+ },
+ {
+  "genre": "dnb",
+  "seed": 42,
+  "tempo": 174,
+  "swing": 10,
+  "humanize": 15,
+  "cohesion": "v1",
+  "seconds": 77.2,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.4,
+  "switches": 54,
+  "density": "intro:17/2r buildup:35/6r drop:37/6r verse:33/6r drop:36/6r outro:25/5r",
+  "densContrast": 2.15,
+  "velStats": {
+   "kick": {
+    "n": 175,
+    "distinct": 8,
+    "std": 13.8,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 776,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "melody": {
+    "n": 265,
+    "distinct": 3,
+    "std": 6.8,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 2,
+    "std": 2.5,
+    "min": 95,
+    "max": 100
+   },
+   "bass": {
+    "n": 293,
+    "distinct": 3,
+    "std": 7,
+    "min": 80,
+    "max": 100
+   }
+  },
+  "melody": {
+   "n": 265,
+   "range": 15,
+   "pcEntropy": 3,
+   "distinctPitches": 11,
+   "intervals": {
+    "rep": 0.45,
+    "step": 0.3,
+    "skip": 0.22,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 2,
+   "melConsonanceOnBeat": 0.61
+  },
+  "bass": {
+   "n": 293,
+   "distinctPitches": 10,
+   "rootShare": 0.47,
+   "meanInterval": 1.1
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 56,
+    "sameAsPrev": 0.5178571428571429,
+    "sameAs4Back": 0.07142857142857142
+   },
+   "melody": {
+    "distinct": 18,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.02631578947368421
+   },
+   "bass": {
+    "distinct": 24,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.061224489795918366
+   },
+   "deflateRatio": 0.045
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.19,
+  "onGrid": 1
+ },
+ {
+  "genre": "dnb",
+  "seed": 7,
+  "tempo": 174,
+  "swing": 10,
+  "humanize": 15,
+  "cohesion": "v1",
+  "seconds": 82.8,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.3,
+  "switches": 61,
+  "density": "intro:17/2r verse:33/6r buildup:35/6r drop:37/6r breakdown:24/5r drop:36/6r outro:25/6r",
+  "densContrast": 2.15,
+  "velStats": {
+   "kick": {
+    "n": 175,
+    "distinct": 8,
+    "std": 13.8,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 816,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 2,
+    "std": 2.5,
+    "min": 95,
+    "max": 100
+   },
+   "bass": {
+    "n": 318,
+    "distinct": 3,
+    "std": 7.3,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 271,
+    "distinct": 3,
+    "std": 7,
+    "min": 75,
+    "max": 95
+   }
+  },
+  "melody": {
+   "n": 271,
+   "range": 12,
+   "pcEntropy": 2.76,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.64,
+    "step": 0.06,
+    "skip": 0.23,
+    "leap": 0.06
+   },
+   "onBeatShare": 0.59,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 2,
+   "melConsonanceOnBeat": 0.56
+  },
+  "bass": {
+   "n": 318,
+   "distinctPitches": 13,
+   "rootShare": 0.45,
+   "meanInterval": 1.1
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.4666666666666667,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "melody": {
+    "distinct": 23,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.023809523809523808
+   },
+   "bass": {
+    "distinct": 28,
+    "bars": 54,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.037037037037037035
+   },
+   "deflateRatio": 0.049
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.16,
+  "onGrid": 1
+ },
+ {
+  "genre": "dnb",
+  "seed": 2026,
+  "tempo": 174,
+  "swing": 10,
+  "humanize": 15,
+  "cohesion": "v1",
+  "seconds": 82.8,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.4,
+  "switches": 53,
+  "density": "intro:17/2r buildup:35/6r drop:36/6r breakdown:24/5r buildup:34/6r drop:36/6r outro:25/6r",
+  "densContrast": 2.13,
+  "velStats": {
+   "kick": {
+    "n": 181,
+    "distinct": 8,
+    "std": 13.5,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 835,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 2,
+    "std": 2.5,
+    "min": 95,
+    "max": 100
+   },
+   "bass": {
+    "n": 317,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 267,
+    "distinct": 3,
+    "std": 7,
+    "min": 75,
+    "max": 95
+   }
+  },
+  "melody": {
+   "n": 267,
+   "range": 15,
+   "pcEntropy": 2.96,
+   "distinctPitches": 12,
+   "intervals": {
+    "rep": 0.48,
+    "step": 0.35,
+    "skip": 0.06,
+    "leap": 0.11
+   },
+   "onBeatShare": 0.6,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 2,
+   "melConsonanceOnBeat": 0.61
+  },
+  "bass": {
+   "n": 317,
+   "distinctPitches": 13,
+   "rootShare": 0.44,
+   "meanInterval": 1.1
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 22,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.047619047619047616
+   },
+   "bass": {
+    "distinct": 26,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07547169811320754
+   },
+   "deflateRatio": 0.047
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.18,
+  "onGrid": 1
+ },
+ {
+  "genre": "edm",
+  "seed": 42,
+  "tempo": 138,
+  "swing": 0,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 104.3,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 5.9,
+  "switches": 70,
+  "density": "intro:12/2r buildup:25/6r drop:35/8r breakdown:16/5r buildup:25/6r drop:35/8r outro:19/7r",
+  "densContrast": 2.92,
+  "velStats": {
+   "kick": {
+    "n": 211,
+    "distinct": 6,
+    "std": 4.9,
+    "min": 103,
+    "max": 124
+   },
+   "hihat": {
+    "n": 489,
+    "distinct": 14,
+    "std": 15.4,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 211,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 244,
+    "distinct": 3,
+    "std": 6.9,
+    "min": 75,
+    "max": 95
+   },
+   "clap": {
+    "n": 48,
+    "distinct": 4,
+    "std": 1.9,
+    "min": 98,
+    "max": 104
+   },
+   "arp": {
+    "n": 152,
+    "distinct": 3,
+    "std": 6.9,
+    "min": 70,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 244,
+   "range": 15,
+   "pcEntropy": 2.65,
+   "distinctPitches": 11,
+   "intervals": {
+    "rep": 0.57,
+    "step": 0.25,
+    "skip": 0.14,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.66,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 2,
+   "melConsonanceOnBeat": 0.54
+  },
+  "bass": {
+   "n": 211,
+   "distinctPitches": 13,
+   "rootShare": 0.44,
+   "meanInterval": 1.7
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.55,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 22,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07142857142857142
+   },
+   "bass": {
+    "distinct": 25,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07547169811320754
+   },
+   "deflateRatio": 0.058
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.5,
+  "onGrid": 1
+ },
+ {
+  "genre": "edm",
+  "seed": 7,
+  "tempo": 138,
+  "swing": 0,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 104.3,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 5.9,
+  "switches": 70,
+  "density": "intro:12/2r buildup:25/6r drop:36/8r breakdown:17/5r buildup:25/6r drop:37/8r outro:19/7r",
+  "densContrast": 3.04,
+  "velStats": {
+   "kick": {
+    "n": 211,
+    "distinct": 6,
+    "std": 4.9,
+    "min": 103,
+    "max": 124
+   },
+   "hihat": {
+    "n": 489,
+    "distinct": 14,
+    "std": 15.4,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 211,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 265,
+    "distinct": 3,
+    "std": 7.1,
+    "min": 75,
+    "max": 95
+   },
+   "clap": {
+    "n": 48,
+    "distinct": 4,
+    "std": 1.9,
+    "min": 98,
+    "max": 104
+   },
+   "arp": {
+    "n": 172,
+    "distinct": 3,
+    "std": 7.1,
+    "min": 70,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 265,
+   "range": 15,
+   "pcEntropy": 2.96,
+   "distinctPitches": 12,
+   "intervals": {
+    "rep": 0.47,
+    "step": 0.33,
+    "skip": 0.14,
+    "leap": 0.06
+   },
+   "onBeatShare": 0.61,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.59
+  },
+  "bass": {
+   "n": 211,
+   "distinctPitches": 13,
+   "rootShare": 0.44,
+   "meanInterval": 1.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.55,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 23,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.047619047619047616
+   },
+   "bass": {
+    "distinct": 25,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07547169811320754
+   },
+   "deflateRatio": 0.062
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.51,
+  "onGrid": 1
+ },
+ {
+  "genre": "edm",
+  "seed": 2026,
+  "tempo": 138,
+  "swing": 0,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 104.3,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 5.9,
+  "switches": 70,
+  "density": "intro:12/2r buildup:26/6r drop:38/8r breakdown:17/5r buildup:25/6r drop:38/8r outro:20/7r",
+  "densContrast": 3.17,
+  "velStats": {
+   "kick": {
+    "n": 211,
+    "distinct": 6,
+    "std": 4.9,
+    "min": 103,
+    "max": 124
+   },
+   "hihat": {
+    "n": 489,
+    "distinct": 14,
+    "std": 15.4,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 211,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 304,
+    "distinct": 3,
+    "std": 7,
+    "min": 75,
+    "max": 95
+   },
+   "clap": {
+    "n": 48,
+    "distinct": 4,
+    "std": 1.9,
+    "min": 98,
+    "max": 104
+   },
+   "arp": {
+    "n": 190,
+    "distinct": 3,
+    "std": 7.1,
+    "min": 70,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 304,
+   "range": 10,
+   "pcEntropy": 2.25,
+   "distinctPitches": 8,
+   "intervals": {
+    "rep": 0.61,
+    "step": 0.23,
+    "skip": 0.16,
+    "leap": 0
+   },
+   "onBeatShare": 0.53,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 2,
+   "melConsonanceOnBeat": 0.5
+  },
+  "bass": {
+   "n": 211,
+   "distinctPitches": 13,
+   "rootShare": 0.44,
+   "meanInterval": 1.7
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.55,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 23,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.047619047619047616
+   },
+   "bass": {
+    "distinct": 25,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07547169811320754
+   },
+   "deflateRatio": 0.061
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.6,
+  "onGrid": 1
+ },
+ {
+  "genre": "speedcore",
+  "seed": 42,
+  "tempo": 220,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 61.1,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 5.7,
+  "switches": 42,
+  "density": "intro:20/2r buildup:41/6r drop:43/6r verse:38/6r drop:43/6r outro:29/5r",
+  "densContrast": 2.17,
+  "velStats": {
+   "kick": {
+    "n": 475,
+    "distinct": 14,
+    "std": 12.4,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 710,
+    "distinct": 16,
+    "std": 19.4,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 4,
+    "std": 2.5,
+    "min": 95,
+    "max": 101
+   },
+   "bass": {
+    "n": 391,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 258,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 258,
+   "range": 10,
+   "pcEntropy": 2.28,
+   "distinctPitches": 6,
+   "intervals": {
+    "rep": 0.52,
+    "step": 0.33,
+    "skip": 0.12,
+    "leap": 0.02
+   },
+   "onBeatShare": 0.59,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 7,
+   "vlOptimal": 5,
+   "melConsonanceOnBeat": 0.99
+  },
+  "bass": {
+   "n": 391,
+   "distinctPitches": 2,
+   "rootShare": 0.98,
+   "meanInterval": 1.2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 22,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.375
+   },
+   "drums": {
+    "distinct": 8,
+    "bars": 56,
+    "sameAsPrev": 0.7678571428571429,
+    "sameAs4Back": 0.42857142857142855
+   },
+   "melody": {
+    "distinct": 5,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8157894736842105
+   },
+   "bass": {
+    "distinct": 3,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8979591836734694
+   },
+   "deflateRatio": 0.028
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.79,
+  "onGrid": 1
+ },
+ {
+  "genre": "speedcore",
+  "seed": 7,
+  "tempo": 220,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 65.5,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 6.6,
+  "switches": 47,
+  "density": "intro:20/2r verse:38/6r buildup:41/6r drop:44/6r breakdown:25/5r drop:42/6r outro:30/6r",
+  "densContrast": 2.18,
+  "velStats": {
+   "kick": {
+    "n": 473,
+    "distinct": 14,
+    "std": 12.4,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 740,
+    "distinct": 16,
+    "std": 19.6,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 4,
+    "std": 2.5,
+    "min": 95,
+    "max": 101
+   },
+   "bass": {
+    "n": 424,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 284,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 284,
+   "range": 7,
+   "pcEntropy": 2.07,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.49,
+    "step": 0.36,
+    "skip": 0.14,
+    "leap": 0
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7,
+   "vlOptimal": 5,
+   "melConsonanceOnBeat": 0.96
+  },
+  "bass": {
+   "n": 424,
+   "distinctPitches": 4,
+   "rootShare": 0.98,
+   "meanInterval": 1.3
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 26,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.38333333333333336
+   },
+   "drums": {
+    "distinct": 10,
+    "bars": 60,
+    "sameAsPrev": 0.75,
+    "sameAs4Back": 0.4
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 8,
+    "bars": 54,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7222222222222222
+   },
+   "deflateRatio": 0.031
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.7,
+  "onGrid": 1
+ },
+ {
+  "genre": "speedcore",
+  "seed": 2026,
+  "tempo": 220,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 65.5,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6,
+  "switches": 47,
+  "density": "intro:20/2r buildup:41/6r drop:44/6r breakdown:24/5r buildup:40/6r drop:44/6r outro:30/6r",
+  "densContrast": 2.18,
+  "velStats": {
+   "kick": {
+    "n": 485,
+    "distinct": 14,
+    "std": 13.5,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 758,
+    "distinct": 16,
+    "std": 19.7,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 4,
+    "std": 2.5,
+    "min": 95,
+    "max": 101
+   },
+   "bass": {
+    "n": 423,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 286,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 286,
+   "range": 10,
+   "pcEntropy": 2.38,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.35,
+    "step": 0.43,
+    "skip": 0.19,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7,
+   "vlOptimal": 5,
+   "melConsonanceOnBeat": 0.98
+  },
+  "bass": {
+   "n": 423,
+   "distinctPitches": 4,
+   "rootShare": 0.98,
+   "meanInterval": 1.3
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 28,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.21666666666666667
+   },
+   "drums": {
+    "distinct": 11,
+    "bars": 60,
+    "sameAsPrev": 0.6833333333333333,
+    "sameAs4Back": 0.23333333333333334
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 7,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7358490566037735
+   },
+   "deflateRatio": 0.032
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.66,
+  "onGrid": 1
+ },
+ {
+  "genre": "dubstep",
+  "seed": 42,
+  "tempo": 140,
+  "swing": 15,
+  "humanize": 12,
+  "cohesion": "v1",
+  "seconds": 96,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.4,
+  "switches": 54,
+  "density": "intro:8/2r buildup:31/6r drop:33/6r verse:31/6r drop:34/6r outro:17/5r",
+  "densContrast": 4.19,
+  "velStats": {
+   "kick": {
+    "n": 181,
+    "distinct": 8,
+    "std": 13.5,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 303,
+    "distinct": 11,
+    "std": 19.3,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 636,
+    "distinct": 3,
+    "std": 6.6,
+    "min": 80,
+    "max": 100
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "melody": {
+    "n": 264,
+    "distinct": 3,
+    "std": 6.7,
+    "min": 75,
+    "max": 95
+   }
+  },
+  "melody": {
+   "n": 264,
+   "range": 12,
+   "pcEntropy": 2.72,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.47,
+    "step": 0.32,
+    "skip": 0.17,
+    "leap": 0.04
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 7.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.58
+  },
+  "bass": {
+   "n": 636,
+   "distinctPitches": 10,
+   "rootShare": 0.48,
+   "meanInterval": 0.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 30,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.07142857142857142
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.08928571428571429
+   },
+   "melody": {
+    "distinct": 19,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07894736842105263
+   },
+   "bass": {
+    "distinct": 22,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.10204081632653061
+   },
+   "deflateRatio": 0.055
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2,
+  "onGrid": 1
+ },
+ {
+  "genre": "dubstep",
+  "seed": 7,
+  "tempo": 140,
+  "swing": 15,
+  "humanize": 12,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.1,
+  "switches": 50,
+  "density": "intro:8/2r buildup:31/6r drop:32/6r breakdown:23/5r buildup:30/6r drop:33/6r outro:16/5r",
+  "densContrast": 4.09,
+  "velStats": {
+   "kick": {
+    "n": 180,
+    "distinct": 8,
+    "std": 13.5,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 314,
+    "distinct": 11,
+    "std": 19.4,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 688,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 80,
+    "max": 100
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "melody": {
+    "n": 258,
+    "distinct": 3,
+    "std": 6.8,
+    "min": 75,
+    "max": 95
+   }
+  },
+  "melody": {
+   "n": 258,
+   "range": 15,
+   "pcEntropy": 3.02,
+   "distinctPitches": 11,
+   "intervals": {
+    "rep": 0.43,
+    "step": 0.39,
+    "skip": 0.14,
+    "leap": 0.04
+   },
+   "onBeatShare": 0.62,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.6
+  },
+  "bass": {
+   "n": 688,
+   "distinctPitches": 13,
+   "rootShare": 0.44,
+   "meanInterval": 0.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.1
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 60,
+    "sameAsPrev": 0.6,
+    "sameAs4Back": 0.11666666666666667
+   },
+   "melody": {
+    "distinct": 20,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.11904761904761904
+   },
+   "bass": {
+    "distinct": 24,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.1320754716981132
+   },
+   "deflateRatio": 0.059
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.96,
+  "onGrid": 1
+ },
+ {
+  "genre": "dubstep",
+  "seed": 2026,
+  "tempo": 140,
+  "swing": 15,
+  "humanize": 12,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.1,
+  "switches": 58,
+  "density": "intro:8/2r verse:31/6r buildup:31/6r drop:34/6r breakdown:24/5r drop:33/6r outro:17/5r",
+  "densContrast": 4.21,
+  "velStats": {
+   "kick": {
+    "n": 181,
+    "distinct": 8,
+    "std": 13.5,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 315,
+    "distinct": 11,
+    "std": 19.3,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 689,
+    "distinct": 3,
+    "std": 7.2,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 297,
+    "distinct": 3,
+    "std": 7.1,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 297,
+   "range": 12,
+   "pcEntropy": 2.7,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.54,
+    "step": 0.29,
+    "skip": 0.15,
+    "leap": 0.02
+   },
+   "onBeatShare": 0.55,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 7.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.55
+  },
+  "bass": {
+   "n": 689,
+   "distinctPitches": 13,
+   "rootShare": 0.44,
+   "meanInterval": 0.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 34,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 17,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "melody": {
+    "distinct": 21,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.09523809523809523
+   },
+   "bass": {
+    "distinct": 25,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07547169811320754
+   },
+   "deflateRatio": 0.059
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.98,
+  "onGrid": 1
+ },
+ {
+  "genre": "country",
+  "seed": 42,
+  "tempo": 110,
+  "swing": 15,
+  "humanize": 20,
+  "cohesion": "v1",
+  "seconds": 130.9,
+  "bars": 60,
+  "form": "intro:4 verse:12 pre-chorus:4 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 19,
+  "latenessMean": 8,
+  "switches": 65,
+  "density": "intro:19/4r verse:27/6r pre-chorus:26/6r chorus:31/6r verse:28/6r chorus:31/6r outro:20/6r",
+  "densContrast": 1.7,
+  "velStats": {
+   "harmony": {
+    "n": 180,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 262,
+    "distinct": 8,
+    "std": 12.5,
+    "min": 87,
+    "max": 124
+   },
+   "hihat": {
+    "n": 523,
+    "distinct": 12,
+    "std": 13.4,
+    "min": 72,
+    "max": 114
+   },
+   "melody": {
+    "n": 280,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 208,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   },
+   "bass": {
+    "n": 212,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 280,
+   "range": 9,
+   "pcEntropy": 1.88,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.56,
+    "step": 0.27,
+    "skip": 0.07,
+    "leap": 0.1
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 45,
+   "notesPerChord": 3,
+   "vlActual": 6,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 1
+  },
+  "bass": {
+   "n": 212,
+   "distinctPitches": 3,
+   "rootShare": 1,
+   "meanInterval": 0.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 60,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 60,
+    "sameAsPrev": 0.48333333333333334,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "melody": {
+    "distinct": 6,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7560975609756098
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 54,
+    "sameAsPrev": 0.24074074074074073,
+    "sameAs4Back": 0.8888888888888888
+   },
+   "deflateRatio": 0.033
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.59,
+  "onGrid": 1
+ },
+ {
+  "genre": "country",
+  "seed": 7,
+  "tempo": 110,
+  "swing": 15,
+  "humanize": 20,
+  "cohesion": "v1",
+  "seconds": 122.2,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.2,
+  "switches": 59,
+  "density": "intro:19/4r verse:27/6r chorus:31/6r verse:27/6r chorus:31/6r outro:21/6r",
+  "densContrast": 1.68,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 244,
+    "distinct": 8,
+    "std": 12.3,
+    "min": 87,
+    "max": 124
+   },
+   "hihat": {
+    "n": 487,
+    "distinct": 12,
+    "std": 13.3,
+    "min": 72,
+    "max": 114
+   },
+   "melody": {
+    "n": 268,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   },
+   "bass": {
+    "n": 196,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 268,
+   "range": 4,
+   "pcEntropy": 1.14,
+   "distinctPitches": 3,
+   "intervals": {
+    "rep": 0.75,
+    "step": 0.14,
+    "skip": 0.11,
+    "leap": 0
+   },
+   "onBeatShare": 0.6,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 4.4,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.96
+  },
+  "bass": {
+   "n": 196,
+   "distinctPitches": 4,
+   "rootShare": 1,
+   "meanInterval": 1.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 29,
+    "bars": 56,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 12,
+    "bars": 56,
+    "sameAsPrev": 0.5178571428571429,
+    "sameAs4Back": 0.07142857142857142
+   },
+   "melody": {
+    "distinct": 4,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.85
+   },
+   "bass": {
+    "distinct": 6,
+    "bars": 50,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.88
+   },
+   "deflateRatio": 0.033
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.5,
+  "onGrid": 1
+ },
+ {
+  "genre": "country",
+  "seed": 2026,
+  "tempo": 110,
+  "swing": 15,
+  "humanize": 20,
+  "cohesion": "v1",
+  "seconds": 104.7,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 bridge:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 16,
+  "latenessMean": 6.4,
+  "switches": 53,
+  "density": "intro:19/4r verse:27/6r chorus:31/6r bridge:24/6r chorus:31/6r outro:20/6r",
+  "densContrast": 1.69,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 205,
+    "distinct": 9,
+    "std": 12.7,
+    "min": 87,
+    "max": 124
+   },
+   "hihat": {
+    "n": 409,
+    "distinct": 14,
+    "std": 14.6,
+    "min": 67,
+    "max": 114
+   },
+   "melody": {
+    "n": 259,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 144,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   },
+   "bass": {
+    "n": 163,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 259,
+   "range": 7,
+   "pcEntropy": 1.66,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.76,
+    "step": 0.08,
+    "skip": 0.12,
+    "leap": 0.04
+   },
+   "onBeatShare": 0.59,
+   "motifPhaseOff": "17/17",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 4.4,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.89
+  },
+  "bass": {
+   "n": 163,
+   "distinctPitches": 4,
+   "rootShare": 1,
+   "meanInterval": 1.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 30,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.020833333333333332
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 48,
+    "sameAsPrev": 0.4791666666666667,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "melody": {
+    "distinct": 9,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6578947368421053
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8780487804878049
+   },
+   "deflateRatio": 0.045
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.54,
+  "onGrid": 1
+ },
+ {
+  "genre": "blues",
+  "seed": 42,
+  "tempo": 95,
+  "swing": 50,
+  "humanize": 35,
+  "cohesion": "v1",
+  "seconds": 121.3,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 bridge:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 16,
+  "latenessMean": 6.4,
+  "switches": 53,
+  "density": "intro:15/4r verse:21/6r chorus:25/6r bridge:20/5r chorus:25/6r outro:16/5r",
+  "densContrast": 1.66,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 138,
+    "distinct": 8,
+    "std": 14.1,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 297,
+    "distinct": 11,
+    "std": 20.3,
+    "min": 66,
+    "max": 114
+   },
+   "melody": {
+    "n": 242,
+    "distinct": 3,
+    "std": 6.4,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 72,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 163,
+    "distinct": 3,
+    "std": 6.3,
+    "min": 80,
+    "max": 100
+   }
+  },
+  "melody": {
+   "n": 242,
+   "range": 12,
+   "pcEntropy": 2.62,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.5,
+    "step": 0.4,
+    "skip": 0.07,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.63,
+   "motifPhaseOff": "17/17",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 27,
+   "notesPerChord": 3,
+   "vlActual": 6.7,
+   "vlOptimal": 3.5,
+   "melConsonanceOnBeat": 0.45
+  },
+  "bass": {
+   "n": 163,
+   "distinctPitches": 17,
+   "rootShare": 0.24,
+   "meanInterval": 3.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 40,
+    "bars": 48,
+    "sameAsPrev": 0.020833333333333332,
+    "sameAs4Back": 0.020833333333333332
+   },
+   "drums": {
+    "distinct": 13,
+    "bars": 48,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.10416666666666667
+   },
+   "melody": {
+    "distinct": 20,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.15789473684210525
+   },
+   "bass": {
+    "distinct": 24,
+    "bars": 41,
+    "sameAsPrev": 0.04878048780487805,
+    "sameAs4Back": 0.04878048780487805
+   },
+   "deflateRatio": 0.067
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.84,
+  "onGrid": 1
+ },
+ {
+  "genre": "blues",
+  "seed": 7,
+  "tempo": 95,
+  "swing": 50,
+  "humanize": 35,
+  "cohesion": "v1",
+  "seconds": 151.6,
+  "bars": 60,
+  "form": "intro:4 verse:12 pre-chorus:4 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 19,
+  "latenessMean": 8,
+  "switches": 65,
+  "density": "intro:16/4r verse:22/6r pre-chorus:19/6r chorus:25/6r verse:22/6r chorus:25/6r outro:17/5r",
+  "densContrast": 1.62,
+  "velStats": {
+   "harmony": {
+    "n": 180,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 181,
+    "distinct": 6,
+    "std": 13.8,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 379,
+    "distinct": 10,
+    "std": 20,
+    "min": 66,
+    "max": 114
+   },
+   "melody": {
+    "n": 274,
+    "distinct": 2,
+    "std": 4.8,
+    "min": 85,
+    "max": 95
+   },
+   "snare": {
+    "n": 104,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 212,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 90,
+    "max": 100
+   }
+  },
+  "melody": {
+   "n": 274,
+   "range": 9,
+   "pcEntropy": 2.39,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.49,
+    "step": 0.43,
+    "skip": 0,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.58,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 34,
+   "notesPerChord": 3,
+   "vlActual": 6.8,
+   "vlOptimal": 3.5,
+   "melConsonanceOnBeat": 0.41
+  },
+  "bass": {
+   "n": 212,
+   "distinctPitches": 13,
+   "rootShare": 0.26,
+   "meanInterval": 3.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 41,
+    "bars": 60,
+    "sameAsPrev": 0.016666666666666666,
+    "sameAs4Back": 0.016666666666666666
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 60,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.18333333333333332
+   },
+   "melody": {
+    "distinct": 18,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.24390243902439024
+   },
+   "bass": {
+    "distinct": 22,
+    "bars": 54,
+    "sameAsPrev": 0.09259259259259259,
+    "sameAs4Back": 0.05555555555555555
+   },
+   "deflateRatio": 0.051
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.86,
+  "onGrid": 1
+ },
+ {
+  "genre": "blues",
+  "seed": 2026,
+  "tempo": 95,
+  "swing": 50,
+  "humanize": 35,
+  "cohesion": "v1",
+  "seconds": 141.5,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.2,
+  "switches": 59,
+  "density": "intro:16/4r verse:22/6r chorus:26/6r verse:22/6r chorus:26/6r outro:17/5r",
+  "densContrast": 1.66,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 168,
+    "distinct": 6,
+    "std": 13.8,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 354,
+    "distinct": 10,
+    "std": 19.9,
+    "min": 66,
+    "max": 114
+   },
+   "melody": {
+    "n": 286,
+    "distinct": 2,
+    "std": 4.8,
+    "min": 85,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 196,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 90,
+    "max": 100
+   }
+  },
+  "melody": {
+   "n": 286,
+   "range": 12,
+   "pcEntropy": 2.63,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.54,
+    "step": 0.36,
+    "skip": 0.03,
+    "leap": 0.07
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 30,
+   "notesPerChord": 3,
+   "vlActual": 6.7,
+   "vlOptimal": 3.5,
+   "melConsonanceOnBeat": 0.5
+  },
+  "bass": {
+   "n": 196,
+   "distinctPitches": 13,
+   "rootShare": 0.27,
+   "meanInterval": 3.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 56,
+    "sameAsPrev": 0.03571428571428571,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 13,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.16071428571428573
+   },
+   "melody": {
+    "distinct": 18,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.2
+   },
+   "bass": {
+    "distinct": 20,
+    "bars": 50,
+    "sameAsPrev": 0.02,
+    "sameAs4Back": 0.04
+   },
+   "deflateRatio": 0.051
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.87,
+  "onGrid": 1
+ },
+ {
+  "genre": "synthwave",
+  "seed": 42,
+  "tempo": 108,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 124.4,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.1,
+  "switches": 71,
+  "density": "intro:20/4r verse:25/6r chorus:36/7r verse:26/7r chorus:36/7r outro:22/6r",
+  "densContrast": 1.81,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 492,
+    "distinct": 6,
+    "std": 14.9,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 288,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 85,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 196,
+    "distinct": 2,
+    "std": 4.8,
+    "min": 90,
+    "max": 100
+   },
+   "arp": {
+    "n": 170,
+    "distinct": 2,
+    "std": 5,
+    "min": 80,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 288,
+   "range": 12,
+   "pcEntropy": 3.04,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.26,
+    "step": 0.43,
+    "skip": 0.29,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.61
+  },
+  "bass": {
+   "n": 196,
+   "distinctPitches": 7,
+   "rootShare": 0.62,
+   "meanInterval": 1.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 56,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 10,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.08928571428571429
+   },
+   "melody": {
+    "distinct": 16,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.1
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 50,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.14
+   },
+   "deflateRatio": 0.05
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.7,
+  "onGrid": 1
+ },
+ {
+  "genre": "synthwave",
+  "seed": 7,
+  "tempo": 108,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 106.7,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 bridge:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 16,
+  "latenessMean": 6.4,
+  "switches": 65,
+  "density": "intro:20/4r verse:25/6r chorus:37/7r bridge:22/6r chorus:36/7r outro:21/6r",
+  "densContrast": 1.86,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 183,
+    "distinct": 6,
+    "std": 4.6,
+    "min": 103,
+    "max": 124
+   },
+   "hihat": {
+    "n": 402,
+    "distinct": 7,
+    "std": 16.1,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 285,
+    "distinct": 3,
+    "std": 6.3,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 72,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 163,
+    "distinct": 3,
+    "std": 6.3,
+    "min": 80,
+    "max": 100
+   },
+   "arp": {
+    "n": 183,
+    "distinct": 2,
+    "std": 5,
+    "min": 80,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 285,
+   "range": 12,
+   "pcEntropy": 2.55,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.54,
+    "step": 0.21,
+    "skip": 0.22,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.53,
+   "motifPhaseOff": "17/17",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.57
+  },
+  "bass": {
+   "n": 163,
+   "distinctPitches": 9,
+   "rootShare": 0.52,
+   "meanInterval": 2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 36,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.020833333333333332
+   },
+   "drums": {
+    "distinct": 13,
+    "bars": 48,
+    "sameAsPrev": 0.4791666666666667,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "melody": {
+    "distinct": 19,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.10526315789473684
+   },
+   "bass": {
+    "distinct": 20,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07317073170731707
+   },
+   "deflateRatio": 0.06
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.67,
+  "onGrid": 1
+ },
+ {
+  "genre": "synthwave",
+  "seed": 2026,
+  "tempo": 108,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 124.4,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.1,
+  "switches": 71,
+  "density": "intro:19/4r verse:25/6r chorus:34/7r verse:25/7r chorus:34/7r outro:21/6r",
+  "densContrast": 1.81,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 492,
+    "distinct": 6,
+    "std": 14.9,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 246,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 85,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 196,
+    "distinct": 2,
+    "std": 4.8,
+    "min": 90,
+    "max": 100
+   },
+   "arp": {
+    "n": 153,
+    "distinct": 2,
+    "std": 5,
+    "min": 80,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 246,
+   "range": 5,
+   "pcEntropy": 1.77,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.77,
+    "step": 0.18,
+    "skip": 0.05,
+    "leap": 0
+   },
+   "onBeatShare": 0.65,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.61
+  },
+  "bass": {
+   "n": 196,
+   "distinctPitches": 7,
+   "rootShare": 0.62,
+   "meanInterval": 1.9
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 56,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 10,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.08928571428571429
+   },
+   "melody": {
+    "distinct": 17,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.1
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 50,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.14
+   },
+   "deflateRatio": 0.045
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.61,
+  "onGrid": 1
+ },
+ {
+  "genre": "trance",
+  "seed": 42,
+  "tempo": 140,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.8,
+  "switches": 68,
+  "density": "intro:13/2r buildup:25/6r drop:35/7r breakdown:18/6r buildup:25/6r drop:35/7r outro:20/6r",
+  "densContrast": 2.64,
+  "velStats": {
+   "kick": {
+    "n": 223,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 528,
+    "distinct": 14,
+    "std": 15.1,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 211,
+    "distinct": 3,
+    "std": 5.7,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 251,
+    "distinct": 3,
+    "std": 5.4,
+    "min": 75,
+    "max": 95
+   },
+   "arp": {
+    "n": 158,
+    "distinct": 2,
+    "std": 5,
+    "min": 80,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 251,
+   "range": 12,
+   "pcEntropy": 2.67,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.57,
+    "step": 0.18,
+    "skip": 0.14,
+    "leap": 0.11
+   },
+   "onBeatShare": 0.63,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 42,
+   "notesPerChord": 3,
+   "vlActual": 4.8,
+   "vlOptimal": 4.1,
+   "melConsonanceOnBeat": 0.52
+  },
+  "bass": {
+   "n": 211,
+   "distinctPitches": 9,
+   "rootShare": 0.48,
+   "meanInterval": 1.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 39,
+    "bars": 60,
+    "sameAsPrev": 0.016666666666666666,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 60,
+    "sameAsPrev": 0.45,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "melody": {
+    "distinct": 20,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.09523809523809523
+   },
+   "bass": {
+    "distinct": 20,
+    "bars": 53,
+    "sameAsPrev": 0.1320754716981132,
+    "sameAs4Back": 0.09433962264150944
+   },
+   "deflateRatio": 0.049
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.53,
+  "onGrid": 1
+ },
+ {
+  "genre": "trance",
+  "seed": 7,
+  "tempo": 140,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.2,
+  "switches": 72,
+  "density": "intro:13/2r verse:25/6r buildup:26/6r drop:36/7r breakdown:19/6r drop:35/7r outro:21/6r",
+  "densContrast": 2.72,
+  "velStats": {
+   "kick": {
+    "n": 224,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 523,
+    "distinct": 14,
+    "std": 14.6,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "melody": {
+    "n": 279,
+    "distinct": 3,
+    "std": 5.2,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 212,
+    "distinct": 3,
+    "std": 5.6,
+    "min": 80,
+    "max": 100
+   },
+   "arp": {
+    "n": 171,
+    "distinct": 2,
+    "std": 5,
+    "min": 80,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 279,
+   "range": 13,
+   "pcEntropy": 1.84,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.78,
+    "step": 0.12,
+    "skip": 0.03,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.53
+  },
+  "bass": {
+   "n": 212,
+   "distinctPitches": 12,
+   "rootShare": 0.54,
+   "meanInterval": 1.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 39,
+    "bars": 60,
+    "sameAsPrev": 0.016666666666666666,
+    "sameAs4Back": 0.1
+   },
+   "drums": {
+    "distinct": 16,
+    "bars": 60,
+    "sameAsPrev": 0.45,
+    "sameAs4Back": 0.1
+   },
+   "melody": {
+    "distinct": 21,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.09523809523809523
+   },
+   "bass": {
+    "distinct": 22,
+    "bars": 54,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.14814814814814814
+   },
+   "deflateRatio": 0.051
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.49,
+  "onGrid": 1
+ },
+ {
+  "genre": "trance",
+  "seed": 2026,
+  "tempo": 140,
+  "swing": 0,
+  "humanize": 5,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.8,
+  "switches": 68,
+  "density": "intro:13/2r buildup:25/6r drop:35/7r breakdown:19/6r buildup:25/6r drop:35/7r outro:21/6r",
+  "densContrast": 2.67,
+  "velStats": {
+   "kick": {
+    "n": 223,
+    "distinct": 4,
+    "std": 3,
+    "min": 117,
+    "max": 124
+   },
+   "hihat": {
+    "n": 528,
+    "distinct": 14,
+    "std": 15.1,
+    "min": 66,
+    "max": 114
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   },
+   "bass": {
+    "n": 211,
+    "distinct": 3,
+    "std": 5.7,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 260,
+    "distinct": 3,
+    "std": 5.5,
+    "min": 75,
+    "max": 95
+   },
+   "arp": {
+    "n": 165,
+    "distinct": 2,
+    "std": 5,
+    "min": 80,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 260,
+   "range": 13,
+   "pcEntropy": 2.3,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.67,
+    "step": 0.11,
+    "skip": 0.11,
+    "leap": 0.11
+   },
+   "onBeatShare": 0.62,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 5,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.51
+  },
+  "bass": {
+   "n": 211,
+   "distinctPitches": 12,
+   "rootShare": 0.48,
+   "meanInterval": 1.4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 39,
+    "bars": 60,
+    "sameAsPrev": 0.016666666666666666,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 60,
+    "sameAsPrev": 0.45,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "melody": {
+    "distinct": 22,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.047619047619047616
+   },
+   "bass": {
+    "distinct": 22,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.09433962264150944
+   },
+   "deflateRatio": 0.05
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.53,
+  "onGrid": 1
+ },
+ {
+  "genre": "lofi",
+  "seed": 42,
+  "tempo": 82,
+  "swing": 35,
+  "humanize": 40,
+  "cohesion": "v1",
+  "seconds": 140.5,
+  "bars": 48,
+  "form": "intro:4 verse:12 verse:12 bridge:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.6,
+  "switches": 39,
+  "density": "intro:7/2r verse:21/4r verse:21/4r bridge:15/4r verse:20/4r outro:9/4r",
+  "densContrast": 2.98,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 180,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "hihat": {
+    "n": 383,
+    "distinct": 7,
+    "std": 19.3,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 157,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 157,
+   "range": 15,
+   "pcEntropy": 1.85,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.31,
+    "step": 0.32,
+    "skip": 0.26,
+    "leap": 0.12
+   },
+   "onBeatShare": 0.61,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 6.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.94
+  },
+  "bass": {
+   "n": 180,
+   "distinctPitches": 11,
+   "rootShare": 0.43,
+   "meanInterval": 4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 25,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.125
+   },
+   "drums": {
+    "distinct": 11,
+    "bars": 38,
+    "sameAsPrev": 0.5263157894736842,
+    "sameAs4Back": 0.15789473684210525
+   },
+   "melody": {
+    "distinct": 8,
+    "bars": 24,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.5833333333333334
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 45,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.9111111111111111
+   },
+   "deflateRatio": 0.048
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.57,
+  "onGrid": 1
+ },
+ {
+  "genre": "lofi",
+  "seed": 7,
+  "tempo": 82,
+  "swing": 35,
+  "humanize": 40,
+  "cohesion": "v1",
+  "seconds": 105.4,
+  "bars": 36,
+  "form": "intro:4 verse:12 bridge:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 11,
+  "latenessMean": 4.8,
+  "switches": 29,
+  "density": "intro:7/2r verse:21/4r bridge:14/4r verse:21/4r outro:9/4r",
+  "densContrast": 2.98,
+  "velStats": {
+   "harmony": {
+    "n": 108,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 131,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "hihat": {
+    "n": 256,
+    "distinct": 7,
+    "std": 19.3,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 123,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 123,
+   "range": 15,
+   "pcEntropy": 1.9,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.19,
+    "step": 0.16,
+    "skip": 0.53,
+    "leap": 0.12
+   },
+   "onBeatShare": 0.58,
+   "motifPhaseOff": "11/12",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 35,
+   "notesPerChord": 3,
+   "vlActual": 6.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.94
+  },
+  "bass": {
+   "n": 131,
+   "distinctPitches": 11,
+   "rootShare": 0.44,
+   "meanInterval": 4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 24,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.05555555555555555
+   },
+   "drums": {
+    "distinct": 10,
+    "bars": 26,
+    "sameAsPrev": 0.46153846153846156,
+    "sameAs4Back": 0.07692307692307693
+   },
+   "melody": {
+    "distinct": 8,
+    "bars": 18,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.4444444444444444
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 33,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8484848484848485
+   },
+   "deflateRatio": 0.064
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.57,
+  "onGrid": 1
+ },
+ {
+  "genre": "lofi",
+  "seed": 2026,
+  "tempo": 82,
+  "swing": 35,
+  "humanize": 40,
+  "cohesion": "v1",
+  "seconds": 105.4,
+  "bars": 36,
+  "form": "intro:4 verse:12 breakdown:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 11,
+  "latenessMean": 4.6,
+  "switches": 27,
+  "density": "intro:7/2r verse:21/4r breakdown:8/4r verse:20/4r outro:8/4r",
+  "densContrast": 2.94,
+  "velStats": {
+   "harmony": {
+    "n": 108,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 115,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "hihat": {
+    "n": 256,
+    "distinct": 7,
+    "std": 19.3,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 104,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   }
+  },
+  "melody": {
+   "n": 104,
+   "range": 12,
+   "pcEntropy": 1.6,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.49,
+    "step": 0.32,
+    "skip": 0.08,
+    "leap": 0.1
+   },
+   "onBeatShare": 0.63,
+   "motifPhaseOff": "11/12",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 35,
+   "notesPerChord": 3,
+   "vlActual": 6.5,
+   "vlOptimal": 4.5,
+   "melConsonanceOnBeat": 0.86
+  },
+  "bass": {
+   "n": 115,
+   "distinctPitches": 11,
+   "rootShare": 0.43,
+   "meanInterval": 4
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 24,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.05555555555555555
+   },
+   "drums": {
+    "distinct": 10,
+    "bars": 26,
+    "sameAsPrev": 0.46153846153846156,
+    "sameAs4Back": 0.07692307692307693
+   },
+   "melody": {
+    "distinct": 8,
+    "bars": 18,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.4444444444444444
+   },
+   "bass": {
+    "distinct": 7,
+    "bars": 30,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6333333333333333
+   },
+   "deflateRatio": 0.062
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.52,
+  "onGrid": 1
+ },
+ {
+  "genre": "reggae",
+  "seed": 42,
+  "tempo": 75,
+  "swing": 25,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 192,
+  "bars": 60,
+  "form": "intro:4 verse:12 pre-chorus:4 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 19,
+  "latenessMean": 8,
+  "switches": 65,
+  "density": "intro:18/4r verse:23/6r pre-chorus:21/6r chorus:27/6r verse:23/6r chorus:27/6r outro:19/5r",
+  "densContrast": 1.54,
+  "velStats": {
+   "harmony": {
+    "n": 180,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 199,
+    "distinct": 6,
+    "std": 11,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 504,
+    "distinct": 13,
+    "std": 15.4,
+    "min": 67,
+    "max": 114
+   },
+   "melody": {
+    "n": 293,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 104,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 100,
+    "max": 101
+   },
+   "bass": {
+    "n": 159,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 293,
+   "range": 5,
+   "pcEntropy": 1.69,
+   "distinctPitches": 4,
+   "intervals": {
+    "rep": 0.61,
+    "step": 0.2,
+    "skip": 0.17,
+    "leap": 0.02
+   },
+   "onBeatShare": 0.55,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 59,
+   "notesPerChord": 3,
+   "vlActual": 4.4,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 1
+  },
+  "bass": {
+   "n": 159,
+   "distinctPitches": 4,
+   "rootShare": 1,
+   "meanInterval": 1.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 31,
+    "bars": 60,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.05
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 60,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 6,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7560975609756098
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.9245283018867925
+   },
+   "deflateRatio": 0.036
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.93,
+  "onGrid": 1
+ },
+ {
+  "genre": "reggae",
+  "seed": 7,
+  "tempo": 75,
+  "swing": 25,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 153.6,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 bridge:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 16,
+  "latenessMean": 6.4,
+  "switches": 53,
+  "density": "intro:18/4r verse:23/6r chorus:27/6r bridge:21/5r chorus:27/6r outro:18/6r",
+  "densContrast": 1.54,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 154,
+    "distinct": 8,
+    "std": 11.4,
+    "min": 84,
+    "max": 124
+   },
+   "hihat": {
+    "n": 390,
+    "distinct": 14,
+    "std": 15.7,
+    "min": 67,
+    "max": 114
+   },
+   "melody": {
+    "n": 266,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 72,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 100,
+    "max": 101
+   },
+   "bass": {
+    "n": 122,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 266,
+   "range": 11,
+   "pcEntropy": 2.57,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.38,
+    "step": 0.45,
+    "skip": 0.11,
+    "leap": 0.05
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "17/17",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 4.4,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.94
+  },
+  "bass": {
+   "n": 122,
+   "distinctPitches": 4,
+   "rootShare": 1,
+   "meanInterval": 1.8
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 29,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 48,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.0625
+   },
+   "melody": {
+    "distinct": 9,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6578947368421053
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8780487804878049
+   },
+   "deflateRatio": 0.049
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.87,
+  "onGrid": 1
+ },
+ {
+  "genre": "reggae",
+  "seed": 2026,
+  "tempo": 75,
+  "swing": 25,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 179.2,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.2,
+  "switches": 59,
+  "density": "intro:18/4r verse:23/6r chorus:27/6r verse:23/6r chorus:27/6r outro:19/5r",
+  "densContrast": 1.54,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 185,
+    "distinct": 6,
+    "std": 11.1,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 469,
+    "distinct": 13,
+    "std": 15.2,
+    "min": 67,
+    "max": 114
+   },
+   "melody": {
+    "n": 294,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 100,
+    "max": 101
+   },
+   "bass": {
+    "n": 147,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 294,
+   "range": 9,
+   "pcEntropy": 1.87,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.5,
+    "step": 0.34,
+    "skip": 0.07,
+    "leap": 0.09
+   },
+   "onBeatShare": 0.54,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 42,
+   "notesPerChord": 3,
+   "vlActual": 6,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 1
+  },
+  "bass": {
+   "n": 147,
+   "distinctPitches": 3,
+   "rootShare": 1,
+   "meanInterval": 1.2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 27,
+    "bars": 56,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.05357142857142857
+   },
+   "drums": {
+    "distinct": 13,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.08928571428571429
+   },
+   "melody": {
+    "distinct": 4,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.85
+   },
+   "bass": {
+    "distinct": 3,
+    "bars": 49,
+    "sameAsPrev": 0.24489795918367346,
+    "sameAs4Back": 0.9183673469387755
+   },
+   "deflateRatio": 0.036
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.86,
+  "onGrid": 1
+ },
+ {
+  "genre": "funk",
+  "seed": 42,
+  "tempo": 108,
+  "swing": 30,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 133.3,
+  "bars": 60,
+  "form": "intro:4 verse:12 pre-chorus:4 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 19,
+  "latenessMean": 8,
+  "switches": 65,
+  "density": "intro:20/4r verse:31/6r pre-chorus:28/6r chorus:34/6r verse:31/6r chorus:35/6r outro:22/6r",
+  "densContrast": 1.74,
+  "velStats": {
+   "harmony": {
+    "n": 180,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 353,
+    "distinct": 10,
+    "std": 15.2,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 535,
+    "distinct": 12,
+    "std": 14.7,
+    "min": 72,
+    "max": 114
+   },
+   "melody": {
+    "n": 308,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "bass": {
+    "n": 265,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "snare": {
+    "n": 208,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 308,
+   "range": 10,
+   "pcEntropy": 2.3,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.62,
+    "step": 0.13,
+    "skip": 0.25,
+    "leap": 0
+   },
+   "onBeatShare": 0.52,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 2,
+   "chordChanges": 30,
+   "notesPerChord": 3,
+   "vlActual": 3,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 1
+  },
+  "bass": {
+   "n": 265,
+   "distinctPitches": 2,
+   "rootShare": 1,
+   "meanInterval": 0.5
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 60,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.05
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.45,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 6,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7560975609756098
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 54,
+    "sameAsPrev": 0.46296296296296297,
+    "sameAs4Back": 0.8888888888888888
+   },
+   "deflateRatio": 0.033
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.31,
+  "onGrid": 1
+ },
+ {
+  "genre": "funk",
+  "seed": 7,
+  "tempo": 108,
+  "swing": 30,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 106.7,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 bridge:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 16,
+  "latenessMean": 6.2,
+  "switches": 51,
+  "density": "intro:19/4r verse:30/6r chorus:34/6r bridge:26/6r chorus:34/6r outro:21/6r",
+  "densContrast": 1.77,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 271,
+    "distinct": 12,
+    "std": 15.1,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 414,
+    "distinct": 14,
+    "std": 14.7,
+    "min": 69,
+    "max": 114
+   },
+   "melody": {
+    "n": 268,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "bass": {
+    "n": 204,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "snare": {
+    "n": 144,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 268,
+   "range": 10,
+   "pcEntropy": 1.93,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.56,
+    "step": 0.3,
+    "skip": 0.06,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.57,
+   "motifPhaseOff": "17/17",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 5.4,
+   "vlOptimal": 3.5,
+   "melConsonanceOnBeat": 0.91
+  },
+  "bass": {
+   "n": 204,
+   "distinctPitches": 3,
+   "rootShare": 1,
+   "meanInterval": 1.2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 31,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "drums": {
+    "distinct": 16,
+    "bars": 48,
+    "sameAsPrev": 0.4791666666666667,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "melody": {
+    "distinct": 9,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6578947368421053
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8780487804878049
+   },
+   "deflateRatio": 0.045
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.35,
+  "onGrid": 1
+ },
+ {
+  "genre": "funk",
+  "seed": 2026,
+  "tempo": 108,
+  "swing": 30,
+  "humanize": 25,
+  "cohesion": "v1",
+  "seconds": 124.4,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.2,
+  "switches": 59,
+  "density": "intro:19/4r verse:30/6r chorus:33/6r verse:30/6r chorus:33/6r outro:21/6r",
+  "densContrast": 1.76,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 328,
+    "distinct": 10,
+    "std": 15.2,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 499,
+    "distinct": 12,
+    "std": 14.6,
+    "min": 72,
+    "max": 114
+   },
+   "melody": {
+    "n": 246,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "bass": {
+    "n": 245,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 246,
+   "range": 10,
+   "pcEntropy": 2.39,
+   "distinctPitches": 6,
+   "intervals": {
+    "rep": 0.54,
+    "step": 0.33,
+    "skip": 0.11,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.65,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5.5,
+   "vlOptimal": 3.5,
+   "melConsonanceOnBeat": 0.96
+  },
+  "bass": {
+   "n": 245,
+   "distinctPitches": 3,
+   "rootShare": 1,
+   "meanInterval": 1.2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 31,
+    "bars": 56,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 16,
+    "bars": 56,
+    "sameAsPrev": 0.48214285714285715,
+    "sameAs4Back": 0.05357142857142857
+   },
+   "melody": {
+    "distinct": 4,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.85
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 50,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.88
+   },
+   "deflateRatio": 0.035
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.29,
+  "onGrid": 1
+ },
+ {
+  "genre": "bossa",
+  "seed": 42,
+  "tempo": 88,
+  "swing": 40,
+  "humanize": 30,
+  "cohesion": "v1",
+  "seconds": 130.9,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 solo:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   1,
+   2,
+   3
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.5,
+  "switches": 46,
+  "density": "intro:17/3r verse:22/4r chorus:25/4r solo:24/4r chorus:25/4r outro:22/5r",
+  "densContrast": 1.48,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "hihat": {
+    "n": 611,
+    "distinct": 7,
+    "std": 19.1,
+    "min": 66,
+    "max": 113
+   },
+   "bass": {
+    "n": 91,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 255,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "kick": {
+    "n": 11,
+    "distinct": 3,
+    "std": 14,
+    "min": 84,
+    "max": 117
+   }
+  },
+  "melody": {
+   "n": 255,
+   "range": 10,
+   "pcEntropy": 2.41,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.43,
+    "step": 0.42,
+    "skip": 0.07,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.56,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.93
+  },
+  "bass": {
+   "n": 91,
+   "distinctPitches": 7,
+   "rootShare": 0.63,
+   "meanInterval": 6
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 29,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "drums": {
+    "distinct": 8,
+    "bars": 48,
+    "sameAsPrev": 0.5833333333333334,
+    "sameAs4Back": 0.14583333333333334
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6111111111111112
+   },
+   "bass": {
+    "distinct": 5,
+    "bars": 46,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8913043478260869
+   },
+   "deflateRatio": 0.04
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.66,
+  "onGrid": 1
+ },
+ {
+  "genre": "bossa",
+  "seed": 7,
+  "tempo": 88,
+  "swing": 40,
+  "humanize": 30,
+  "cohesion": "v1",
+  "seconds": 98.2,
+  "bars": 36,
+  "form": "intro:4 verse:12 solo:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   1,
+   2,
+   3
+  ],
+  "latenessMax": 13,
+  "latenessMean": 5.9,
+  "switches": 38,
+  "density": "intro:17/3r verse:22/4r solo:24/4r verse:22/4r outro:23/5r",
+  "densContrast": 1.4,
+  "velStats": {
+   "harmony": {
+    "n": 108,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "hihat": {
+    "n": 455,
+    "distinct": 7,
+    "std": 19,
+    "min": 66,
+    "max": 113
+   },
+   "bass": {
+    "n": 66,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 132,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "kick": {
+    "n": 11,
+    "distinct": 3,
+    "std": 14,
+    "min": 84,
+    "max": 117
+   }
+  },
+  "melody": {
+   "n": 132,
+   "range": 10,
+   "pcEntropy": 2.42,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.56,
+    "step": 0.41,
+    "skip": 0,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.54,
+   "motifPhaseOff": "13/14",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 35,
+   "notesPerChord": 3,
+   "vlActual": 4.4,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.87
+  },
+  "bass": {
+   "n": 66,
+   "distinctPitches": 7,
+   "rootShare": 0.62,
+   "meanInterval": 6
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 23,
+    "bars": 36,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.027777777777777776
+   },
+   "drums": {
+    "distinct": 8,
+    "bars": 36,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.1111111111111111
+   },
+   "melody": {
+    "distinct": 8,
+    "bars": 18,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.4444444444444444
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 33,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8787878787878788
+   },
+   "deflateRatio": 0.047
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.56,
+  "onGrid": 1
+ },
+ {
+  "genre": "bossa",
+  "seed": 2026,
+  "tempo": 88,
+  "swing": 40,
+  "humanize": 30,
+  "cohesion": "v1",
+  "seconds": 130.9,
+  "bars": 48,
+  "form": "intro:4 verse:12 verse:12 bridge:4 verse:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.9,
+  "switches": 43,
+  "density": "intro:17/3r verse:21/4r verse:21/4r bridge:14/4r verse:21/4r outro:22/5r",
+  "densContrast": 1.6,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "hihat": {
+    "n": 564,
+    "distinct": 7,
+    "std": 19.1,
+    "min": 66,
+    "max": 113
+   },
+   "bass": {
+    "n": 90,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   },
+   "melody": {
+    "n": 157,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "kick": {
+    "n": 11,
+    "distinct": 3,
+    "std": 14,
+    "min": 84,
+    "max": 117
+   }
+  },
+  "melody": {
+   "n": 157,
+   "range": 10,
+   "pcEntropy": 1.94,
+   "distinctPitches": 7,
+   "intervals": {
+    "rep": 0.67,
+    "step": 0.08,
+    "skip": 0.17,
+    "leap": 0.07
+   },
+   "onBeatShare": 0.61,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 47,
+   "notesPerChord": 3,
+   "vlActual": 4.5,
+   "vlOptimal": 3,
+   "melConsonanceOnBeat": 0.92
+  },
+  "bass": {
+   "n": 90,
+   "distinctPitches": 7,
+   "rootShare": 0.62,
+   "meanInterval": 6
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 24,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.0625
+   },
+   "drums": {
+    "distinct": 8,
+    "bars": 45,
+    "sameAsPrev": 0.5111111111111111,
+    "sameAs4Back": 0.1111111111111111
+   },
+   "melody": {
+    "distinct": 8,
+    "bars": 24,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.5833333333333334
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 45,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.9111111111111111
+   },
+   "deflateRatio": 0.04
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.53,
+  "onGrid": 1
+ },
+ {
+  "genre": "trap",
+  "seed": 42,
+  "tempo": 140,
+  "swing": 10,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 96,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.4,
+  "switches": 54,
+  "density": "intro:13/2r buildup:36/6r drop:39/6r verse:35/6r drop:39/6r outro:22/5r",
+  "densContrast": 3.03,
+  "velStats": {
+   "kick": {
+    "n": 191,
+    "distinct": 6,
+    "std": 13.3,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 604,
+    "distinct": 14,
+    "std": 18.8,
+    "min": 66,
+    "max": 111
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 636,
+    "distinct": 2,
+    "std": 5,
+    "min": 90,
+    "max": 100
+   },
+   "melody": {
+    "n": 245,
+    "distinct": 2,
+    "std": 5,
+    "min": 85,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 245,
+   "range": 12,
+   "pcEntropy": 2.86,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.51,
+    "step": 0.29,
+    "skip": 0.1,
+    "leap": 0.11
+   },
+   "onBeatShare": 0.62,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.56
+  },
+  "bass": {
+   "n": 636,
+   "distinctPitches": 6,
+   "rootShare": 0.54,
+   "meanInterval": 0.6
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 29,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.05357142857142857
+   },
+   "drums": {
+    "distinct": 12,
+    "bars": 56,
+    "sameAsPrev": 0.5357142857142857,
+    "sameAs4Back": 0.08928571428571429
+   },
+   "melody": {
+    "distinct": 18,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.05263157894736842
+   },
+   "bass": {
+    "distinct": 18,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.10204081632653061
+   },
+   "deflateRatio": 0.039
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.24,
+  "onGrid": 1
+ },
+ {
+  "genre": "trap",
+  "seed": 7,
+  "tempo": 140,
+  "swing": 10,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.2,
+  "switches": 59,
+  "density": "intro:13/2r verse:35/6r buildup:36/6r drop:38/6r breakdown:28/5r drop:38/6r outro:23/5r",
+  "densContrast": 2.96,
+  "velStats": {
+   "kick": {
+    "n": 189,
+    "distinct": 6,
+    "std": 13.3,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 630,
+    "distinct": 15,
+    "std": 18.8,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 689,
+    "distinct": 3,
+    "std": 6.1,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 238,
+    "distinct": 3,
+    "std": 5.8,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 238,
+   "range": 13,
+   "pcEntropy": 2.59,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.58,
+    "step": 0.21,
+    "skip": 0.16,
+    "leap": 0.06
+   },
+   "onBeatShare": 0.66,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.54
+  },
+  "bass": {
+   "n": 689,
+   "distinctPitches": 9,
+   "rootShare": 0.5,
+   "meanInterval": 0.6
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.1
+   },
+   "drums": {
+    "distinct": 14,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.11666666666666667
+   },
+   "melody": {
+    "distinct": 19,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.11904761904761904
+   },
+   "bass": {
+    "distinct": 20,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.1320754716981132
+   },
+   "deflateRatio": 0.043
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.2,
+  "onGrid": 1
+ },
+ {
+  "genre": "trap",
+  "seed": 2026,
+  "tempo": 140,
+  "swing": 10,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 102.9,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.6,
+  "switches": 55,
+  "density": "intro:13/2r buildup:36/6r drop:40/6r breakdown:28/5r buildup:36/6r drop:39/6r outro:23/5r",
+  "densContrast": 3.04,
+  "velStats": {
+   "kick": {
+    "n": 192,
+    "distinct": 6,
+    "std": 13,
+    "min": 84,
+    "max": 117
+   },
+   "hihat": {
+    "n": 636,
+    "distinct": 15,
+    "std": 18.8,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "bass": {
+    "n": 688,
+    "distinct": 3,
+    "std": 6.3,
+    "min": 80,
+    "max": 100
+   },
+   "melody": {
+    "n": 280,
+    "distinct": 3,
+    "std": 5.9,
+    "min": 75,
+    "max": 95
+   },
+   "snare": {
+    "n": 96,
+    "distinct": 2,
+    "std": 0.5,
+    "min": 103,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 280,
+   "range": 15,
+   "pcEntropy": 2.3,
+   "distinctPitches": 12,
+   "intervals": {
+    "rep": 0.73,
+    "step": 0.12,
+    "skip": 0.05,
+    "leap": 0.1
+   },
+   "onBeatShare": 0.58,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 5,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.52
+  },
+  "bass": {
+   "n": 688,
+   "distinctPitches": 9,
+   "rootShare": 0.44,
+   "meanInterval": 0.6
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 22,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.047619047619047616
+   },
+   "bass": {
+    "distinct": 22,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.09433962264150944
+   },
+   "deflateRatio": 0.043
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.24,
+  "onGrid": 1
+ },
+ {
+  "genre": "garage",
+  "seed": 42,
+  "tempo": 130,
+  "swing": 30,
+  "humanize": 18,
+  "cohesion": "v1",
+  "seconds": 103.4,
+  "bars": 56,
+  "form": "intro:4 buildup:12 drop:12 verse:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.8,
+  "switches": 58,
+  "density": "intro:17/2r buildup:31/6r drop:32/6r verse:29/6r drop:32/6r outro:23/5r",
+  "densContrast": 1.89,
+  "velStats": {
+   "kick": {
+    "n": 174,
+    "distinct": 8,
+    "std": 13.8,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 777,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 155,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 144,
+    "distinct": 2,
+    "std": 0.9,
+    "min": 96,
+    "max": 98
+   },
+   "melody": {
+    "n": 246,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "bass": {
+    "n": 146,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 246,
+   "range": 5,
+   "pcEntropy": 1.88,
+   "distinctPitches": 4,
+   "intervals": {
+    "rep": 0.47,
+    "step": 0.34,
+    "skip": 0.19,
+    "leap": 0
+   },
+   "onBeatShare": 0.61,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 51,
+   "notesPerChord": 3,
+   "vlActual": 6.5,
+   "vlOptimal": 5.5,
+   "melConsonanceOnBeat": 0.98
+  },
+  "bass": {
+   "n": 146,
+   "distinctPitches": 3,
+   "rootShare": 0.99,
+   "meanInterval": 2
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 56,
+    "sameAsPrev": 0.05357142857142857,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 16,
+    "bars": 56,
+    "sameAsPrev": 0.4642857142857143,
+    "sameAs4Back": 0.05357142857142857
+   },
+   "melody": {
+    "distinct": 5,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8157894736842105
+   },
+   "bass": {
+    "distinct": 4,
+    "bars": 49,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.8979591836734694
+   },
+   "deflateRatio": 0.034
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.98,
+  "onGrid": 1
+ },
+ {
+  "genre": "garage",
+  "seed": 7,
+  "tempo": 130,
+  "swing": 30,
+  "humanize": 18,
+  "cohesion": "v1",
+  "seconds": 110.8,
+  "bars": 60,
+  "form": "intro:4 verse:12 buildup:12 drop:12 breakdown:4 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 17,
+  "latenessMean": 7.4,
+  "switches": 62,
+  "density": "intro:17/2r verse:30/6r buildup:31/6r drop:33/6r breakdown:21/5r drop:33/6r outro:24/6r",
+  "densContrast": 1.97,
+  "velStats": {
+   "kick": {
+    "n": 175,
+    "distinct": 8,
+    "std": 13.8,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 817,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 145,
+    "distinct": 2,
+    "std": 0.9,
+    "min": 96,
+    "max": 98
+   },
+   "melody": {
+    "n": 307,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "bass": {
+    "n": 159,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 307,
+   "range": 7,
+   "pcEntropy": 2.12,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.44,
+    "step": 0.42,
+    "skip": 0.14,
+    "leap": 0
+   },
+   "onBeatShare": 0.53,
+   "motifPhaseOff": "17/18",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 6.5,
+   "vlOptimal": 5.5,
+   "melConsonanceOnBeat": 0.9
+  },
+  "bass": {
+   "n": 159,
+   "distinctPitches": 6,
+   "rootShare": 0.99,
+   "meanInterval": 2.1
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 37,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "drums": {
+    "distinct": 18,
+    "bars": 60,
+    "sameAsPrev": 0.4666666666666667,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 8,
+    "bars": 54,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7407407407407407
+   },
+   "deflateRatio": 0.038
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2,
+  "onGrid": 1
+ },
+ {
+  "genre": "garage",
+  "seed": 2026,
+  "tempo": 130,
+  "swing": 30,
+  "humanize": 18,
+  "cohesion": "v1",
+  "seconds": 110.8,
+  "bars": 60,
+  "form": "intro:4 buildup:12 drop:12 breakdown:4 buildup:12 drop:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3,
+   6
+  ],
+  "latenessMax": 15,
+  "latenessMean": 6.5,
+  "switches": 54,
+  "density": "intro:17/2r buildup:30/6r drop:32/6r breakdown:20/5r buildup:30/6r drop:32/6r outro:23/6r",
+  "densContrast": 1.9,
+  "velStats": {
+   "kick": {
+    "n": 179,
+    "distinct": 8,
+    "std": 13.5,
+    "min": 81,
+    "max": 117
+   },
+   "hihat": {
+    "n": 835,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "harmony": {
+    "n": 167,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "snare": {
+    "n": 145,
+    "distinct": 2,
+    "std": 0.9,
+    "min": 96,
+    "max": 98
+   },
+   "melody": {
+    "n": 253,
+    "distinct": 1,
+    "std": 0,
+    "min": 85,
+    "max": 85
+   },
+   "bass": {
+    "n": 158,
+    "distinct": 1,
+    "std": 0,
+    "min": 90,
+    "max": 90
+   }
+  },
+  "melody": {
+   "n": 253,
+   "range": 8,
+   "pcEntropy": 2.17,
+   "distinctPitches": 5,
+   "intervals": {
+    "rep": 0.48,
+    "step": 0.3,
+    "skip": 0.14,
+    "leap": 0.08
+   },
+   "onBeatShare": 0.63,
+   "motifPhaseOff": "15/16",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 4,
+   "chordChanges": 55,
+   "notesPerChord": 3,
+   "vlActual": 6.5,
+   "vlOptimal": 5.5,
+   "melConsonanceOnBeat": 0.94
+  },
+  "bass": {
+   "n": 158,
+   "distinctPitches": 6,
+   "rootShare": 0.99,
+   "meanInterval": 2.1
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 33,
+    "bars": 60,
+    "sameAsPrev": 0.05,
+    "sameAs4Back": 0.06666666666666667
+   },
+   "drums": {
+    "distinct": 16,
+    "bars": 60,
+    "sameAsPrev": 0.5333333333333333,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 10,
+    "bars": 42,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.6666666666666666
+   },
+   "bass": {
+    "distinct": 8,
+    "bars": 53,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.7358490566037735
+   },
+   "deflateRatio": 0.036
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 1.94,
+  "onGrid": 1
+ },
+ {
+  "genre": "metal",
+  "seed": 42,
+  "tempo": 180,
+  "swing": 0,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 80,
+  "bars": 60,
+  "form": "intro:4 verse:12 pre-chorus:4 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 19,
+  "latenessMean": 8.4,
+  "switches": 69,
+  "density": "intro:32/4r verse:43/6r pre-chorus:41/6r chorus:47/6r verse:44/6r chorus:47/6r outro:34/6r",
+  "densContrast": 1.49,
+  "velStats": {
+   "harmony": {
+    "n": 180,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 530,
+    "distinct": 14,
+    "std": 13.9,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 960,
+    "distinct": 8,
+    "std": 19.5,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 293,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 85,
+    "max": 95
+   },
+   "bass": {
+    "n": 425,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 90,
+    "max": 100
+   },
+   "snare": {
+    "n": 208,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 293,
+   "range": 12,
+   "pcEntropy": 2.68,
+   "distinctPitches": 10,
+   "intervals": {
+    "rep": 0.6,
+    "step": 0.23,
+    "skip": 0.13,
+    "leap": 0.05
+   },
+   "onBeatShare": 0.55,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 45,
+   "notesPerChord": 3,
+   "vlActual": 4,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.59
+  },
+  "bass": {
+   "n": 425,
+   "distinctPitches": 5,
+   "rootShare": 0.61,
+   "meanInterval": 0.7
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 35,
+    "bars": 60,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03333333333333333
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 60,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.08333333333333333
+   },
+   "melody": {
+    "distinct": 20,
+    "bars": 41,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07317073170731707
+   },
+   "bass": {
+    "distinct": 20,
+    "bars": 54,
+    "sameAsPrev": 0.14814814814814814,
+    "sameAs4Back": 0.09259259259259259
+   },
+   "deflateRatio": 0.033
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.7,
+  "onGrid": 1
+ },
+ {
+  "genre": "metal",
+  "seed": 7,
+  "tempo": 180,
+  "swing": 0,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 64,
+  "bars": 48,
+  "form": "intro:4 verse:12 chorus:12 bridge:4 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 16,
+  "latenessMean": 6.7,
+  "switches": 57,
+  "density": "intro:32/4r verse:43/6r chorus:47/6r bridge:36/6r chorus:46/6r outro:33/6r",
+  "densContrast": 1.49,
+  "velStats": {
+   "harmony": {
+    "n": 144,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 410,
+    "distinct": 16,
+    "std": 14.2,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 743,
+    "distinct": 8,
+    "std": 19.4,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 278,
+    "distinct": 3,
+    "std": 6.3,
+    "min": 75,
+    "max": 95
+   },
+   "bass": {
+    "n": 327,
+    "distinct": 3,
+    "std": 6.3,
+    "min": 80,
+    "max": 100
+   },
+   "snare": {
+    "n": 144,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 278,
+   "range": 15,
+   "pcEntropy": 3,
+   "distinctPitches": 12,
+   "intervals": {
+    "rep": 0.54,
+    "step": 0.19,
+    "skip": 0.16,
+    "leap": 0.11
+   },
+   "onBeatShare": 0.55,
+   "motifPhaseOff": "17/17",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 36,
+   "notesPerChord": 3,
+   "vlActual": 4,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.57
+  },
+  "bass": {
+   "n": 327,
+   "distinctPitches": 8,
+   "rootShare": 0.52,
+   "meanInterval": 0.7
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 48,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.020833333333333332
+   },
+   "drums": {
+    "distinct": 17,
+    "bars": 48,
+    "sameAsPrev": 0.4583333333333333,
+    "sameAs4Back": 0.041666666666666664
+   },
+   "melody": {
+    "distinct": 20,
+    "bars": 38,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.07894736842105263
+   },
+   "bass": {
+    "distinct": 20,
+    "bars": 41,
+    "sameAsPrev": 0.14634146341463414,
+    "sameAs4Back": 0.04878048780487805
+   },
+   "deflateRatio": 0.045
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.7,
+  "onGrid": 1
+ },
+ {
+  "genre": "metal",
+  "seed": 2026,
+  "tempo": 180,
+  "swing": 0,
+  "humanize": 8,
+  "cohesion": "v1",
+  "seconds": 74.7,
+  "bars": 56,
+  "form": "intro:4 verse:12 chorus:12 verse:12 chorus:12 outro:4",
+  "secBarsPow2": 0,
+  "phraseBars": [
+   2,
+   3
+  ],
+  "latenessMax": 18,
+  "latenessMean": 7.5,
+  "switches": 63,
+  "density": "intro:31/4r verse:43/6r chorus:47/6r verse:43/6r chorus:47/6r outro:33/6r",
+  "densContrast": 1.5,
+  "velStats": {
+   "harmony": {
+    "n": 168,
+    "distinct": 1,
+    "std": 0,
+    "min": 68,
+    "max": 68
+   },
+   "kick": {
+    "n": 494,
+    "distinct": 14,
+    "std": 13.8,
+    "min": 81,
+    "max": 124
+   },
+   "hihat": {
+    "n": 896,
+    "distinct": 8,
+    "std": 19.5,
+    "min": 66,
+    "max": 113
+   },
+   "melody": {
+    "n": 266,
+    "distinct": 2,
+    "std": 4.9,
+    "min": 85,
+    "max": 95
+   },
+   "bass": {
+    "n": 392,
+    "distinct": 2,
+    "std": 4.8,
+    "min": 90,
+    "max": 100
+   },
+   "snare": {
+    "n": 192,
+    "distinct": 4,
+    "std": 3,
+    "min": 97,
+    "max": 104
+   }
+  },
+  "melody": {
+   "n": 266,
+   "range": 12,
+   "pcEntropy": 2.49,
+   "distinctPitches": 9,
+   "intervals": {
+    "rep": 0.47,
+    "step": 0.36,
+    "skip": 0.15,
+    "leap": 0.03
+   },
+   "onBeatShare": 0.6,
+   "motifPhaseOff": "19/19",
+   "durMs": 1
+  },
+  "harmony": {
+   "chordsPerSong": 3,
+   "chordChanges": 42,
+   "notesPerChord": 3,
+   "vlActual": 4,
+   "vlOptimal": 4,
+   "melConsonanceOnBeat": 0.61
+  },
+  "bass": {
+   "n": 392,
+   "distinctPitches": 5,
+   "rootShare": 0.62,
+   "meanInterval": 0.7
+  },
+  "repetition": {
+   "mix": {
+    "distinct": 32,
+    "bars": 56,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.03571428571428571
+   },
+   "drums": {
+    "distinct": 15,
+    "bars": 56,
+    "sameAsPrev": 0.5,
+    "sameAs4Back": 0.07142857142857142
+   },
+   "melody": {
+    "distinct": 17,
+    "bars": 40,
+    "sameAsPrev": 0,
+    "sameAs4Back": 0.1
+   },
+   "bass": {
+    "distinct": 17,
+    "bars": 50,
+    "sameAsPrev": 0.18,
+    "sameAs4Back": 0.1
+   },
+   "deflateRatio": 0.035
+  },
+  "hatVelVariantsPerPos": 1,
+  "polyMean": 2.69,
+  "onGrid": 1
+ }
+]
