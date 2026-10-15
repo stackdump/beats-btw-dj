@@ -230,6 +230,29 @@ extension Deck {
     if case .rawNets(let payload) = track.source { currentRawNets = payload }
   }
 
+  /// A composed net loop (a spec with no structure: it plays until stopped).
+  public var isNetLoop: Bool {
+    guard mode == .net, let spec = currentSpec else { return false }
+    return spec.structure?.isEmpty ?? true
+  }
+
+  /// The browser wheel on a playing loop: the same genre, `delta` seeds on, composed in the
+  /// background and swapped in at the next bar (inline in `deterministic` replay). Clicks that
+  /// land while one composes count from the seed it is heading to; the latest wins. Nil (and
+  /// nothing happens) unless the deck holds a composed loop.
+  @discardableResult
+  public func stepSeed(_ delta: Int) -> TrackSpec? {
+    guard delta != 0, isNetLoop, var spec = seedTarget ?? currentSpec else { return nil }
+    spec.seed += Double(delta)
+    if deterministic {
+      loadNet(PreparedTrack(spec: spec, sampleRate: wave.sampleRate, opts: waveOptions))
+    } else {
+      seedTarget = spec
+      Task { @MainActor in await self.generate(spec) }
+    }
+    return spec
+  }
+
   /// Start composing the next track in the background (cancels an earlier request).
   public func queueNext(_ spec: TrackSpec) {
     if deterministic {

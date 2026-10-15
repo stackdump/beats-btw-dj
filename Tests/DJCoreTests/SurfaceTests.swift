@@ -87,7 +87,8 @@ struct SurfaceProfileTests {
           #expect(b.reason != nil, "\(p.name): \(b.group) parked without a reason")
         }
         let deckless: Set<DJActionKind> = [
-          .crossfader, .master, .shift, .unbound, .keys, .nudge, .headphoneMix, .headphoneLevel,
+          .crossfader, .master, .shift, .unbound, .keys, .nudge, .seedStep, .headphoneMix,
+          .headphoneLevel,
         ]
         if !deckless.contains(b.action) { #expect(b.deck != nil, "\(p.name): \(b)") }
       }
@@ -355,5 +356,93 @@ struct Phase1ActionTests {
     apc.handle(bytes: [0xB0, 0x30, 110])
     #expect(abs(dj["A"]!.volume - 110.0 / 127) < 1e-9)
     #expect(dj.owners["A.volume"] == "APC mini mk2/faders#0")
+  }
+}
+
+/// The Inpulse's browser wheel on a playing loop: one seed per click, recomposed.
+@MainActor
+struct BrowserSeedTests {
+  let cw: [UInt8] = [0xB0, 0x01, 0x01]
+  let ccw: [UInt8] = [0xB0, 0x01, 0x7F]
+
+  func make(deterministic: Bool = true) throws -> (DJEngine, SurfaceController) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj.deterministic = deterministic
+    for d in dj.decks.values { d.loadDemo() }
+    return (dj, SurfaceController(profile: .inpulse200MK3, engine: dj))
+  }
+
+  func loop(_ dj: DJEngine, _ deck: String, seed: Double, structure: String? = nil) {
+    let d = dj[deck]!
+    d.loadNet(
+      PreparedTrack(
+        spec: TrackSpec(genre: "techno", seed: seed, structure: structure),
+        sampleRate: dj.sampleRate, opts: d.waveOptions))
+  }
+
+  @Test func eachClickMovesThePlayingLoopOneSeed() throws {
+    let (dj, s) = try make()
+    loop(dj, "A", seed: 5)
+    dj["A"]!.setPlaying(true)
+    s.handle(bytes: cw)
+    #expect(dj["A"]!.currentSpec == TrackSpec(genre: "techno", seed: 6))
+    s.handle(bytes: cw)
+    s.handle(bytes: ccw)
+    s.handle(bytes: ccw)
+    s.handle(bytes: ccw)
+    #expect(dj["A"]!.currentSpec?.seed == 4)
+    #expect(dj["A"]!.playing && dj["A"]!.isNetLoop)
+    #expect(dj["A"]!.netProject?.modelCID == TrackSpec(genre: "techno", seed: 4).project().modelCID)
+  }
+
+  @Test func onlyAPlayingComposedLoopMoves() throws {
+    let (dj, s) = try make()
+    loop(dj, "A", seed: 5)  // stopped
+    s.handle(bytes: cw)
+    #expect(dj["A"]!.currentSpec?.seed == 5, "not playing")
+    loop(dj, "A", seed: 5, structure: "minimal")
+    dj["A"]!.setPlaying(true)
+    s.handle(bytes: cw)
+    #expect(dj["A"]!.currentSpec?.seed == 5, "a song, not a loop")
+    dj["B"]!.setPlaying(true)  // a sample deck
+    s.handle(bytes: cw)
+    #expect(dj["B"]!.mode == .sample)
+  }
+
+  @Test func theFocusDeckWinsWhenTwoLoopsPlay() throws {
+    let (dj, s) = try make()
+    loop(dj, "A", seed: 1)
+    loop(dj, "B", seed: 10)
+    dj["A"]!.setPlaying(true)
+    dj["B"]!.setPlaying(true)
+    dj.focus = "B"
+    s.handle(bytes: cw)
+    #expect(dj["B"]!.currentSpec?.seed == 11 && dj["A"]!.currentSpec?.seed == 1)
+    // one loop playing: it moves whatever the focus, and takes the focus
+    dj["B"]!.setPlaying(false)
+    s.handle(bytes: cw)
+    #expect(dj["A"]!.currentSpec?.seed == 2 && dj.focus == "A")
+  }
+
+  @Test func aFastTurnCountsEveryClickWhileItComposes() async throws {
+    let (dj, s) = try make(deterministic: false)
+    loop(dj, "A", seed: 20)
+    dj["A"]!.setPlaying(true)
+    for _ in 0..<3 { s.handle(bytes: cw) }
+    var landed = false
+    for _ in 0..<2000 {
+      if dj["A"]!.currentSpec?.seed == 23 {
+        landed = true
+        break
+      }
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(landed, "three clicks land on seed 23, got \(dj["A"]!.currentSpec?.seed ?? -1)")
+    #expect(dj["A"]!.seedTarget == nil)
+  }
+
+  @Test func theDeviceMapNamesIt() {
+    let row = SurfaceProfile.inpulse200MK3.deviceMap().first { $0.group == "mixer.browser" }
+    #expect(row?.action.contains("seed") == true)
   }
 }

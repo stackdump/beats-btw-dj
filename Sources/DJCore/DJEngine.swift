@@ -239,6 +239,9 @@ public final class Deck: JogClock {
   /// Called whenever no next track is composed or composing: keeps one coming.
   public var nextProvider: (() -> TrackSpec)?
   var generation = 0
+  /// The loop `stepSeed` last asked for, while it composes (nil once any track loads), so a
+  /// fast turn of the wheel counts every click from the seed it is heading to.
+  var seedTarget: TrackSpec?
   /// See `DJEngine.deterministic`.
   var deterministic = false
   var isDemo = false
@@ -497,6 +500,7 @@ public final class Deck: JogClock {
     // A hand-built net has no spec; `loadNet(_:)` for a track sets its source after.
     currentSpec = nil
     currentRawNets = nil
+    seedTarget = nil
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net

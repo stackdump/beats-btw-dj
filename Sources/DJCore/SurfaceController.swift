@@ -125,6 +125,14 @@ public final class SurfaceController {
     case .nudge:
       // centred control: 0.5 = no nudge, full travel = ± the tempo-fader range
       dj[dj.focus]?.nudge((e.value - 0.5) * 2 * Deck.pitchRange)
+    case .seedStep:
+      // deck-less: the focus deck if it is playing a loop, else the one loop that is playing
+      let loops = dj.decks.values.filter { $0.playing && $0.isNetLoop }.sorted { $0.name < $1.name }
+      guard e.delta != 0,
+        let d = loops.first(where: { $0.name == dj.focus }) ?? (loops.count == 1 ? loops[0] : nil)
+      else { break }
+      dj.focus = d.name
+      d.stepSeed(e.delta)
     case .section, .sectionPrev, .sectionNext, .roleMute, .macro, .panic, .stinger, .nextTrack,
       .keys, .sync, .quantize, .rewind, .pfl:
       perform(b, deck: deck, event: e, press: press, now: now)
