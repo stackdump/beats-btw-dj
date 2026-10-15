@@ -222,8 +222,10 @@ private func pcs(_ genre: String, _ seed: Double, step: Int) -> Set<Int> {
     let g = BeatsTables.shared.genres["edm"]!
     let key = Set(g.scale(g.rootNote).map { $0 % 12 })
     func outOfKey(_ s: TrackSpec) -> Int {
-      play(s.project()).filter { ($0.role == "melody" || $0.role == "arp") && !key.contains($0.note % 12) }
-        .count
+      play(s.project()).filter {
+        ($0.role == "melody" || $0.role == "arp") && !key.contains($0.note % 12)
+      }
+      .count
     }
     // beats' tension curve moves B / C phrases out of the key…
     #expect(outOfKey(TrackSpec(genre: "edm", seed: 4242, structure: "standard")) > 0)
@@ -244,7 +246,8 @@ private func pcs(_ genre: String, _ seed: Double, step: Int) -> Set<Int> {
     for o in [
       opts(), opts(("hook", .bool(true))),
       opts(("chordSnap", .string("strong"))),
-      opts(("hook", .bool(true)), ("chordSnap", .string("strong")), ("layerBudget", .string("auto"))),
+      opts(
+        ("hook", .bool(true)), ("chordSnap", .string("strong")), ("layerBudget", .string("auto"))),
       all,
     ] {
       let s = try spec(o)
@@ -266,12 +269,15 @@ private func pcs(_ genre: String, _ seed: Double, step: Int) -> Set<Int> {
     for id in p.nets.keys {
       let nb = p.nets[id]!
       let kept = !solo.nets[id]!.bindings.keys.isEmpty
-      let drumsOrBass = nb.track.group == "drums" || nb.track.group == "bass" || id.hasPrefix("fill-")
+      let drumsOrBass =
+        nb.track.group == "drums" || nb.track.group == "bass" || id.hasPrefix("fill-")
       if !nb.bindings.keys.isEmpty { #expect(kept == drumsOrBass, "\(id)") }
       #expect(solo.nets[id]!.controlBindings.keys.count == nb.controlBindings.keys.count)
     }
     let muted = RoleFilter(mute: ["melody"]).apply(p)
     #expect(!play(muted).contains { $0.role == "melody" })
-    #expect(play(muted).filter { $0.role != "melody" }.count == play(p).filter { $0.role != "melody" }.count)
+    #expect(
+      play(muted).filter { $0.role != "melody" }.count
+        == play(p).filter { $0.role != "melody" }.count)
   }
 }

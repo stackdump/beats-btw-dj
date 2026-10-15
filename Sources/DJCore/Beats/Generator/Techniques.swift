@@ -79,7 +79,8 @@ func techniqueContext(
   let density = t.melodyDensity ?? genre.melodyDensity
   return TechniqueContext(
     t: t, plan: plan,
-    hook: t.hook ? buildHook(genre: genreName, seed: seed, bars: t.hookBars, density: density) : nil,
+    hook: t.hook
+      ? buildHook(genre: genreName, seed: seed, bars: t.hookBars, density: density) : nil,
     melodyScale: genre.scale(genre.rootNote + 12), bassScale: bassScale,
     chordPCs: plan.chords.map { c in
       c.tones.map { ((degreeToMidi(clampDegree($0), key) % 12) + 12) % 12 }

@@ -27,8 +27,9 @@ struct DJApp: App {
         }
     }
     // The content scrolls (ContentView), so the window no longer sizes itself to it: open at a
-    // size that shows two decks and the bottom bar, and resize freely down to the minimum above.
-    .defaultSize(width: 900, height: 820)
+    // size that shows two decks with their section columns (the wide layout) and the bottom bar,
+    // and resize freely down to the minimum above (narrower stacks each deck's sections).
+    .defaultSize(width: 1440, height: 900)
     // The Stage (SPEC modes 7…21): a full-window visualization of the decks' nets, opened by the
     // "Stage" button next to "Scopes".
     Window(StageWindow.title, id: StageWindow.id) {

@@ -210,6 +210,8 @@ its copy; the two are now independent. Rules inherited from that split:
 - No dropdowns on the deck: its controls beyond the core are `DeckSections` — a strip of toggle
   buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load); which
   are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s, lit when current.
+- A wide window (`ViewThatFits`) gives each deck two columns: core beside the mixer, sections on
+  the outer side (A left, B right); narrower stacks the sections under the core.
 - Favorites (`FavoritesStore`, `~/Library/Application Support/dj-vevr-se/favorites.json`) keep
   the deck's `DeckSourceDescriptor` in the session encoding, named by share CID — never just the
   title (43×43 names, so ~540 seeds per name in the Generate range).

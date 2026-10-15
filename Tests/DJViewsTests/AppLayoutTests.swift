@@ -64,6 +64,21 @@ struct AppLayoutTests {
     #expect(buttons > 2_000, "the bottom bar is drawn at the window's foot (\(buttons) pixels)")
   }
 
+  /// A wide window gives each deck a column for its sections on the outer side, so the window's
+  /// outer columns carry controls (deck B is a sample deck here: its strip is Favorites, Generate,
+  /// Load); a narrow window stacks them under the core.
+  @Test func aWideWindowUsesItsWidth() async throws {
+    let m = try await model()
+    let view = ContentView(model: m)
+    savePNG(view, width: 1600, height: 1100, name: "app-wide")
+    let px = try #require(renderPixels(view, width: 1600, height: 1100))
+    let lit: (Range<Int>) -> Int = { xs in
+      px.count(inX: xs, y: 0..<900) { r, g, b in r > 60 || g > 60 || b > 60 }
+    }
+    #expect(lit(0..<250) > 2_000, "deck A's sections column is at the left edge")
+    #expect(lit(1180..<1400) > 2_000, "deck B's sections column is right of its core")
+  }
+
   @Test func theDefaultWindowSize() async throws {
     let m = try await model()
     savePNG(ContentView(model: m), width: 900, height: 760, name: "app-default")

@@ -717,18 +717,26 @@ public struct ContentView: View {
     }
   }
 
+  /// The three cards share one height (the tallest's), so their edges line up as one row.
+  private func deckRow(wide: Bool) -> some View {
+    HStack(alignment: .top, spacing: DJStyle.l) {
+      DeckView(name: "A", model: model, tint: DJStyle.deckA, wide: wide)
+        .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckA)
+      MixerView(model: model)
+        .frame(maxHeight: .infinity, alignment: .top).djCard()
+      DeckView(name: "B", model: model, tint: DJStyle.deckB, wide: wide)
+        .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckB)
+    }
+    .fixedSize(horizontal: false, vertical: true)
+  }
+
   private var panels: some View {
     VStack(spacing: 16) {
-      // the three cards share one height (the tallest's), so their edges line up as one row
-      HStack(alignment: .top, spacing: DJStyle.l) {
-        DeckView(name: "A", model: model, tint: DJStyle.deckA)
-          .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckA)
-        MixerView(model: model)
-          .frame(maxHeight: .infinity, alignment: .top).djCard()
-        DeckView(name: "B", model: model, tint: DJStyle.deckB)
-          .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckB)
+      // a wide window gives each deck a second column for its sections; a narrow one stacks them
+      ViewThatFits(in: .horizontal) {
+        deckRow(wide: true)
+        deckRow(wide: false)
       }
-      .fixedSize(horizontal: false, vertical: true)
       if let w = model.walk {
         WalkPanel(
           walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
@@ -853,11 +861,51 @@ struct DeckView: View {
   let name: String
   let model: AppModel
   let tint: Color
+  /// Two columns: the deck's core beside the mixer, its sections on the outer side (deck A's
+  /// left, deck B's right). Otherwise the sections sit under the core.
+  var wide = false
   @State private var importing = false
 
   var state: DeckState { model.decks[name] ?? .init() }
 
+  /// What the sections column asks for in a wide window (it grows to `maxWidth` when there is
+  /// room): `ContentView` picks the wide layout when both decks fit at this width.
+  static let sectionsWidth: (ideal: CGFloat, max: CGFloat) = (300, 460)
+
   var body: some View {
+    Group {
+      if wide {
+        HStack(alignment: .top, spacing: DJStyle.l) {
+          if name == "A" { sectionsColumn }
+          core.frame(maxHeight: .infinity, alignment: .top)
+          if name != "A" { sectionsColumn }
+        }
+      } else {
+        VStack(spacing: DJStyle.m) {
+          core
+          sections
+        }
+        .frame(width: 260)
+      }
+    }
+    .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
+      if case .success(let url) = result { model.load(name, url: url) }
+    }
+  }
+
+  private var sections: some View {
+    DeckSections(name: name, state: state, model: model, tint: tint) { importing = true }
+  }
+
+  private var sectionsColumn: some View {
+    sections
+      .frame(
+        minWidth: 260, idealWidth: Self.sectionsWidth.ideal, maxWidth: Self.sectionsWidth.max,
+        alignment: .topLeading)
+  }
+
+  /// Platter, readouts, transport, the song and its rings, and the channel strip.
+  private var core: some View {
     VStack(spacing: DJStyle.m) {
       header
       PlatterView(
@@ -901,12 +949,8 @@ struct DeckView: View {
             .foregroundStyle(tint)
         }
       }
-      DeckSections(name: name, state: state, model: model, tint: tint) { importing = true }
     }
     .frame(width: 260)
-    .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
-      if case .success(let url) = result { model.load(name, url: url) }
-    }
   }
 
   /// The deck's letter, what it plays (the most important line on the deck) and its star.

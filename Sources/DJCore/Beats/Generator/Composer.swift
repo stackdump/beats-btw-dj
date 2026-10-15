@@ -242,7 +242,9 @@ private func expandVariants(
                 nb = melodyRiff(variant: letter, params: params)
               } else {
                 var cell = renderMotif(theme.motif, mode: mode!, harmonicOffset: harmonicOffset)
-                if role == "melody", let d = tech?.t.melodyDensity { cell = thinCell(cell, density: d) }
+                if role == "melody", let d = tech?.t.melodyDensity {
+                  cell = thinCell(cell, density: d)
+                }
                 nb = motifNet(cell, scale: scale, params: params)
               }
             } else {
