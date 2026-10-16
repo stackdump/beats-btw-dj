@@ -23,6 +23,14 @@ public final class DJEngine {
   public let sampleRate: Double
   public let format: AVAudioFormat
   public private(set) var decks: [String: Deck] = [:]
+  /// The loop channel ("L"): plays the clips LOOP record makes, under the mixer. Not one of
+  /// `decks` (no crossfader, no jog, not in a session's starting state), but `self["L"]` and
+  /// `perform` reach it like a deck.
+  public let loopChannel: Deck
+  /// The row under the mixer: every take LOOP record has finished, oldest first.
+  public internal(set) var clips: [LoopClip] = []
+  var loopTakes: [String: LoopTake] = [:]
+  var loopCount = 0
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]
@@ -96,6 +104,7 @@ public final class DJEngine {
       sampleRate = hw > 0 ? hw : offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
+    loopChannel = Deck(name: "L", sampleRate: sampleRate, format: format)
     engine.attach(cueSum)
     engine.attach(headMaster)
     engine.attach(headBus)
@@ -115,32 +124,43 @@ public final class DJEngine {
     engine.connect(clockNode, to: engine.mainMixerNode, format: format)
     for name in names {
       let deck = Deck(name: name, sampleRate: sampleRate, format: format)
-      engine.attach(deck.node)
-      engine.attach(deck.filterNode)
-      engine.attach(deck.strip)
-      engine.attach(deck.cueSend)
-      engine.connect(deck.node, to: deck.filterNode, format: format)
-      // Post-EQ, pre-fader: the strip feeds the master, the cue send feeds the headphones.
-      engine.connect(
-        deck.filterNode,
-        to: [
-          AVAudioConnectionPoint(node: deck.strip, bus: 0),
-          AVAudioConnectionPoint(node: deck.cueSend, bus: 0),
-        ], fromBus: 0, format: format)
-      engine.connect(deck.strip, to: engine.mainMixerNode, format: format)
-      engine.connect(deck.cueSend, to: cueSum, format: format)
-      deck.cueSend.outputVolume = 0  // after attach: attaching resets a mixer to unity
-      deck.onGainChange = { [weak self] in self?.applyGains() }
+      wire(deck)
       deck.onGrid = { [weak self] g in
         self?.recorder?.record(.grid(deck: name, bpm: g.bpm, offset: g.offset))
       }
       decks[name] = deck
     }
+    wire(loopChannel)
     applyGains()
     masterProbe.attach(to: engine)
   }
 
   deinit { masterProbe.detach() }
+
+  /// Source -> EQ -> strip -> main mixer, plus the pre-fader cue send; and the capture tap on
+  /// the EQ (LOOP record listens after the EQ, before the fader).
+  private func wire(_ deck: Deck) {
+    engine.attach(deck.node)
+    engine.attach(deck.filterNode)
+    engine.attach(deck.strip)
+    engine.attach(deck.cueSend)
+    engine.connect(deck.node, to: deck.filterNode, format: format)
+    // Post-EQ, pre-fader: the strip feeds the master, the cue send feeds the headphones.
+    engine.connect(
+      deck.filterNode,
+      to: [
+        AVAudioConnectionPoint(node: deck.strip, bus: 0),
+        AVAudioConnectionPoint(node: deck.cueSend, bus: 0),
+      ], fromBus: 0, format: format)
+    engine.connect(deck.strip, to: engine.mainMixerNode, format: format)
+    engine.connect(deck.cueSend, to: cueSum, format: format)
+    deck.cueSend.outputVolume = 0  // after attach: attaching resets a mixer to unity
+    deck.onGainChange = { [weak self] in self?.applyGains() }
+    deck.capture.attach(to: deck.filterNode.audioUnit)
+  }
+
+  /// Every deck the engine renders: A, B, … and the loop channel.
+  public var allDecks: [Deck] { decks.values.sorted { $0.name < $1.name } + [loopChannel] }
 
   /// Crossfader gain for a deck (1 for decks other than A/B).
   public func crossfadeGain(_ deck: String) -> Double {
@@ -152,12 +172,15 @@ public final class DJEngine {
   }
 
   private func applyGains() {
-    for (name, d) in decks { d.strip.outputVolume = Float(d.trim * d.volume * crossfadeGain(name)) }
+    for d in allDecks {
+      d.strip.outputVolume = Float(d.mute ? 0 : d.trim * d.volume * crossfadeGain(d.name))
+    }
   }
 
   public func start() throws {
     engine.prepare()
     masterProbe.attach(to: engine)  // a no-op unless the engine replaced its output unit
+    for d in allDecks { d.capture.attach(to: d.filterNode.audioUnit) }
     try engine.start()
   }
 
@@ -165,7 +188,9 @@ public final class DJEngine {
     engine.stop()
   }
 
-  public subscript(name: String) -> Deck? { decks[name] }
+  public subscript(name: String) -> Deck? {
+    decks[name] ?? (name == loopChannel.name ? loopChannel : nil)
+  }
 }
 
 /// What a deck is playing.
@@ -188,6 +213,10 @@ public final class Deck: JogClock {
   /// Mono history of this deck's output (the source node's mixdown, before the EQ and the
   /// fader), for the scopes. Off until a scope calls `tap.acquire()`.
   public var tap: ScopeTap { renderer.tap }
+  /// Stereo history after the EQ, always on: what LOOP record takes its bars from.
+  let capture: CaptureTap
+  /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads.
+  public internal(set) var clipID: String?
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
   /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
   public var leftTap: ScopeTap { renderer.leftTap }
@@ -278,6 +307,9 @@ public final class Deck: JogClock {
   /// 0...1 channel fader.
   public var volume = 0.8 { didSet { onGainChange?() } }
 
+  /// Silences the channel without stopping it (the loop channel's mute).
+  public var mute = false { didSet { onGainChange?() } }
+
   /// Trim knob, 0...1: 0.5 = unity, 1 = +6 dB, 0 = -6 dB.
   public var gain = 0.5 { didSet { onGainChange?() } }
   var trim: Double { pow(2, (gain - 0.5) * 2) }
@@ -346,6 +378,7 @@ public final class Deck: JogClock {
     wave = wv
     let core = DeckRenderer(turntable: tt, wave: wv)
     renderer = core
+    capture = CaptureTap { core.renderedFrames }
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
       core.render(abl, frames: Int(frames))
       return noErr
@@ -363,8 +396,11 @@ public final class Deck: JogClock {
     }
   }
 
+  deinit { capture.detach() }
+
   public func load(_ buffer: SampleBuffer, title: String) {
     leaveNetMode()
+    clipID = nil
     waveform = nil
     loaded = buffer
     beatGrid = nil
@@ -487,6 +523,13 @@ public final class Deck: JogClock {
     }
   }
 
+  /// Start a sample at full speed this block (no motor spin-up), so it lands where it was put.
+  func launch() {
+    guard mode == .sample else { return setPlaying(true) }
+    playing = true
+    turntable.send(.start)
+  }
+
   // MARK: net mode
 
   /// Put an already-composed project on the deck. Compiles on the calling thread
@@ -504,6 +547,7 @@ public final class Deck: JogClock {
     currentSpec = nil
     currentRawNets = nil
     seedTarget = nil
+    clipID = nil
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net

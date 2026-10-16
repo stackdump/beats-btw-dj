@@ -114,7 +114,8 @@ public struct MCPBridge {
       "dj_state",
       "Snapshot of the app: per deck (title, mode sample|net, playing, bpm, position, sections "
         + "and the current one, roles and which are on, volume/filter/pitch, quantize, next "
-        + "track), crossfader, master, connected controllers, recording, status line, and the "
+        + "track), crossfader, master, the LOOP-record clips and the loop channel (loops), "
+        + "connected controllers, recording, status line, and the "
         + "app's build (id, version, build = git commit, date).",
       [:]),
     tool(
@@ -131,7 +132,11 @@ public struct MCPBridge {
       dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
-      queueNext {deck, share: {genre, seed, structure?}}.
+      queueNext {deck, share: {genre, seed, structure?}} · \
+      loopRecord {deck, on}: LOOP record, held (on true) then let go (on false): the deck's \
+      bars from the downbeat before the press to the one after the release become a clip, \
+      looping on the loop channel "L" (dj_state.loops) · clip {deck: L|A|B, id}: move a clip \
+      there, in time. Deck "L" also takes param volume / mute (1 = muted) and play.
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,

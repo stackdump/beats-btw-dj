@@ -429,6 +429,44 @@ extension AppModel {
     o["master"] = .number(master)
     o["focus"] = .string(engine?.focus ?? "A")
     o["recording"] = .bool(isRecording)
+    o["loops"] = .object(
+      JSONObject([
+        (
+          "clips",
+          .array(
+            clips.map {
+              var c = JSONObject([
+                ("id", .string($0.id)), ("title", .string($0.title)),
+                ("source", .string($0.source)), ("bars", .int($0.bars)), ("bpm", .number($0.bpm)),
+              ])
+              if let on = $0.playingOn { c["playingOn"] = .string(on) }
+              return .object(c)
+            })
+        ),
+        (
+          "channel",
+          .object(
+            JSONObject([
+              ("clip", loopChannel.clipID.map { .string($0) } ?? .null),
+              ("playing", .bool(loopChannel.playing)), ("volume", .number(loopChannel.volume)),
+              ("mute", .bool(loopChannel.mute)),
+            ]))
+        ),
+        (
+          "taking",
+          .object(
+            JSONObject(
+              recording.sorted { $0.key < $1.key }.map {
+                (
+                  $0.key,
+                  .object(
+                    JSONObject([
+                      ("bars", .int($0.value.bars)), ("released", .bool($0.value.released)),
+                    ]))
+                )
+              }))
+        ),
+      ]))
     if let s = lastSession { o["lastSession"] = .string(s) }
     o["controllers"] = .array(
       devices.map {

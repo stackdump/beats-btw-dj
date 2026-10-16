@@ -140,7 +140,7 @@ extension DJEngine {
   )
     -> BeatGrid?
   {
-    func deck(_ n: String) -> Deck? { decks[n] }
+    func deck(_ n: String) -> Deck? { self[n] }
     switch action {
     case .play(let n, let on): deck(n)?.setPlaying(on)
     case .cue(let n): deck(n)?.cue()
@@ -165,6 +165,7 @@ extension DJEngine {
       case "eqMid": d.eqMid = v
       case "eqHigh": d.eqHigh = v
       case "pitch": d.pitch = v
+      case "mute": d.mute = v > 0.5
       default: break
       }
     case .crossfader(let v):
@@ -217,6 +218,8 @@ extension DJEngine {
     case .follow(let n, let leader): deck(n)?.follow(leader.flatMap { decks[$0] })
     case .grid(let n, let bpm, let offset):
       deck(n)?.setBeatGrid(BeatGrid(bpm: bpm, offset: offset, confidence: 1))
+    case .loopRecord(let n, let on): loopRecord(n, on: on)
+    case .clip(let n, let id): playClip(id, on: n)
     }
     return nil
   }

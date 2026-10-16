@@ -23,19 +23,19 @@
     16
    ],
    "names": [
-    "btn03",
+    "loop",
     "shift",
     "sync",
     "cue",
     "play",
-    "btn09",
-    "btn0A",
+    "stemsMusic",
+    "stemsMic",
     "pfl",
     "load",
     "hotCueMode",
     "fxMode"
    ],
-   "comment": "measured 2026-10-07: every number here was seen on this unit. MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03/0x09/0x0A = LOOP + the two STEMS buttons; which is which is unknown (capture order proves nothing). Pad modes, captured: after HOT CUE (0x0F) the pads send 0x00-0x03 (hotcuePads), after FX (0x10, SHIFT up) 0x10-0x13 (rollPads)"
+   "comment": "measured 2026-10-07: every number here was seen on this unit. MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03 = LOOP (measured 2026-10-16, captures/inpulse-2026-10-16-loop.log; held = loop record); 0x09 = STEMS music (note icon), 0x0A = STEMS mic (measured 2026-10-16, captures/inpulse-2026-10-16-stems.log). Pad modes, captured: after HOT CUE (0x0F) the pads send 0x00-0x03 (hotcuePads), after FX (0x10, SHIFT up) 0x10-0x13 (rollPads)"
   },
   {
    "id": "deckA.shiftButtons",
@@ -46,16 +46,18 @@
     6,
     7,
     9,
-    10
+    10,
+    3
    ],
    "names": [
     "sync",
     "cue",
     "play",
     "loopIn",
-    "loopOut"
+    "loopOut",
+    "vinyl"
    ],
-   "comment": "[MIXXX] SHIFT held, original-200 numbering (0x94 notes). No shifted button was captured on the MK3; only the shifted jog (0xB4 09) shows the +3 channel shift. loopIn/loopOut are the original 200's names: on the MK3 0x09/0x0A are LOOP/STEMS buttons. 0x08 is shifted jog touch (jog profile)"
+   "comment": "[MIXXX] SHIFT held, original-200 numbering (0x94 notes). No shifted button was captured on the MK3; only the shifted jog (0xB4 09) shows the +3 channel shift. loopIn/loopOut are the original 200's names: on the MK3 0x09/0x0A are LOOP/STEMS buttons. 0x08 is shifted jog touch (jog profile). 0x03 = SHIFT+LOOP (VINYL on the panel): measured 2026-10-16"
   },
   {
    "id": "deckA.hotcuePads",
@@ -207,19 +209,19 @@
     16
    ],
    "names": [
-    "btn03",
+    "loop",
     "shift",
     "sync",
     "cue",
     "play",
-    "btn09",
-    "btn0A",
+    "stemsMusic",
+    "stemsMic",
     "pfl",
     "load",
     "hotCueMode",
     "fxMode"
    ],
-   "comment": "measured 2026-10-07, except 0x0C pfl and 0x0D load: [UNVERIFIED] on deck B, never captured, assumed to mirror deck A's (measured). MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03/0x09/0x0A = LOOP + the two STEMS buttons; which is which is unknown (capture order proves nothing). Pad modes, captured: after FX (0x10, SHIFT up) the pads send 0x10-0x13 (rollPads); no pad followed HOT CUE on deck B"
+   "comment": "measured 2026-10-07, except 0x0C pfl and 0x0D load: [UNVERIFIED] on deck B, never captured, assumed to mirror deck A's (measured). MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03 = LOOP (measured 2026-10-16, captures/inpulse-2026-10-16-loop.log; held = loop record); 0x09 = STEMS music (note icon), 0x0A = STEMS mic (measured 2026-10-16, captures/inpulse-2026-10-16-stems.log). Pad modes, captured: after FX (0x10, SHIFT up) the pads send 0x10-0x13 (rollPads); no pad followed HOT CUE on deck B"
   },
   {
    "id": "deckB.shiftButtons",
@@ -230,16 +232,18 @@
     6,
     7,
     9,
-    10
+    10,
+    3
    ],
    "names": [
     "sync",
     "cue",
     "play",
     "loopIn",
-    "loopOut"
+    "loopOut",
+    "vinyl"
    ],
-   "comment": "[MIXXX] SHIFT held, original-200 numbering (0x95 notes). No shifted button was captured on the MK3; only the shifted jog (0xB4 09) shows the +3 channel shift. loopIn/loopOut are the original 200's names: on the MK3 0x09/0x0A are LOOP/STEMS buttons. 0x08 is shifted jog touch (jog profile)"
+   "comment": "[MIXXX] SHIFT held, original-200 numbering (0x95 notes). No shifted button was captured on the MK3; only the shifted jog (0xB4 09) shows the +3 channel shift. loopIn/loopOut are the original 200's names: on the MK3 0x09/0x0A are LOOP/STEMS buttons. 0x08 is shifted jog touch (jog profile). 0x03 = SHIFT+LOOP (VINYL): [UNVERIFIED] on deck B, assumed to mirror deck A's"
   },
   {
    "id": "deckB.hotcuePads",
@@ -486,9 +490,8 @@
   {
    "group": "deckA.buttons",
    "index": 0,
-   "action": "unbound",
-   "deck": "A",
-   "reason": "captured (0x03, 0x09, 0x0A) but not named: the MK3 has LOOP (VINYL on shift), STEMS music and STEMS mic here and the capture doesn't say which is which. Once named: LOOP -> loopIn/loopOut (they exist); STEMS -> roleMute on net decks (which roles is a choice to make)"
+   "action": "loopRecord",
+   "deck": "A"
   },
   {
    "group": "deckA.buttons",
@@ -521,14 +524,14 @@
    "index": 5,
    "action": "unbound",
    "deck": "A",
-   "reason": "captured (0x03, 0x09, 0x0A) but not named: the MK3 has LOOP (VINYL on shift), STEMS music and STEMS mic here and the capture doesn't say which is which. Once named: LOOP -> loopIn/loopOut (they exist); STEMS -> roleMute on net decks (which roles is a choice to make)"
+   "reason": "STEMS music (note icon), measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
   },
   {
    "group": "deckA.buttons",
    "index": 6,
    "action": "unbound",
    "deck": "A",
-   "reason": "captured (0x03, 0x09, 0x0A) but not named: the MK3 has LOOP (VINYL on shift), STEMS music and STEMS mic here and the capture doesn't say which is which. Once named: LOOP -> loopIn/loopOut (they exist); STEMS -> roleMute on net decks (which roles is a choice to make)"
+   "reason": "STEMS mic, measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
   },
   {
    "group": "deckA.buttons",
@@ -589,6 +592,13 @@
    "action": "unbound",
    "deck": "A",
    "reason": "[MIXXX] original-200 SHIFT + LOOP OUT number; on the MK3 0x0A is a LOOP/STEMS button and SHIFT + it was never captured. Bind (loopOut/loopDouble/...) once captured and named"
+  },
+  {
+   "group": "deckA.shiftButtons",
+   "index": 5,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "SHIFT+LOOP = VINYL on the panel (jog scratch mode), measured 2026-10-16: no action yet"
   },
   {
    "group": "deckA.hotcuePads",
@@ -692,9 +702,8 @@
   {
    "group": "deckB.buttons",
    "index": 0,
-   "action": "unbound",
-   "deck": "B",
-   "reason": "captured (0x03, 0x09, 0x0A) but not named: the MK3 has LOOP (VINYL on shift), STEMS music and STEMS mic here and the capture doesn't say which is which. Once named: LOOP -> loopIn/loopOut (they exist); STEMS -> roleMute on net decks (which roles is a choice to make)"
+   "action": "loopRecord",
+   "deck": "B"
   },
   {
    "group": "deckB.buttons",
@@ -727,14 +736,14 @@
    "index": 5,
    "action": "unbound",
    "deck": "B",
-   "reason": "captured (0x03, 0x09, 0x0A) but not named: the MK3 has LOOP (VINYL on shift), STEMS music and STEMS mic here and the capture doesn't say which is which. Once named: LOOP -> loopIn/loopOut (they exist); STEMS -> roleMute on net decks (which roles is a choice to make)"
+   "reason": "STEMS music (note icon), measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
   },
   {
    "group": "deckB.buttons",
    "index": 6,
    "action": "unbound",
    "deck": "B",
-   "reason": "captured (0x03, 0x09, 0x0A) but not named: the MK3 has LOOP (VINYL on shift), STEMS music and STEMS mic here and the capture doesn't say which is which. Once named: LOOP -> loopIn/loopOut (they exist); STEMS -> roleMute on net decks (which roles is a choice to make)"
+   "reason": "STEMS mic, measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
   },
   {
    "group": "deckB.buttons",
@@ -795,6 +804,13 @@
    "action": "unbound",
    "deck": "B",
    "reason": "[MIXXX] original-200 SHIFT + LOOP OUT number; on the MK3 0x0A is a LOOP/STEMS button and SHIFT + it was never captured. Bind (loopOut/loopDouble/...) once captured and named"
+  },
+  {
+   "group": "deckB.shiftButtons",
+   "index": 5,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "SHIFT+LOOP = VINYL on the panel: [UNVERIFIED] on deck B (assumed to mirror deck A's); no action yet"
   },
   {
    "group": "deckB.hotcuePads",

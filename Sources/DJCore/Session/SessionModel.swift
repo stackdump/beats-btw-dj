@@ -105,6 +105,10 @@ public enum DeckAction: Equatable, Sendable {
   case follow(deck: String, leader: String?)
   /// The tempo analysis (or a tap) put a beat grid on a sample deck.
   case grid(deck: String, bpm: Double, offset: Double)
+  /// LOOP record held (`on`) or let go on a deck (`DJEngine.loopRecord`).
+  case loopRecord(deck: String, on: Bool)
+  /// Put a LOOP-record clip on a deck or the loop channel ("L") (`DJEngine.playClip`).
+  case clip(deck: String, id: String)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -304,6 +308,8 @@ extension DeckAction {
       return o("follow", [d(deck), ("leader", leader.map { .string($0) } ?? .null)])
     case .grid(let deck, let bpm, let offset):
       return o("grid", [d(deck), ("bpm", .number(bpm)), ("offset", .number(offset))])
+    case .loopRecord(let deck, let on): return o("loopRecord", [d(deck), ("on", .bool(on))])
+    case .clip(let deck, let id): return o("clip", [d(deck), ("id", .string(id))])
     }
   }
 
@@ -338,6 +344,8 @@ extension DeckAction {
     case "follow": self = .follow(deck: deck, leader: v["leader"]?.string)
     case "grid":
       self = .grid(deck: deck, bpm: v["bpm"]?.double ?? 120, offset: v["offset"]?.double ?? 0)
+    case "loopRecord": self = .loopRecord(deck: deck, on: v["on"]?.bool ?? false)
+    case "clip": self = .clip(deck: deck, id: v["id"]?.string ?? "")
     default: return nil
     }
   }

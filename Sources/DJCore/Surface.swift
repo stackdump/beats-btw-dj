@@ -21,6 +21,7 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case loopIn  // press: loop start at the playhead
   case loopOut  // press: loop end at the playhead and start looping; again: exit loop
   case loopHalve, loopDouble  // press: resize the active loop
+  case loopRecord  // hold: take this deck's bars; release: they loop as a clip under the mixer
   case shift  // hold: software shift layer for this surface
   // Live-net performance (net decks; ignored on sample decks)
   case section  // press: launch section `slot` of the song (at the next bar)

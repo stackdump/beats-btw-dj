@@ -48,6 +48,8 @@ struct DeckState: Equatable {
   var macroPulse = MacroPulseState()
   /// The master-chain macros (FX, pitch, feel) in effect.
   var masterRunning: Set<MasterMacro> = []
+  /// The LOOP-record clip the deck is playing, if it is playing one.
+  var clipID: String?
 }
 
 @MainActor @Observable
@@ -56,6 +58,10 @@ public final class AppModel {
   var devices: [ControllerHub.Device] = []
   var lastMessage = ""
   var decks: [String: DeckState] = ["A": .init(), "B": .init()]
+  /// LOOP record: the row of clips under the decks, the loop channel, and takes in progress.
+  var clips: [ClipState] = []
+  var loopChannel = LoopChannelState()
+  var recording: [String: RecordingState] = [:]
   var crossfader = 0.5
   var master = 0.8
   var headphoneMix = 0.0
@@ -310,8 +316,35 @@ public final class AppModel {
         state.bars = d.sections.map(\.steps).reduce(0, +) / 16
         state.bar = d.wave.tick / 16 + 1
       }
+      state.clipID = d.clipID
       decks[name] = state
     }
+    pollLoops(dj)
+  }
+
+  private func pollLoops(_ dj: DJEngine) {
+    let l = dj.loopChannel
+    let strip = LoopChannelState(
+      clipID: l.clipID, playing: l.playing, volume: l.volume, mute: l.mute,
+      overlay: l.clipID == nil ? nil : l.waveformOverlay)
+    if strip != loopChannel { loopChannel = strip }
+    // where a clip is: the deck playing it, else a deck holding it paused (the loop channel only
+    // counts while it plays)
+    let holders = dj.allDecks.filter { $0.clipID != nil && ($0.playing || $0 !== l) }
+      .sorted { $0.playing && !$1.playing }
+    let row = dj.clips.map { c in
+      ClipState(
+        id: c.id, title: c.title, source: c.source, bars: c.bars, bpm: c.bpm,
+        overview: c.waveform, playingOn: holders.first { $0.clipID == c.id }?.name)
+    }
+    if row != clips { clips = row }
+    var takes: [String: RecordingState] = [:]
+    for n in dj.recordableDecks {
+      if let p = dj.loopTakeProgress(n) {
+        takes[n] = RecordingState(bars: p.bars, released: p.released)
+      }
+    }
+    if takes != recording { recording = takes }
   }
 
   // Actions from the UI. Hardware goes through the hub's router; UI inputs go through
@@ -332,6 +365,25 @@ public final class AppModel {
     dj?.perform(.param(deck: deck, name: "pitch", value: v))
   }
   func setCrossfader(_ v: Double) { dj?.perform(.crossfader(v)) }
+  // LOOP record and the row under the decks
+  func loopRecord(_ deck: String, on: Bool) {
+    dj?.perform(.loopRecord(deck: deck, on: on))
+    if let dj { pollLoops(dj) }
+  }
+  func playClip(_ id: String, on deck: String) {
+    guard dj?.clip(id) != nil else { return }
+    dj?.perform(.clip(deck: deck, id: id))
+  }
+  func removeClip(_ id: String) { dj?.removeClip(id) }
+  func toggleLoopChannel() {
+    guard let l = dj?.loopChannel, l.clipID != nil else { return }
+    if l.playing {
+      dj?.perform(.play(deck: "L", on: false))
+    } else if let id = l.clipID {
+      dj?.perform(.clip(deck: "L", id: id))  // back in time with its deck
+    }
+  }
+  func setLoopMute(_ on: Bool) { dj?.perform(.param(deck: "L", name: "mute", value: on ? 1 : 0)) }
   func setMaster(_ v: Double) { dj?.perform(.master(v)) }
   // Cue/headphone state doesn't change the master mix a session renders: not recorded.
   func setKeepScreenAwake(_ on: Bool) {
@@ -820,6 +872,10 @@ public struct ContentView: View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
       deckRow(wide: wide)
+      // the row appears with the first take (and stays while there are clips)
+      if !model.clips.isEmpty || !model.recording.isEmpty {
+        LoopRowView(model: model).djCard(tint: LoopRowView.tint)
+      }
       if let w = model.walk {
         WalkPanel(
           walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
@@ -1007,6 +1063,10 @@ struct DeckView: View {
         WaveformStrip(overview: state.overview, overlay: state.overlay, tint: tint)
           .frame(height: 46)
       }
+      if let clip = state.clipID {
+        Button("↩ back to Loops") { model.playClip(clip, on: "L") }
+          .controlSize(.small).help("Move this clip back onto the loop channel")
+      }
       if state.isNet {
         VStack(spacing: DJStyle.s) {
           SectionLabel("Song")
@@ -1039,6 +1099,11 @@ struct DeckView: View {
       }
     }
     .frame(width: 260)
+    .dropDestination(for: String.self) { ids, _ in
+      guard let id = ids.first else { return false }
+      model.playClip(id, on: name)
+      return true
+    }
   }
 
   /// The deck's letter, what it plays (the most important line on the deck) and its star.
@@ -1116,6 +1181,7 @@ struct DeckView: View {
       .accessibilityLabel(state.playing ? "Pause" : "Play")
       Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
         .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
+      LoopRecordButton(name: name, model: model)
       Spacer(minLength: 0)
       HStack(spacing: DJStyle.xs) {
         ForEach(0..<4, id: \.self) { slot in

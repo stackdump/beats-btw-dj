@@ -37,6 +37,8 @@ public enum TurntableCommand: BitwiseCopyable {
   /// An `Unmanaged<SampleBuffer>` retained by the sender.
   case load(UnsafeMutableRawPointer)
   case transport(playing: Bool)
+  /// Play at full speed at once, with no motor spin-up: a clip launched in time.
+  case start
   /// Hand on the platter: switch to scrub mode at the current position.
   case freeze
   /// Move the scrub target by this many samples (negative = backwards).
@@ -186,6 +188,10 @@ public final class Turntable: @unchecked Sendable {
       pos = 0
       target = 0
     case .transport(let on): playing = on
+    case .start:
+      playing = true
+      scrubbing = false
+      rate = (1 + pitch) * (1 + nudge)
     case .freeze:
       scrubbing = true
       target = pos

@@ -122,10 +122,11 @@ public final class ControllerHub {
 
   func tick(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
     router.tick(now: now)
-    for d in dj.decks.values {
+    for d in dj.allDecks {
       d.turntable.drainRetired()
       d.service()
     }
+    dj.serviceLoopTakes()
     if now - lastLED >= 0.05 {
       lastLED = now
       for (port, messages) in router.ledFrames(now: now) { send(messages, to: port) }

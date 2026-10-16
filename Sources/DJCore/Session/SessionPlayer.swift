@@ -32,10 +32,11 @@ public final class OfflineConductor {
     if dj.frame >= nextHousekeeping {
       nextHousekeeping = dj.frame + housekeepingEvery
       router.tick(now: now)
-      for d in dj.decks.values.sorted(by: { $0.name < $1.name }) {
+      for d in dj.allDecks {
         d.turntable.drainRetired()
         d.service()
       }
+      dj.serviceLoopTakes()
     }
     let status = try dj.engine.renderOffline(AVAudioFrameCount(Self.blockFrames), to: out)
     guard status == .success else { return ([], []) }

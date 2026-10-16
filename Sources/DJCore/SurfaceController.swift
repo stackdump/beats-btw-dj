@@ -121,6 +121,11 @@ public final class SurfaceController {
     case .headphoneMix: dj.headphoneMix = e.value
     case .headphoneLevel: dj.headphoneLevel = e.value
     case .shift: shiftHeld = e.pressed
+    case .loopRecord:
+      if let deck {
+        if press { dj.focus = deck.name }
+        dj.loopRecord(deck.name, on: press)
+      }
     case .unbound: break
     case .nudge:
       // centred control: 0.5 = no nudge, full travel = ± the tempo-fader range
@@ -284,6 +289,10 @@ public final class SurfaceController {
     case .hotcue: return d?.hotCues[b.slot ?? 0] != nil ? leds.singleOn : leds.singleOff
     case .loopOut: return d?.looping == true ? leds.singleOn : leds.singleOff
     case .loopIn: return d?.loopStart != nil ? leds.singleOn : leds.singleOff
+    case .loopRecord:
+      // lit while held, blinking while the last bar finishes
+      guard let d, let t = dj.loopTakeProgress(d.name) else { return leds.singleOff }
+      return t.released ? leds.singleBlink : leds.singleOn
     case .shift: return shiftHeld ? leds.singleOn : leds.singleOff
     default: return leds.singleOn
     }
