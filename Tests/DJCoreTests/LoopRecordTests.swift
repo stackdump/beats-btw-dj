@@ -342,6 +342,38 @@ struct LoopRecordTests {
     #expect(s["grid"]?["bpm"]?.double == 120)
   }
 
+  @Test func inpulseLoopPadsSwitchLoopsAndLightWhileTheyPlay() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    let s = SurfaceController(profile: .inpulse200MK3, engine: rig.dj)
+    rig.dj.stopAllLoops()
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopingClips.isEmpty)
+    _ = s.ledFrame()
+    // deck A, LOOP pad mode (channel 6): pad 1 (0x28) = loop 1, pad 2 (0x2A: the notes run
+    // down the columns) = loop 2
+    s.handle(bytes: [0x96, 0x28, 0x7F])
+    s.handle(bytes: [0x96, 0x28, 0x00])
+    #expect(rig.dj.loopState(one.id) == .starting && rig.dj.loopState(two.id) == .off)
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopState(one.id) == .on)
+    #expect(s.ledFrame().contains([0x96, 0x28, 0x7F]), "its pad lights while it plays")
+    s.handle(bytes: [0x96, 0x2A, 0x7F])
+    s.handle(bytes: [0x96, 0x28, 0x7F])
+    #expect(rig.dj.loopState(two.id) == .starting && rig.dj.loopState(one.id) == .stopping)
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopState(two.id) == .on && rig.dj.loopState(one.id) == .off)
+    let leds = s.ledFrame()
+    #expect(leds.contains([0x96, 0x28, 0x00]) && leds.contains([0x96, 0x2A, 0x7F]))
+    // a pad with no loop in its slot does nothing, and stays dark
+    s.handle(bytes: [0x96, 0x2B, 0x7F])
+    #expect(rig.dj.loopingClips == [two.id])
+    // deck B's pads are loops 5-8: none yet
+    s.handle(bytes: [0x97, 0x28, 0x7F])
+    #expect(rig.dj.loopingClips == [two.id])
+  }
+
   @Test func theLoopChannelHasItsOwnMute() throws {
     let rig = try Rig()
     let l = rig.dj.loopChannel

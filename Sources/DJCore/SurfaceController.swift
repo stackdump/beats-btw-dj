@@ -121,6 +121,11 @@ public final class SurfaceController {
     case .headphoneMix: dj.headphoneMix = e.value
     case .headphoneLevel: dj.headphoneLevel = e.value
     case .shift: shiftHeld = e.pressed
+    case .clipToggle:
+      guard press, let slot = b.slot, dj.clips.indices.contains(slot) else { break }
+      let id = dj.clips[slot].id
+      let state = dj.loopState(id)
+      dj.setLooping(id, state == .off || state == .stopping)
     case .loopRecord:
       if let deck {
         if press { dj.focus = deck.name }
@@ -292,6 +297,14 @@ public final class SurfaceController {
     case .hotcue: return d?.hotCues[b.slot ?? 0] != nil ? leds.singleOn : leds.singleOff
     case .loopOut: return d?.looping == true ? leds.singleOn : leds.singleOff
     case .loopIn: return d?.loopStart != nil ? leds.singleOn : leds.singleOff
+    case .clipToggle:
+      // lit while its loop plays, blinking on its way in or out (dark: no loop in that slot)
+      guard let slot = b.slot, dj.clips.indices.contains(slot) else { return leds.singleOff }
+      switch dj.loopState(dj.clips[slot].id) {
+      case .on: return leds.singleOn
+      case .starting, .stopping: return leds.singleBlink
+      case .off: return leds.singleOff
+      }
     case .loopRecord:
       // lit while held, blinking while the last bar finishes
       guard let d, let t = dj.loopTakeProgress(d.name) else { return leds.singleOff }

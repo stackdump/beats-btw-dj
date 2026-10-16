@@ -157,7 +157,7 @@ struct SurfaceProfileTests {
     let names = Set(parked.map { "\($0.group).\(inpulse.group($0.group)?.name($0.index) ?? "?")" })
     #expect(
       names == [
-        "deckA.shiftButtons.vinyl",
+        "deckA.shiftButtons.vinyl", "deckA.buttons.loopPadMode", "deckA.buttons.loopPadModeHeld",
         "deckA.buttons.shift", "deckA.buttons.hotCueMode", "deckA.buttons.fxMode",
         "deckB.buttons.shift", "deckB.buttons.hotCueMode", "deckB.buttons.fxMode",
         "mixer.buttons.centre01", "mixer.buttons.centre02", "mixer.buttons.centre03",

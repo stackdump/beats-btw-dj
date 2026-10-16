@@ -236,6 +236,13 @@ struct ClipTile: View {
         )
         .font(.caption).monospacedDigit()
         Spacer(minLength: 0)
+        if let i = model.clips.firstIndex(where: { $0.id == clip.id }), i < 8 {
+          // the Inpulse pad (LOOP pad mode) that switches it
+          Text(i < 4 ? "A\(i + 1)" : "B\(i - 3)").font(.caption2.monospaced())
+            .padding(.horizontal, 4).background(Capsule().fill(Color.secondary.opacity(0.2)))
+            .help(
+              "Inpulse pad \(i < 4 ? i + 1 : i - 3) on deck \(i < 4 ? "A" : "B"), in LOOP pad mode")
+        }
         if let on = clip.onDeck {
           Text("on \(on)").font(.caption2.bold()).foregroundStyle(deckTint(on))
         }

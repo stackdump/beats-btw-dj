@@ -20,7 +20,9 @@
     12,
     13,
     15,
-    16
+    16,
+    17,
+    64
    ],
    "names": [
     "loop",
@@ -33,7 +35,9 @@
     "pfl",
     "load",
     "hotCueMode",
-    "fxMode"
+    "fxMode",
+    "loopPadMode",
+    "loopPadModeHeld"
    ],
    "comment": "measured 2026-10-07: every number here was seen on this unit. MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03 = LOOP (measured 2026-10-16, captures/inpulse-2026-10-16-loop.log; held = loop record); 0x09 = STEMS music (note icon), 0x0A = STEMS mic (measured 2026-10-16, captures/inpulse-2026-10-16-stems.log). Pad modes, captured: after HOT CUE (0x0F) the pads send 0x00-0x03 (hotcuePads), after FX (0x10, SHIFT up) 0x10-0x13 (rollPads)"
   },
@@ -71,11 +75,11 @@
    ],
    "names": [
     "pad1",
-    "pad2",
     "pad3",
+    "pad2",
     "pad4"
    ],
-   "comment": "hot-cue mode (after HOT CUE): pads 1 and 3 measured (0x00, 0x02), 2 and 4 [MIXXX]"
+   "comment": "hot-cue mode (after HOT CUE): pads 1 and 3 measured (0x00, 0x02), 2 and 4 [MIXXX] Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckA.hotcueClearPads",
@@ -89,11 +93,11 @@
    ],
    "names": [
     "pad1",
-    "pad2",
     "pad3",
+    "pad2",
     "pad4"
    ],
-   "comment": "[MIXXX] SHIFT + pad in hot-cue mode; never captured"
+   "comment": "[MIXXX] SHIFT + pad in hot-cue mode; never captured Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckA.rollPads",
@@ -107,11 +111,11 @@
    ],
    "names": [
     "loop1",
-    "loop2",
     "loop3",
+    "loop2",
     "loop4"
    ],
-   "comment": "FX mode on the MK3, measured on both decks: the pads sent 0x10-0x13 only after FX (0x10) was pressed with SHIFT up (captures/inpulse.log). The id comes from Mixxx's original-200 ROLL range and is kept because sessions and tests name it; the MK3 has no ROLL button"
+   "comment": "FX mode on the MK3, measured on both decks: the pads sent 0x10-0x13 only after FX (0x10) was pressed with SHIFT up (captures/inpulse.log). The id comes from Mixxx's original-200 ROLL range and is kept because sessions and tests name it; the MK3 has no ROLL button Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckA.fxPads",
@@ -121,23 +125,33 @@
     32,
     33,
     34,
-    35,
+    35
+   ],
+   "names": [
+    "fx1",
+    "fx3",
+    "fx2",
+    "fx4"
+   ],
+   "comment": "[MIXXX] original-200 FX-mode numbers (0x20-0x23), never captured on the MK3: its FX button gives 0x10-0x13 (rollPads); 0x28-0x2B turned out to be LOOP pad mode (loopPads) Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
+  },
+  {
+   "id": "deckA.loopPads",
+   "type": "note",
+   "channel": 6,
+   "numbers": [
     40,
     41,
     42,
     43
    ],
    "names": [
-    "fx1",
-    "fx2",
-    "fx3",
-    "fxOn",
-    "shiftFx1",
-    "shiftFx2",
-    "shiftFx3",
-    "shiftFxOn"
+    "loopPad1",
+    "loopPad3",
+    "loopPad2",
+    "loopPad4"
    ],
-   "comment": "[MIXXX] original-200 FX-mode numbers (0x20-0x23, shifted 0x28-0x2B), never captured. Doubtful on the MK3: its FX button gives 0x10-0x13 (rollPads), so these may belong to LOOP (SHIFT + HOT CUE) or SAMPLER (SHIFT + FX) mode, or to nothing"
+   "comment": "0x28-0x2B measured 2026-10-16 (captures/inpulse-2026-10-16-looppads.log): the MK3's LOOP pad mode (SHIFT + HOT CUE) sends them; pressing pads 1-4 in panel order gave 0x28, 0x2A, 0x29, 0x2B. Bound to the loops under the mixer (clipToggle). Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckA.samplerPads",
@@ -151,11 +165,11 @@
    ],
    "names": [
     "sample1",
-    "sample2",
     "sample3",
+    "sample2",
     "sample4"
    ],
-   "comment": "[MIXXX] original-200 SAMPLER-mode numbers (0x30-0x33), never captured. On the MK3 SAMPLER is SHIFT + FX; which notes it sends is unknown"
+   "comment": "[MIXXX] original-200 SAMPLER-mode numbers (0x30-0x33), never captured. On the MK3 SAMPLER is SHIFT + FX; which notes it sends is unknown Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckA.faders",
@@ -206,7 +220,9 @@
     12,
     13,
     15,
-    16
+    16,
+    17,
+    64
    ],
    "names": [
     "loop",
@@ -219,7 +235,9 @@
     "pfl",
     "load",
     "hotCueMode",
-    "fxMode"
+    "fxMode",
+    "loopPadMode",
+    "loopPadModeHeld"
    ],
    "comment": "measured 2026-10-07, except 0x0C pfl and 0x0D load: [UNVERIFIED] on deck B, never captured, assumed to mirror deck A's (measured). MK3 panel (Sweetwater photo): LOOP (vinyl on shift), STEMS music + mic, SHIFT, HOT CUE (loop on shift), FX (sampler on shift), SYNC, CUE, PLAY, headphone (pfl), LOAD. 0x03 = LOOP (measured 2026-10-16, captures/inpulse-2026-10-16-loop.log; held = loop record); 0x09 = STEMS music (note icon), 0x0A = STEMS mic (measured 2026-10-16, captures/inpulse-2026-10-16-stems.log). Pad modes, captured: after FX (0x10, SHIFT up) the pads send 0x10-0x13 (rollPads); no pad followed HOT CUE on deck B"
   },
@@ -257,11 +275,11 @@
    ],
    "names": [
     "pad1",
-    "pad2",
     "pad3",
+    "pad2",
     "pad4"
    ],
-   "comment": "[MIXXX] hot-cue mode on deck B was never captured; numbers assumed to mirror deck A's (pads 1 and 3 measured there)"
+   "comment": "[MIXXX] hot-cue mode on deck B was never captured; numbers assumed to mirror deck A's (pads 1 and 3 measured there) Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckB.hotcueClearPads",
@@ -275,11 +293,11 @@
    ],
    "names": [
     "pad1",
-    "pad2",
     "pad3",
+    "pad2",
     "pad4"
    ],
-   "comment": "[MIXXX] SHIFT + pad in hot-cue mode; never captured"
+   "comment": "[MIXXX] SHIFT + pad in hot-cue mode; never captured Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckB.rollPads",
@@ -293,11 +311,11 @@
    ],
    "names": [
     "loop1",
-    "loop2",
     "loop3",
+    "loop2",
     "loop4"
    ],
-   "comment": "FX mode on the MK3, measured on both decks: the pads sent 0x10-0x13 only after FX (0x10) was pressed with SHIFT up (captures/inpulse.log). The id comes from Mixxx's original-200 ROLL range and is kept because sessions and tests name it; the MK3 has no ROLL button"
+   "comment": "FX mode on the MK3, measured on both decks: the pads sent 0x10-0x13 only after FX (0x10) was pressed with SHIFT up (captures/inpulse.log). The id comes from Mixxx's original-200 ROLL range and is kept because sessions and tests name it; the MK3 has no ROLL button Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckB.fxPads",
@@ -307,23 +325,33 @@
     32,
     33,
     34,
-    35,
+    35
+   ],
+   "names": [
+    "fx1",
+    "fx3",
+    "fx2",
+    "fx4"
+   ],
+   "comment": "[MIXXX] original-200 FX-mode numbers (0x20-0x23), never captured on the MK3: its FX button gives 0x10-0x13 (rollPads); 0x28-0x2B turned out to be LOOP pad mode (loopPads) Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
+  },
+  {
+   "id": "deckB.loopPads",
+   "type": "note",
+   "channel": 7,
+   "numbers": [
     40,
     41,
     42,
     43
    ],
    "names": [
-    "fx1",
-    "fx2",
-    "fx3",
-    "fxOn",
-    "shiftFx1",
-    "shiftFx2",
-    "shiftFx3",
-    "shiftFxOn"
+    "loopPad1",
+    "loopPad3",
+    "loopPad2",
+    "loopPad4"
    ],
-   "comment": "[MIXXX] original-200 FX-mode numbers (0x20-0x23, shifted 0x28-0x2B), never captured. Doubtful on the MK3: its FX button gives 0x10-0x13 (rollPads), so these may belong to LOOP (SHIFT + HOT CUE) or SAMPLER (SHIFT + FX) mode, or to nothing"
+   "comment": "0x28-0x2B: [UNVERIFIED] on deck B (LOOP pad mode never captured here), assumed to mirror deck A's measured 0x28-0x2B; bound to loops 5-8. Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckB.samplerPads",
@@ -337,11 +365,11 @@
    ],
    "names": [
     "sample1",
-    "sample2",
     "sample3",
+    "sample2",
     "sample4"
    ],
-   "comment": "[MIXXX] original-200 SAMPLER-mode numbers (0x30-0x33), never captured. On the MK3 SAMPLER is SHIFT + FX; which notes it sends is unknown"
+   "comment": "[MIXXX] original-200 SAMPLER-mode numbers (0x30-0x33), never captured. On the MK3 SAMPLER is SHIFT + FX; which notes it sends is unknown Pads number along the rows (1 2 / 3 4) but their notes run down the columns: pad 1 = the first note, pad 3 the second, pad 2 the third, pad 4 the fourth (measured 2026-10-16, captures/inpulse-2026-10-16-looppads.log)."
   },
   {
    "id": "deckB.faders",
@@ -478,7 +506,9 @@
    "deckA.buttons",
    "deckB.buttons",
    "deckA.hotcuePads",
-   "deckB.hotcuePads"
+   "deckB.hotcuePads",
+   "deckA.loopPads",
+   "deckB.loopPads"
   ],
   "rgbDimStatus": 0,
   "rgbFullStatus": 0,
@@ -560,6 +590,20 @@
    "reason": "pad-mode select, done in hardware: after FX the pads send 0x10-0x13 (rollPads, captured), so the press itself needs no action"
   },
   {
+   "group": "deckA.buttons",
+   "index": 11,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "0x11: SHIFT + HOT CUE, the LOOP pad-mode select (measured 2026-10-16); the mode change itself is done in hardware"
+  },
+  {
+   "group": "deckA.buttons",
+   "index": 12,
+   "action": "unbound",
+   "deck": "A",
+   "reason": "0x40: sent with 0x11 while LOOP pad mode is selected (measured 2026-10-16); a mode-state note, no action"
+  },
+  {
    "group": "deckA.shiftButtons",
    "index": 0,
    "action": "sync",
@@ -612,14 +656,14 @@
    "index": 1,
    "action": "hotcue",
    "deck": "A",
-   "slot": 1
+   "slot": 2
   },
   {
    "group": "deckA.hotcuePads",
    "index": 2,
    "action": "hotcue",
    "deck": "A",
-   "slot": 2
+   "slot": 1
   },
   {
    "group": "deckA.hotcuePads",
@@ -640,14 +684,14 @@
    "index": 1,
    "action": "clearcue",
    "deck": "A",
-   "slot": 1
+   "slot": 2
   },
   {
    "group": "deckA.hotcueClearPads",
    "index": 2,
    "action": "clearcue",
    "deck": "A",
-   "slot": 2
+   "slot": 1
   },
   {
    "group": "deckA.hotcueClearPads",
@@ -772,6 +816,20 @@
    "reason": "pad-mode select, done in hardware: after FX the pads send 0x10-0x13 (rollPads, captured), so the press itself needs no action"
   },
   {
+   "group": "deckB.buttons",
+   "index": 11,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "0x11: SHIFT + HOT CUE, the LOOP pad-mode select ([UNVERIFIED] on deck B (assumed to mirror deck A's)); the mode change itself is done in hardware"
+  },
+  {
+   "group": "deckB.buttons",
+   "index": 12,
+   "action": "unbound",
+   "deck": "B",
+   "reason": "0x40: sent with 0x11 while LOOP pad mode is selected ([UNVERIFIED] on deck B (assumed to mirror deck A's)); a mode-state note, no action"
+  },
+  {
    "group": "deckB.shiftButtons",
    "index": 0,
    "action": "sync",
@@ -824,14 +882,14 @@
    "index": 1,
    "action": "hotcue",
    "deck": "B",
-   "slot": 1
+   "slot": 2
   },
   {
    "group": "deckB.hotcuePads",
    "index": 2,
    "action": "hotcue",
    "deck": "B",
-   "slot": 2
+   "slot": 1
   },
   {
    "group": "deckB.hotcuePads",
@@ -852,14 +910,14 @@
    "index": 1,
    "action": "clearcue",
    "deck": "B",
-   "slot": 1
+   "slot": 2
   },
   {
    "group": "deckB.hotcueClearPads",
    "index": 2,
    "action": "clearcue",
    "deck": "B",
-   "slot": 2
+   "slot": 1
   },
   {
    "group": "deckB.hotcueClearPads",
@@ -991,14 +1049,14 @@
    "index": 1,
    "action": "macro",
    "deck": "A",
-   "macro": "beat-repeat"
+   "macro": "drop"
   },
   {
    "group": "deckA.rollPads",
    "index": 2,
    "action": "macro",
    "deck": "A",
-   "macro": "drop"
+   "macro": "beat-repeat"
   },
   {
    "group": "deckA.rollPads",
@@ -1019,14 +1077,14 @@
    "index": 1,
    "action": "stinger",
    "deck": "A",
-   "slot": 1
+   "slot": 2
   },
   {
    "group": "deckA.samplerPads",
    "index": 2,
    "action": "stinger",
    "deck": "A",
-   "slot": 2
+   "slot": 1
   },
   {
    "group": "deckA.samplerPads",
@@ -1047,14 +1105,14 @@
    "index": 1,
    "action": "roleMute",
    "deck": "A",
-   "role": "snare"
+   "role": "hihat"
   },
   {
    "group": "deckA.fxPads",
    "index": 2,
    "action": "roleMute",
    "deck": "A",
-   "role": "hihat"
+   "role": "snare"
   },
   {
    "group": "deckA.fxPads",
@@ -1064,30 +1122,32 @@
    "role": "bass"
   },
   {
-   "group": "deckA.fxPads",
-   "index": 4,
-   "action": "roleMute",
+   "group": "deckA.loopPads",
+   "index": 0,
+   "action": "clipToggle",
    "deck": "A",
-   "role": "melody"
+   "slot": 0
   },
   {
-   "group": "deckA.fxPads",
-   "index": 5,
-   "action": "roleMute",
+   "group": "deckA.loopPads",
+   "index": 1,
+   "action": "clipToggle",
    "deck": "A",
-   "role": "harmony"
+   "slot": 2
   },
   {
-   "group": "deckA.fxPads",
-   "index": 6,
-   "action": "sectionPrev",
-   "deck": "A"
+   "group": "deckA.loopPads",
+   "index": 2,
+   "action": "clipToggle",
+   "deck": "A",
+   "slot": 1
   },
   {
-   "group": "deckA.fxPads",
-   "index": 7,
-   "action": "sectionNext",
-   "deck": "A"
+   "group": "deckA.loopPads",
+   "index": 3,
+   "action": "clipToggle",
+   "deck": "A",
+   "slot": 3
   },
   {
    "group": "deckB.rollPads",
@@ -1101,14 +1161,14 @@
    "index": 1,
    "action": "macro",
    "deck": "B",
-   "macro": "beat-repeat"
+   "macro": "drop"
   },
   {
    "group": "deckB.rollPads",
    "index": 2,
    "action": "macro",
    "deck": "B",
-   "macro": "drop"
+   "macro": "beat-repeat"
   },
   {
    "group": "deckB.rollPads",
@@ -1129,14 +1189,14 @@
    "index": 1,
    "action": "stinger",
    "deck": "B",
-   "slot": 1
+   "slot": 2
   },
   {
    "group": "deckB.samplerPads",
    "index": 2,
    "action": "stinger",
    "deck": "B",
-   "slot": 2
+   "slot": 1
   },
   {
    "group": "deckB.samplerPads",
@@ -1157,14 +1217,14 @@
    "index": 1,
    "action": "roleMute",
    "deck": "B",
-   "role": "snare"
+   "role": "hihat"
   },
   {
    "group": "deckB.fxPads",
    "index": 2,
    "action": "roleMute",
    "deck": "B",
-   "role": "hihat"
+   "role": "snare"
   },
   {
    "group": "deckB.fxPads",
@@ -1174,30 +1234,32 @@
    "role": "bass"
   },
   {
-   "group": "deckB.fxPads",
-   "index": 4,
-   "action": "roleMute",
+   "group": "deckB.loopPads",
+   "index": 0,
+   "action": "clipToggle",
    "deck": "B",
-   "role": "melody"
+   "slot": 4
   },
   {
-   "group": "deckB.fxPads",
-   "index": 5,
-   "action": "roleMute",
+   "group": "deckB.loopPads",
+   "index": 1,
+   "action": "clipToggle",
    "deck": "B",
-   "role": "harmony"
+   "slot": 6
   },
   {
-   "group": "deckB.fxPads",
-   "index": 6,
-   "action": "sectionPrev",
-   "deck": "B"
+   "group": "deckB.loopPads",
+   "index": 2,
+   "action": "clipToggle",
+   "deck": "B",
+   "slot": 5
   },
   {
-   "group": "deckB.fxPads",
-   "index": 7,
-   "action": "sectionNext",
-   "deck": "B"
+   "group": "deckB.loopPads",
+   "index": 3,
+   "action": "clipToggle",
+   "deck": "B",
+   "slot": 7
   }
  ]
 }

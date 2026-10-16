@@ -94,6 +94,8 @@ public final class AppModel {
   var padPort: String?
   var showPads = false
   var showMap = false
+  /// The Controllers panel: every device drawn with its bindings.
+  var showControllers = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
   /// in the app's defaults as `keepScreenAwake`; off until turned on.
   private(set) var keepScreenAwake = false
@@ -988,6 +990,8 @@ public struct ContentView: View {
           back: { model.walkBack() }, stop: { model.stopWalk() }
         )
         .frame(height: 300)
+      } else if model.showControllers {
+        ControllersView(model: model)
       } else if model.showMap {
         DeviceMapView(
           maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
@@ -1028,6 +1032,12 @@ public struct ContentView: View {
       }
       Spacer()
       HStack {
+        Toggle(
+          "Controllers",
+          isOn: Binding(get: { model.showControllers }, set: { model.showControllers = $0 })
+        )
+        .toggleStyle(.button)
+        .help("Every controller drawn as it looks, each control labelled with what it does")
         Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
           .toggleStyle(.button)
         // one button per attached controller: walk through its controls

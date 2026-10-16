@@ -49,6 +49,7 @@ extension SurfaceProfile.Binding {
     case .loopHalve: return "loop ÷2\(on)"
     case .loopDouble: return "loop ×2\(on)"
     case .loopRecord: return "loop record (hold)\(on)"
+    case .clipToggle: return "loop \((slot ?? 0) + 1) in/out"
     case .eqLow: return "EQ low\(on)"
     case .eqMid: return "EQ mid\(on)"
     case .eqHigh: return "EQ high\(on)"
