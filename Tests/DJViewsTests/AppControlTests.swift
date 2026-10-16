@@ -289,3 +289,26 @@ struct AppControlTests {
     }
   }
 }
+
+/// The bottom bar's "Awake": a PreventUserIdleDisplaySleep assertion while on, saved.
+@MainActor
+struct ScreenWakeLockTests {
+  @Test func awakeHoldsTheDisplayAssertionAndRemembersIt() throws {
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 22_050)
+    let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
+    m.start()
+    let display = "PreventUserIdleDisplaySleep"
+    #expect(!m.keepScreenAwake && !m.screenWakeLock.isHeld)
+    m.setKeepScreenAwake(true)
+    #expect(m.screenWakeLock.isHeld)
+    #expect(ownPowerAssertionTypes().contains(display), "\(ownPowerAssertionTypes())")
+    #expect(m.defaults.bool(forKey: AppModel.keepScreenAwakeKey))
+    #expect(m.controlState()["keepScreenAwake"] == .bool(true))
+    m.setKeepScreenAwake(true)  // twice is still one hold
+    m.setKeepScreenAwake(false)
+    #expect(!m.screenWakeLock.isHeld)
+    #expect(!ownPowerAssertionTypes().contains(display))
+    #expect(!m.defaults.bool(forKey: AppModel.keepScreenAwakeKey))
+  }
+}

@@ -399,6 +399,7 @@ extension AppModel {
       })
     if !lastMessage.isEmpty { o["lastMidi"] = .string(lastMessage) }
     o["padsOnScreen"] = .bool(showPads)
+    o["keepScreenAwake"] = .bool(keepScreenAwake)
     let b = BuildInfo.current
     var build = JSONObject([
       ("id", .string(b.id)), ("version", .string(b.version)), ("build", .string(b.build)),

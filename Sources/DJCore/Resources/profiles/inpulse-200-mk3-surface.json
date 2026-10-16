@@ -417,7 +417,7 @@
    "names": [
     "browser"
    ],
-   "comment": "[MIXXX] browser encoder (0xB0 01, relative); never captured"
+   "comment": "[MIXXX] browser encoder (0xB0 01, relative); never captured. Bound to seedStep: each click moves the playing loop (focus deck, else the only one playing) one seed on or back and recomposes it"
   },
   {
    "id": "mixer.shiftBrowser",
@@ -937,8 +937,7 @@
   {
    "group": "mixer.browser",
    "index": 0,
-   "action": "unbound",
-   "reason": "[MIXXX] browser encoder (0xB0 01) never captured, and the app has no track browser. Candidate once captured: step sections (sectionPrev/sectionNext), which needs a focus-deck form since the encoder belongs to no deck"
+   "action": "seedStep"
   },
   {
    "group": "mixer.shiftBrowser",
