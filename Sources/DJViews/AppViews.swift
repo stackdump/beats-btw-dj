@@ -61,6 +61,12 @@ public final class AppModel {
   var padPort: String?
   var showPads = false
   var showMap = false
+  /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
+  /// in the app's defaults as `keepScreenAwake`; off until turned on.
+  private(set) var keepScreenAwake = false
+  @ObservationIgnored let screenWakeLock = ScreenWakeLock()
+  @ObservationIgnored var defaults = UserDefaults.standard
+  static let keepScreenAwakeKey = "keepScreenAwake"
   // Scopes (SPEC modes 1…6): the panel under the decks, and what it shows.
   var showScopes = false
   var scopeKind: ScopeKind = .live
@@ -123,6 +129,7 @@ public final class AppModel {
       poll()
       return
     }
+    setKeepScreenAwake(defaults.bool(forKey: Self.keepScreenAwakeKey))
     do {
       let dj = try DJEngine()
       for d in dj.decks.values { d.loadDemo() }
@@ -294,6 +301,11 @@ public final class AppModel {
   func setCrossfader(_ v: Double) { dj?.perform(.crossfader(v)) }
   func setMaster(_ v: Double) { dj?.perform(.master(v)) }
   // Cue/headphone state doesn't change the master mix a session renders: not recorded.
+  func setKeepScreenAwake(_ on: Bool) {
+    keepScreenAwake = on
+    screenWakeLock.set(on)
+    defaults.set(on, forKey: Self.keepScreenAwakeKey)
+  }
   /// Show the APC grid on screen; with no hardware attached, a virtual APC takes its place.
   func setShowPads(_ on: Bool) {
     showPads = on
@@ -610,6 +622,11 @@ public struct ContentView: View {
         .disabled(model.devices.isEmpty)
         Toggle("Pads", isOn: Binding(get: { model.showPads }, set: { model.setShowPads($0) }))
           .toggleStyle(.button)
+        Toggle(
+          "Awake",
+          isOn: Binding(get: { model.keepScreenAwake }, set: { model.setKeepScreenAwake($0) })
+        )
+        .toggleStyle(.button).help("Keep the screen from going to sleep while DJApp is open")
         Toggle("Scopes", isOn: Binding(get: { model.showScopes }, set: { model.showScopes = $0 }))
           .toggleStyle(.button)
         // The Stage (SPEC modes 7…21) is not a ScopeKind: it has a window of its own.

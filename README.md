@@ -20,7 +20,8 @@ there. In short:
   the lab's scrub worklet) or a **live Petri net** composed natively from genre + seed
   (+ structure), or loaded from a beats share link (composed or raw-`nets`). Volume, one-knob filter, 3-band EQ, gain, ±8 % pitch, crossfader, master,
   headphone cue on the Inpulse's outputs 3/4; 4 hot cues, sync, quantized cues and loops;
-  scratching a net deck runs its clock backwards.
+  scratching a net deck runs its clock backwards. "Awake" in the bottom bar keeps the screen
+  from sleeping while the app is open (remembered between launches).
 - **Generation** — beats' composer, arrange / overlays, share envelopes and URLs and its wave
   engine are ported to Swift and held to the same CIDs and bytes by fixtures from the real JS.
   In the app, installed Logic / GarageBand instruments and SoundFonts can stand in for the
