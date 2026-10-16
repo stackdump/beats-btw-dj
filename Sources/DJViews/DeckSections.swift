@@ -29,7 +29,7 @@ struct DeckSections: View {
   }
 
   enum Section: String, CaseIterable {
-    case perform, masterfx, track, favorites, generate, load
+    case perform, masterfx, reverb, track, favorites, generate, load
     var netOnly: Bool { [.perform, .masterfx, .track].contains(self) }
   }
 
@@ -48,6 +48,7 @@ struct DeckSections: View {
     switch s {
     case .perform: return "Perform"
     case .masterfx: return state.masterRunning.isEmpty ? "Master FX" : "Master FX ●"
+    case .reverb: return state.reverb.isOn ? "Reverb ●" : "Reverb"
     case .track: return "Instruments"
     case .favorites: return model.favorites.isEmpty ? "★ Favorites" : "★ \(model.favorites.count)"
     case .generate: return "Generate"
@@ -80,6 +81,7 @@ struct DeckSections: View {
     case .perform: NetPanel(name: name, state: state, model: model, tint: tint)
     case .masterfx:
       MasterFxPanel(name: name, running: state.masterRunning, model: model, tint: tint)
+    case .reverb: ReverbPanel(name: name, reverb: state.reverb, model: model, tint: tint)
     case .track: TrackPanel(name: name, state: state, model: model, tint: tint)
     case .favorites: FavoritesPanel(name: name, model: model, current: state.sourceCID)
     case .generate: GeneratePanel(name: name, model: model, tint: tint)
@@ -334,6 +336,49 @@ struct TrackPanel: View {
 }
 
 /// The master chain's macros (beats' FX, Pitch and Feel groups), lit while in effect.
+/// The channel's reverb (`DeckReverb`): a few starting points, then the three knobs.
+struct ReverbPanel: View {
+  let name: String
+  let reverb: ReverbState
+  let model: AppModel
+  let tint: Color
+
+  static let presets: [(label: String, value: ReverbState)] = [
+    ("Off", ReverbState(wet: 0, size: 0.5, tone: 0.5)),
+    ("Room", ReverbState(wet: 0.2, size: 0.25, tone: 0.5)),
+    ("Plate", ReverbState(wet: 0.25, size: 0.45, tone: 0.85)),
+    ("Hall", ReverbState(wet: 0.3, size: 0.7, tone: 0.6)),
+    ("Wash", ReverbState(wet: 0.55, size: 0.95, tone: 0.4)),
+  ]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      FlowRow(spacing: 4) {
+        ForEach(Self.presets, id: \.label) { p in
+          ChoiceButton(
+            label: p.label, selected: p.value.isOn == reverb.isOn && p.value.near(reverb),
+            tint: tint
+          ) { model.setReverb(name, p.value) }
+        }
+      }
+      LabeledSlider(
+        label: String(format: "Wet %.0f%%", reverb.wet * 100),
+        value: Binding(get: { reverb.wet }, set: { model.setReverb(name, "reverbWet", $0) }),
+        range: 0...1)
+      LabeledSlider(
+        label: String(format: "Size %.1f s", reverb.decaySeconds),
+        value: Binding(get: { reverb.size }, set: { model.setReverb(name, "reverbSize", $0) }),
+        range: 0...1)
+      LabeledSlider(
+        label: reverb.tone < 0.35 ? "Tone dark" : (reverb.tone > 0.65 ? "Tone bright" : "Tone"),
+        value: Binding(get: { reverb.tone }, set: { model.setReverb(name, "reverbTone", $0) }),
+        range: 0...1)
+      Text("After the EQ, before the fader. LOOP record takes stay dry.")
+        .font(.caption2).foregroundStyle(.secondary)
+    }
+  }
+}
+
 struct MasterFxPanel: View {
   let name: String
   let running: Set<MasterMacro>

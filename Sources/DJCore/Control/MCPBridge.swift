@@ -125,8 +125,9 @@ public struct MCPBridge {
       with `op` plus fields:
       play {deck, on} · cue {deck} · hotCue/clearCue {deck, slot 0-7} · \
       loop {deck, loop: in|out|halve|double} · \
-      param {deck, name: volume|filter|gain|eqLow|eqMid|eqHigh|pitch, value} (0…1, 0.5 = \
-      centre for filter/gain/eq; pitch is -1…1 = ±8%, 0 = none) · crossfader {value 0…1, \
+      param {deck, name: volume|filter|gain|eqLow|eqMid|eqHigh|pitch|reverbWet|reverbSize|\
+      reverbTone, value} (0…1, 0.5 = centre for filter/gain/eq; pitch is -1…1 = ±8%, 0 = none; \
+      reverb: wet 0 = off, size 0…1 = 0.25…8 s decay, tone 0 dark … 1 bright) · crossfader {value 0…1, \
       0 = A} · master {value} · nextTrack {deck} · autoAdvance {deck, on} · \
       section {deck, index} · role {deck, role, on} · macro {deck, macro: id from \
       dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \

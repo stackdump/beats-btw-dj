@@ -76,6 +76,9 @@ public struct DeckParams: Equatable, Sendable {
   public var pitch = 0.0
   public var quantize = "off"
   public var autoAdvance = false
+  public var reverbWet = 0.0
+  public var reverbSize = 0.5
+  public var reverbTone = 0.5
   public init() {}
 }
 
@@ -87,7 +90,8 @@ public enum DeckAction: Equatable, Sendable {
   case hotCue(deck: String, slot: Int)
   case clearCue(deck: String, slot: Int)
   case loop(deck: String, op: String)  // in | out | halve | double
-  /// name: volume | filter | gain | eqLow | eqMid | eqHigh | pitch
+  /// name: volume | filter | gain | eqLow | eqMid | eqHigh | pitch | mute | reverbWet |
+  /// reverbSize | reverbTone
   case param(deck: String, name: String, value: Double)
   case crossfader(Double)
   case master(Double)
@@ -253,13 +257,19 @@ extension DeckSourceDescriptor {
 
 extension DeckParams {
   var json: JSONValue {
-    .object(
-      JSONObject([
-        ("volume", .number(volume)), ("gain", .number(gain)), ("filter", .number(filter)),
-        ("eqLow", .number(eqLow)), ("eqMid", .number(eqMid)), ("eqHigh", .number(eqHigh)),
-        ("pitch", .number(pitch)), ("quantize", .string(quantize)),
-        ("autoAdvance", .bool(autoAdvance)),
-      ]))
+    var o = JSONObject([
+      ("volume", .number(volume)), ("gain", .number(gain)), ("filter", .number(filter)),
+      ("eqLow", .number(eqLow)), ("eqMid", .number(eqMid)), ("eqHigh", .number(eqHigh)),
+      ("pitch", .number(pitch)), ("quantize", .string(quantize)),
+      ("autoAdvance", .bool(autoAdvance)),
+    ])
+    // only when touched, so sets from before the reverb keep their canonical text and CID
+    if reverbWet != 0 || reverbSize != 0.5 || reverbTone != 0.5 {
+      o["reverbWet"] = .number(reverbWet)
+      o["reverbSize"] = .number(reverbSize)
+      o["reverbTone"] = .number(reverbTone)
+    }
+    return .object(o)
   }
 
   init(json v: JSONValue) {
@@ -273,6 +283,9 @@ extension DeckParams {
     pitch = v["pitch"]?.double ?? pitch
     quantize = v["quantize"]?.string ?? quantize
     autoAdvance = v["autoAdvance"]?.bool ?? autoAdvance
+    reverbWet = v["reverbWet"]?.double ?? reverbWet
+    reverbSize = v["reverbSize"]?.double ?? reverbSize
+    reverbTone = v["reverbTone"]?.double ?? reverbTone
   }
 }
 

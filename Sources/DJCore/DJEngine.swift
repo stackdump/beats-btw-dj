@@ -137,17 +137,19 @@ public final class DJEngine {
 
   deinit { masterProbe.detach() }
 
-  /// Source -> EQ -> strip -> main mixer, plus the pre-fader cue send; and the capture tap on
-  /// the EQ (LOOP record listens after the EQ, before the fader).
+  /// Source -> EQ -> reverb -> strip -> main mixer, plus the pre-fader cue send; and the
+  /// capture tap on the EQ (LOOP record listens after the EQ, before the reverb and the fader).
   private func wire(_ deck: Deck) {
     engine.attach(deck.node)
     engine.attach(deck.filterNode)
+    engine.attach(deck.reverb.node)
     engine.attach(deck.strip)
     engine.attach(deck.cueSend)
     engine.connect(deck.node, to: deck.filterNode, format: format)
-    // Post-EQ, pre-fader: the strip feeds the master, the cue send feeds the headphones.
+    engine.connect(deck.filterNode, to: deck.reverb.node, format: format)
+    // Post-EQ and reverb, pre-fader: the strip feeds the master, the cue send the headphones.
     engine.connect(
-      deck.filterNode,
+      deck.reverb.node,
       to: [
         AVAudioConnectionPoint(node: deck.strip, bus: 0),
         AVAudioConnectionPoint(node: deck.cueSend, bus: 0),
@@ -237,6 +239,8 @@ public final class Deck: JogClock {
   ) {
     renderer.renderBlock(frames: frames, left: left, right: right)
   }
+  /// After the EQ, before the fader: the channel's reverb (`DeckReverb`).
+  public let reverb = DeckReverb()
   /// Band 0 low-pass, 1 high-pass (see `filter`); 2 low shelf, 3 mid peak,
   /// 4 high shelf (see `eqLow` / `eqMid` / `eqHigh`).
   public let filterNode = AVAudioUnitEQ(numberOfBands: 5)

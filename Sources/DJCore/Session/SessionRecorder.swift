@@ -93,6 +93,9 @@ extension Deck {
     p.pitch = pitch
     p.quantize = quantize == .off ? "off" : (quantize == .beat ? "beat" : "bar")
     p.autoAdvance = autoAdvance
+    p.reverbWet = reverb.wet
+    p.reverbSize = reverb.size
+    p.reverbTone = reverb.tone
     return p
   }
 
@@ -106,6 +109,9 @@ extension Deck {
     pitch = p.pitch
     quantize = p.quantize == "beat" ? .beat : (p.quantize == "bar" ? .bar : .off)
     autoAdvance = p.autoAdvance
+    reverb.wet = p.reverbWet
+    reverb.size = p.reverbSize
+    reverb.tone = p.reverbTone
   }
 }
 
@@ -166,6 +172,9 @@ extension DJEngine {
       case "eqHigh": d.eqHigh = v
       case "pitch": d.pitch = v
       case "mute": d.mute = v > 0.5
+      case "reverbWet": d.reverb.wet = v
+      case "reverbSize": d.reverb.size = v
+      case "reverbTone": d.reverb.tone = v
       default: break
       }
     case .crossfader(let v):

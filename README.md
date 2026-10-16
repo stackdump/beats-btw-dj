@@ -29,6 +29,9 @@ there. In short:
 - **Performing a net** — section jumps, role mutes, stingers, MPK keys into the track's scale,
   beats' net macros and its 18 master-chain FX / pitch / feel macros, from any controller, the
   UI or MCP.
+- **LOOP record and reverb** — hold a deck's LOOP to take its bars (dry, after the EQ) as a
+  clip; clips loop on their own channel under the mixer, in time, and move onto A or B. Every
+  channel has a reverb (Apple's AUReverb2: wet, size, tone) in its Reverb section.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com
   (`djctl publish`, or Publish… in the app, which shows the public URL).

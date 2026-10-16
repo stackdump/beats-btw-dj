@@ -26,7 +26,7 @@ private struct Tally {
 struct LoopRecordRealTimeTests {
   @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
   @MainActor
-  func theCaptureTapsAndTheLoopChannelDoNotAllocate() async throws {
+  func theCaptureTapsTheLoopChannelAndTheReverbDoNotAllocate() async throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
     let a = try #require(dj["A"])
     await a.generate(
@@ -51,6 +51,9 @@ struct LoopRecordRealTimeTests {
     pull(400, 512)
     let clip = try #require(dj.clips.first)
     #expect(dj.loopChannel.playing && dj.loopChannel.clipID == clip.id)
+    // reverb on deck A and on the loop channel (Apple's AUReverb2 on the render thread)
+    a.reverb.wet = 0.3
+    dj.loopChannel.reverb.wet = 0.4
     // a second take held while measuring (its draining is the main thread's, outside)
     #expect(dj.loopRecord("B", on: true))
 

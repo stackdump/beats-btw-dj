@@ -50,6 +50,24 @@ struct DeckState: Equatable {
   var masterRunning: Set<MasterMacro> = []
   /// The LOOP-record clip the deck is playing, if it is playing one.
   var clipID: String?
+  var reverb = ReverbState()
+}
+
+/// A channel's reverb knobs, for SwiftUI.
+struct ReverbState: Equatable {
+  var wet = 0.0
+  var size = 0.5
+  var tone = 0.5
+  var isOn: Bool { wet >= 0.005 }
+  var decaySeconds: Double { 0.25 * pow(32, size) }
+  func near(_ o: ReverbState) -> Bool {
+    abs(wet - o.wet) < 0.01 && abs(size - o.size) < 0.01 && abs(tone - o.tone) < 0.01
+      || (!isOn && !o.isOn)
+  }
+}
+
+extension ReverbState {
+  init(_ r: DeckReverb) { self.init(wet: r.wet, size: r.size, tone: r.tone) }
 }
 
 @MainActor @Observable
@@ -317,6 +335,7 @@ public final class AppModel {
         state.bar = d.wave.tick / 16 + 1
       }
       state.clipID = d.clipID
+      state.reverb = ReverbState(d.reverb)
       decks[name] = state
     }
     pollLoops(dj)
@@ -326,7 +345,7 @@ public final class AppModel {
     let l = dj.loopChannel
     let strip = LoopChannelState(
       clipID: l.clipID, playing: l.playing, volume: l.volume, mute: l.mute,
-      overlay: l.clipID == nil ? nil : l.waveformOverlay)
+      overlay: l.clipID == nil ? nil : l.waveformOverlay, reverb: ReverbState(l.reverb))
     if strip != loopChannel { loopChannel = strip }
     // where a clip is: the deck playing it, else a deck holding it paused (the loop channel only
     // counts while it plays)
@@ -382,6 +401,15 @@ public final class AppModel {
     } else if let id = l.clipID {
       dj?.perform(.clip(deck: "L", id: id))  // back in time with its deck
     }
+  }
+  /// One reverb knob of a channel ("A", "B", "L"): reverbWet | reverbSize | reverbTone.
+  func setReverb(_ deck: String, _ knob: String, _ v: Double) {
+    dj?.perform(.param(deck: deck, name: knob, value: v))
+  }
+  func setReverb(_ deck: String, _ r: ReverbState) {
+    setReverb(deck, "reverbSize", r.size)
+    setReverb(deck, "reverbTone", r.tone)
+    setReverb(deck, "reverbWet", r.wet)
   }
   func setLoopMute(_ on: Bool) { dj?.perform(.param(deck: "L", name: "mute", value: on ? 1 : 0)) }
   func setMaster(_ v: Double) { dj?.perform(.master(v)) }

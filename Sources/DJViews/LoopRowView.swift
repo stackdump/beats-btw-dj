@@ -27,6 +27,7 @@ struct LoopChannelState: Equatable {
   var volume = 0.8
   var mute = false
   var overlay: WaveformOverlay?
+  var reverb = ReverbState()
 }
 
 /// The row under the decks: every LOOP-record take as a clip, and the loop channel that plays
@@ -61,6 +62,14 @@ struct LoopRowView: View {
           range: 0...1
         )
         .frame(width: 220)
+        LabeledSlider(
+          label: String(format: "Reverb %.0f%%", model.loopChannel.reverb.wet * 100),
+          value: Binding(
+            get: { model.loopChannel.reverb.wet }, set: { model.setReverb("L", "reverbWet", $0) }),
+          range: 0...1
+        )
+        .frame(width: 220)
+        .help("The loop channel's reverb (the takes themselves are dry)")
         Spacer(minLength: 0)
         Text("hold a deck's LOOP to record its bars").font(.caption).foregroundStyle(.secondary)
       }
