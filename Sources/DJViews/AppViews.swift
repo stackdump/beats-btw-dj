@@ -90,6 +90,10 @@ public final class AppModel {
   /// Starred tracks, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
   @ObservationIgnored let favoritesStore: FavoritesStore
+  /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
+  var stockLoops: [StockLoop] = []
+  var stockLoopsLoading = false
+  @ObservationIgnored let loopLibrary: StockLoopLibrary
   /// Per deck, the source its `sourceCID` was hashed from, so a poll doesn't re-hash.
   @ObservationIgnored private var sourceCIDs: [String: (DeckSourceDescriptor, String)] = [:]
   var walkReportPath: String?
@@ -125,11 +129,13 @@ public final class AppModel {
   /// quality monitor for an injected engine (a test's own clock); the default is a plain one.
   /// `favorites`: where starred tracks are kept (tests pass a temporary file).
   public init(
-    engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore()
+    engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
+    loops: StockLoopLibrary = StockLoopLibrary()
   ) {
     injected = engine
     injectedPerf = perf
     favoritesStore = favorites
+    loopLibrary = loops
     self.favorites = favorites.list()
   }
   private let injected: DJEngine?
@@ -153,6 +159,8 @@ public final class AppModel {
       dj.master = master
       try dj.start()
       let hub = ControllerHub(engine: dj)
+      // warm the stock loop index (a first scan takes seconds) so the Load panel opens ready
+      Task { await loadStockLoops() }
       hub.onMessage = { [weak self] m, d in
         self?.lastMessage = "\(m.port): " + (d.isEmpty ? "(unbound)" : d)
       }
@@ -466,6 +474,43 @@ public final class AppModel {
   func loadFavorite(_ deck: String, _ f: Favorite) {
     status = "loading \(f.title)…"
     Task { @MainActor in await prepareAndLoad(deck, f.source) }
+  }
+
+  /// Read the stock loop index (or scan, the first time: a few seconds) off the main thread.
+  func loadStockLoops() async {
+    guard stockLoops.isEmpty, !stockLoopsLoading else { return }
+    stockLoopsLoading = true
+    let library = loopLibrary
+    stockLoops = await Task.detached(priority: .userInitiated) { library.load() }.value
+    stockLoopsLoading = false
+  }
+
+  /// Put a stock loop on a deck: decoded off the main thread, loaded through `perform` with the
+  /// loop's own tempo as its beat grid (so no analysis runs, and sync works at once).
+  @discardableResult
+  func loadStockLoop(_ deck: String, _ loop: StockLoop) async -> Bool {
+    guard let dj else { return false }
+    let sr = dj.sampleRate
+    status = "loading \(loop.name)…"
+    do {
+      let buffer = try await Task.detached(priority: .userInitiated) {
+        try Deck.decode(loop.url, sampleRate: sr)
+      }.value
+      let grid = BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)
+      dj.perform(
+        .load(deck: deck, source: .sample(id: "", title: loop.name, grid: grid)), buffer: buffer)
+      status = "\(Int(dj.sampleRate)) Hz"
+      return true
+    } catch {
+      status = "\(loop.name): \(error)"
+      return false
+    }
+  }
+
+  /// The tempo a deck's stock loops are sorted by: the other deck's, when it has one.
+  func loopTempo(for deck: String) -> Double? {
+    let other = deck == "A" ? "B" : "A"
+    return decks[other]?.bpm ?? decks[deck]?.bpm
   }
 
   /// Load the net playing on `from` onto `to` (instrument changes included), from its start.

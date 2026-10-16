@@ -174,6 +174,32 @@ extension AppModel {
       poll()
       return .object(JSONObject([("favorites", .array(favorites.map(favoriteJSON)))]))
 
+    case "stockLoops":
+      await loadStockLoops()
+      switch p["action"]?.string ?? "list" {
+      case "list":
+        let hits = stockLoops.matching(
+          category: p["category"]?.string ?? "", query: p["query"]?.string ?? "",
+          near: p["near"]?.double ?? p["deck"]?.string.flatMap { loopTempo(for: $0) })
+        let limit = max(1, Int(p["limit"]?.double ?? 20))
+        return .object(
+          JSONObject([
+            ("total", .int(hits.count)),
+            ("categories", .array(stockLoops.categories.map { .string($0) })),
+            ("loops", .array(hits.prefix(limit).map(stockLoopJSON))),
+          ]))
+      case "load":
+        let deck = p["deck"]?.string ?? ""
+        _ = try requireDeck(deck)
+        guard let path = p["path"]?.string, let loop = stockLoops.first(where: { $0.path == path })
+        else { throw ControlRequestError.bad("`path` must be a loop from action list") }
+        guard await loadStockLoop(deck, loop) else { throw ControlRequestError.bad(status) }
+        poll()
+        return deckJSON(deck) ?? .null
+      case let other:
+        throw ControlRequestError.bad("action must be list | load, not \(other)")
+      }
+
     case "copyDeck":
       let from = p["from"]?.string ?? ""
       let to = p["to"]?.string ?? ""
@@ -361,6 +387,17 @@ extension AppModel {
     _ = try requireDeck(deck)
     poll()
     return decks[deck]?.sourceCID
+  }
+
+  func stockLoopJSON(_ l: StockLoop) -> JSONValue {
+    var o = JSONObject([
+      ("name", .string(l.name)), ("path", .string(l.path)), ("pack", .string(l.pack)),
+      ("category", .string(l.category)), ("subcategory", .string(l.subcategory)),
+      ("genre", .string(l.genre)), ("bpm", .number((l.bpm * 10).rounded() / 10)),
+      ("beats", .int(l.beats)),
+    ])
+    if let k = l.key { o["key"] = .string(k) }
+    return .object(o)
   }
 
   func favoriteJSON(_ f: Favorite) -> JSONValue {

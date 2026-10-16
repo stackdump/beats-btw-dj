@@ -83,7 +83,7 @@ struct DeckSections: View {
     case .track: TrackPanel(name: name, state: state, model: model, tint: tint)
     case .favorites: FavoritesPanel(name: name, model: model, current: state.sourceCID)
     case .generate: GeneratePanel(name: name, model: model, tint: tint)
-    case .load: LoadPanel(name: name, model: model, importFile: importFile)
+    case .load: LoadPanel(name: name, model: model, tint: tint, importFile: importFile)
     }
   }
 }
@@ -104,11 +104,28 @@ struct ChoiceButton: View {
 struct LoadPanel: View {
   let name: String
   let model: AppModel
+  let tint: Color
   let importFile: () -> Void
+  @State private var query = ""
+  @State private var category = ""
+  /// The list, recomputed only when what it depends on changes (`Filter`), off the main thread:
+  /// filtering and sorting ~15k loops on every poll would cost the main thread again.
+  @State private var hits: [StockLoop] = []
+
+  struct Filter: Equatable {
+    var category: String
+    var query: String
+    var tempo: Int?
+    var count: Int
+  }
+
+  /// How many matches the list shows (the nearest in tempo): enough to browse, few enough to
+  /// lay out at once.
+  static let shown = 150
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      FlowRow(spacing: 4) {
+    VStack(alignment: .leading, spacing: DJStyle.s) {
+      FlowRow(spacing: DJStyle.xs) {
         Button("Audio file…", action: importFile)
         Button("Demo loop") { model.loadDemo(name) }
         Button("Paste share link") {
@@ -117,7 +134,89 @@ struct LoadPanel: View {
         .help("A beats share link (or envelope JSON) from the clipboard")
       }
       .controlSize(.small)
+      stockLoops
     }
+    .task { await model.loadStockLoops() }
+  }
+
+  @ViewBuilder private var stockLoops: some View {
+    let all = model.stockLoops
+    let tempo = model.loopTempo(for: name)
+    let filter = Filter(
+      category: category, query: query, tempo: tempo.map { Int($0.rounded()) }, count: all.count)
+    HStack(spacing: DJStyle.xs) {
+      SectionLabel("Stock loops")
+      Spacer()
+      Text(
+        model.stockLoopsLoading
+          ? "scanning…"
+          : all.isEmpty
+            ? "none installed"
+            : tempo.map { String(format: "%d · nearest %.0f BPM", hits.count, $0) }
+              ?? "\(hits.count)"
+      )
+      .font(.caption2).foregroundStyle(.secondary)
+    }
+    if !all.isEmpty {
+      TextField("Search loops (name, pack, genre)", text: $query)
+        .textFieldStyle(.roundedBorder).controlSize(.small)
+      FlowRow(spacing: DJStyle.xs) {
+        ChoiceButton(label: "All", selected: category.isEmpty, tint: tint) { category = "" }
+        ForEach(all.categories, id: \.self) { c in
+          ChoiceButton(label: c, selected: category == c, tint: tint) {
+            category = category == c ? "" : c
+          }
+        }
+      }
+      ScrollView(.vertical) {
+        LazyVStack(alignment: .leading, spacing: 1) {
+          ForEach(hits.prefix(Self.shown), id: \.path) { loop in
+            StockLoopRow(loop: loop, tint: tint) {
+              Task { await model.loadStockLoop(name, loop) }
+            }
+          }
+        }
+      }
+      .frame(height: 220)
+      .task(id: filter) {
+        let near = filter.tempo.map(Double.init)
+        hits = await Task.detached(priority: .userInitiated) {
+          all.matching(category: filter.category, query: filter.query, near: near)
+        }.value
+      }
+    }
+  }
+}
+
+/// One loop in the list: its name, then tempo, key and what it is. Pressing it loads the loop.
+struct StockLoopRow: View {
+  let loop: StockLoop
+  let tint: Color
+  let load: () -> Void
+  @State private var hover = false
+
+  var body: some View {
+    Button(action: load) {
+      HStack(spacing: DJStyle.s) {
+        Text(loop.name).font(.caption).lineLimit(1).truncationMode(.tail)
+        Spacer(minLength: DJStyle.xs)
+        Text(String(format: "%.0f", loop.bpm)).font(.caption.monospacedDigit())
+          .foregroundStyle(tint)
+        if let key = loop.key {
+          Text(key).font(.caption2).foregroundStyle(.secondary)
+        }
+        Text(loop.subcategory.isEmpty ? loop.category : loop.subcategory)
+          .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+      }
+      .padding(.horizontal, DJStyle.xs).padding(.vertical, 3)
+      .background(
+        RoundedRectangle(cornerRadius: 4).fill(hover ? tint.opacity(0.18) : Color.clear)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hover = $0 }
+    .help("\(loop.pack) · \(loop.genre) · \(loop.beats) beats — load onto this deck")
   }
 }
 

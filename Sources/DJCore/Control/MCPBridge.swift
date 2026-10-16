@@ -20,7 +20,7 @@ public struct MCPBridge {
     "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
-    "dj_set_instrument": "setInstrument",
+    "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -204,6 +204,24 @@ public struct MCPBridge {
         "action": prop("string", "list | add | remove | load"),
         "deck": prop("string", "A or B"),
         "cid": prop("string", "A favorite's cid, from list"),
+      ]),
+    tool(
+      "dj_stock_loops",
+      """
+      The Apple Loops installed on this Mac (~15k; the Load panel's stock loops). action list \
+      (default) filters by `category` (Drums, Bass, Keyboards…; the reply lists them) and \
+      `query` words, nearest in tempo to `near` BPM (or the other deck's when `deck` is given) \
+      first, up to `limit` (20); load {deck, path} puts one on a deck as a sample with its own \
+      tempo as the beat grid (does not start playback).
+      """,
+      [
+        "action": prop("string", "list | load"),
+        "deck": prop("string", "A or B"),
+        "path": prop("string", "A loop's path, from list"),
+        "category": prop("string", "e.g. Drums, Bass, Keyboards"),
+        "query": prop("string", "Words to match in name, pack, genre, subcategory"),
+        "near": prop("number", "Sort by closeness to this BPM"),
+        "limit": prop("integer", "How many to return (default 20)"),
       ]),
     tool(
       "dj_copy_deck",

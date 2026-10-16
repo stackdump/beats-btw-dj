@@ -79,6 +79,27 @@ struct AppControlTests {
     }
   }
 
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func aStockLoopListsAndLoadsWithItsOwnTempo() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites(), loops: try temporaryLoopLibrary())
+    m.start()
+    let list = try await call(m, "stockLoops", #"{"category":"Drums"}"#)
+    #expect(list["total"]?.double == 1)
+    let path = try #require(list["loops"]?.array?.first?["path"]?.string)
+    #expect(list["loops"]?.array?.first?["bpm"]?.double == 120)
+    let a = try await call(
+      m, "stockLoops", "{\"action\":\"load\",\"deck\":\"A\",\"path\":\"\(path)\"}")
+    #expect(a["title"]?.string == "Chill Hip-Hop Beat 08" && a["mode"]?.string == "sample")
+    #expect(a["bpm"]?.double == 120, "the loop's own tempo is the grid: no analysis")
+    await #expect {
+      try await call(m, "stockLoops", #"{"action":"load","deck":"A","path":"/nope.caf"}"#)
+    } throws: { "\($0)".contains("from action list") }
+  }
+
   @Test func stateDescribesBothDecks() async throws {
     let s = try await call(try model(), "state")
     #expect(s["decks"]?["A"]?["mode"]?.string == "sample")
