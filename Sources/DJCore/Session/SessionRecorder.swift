@@ -229,6 +229,10 @@ extension DJEngine {
       deck(n)?.setBeatGrid(BeatGrid(bpm: bpm, offset: offset, confidence: 1))
     case .loopRecord(let n, let on): loopRecord(n, on: on)
     case .clip(let n, let id): playClip(id, on: n)
+    case .clipLoop(let id, let on): setLooping(id, on)
+    case .clipGain(let id, let v): setClipGain(id, v)
+    case .clipCrop(let id, let from, let to): cropClip(id, from: from, to: to)
+    case .clipSequence(let steps, let replacing): makeSequence(steps, replacing: replacing)
     }
     return nil
   }

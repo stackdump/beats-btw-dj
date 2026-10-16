@@ -13,6 +13,8 @@ import Synchronization
 final class DeckRenderer: @unchecked Sendable {
   let turntable: Turntable
   let wave: WaveDeckSource
+  /// The loop channel's clips (nil on every other deck): rendered instead of the turntable.
+  let bank: LoopBank?
   /// Pre-EQ, pre-fader mono mixdown of this deck, on the engine's frame time base.
   let tap = ScopeTap()
   /// Pre-EQ, pre-fader LEFT channel of this deck, for the stage's corona (see
@@ -21,9 +23,10 @@ final class DeckRenderer: @unchecked Sendable {
   let leftTap = ScopeTap(capacity: ScopeTap.leftCapacity)
   private let renderedFramesAtomic = Atomic<Int>(0)
 
-  init(turntable: Turntable, wave: WaveDeckSource) {
+  init(turntable: Turntable, wave: WaveDeckSource, bank: LoopBank? = nil) {
     self.turntable = turntable
     self.wave = wave
+    self.bank = bank
   }
 
   /// Frames this deck has rendered since it was made, counted on every render call in both
@@ -53,7 +56,9 @@ final class DeckRenderer: @unchecked Sendable {
     frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
   ) {
     let start = renderedFramesAtomic.load(ordering: .relaxed)  // only this thread writes it
-    if wave.isActive {
+    if let bank {
+      bank.render(frames: frames, left: left, right: right, startFrame: start)
+    } else if wave.isActive {
       wave.render(frames: frames, left: left, right: right, startFrame: start)
     } else {
       turntable.render(frames: frames, left: left, right: right)

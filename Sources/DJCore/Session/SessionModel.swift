@@ -113,6 +113,14 @@ public enum DeckAction: Equatable, Sendable {
   case loopRecord(deck: String, on: Bool)
   /// Put a LOOP-record clip on a deck or the loop channel ("L") (`DJEngine.playClip`).
   case clip(deck: String, id: String)
+  /// Start (`on`) or stop a clip looping under the mixer, at the next downbeat.
+  case clipLoop(id: String, on: Bool)
+  /// A clip's level under the mixer, 0…1.
+  case clipGain(id: String, value: Double)
+  /// Crop a clip to its beats `from..<to` (`DJEngine.cropClip`).
+  case clipCrop(id: String, from: Int, to: Int)
+  /// Join clips into a sequence (`DJEngine.makeSequence`), or rewrite the one `replacing` names.
+  case clipSequence(steps: [SequenceStep], replacing: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -323,6 +331,18 @@ extension DeckAction {
       return o("grid", [d(deck), ("bpm", .number(bpm)), ("offset", .number(offset))])
     case .loopRecord(let deck, let on): return o("loopRecord", [d(deck), ("on", .bool(on))])
     case .clip(let deck, let id): return o("clip", [d(deck), ("id", .string(id))])
+    case .clipLoop(let id, let on): return o("clipLoop", [("id", .string(id)), ("on", .bool(on))])
+    case .clipGain(let id, let v):
+      return o("clipGain", [("id", .string(id)), ("value", .number(v))])
+    case .clipCrop(let id, let from, let to):
+      return o("clipCrop", [("id", .string(id)), ("from", .int(from)), ("to", .int(to))])
+    case .clipSequence(let steps, let replacing):
+      return o(
+        "clipSequence",
+        [
+          ("steps", steps.json),
+          ("replacing", replacing.map { .string($0) } ?? .null),
+        ])
     }
   }
 
@@ -359,6 +379,13 @@ extension DeckAction {
       self = .grid(deck: deck, bpm: v["bpm"]?.double ?? 120, offset: v["offset"]?.double ?? 0)
     case "loopRecord": self = .loopRecord(deck: deck, on: v["on"]?.bool ?? false)
     case "clip": self = .clip(deck: deck, id: v["id"]?.string ?? "")
+    case "clipLoop": self = .clipLoop(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
+    case "clipGain": self = .clipGain(id: v["id"]?.string ?? "", value: v["value"]?.double ?? 1)
+    case "clipSequence":
+      self = .clipSequence(
+        steps: [SequenceStep](json: v["steps"]), replacing: v["replacing"]?.string)
+    case "clipCrop":
+      self = .clipCrop(id: v["id"]?.string ?? "", from: v["from"]?.int ?? 0, to: v["to"]?.int ?? 0)
     default: return nil
     }
   }
@@ -449,5 +476,20 @@ extension Session {
     let v = try JSONValue.parse(text)
     if let cid, BeatsCID.shareCID(v) != cid { throw SessionError.cidMismatch }
     return try Session(json: v)
+  }
+}
+
+extension [SequenceStep] {
+  var json: JSONValue {
+    .array(
+      map {
+        .object(JSONObject([("clip", .string($0.clipID)), ("repeats", .int($0.repeats))]))
+      })
+  }
+
+  init(json v: JSONValue?) {
+    self = (v?.array ?? []).compactMap { e in
+      e["clip"]?.string.map { SequenceStep(clipID: $0, repeats: e["repeats"]?.int ?? 1) }
+    }
   }
 }

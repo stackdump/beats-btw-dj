@@ -50,7 +50,7 @@ struct LoopRecordRealTimeTests {
     dj.loopRecord("A", on: false)
     pull(400, 512)
     let clip = try #require(dj.clips.first)
-    #expect(dj.loopChannel.playing && dj.loopChannel.clipID == clip.id)
+    #expect(dj.loopState(clip.id) == .on)
     // reverb on deck A and on the loop channel (Apple's AUReverb2 on the render thread)
     a.reverb.wet = 0.3
     dj.loopChannel.reverb.wet = 0.4
@@ -63,14 +63,17 @@ struct LoopRecordRealTimeTests {
     tally.add(countAllocations { pullEngine(dj, buffer, cycles: 1000, frames: 512) })
     tally.add(countAllocations { pullEngine(dj, buffer, cycles: 30, frames: 4096) })
     tally.add(countAllocations { pullEngine(dj, buffer, cycles: 200, frames: 37) })
-    // a launch with no motor, applied on the render thread
-    dj.playClip(clip.id, on: "L")
+    // a loop out and back in (a load and a launch with no motor, applied on the render thread)
+    dj.stopLoop(clip.id, now: true)
+    pullEngine(dj, buffer, cycles: 4, frames: 512)
+    dj.serviceLoopTakes()
+    dj.startLoop(clip.id, atOnce: true)
     tally.add(countAllocations { pullEngine(dj, buffer, cycles: 100, frames: 512) })
     #expect(tally.allocs == 0, "the render path allocated \(tally.allocs) times")
     #expect(tally.frees == 0, "and freed \(tally.frees) times")
 
     // ...and all of it ran: every deck captured up to the render head, the loop channel is heard
-    let ran = 1000 * 512 + 30 * 4096 + 200 * 37 + 100 * 512
+    let ran = 1000 * 512 + 30 * 4096 + 200 * 37 + 4 * 512 + 100 * 512
     #expect(dj.frame == before + ran)
     for d in [a, dj["B"]!, dj.loopChannel] { #expect(d.capture.endFrame == d.renderedFrames) }
     var l: [Float] = []
@@ -78,5 +81,6 @@ struct LoopRecordRealTimeTests {
     let lc = dj.loopChannel
     _ = lc.capture.copy(from: lc.renderedFrames - 8192, to: lc.renderedFrames, left: &l, right: &r)
     #expect(l.count == 8192 && l.contains { abs($0) > 0.001 }, "the loop channel plays the clip")
+    #expect(dj.loopState(clip.id) == .on)
   }
 }

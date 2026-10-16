@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct LoopRowViewTests {
   /// Deck A plays the demo loop (120 bpm); one bar of it is taken with LOOP record.
-  func model() throws -> (AppModel, DJEngine) {
+  func model(takes: LoopLibrary? = nil) throws -> (AppModel, DJEngine) {
     let rate = 22_050.0
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
     dj["A"]!.loadDemo()
@@ -21,7 +21,7 @@ struct LoopRowViewTests {
         dj.serviceLoopTakes()
       }
     }
-    let m = AppModel(engine: dj)
+    let m = AppModel(engine: dj, takes: takes)
     m.start()
     try run(bar + bar / 2)
     m.loopRecord("A", on: true)
@@ -34,13 +34,29 @@ struct LoopRowViewTests {
     return (m, dj)
   }
 
+  @Test func theRowIsSavedAndComesBackOnTheNextLaunch() throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let (m, dj) = try model(takes: lib)
+    defer { dj.stop() }
+    m.flushLoopLibrary()
+    let saved = lib.load(sampleRate: dj.sampleRate)
+    #expect(saved.map(\.id) == m.clips.map(\.id) && saved.count == 1)
+    // a second app over a fresh engine finds it there
+    let dj2 = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: dj.sampleRate)
+    let m2 = AppModel(engine: dj2, takes: lib)
+    m2.start()
+    m2.poll()
+    #expect(m2.clips.map(\.id) == saved.map(\.id) && m2.clips.first?.loop == .off)
+  }
+
   @Test func aTakeAppearsAsAClipLoopingUnderTheMixer() throws {
     let (m, dj) = try model()
     defer { dj.stop() }
     #expect(m.recording.isEmpty)
     let clip = try #require(m.clips.first)
     #expect(m.clips.count == 1 && clip.source == "A" && clip.bars >= 1)
-    #expect(clip.playingOn == "L" && m.loopChannel.playing && m.loopChannel.clipID == clip.id)
+    #expect(clip.loop == .on && m.loopChannel.looping == 1 && clip.playhead != nil)
 
     let view = LoopRowView(model: m).padding().background(Color.black)
       .environment(\.colorScheme, .dark)
@@ -54,7 +70,36 @@ struct LoopRowViewTests {
     // moved onto deck B, the row says so and the loop channel stops
     m.playClip(clip.id, on: "B")
     m.poll()
-    #expect(m.clips.first?.playingOn == "B" && !m.loopChannel.playing)
+    #expect(m.clips.first?.onDeck == "B" && m.clips.first?.loop != .on)
     #expect(m.decks["B"]?.clipID == clip.id)
+  }
+
+  @Test func selectedLoopsJoinIntoASequenceTile() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let one = try #require(m.clips.first)
+    m.toggleSelected(one.id)
+    #expect(m.selectedClips == [one.id])
+    m.joinSelected()
+    #expect(m.selectedClips.isEmpty && m.clips.count == 2)
+    let seq = try #require(m.clips.last)
+    #expect(seq.steps?.map(\.clipID) == [one.id] && seq.steps?.first?.name == "loop 1")
+    m.editSequence(seq.id, [SequenceStep(clipID: one.id, repeats: 2)])
+    #expect(m.clips.count == 2 && m.clips.last?.steps?.first?.repeats == 2)
+    #expect(m.clips.last?.beats == 2 * one.beats)
+  }
+
+  @Test func aClipSaysWhereItCameFrom() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let lines = try #require(m.clips.first?.provenance)
+    #expect(lines.first == "Deck A: demo loop", "\(lines)")
+    #expect(lines.contains("From bar 2, 2 bars"), "\(lines)")
+    #expect(lines.contains { $0.hasPrefix("120.0 bpm") })
+    #expect(lines.contains("EQ and filter flat") && lines.last?.hasPrefix("Recorded ") == true)
+    #expect(m.clips.first?.provenanceJSON?.contains("\"deck\":\"A\"") == true)
+    let c = try #require(m.clips.first)
+    m.cropClip(c.id, from: 0, to: 4)
+    #expect(m.clips.first?.provenance.first == "Cropped to beats 1–4 of:")
   }
 }

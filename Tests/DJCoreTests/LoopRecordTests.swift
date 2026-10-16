@@ -155,38 +155,191 @@ struct LoopRecordTests {
     #expect(!rig.dj.loopRecord("L", on: true), "the loop channel does not record itself")
   }
 
-  @Test func aClipLoopsOnTheLoopChannelAndMovesToADeck() async throws {
-    let rig = try Rig(decks: ["A", "B"])
+  /// Two one-bar takes of a net deck at 120 bpm, both looping under the mixer.
+  fileprivate func twoTakes(_ rig: Rig) async throws -> (LoopClip, LoopClip) {
     _ = try await netDeck(rig.dj)
     try rig.dj.start()
-    defer { rig.dj.stop() }
     try rig.run(to: bar + 100)
     rig.dj.loopRecord("A", on: true)
     try rig.run(to: 2 * bar - 100)
     rig.dj.loopRecord("A", on: false)
-    let clip = try #require(try rig.runUntilClip())
-    let l = rig.dj.loopChannel
-    #expect(rig.dj["L"] === l)
-    #expect(l.clipID == clip.id && l.playing && l.looping)
-    #expect(l.loopStart == 0 && l.loopEnd == Double(clip.buffer.length))
-    #expect(l.beatGrid?.bpm == clip.bpm)
-    // in time with A: the same place in the bar
+    let one = try #require(try rig.runUntilClip())
+    rig.dj.loopRecord("A", on: true)
+    try rig.run(to: rig.dj.frame + bar / 2)
+    rig.dj.loopRecord("A", on: false)
+    let two = try #require(try rig.runUntilClip())
+    return (one, two)
+  }
+
+  /// Engine frames where the loop channel's capture is silent / sounding, around `frame`.
+  func quietBefore(_ l: Deck, _ frame: Int) -> (before: Float, after: Float) {
+    var bl: [Float] = []
+    var br: [Float] = []
+    var al: [Float] = []
+    var ar: [Float] = []
+    _ = l.capture.copy(from: frame - 256, to: frame, left: &bl, right: &br)
+    _ = l.capture.copy(from: frame, to: frame + 2048, left: &al, right: &ar)
+    return (bl.map(abs).max() ?? 0, al.map(abs).max() ?? 0)
+  }
+
+  @Test func severalClipsLoopAtOnceInTimeWithTheirDeck() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    #expect(Set(rig.dj.loopingClips) == [one.id, two.id], "a new take joins, it does not replace")
+    try rig.run(to: rig.dj.frame + 4096)  // a fresh take comes in a lead's time after it lands
+    #expect(rig.dj.loopState(one.id) == .on && rig.dj.loopState(two.id) == .on)
+    // each voice sits at the same place in the bar as deck A
     try rig.run(to: rig.dj.frame + bar / 3)
-    let la = try #require(l.beatState)
-    let aa = try #require(rig.dj["A"]!.beatState)
-    let err = (la.barPhase - aa.barPhase).magnitude
-    #expect(min(err, 1 - err) < 0.02, "loop \(la.barPhase) vs A \(aa.barPhase)")
-    try rig.run(to: rig.dj.frame + 2 * bar)
-    #expect(l.playing, "still looping past its end")
+    let a = try #require(rig.dj["A"]!.beatState)
+    for c in [one, two] {
+      let v = try #require(rig.dj.loopVoices.firstIndex { $0.clipID == c.id })
+      let tt = rig.dj.loopChannel.bank!.voices[v]
+      let phase = (tt.position / Double(c.buffer.length) * Double(c.bars))
+        .truncatingRemainder(dividingBy: 1)
+      let err = abs(phase - a.barPhase)
+      #expect(min(err, 1 - err) < 0.01, "\(c.title) at \(phase) of its bar, A at \(a.barPhase)")
+    }
+  }
 
-    rig.dj.perform(.clip(deck: "B", id: clip.id))
+  @Test func aClipGoesInAndOutOnTheDownbeat() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    let l = rig.dj.loopChannel
+    rig.dj.perform(.clipLoop(id: two.id, on: false))
+    rig.dj.perform(.clipLoop(id: one.id, on: false))
+    #expect(rig.dj.loopState(one.id) == .stopping)
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopState(one.id) == .off && rig.dj.loopingClips.isEmpty)
+    // in again: silent until A's next downbeat, sounding from it
+    let clock = rig.dj.loopClock(for: one)
+    let down = clock.nextDownbeat(after: l.renderedFrames + DJEngine.loopLead)
+    #expect(clock.ref === rig.dj["A"])
+    #expect(abs(clock.beat(down) / 4 - (clock.beat(down) / 4).rounded()) < 1e-9)
+    rig.dj.perform(.clipLoop(id: one.id, on: true))
+    #expect(rig.dj.loopState(one.id) == .starting)
+    try rig.run(to: down + bar / 2)
+    #expect(rig.dj.loopState(one.id) == .on)
+    let edge = quietBefore(l, down)
+    #expect(edge.before == 0 && edge.after > 0.001, "comes in at frame \(down): \(edge)")
+  }
+
+  @Test func aClipMovesOntoADeckAndBack() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, _) = try await twoTakes(rig)
+    #expect(rig.dj["L"] === rig.dj.loopChannel)
+    rig.dj.perform(.clip(deck: "B", id: one.id))
     let b = try #require(rig.dj["B"])
-    #expect(b.clipID == clip.id && b.looping && b.beatGrid?.bpm == clip.bpm)
-    #expect(!l.playing, "moved off the loop channel")
-    #expect(rig.dj.sampleLibrary[clip.id] != nil, "a session can name it")
+    #expect(b.clipID == one.id && b.looping && b.beatGrid?.bpm == one.bpm)
+    #expect(rig.dj.loopState(one.id) != .on, "moved off the loops under the mixer")
+    #expect(rig.dj.sampleLibrary[one.id] != nil, "a session can name it")
+    try rig.run(to: rig.dj.frame + 4096)
+    rig.dj.perform(.clip(deck: "L", id: one.id))
+    #expect(rig.dj.loopState(one.id) == .starting)
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopState(one.id) == .on)
+  }
 
-    rig.dj.perform(.clip(deck: "L", id: clip.id))
-    #expect(l.playing && l.clipID == clip.id)
+  @Test func aClipHasItsOwnLevel() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, _) = try await twoTakes(rig)
+    rig.dj.perform(.clipGain(id: one.id, value: 0.25))
+    #expect(rig.dj.clipGain(one.id) == 0.25)
+    rig.dj.perform(.clipLoop(id: one.id, on: false))
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    rig.dj.perform(.clipLoop(id: one.id, on: true))
+    #expect(rig.dj.clipGain(one.id) == 0.25, "kept across a stop and a start")
+  }
+
+  @Test func cropKeepsTheBeatsBetweenTheEdges() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    rig.dj.perform(.clipGain(id: one.id, value: 0.5))
+    #expect(one.beats == 4 && rig.dj.loopState(one.id) == .on)
+    // nothing to crop, or out of range: refused
+    #expect(rig.dj.cropClip(one.id, from: 0, to: 4) == nil)
+    #expect(rig.dj.cropClip(one.id, from: 2, to: 2) == nil)
+    #expect(rig.dj.cropClip(one.id, from: 1, to: 5) == nil)
+    rig.dj.perform(.clipCrop(id: one.id, from: 1, to: 3))
+    let c = try #require(rig.dj.clips.first)
+    #expect(c.id != one.id && rig.dj.clips.map(\.id) == [c.id, two.id], "in the original's place")
+    #expect(c.beats == 2 && c.lengthLabel == "2 beats" && c.bpm == one.bpm)
+    #expect(c.startBeat == one.startBeat + 1 && c.source == "A")
+    let perBeat = one.buffer.length / 4
+    #expect(c.buffer.length == 2 * perBeat)
+    let want = Array(UnsafeBufferPointer(start: one.buffer.left + perBeat, count: 2 * perBeat))
+    let got = Array(UnsafeBufferPointer(start: c.buffer.left, count: c.buffer.length))
+    #expect(got == want, "beats 2 and 3 of the original, sample for sample")
+    #expect(rig.dj.clipGain(c.id) == 0.5, "its level carries over")
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.loopState(one.id) == .off, "the original stopped looping")
+    #expect(rig.dj.loopState(c.id) == .on, "the cropped one carries on")
+    #expect(rig.dj.sampleLibrary[c.id] != nil)
+  }
+
+  @Test func aTakeKnowsWhereItCameFrom() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let a = try await netDeck(rig.dj)
+    a.eqLow = 0.2
+    a.pitch = 0.25
+    a.toggleStem("mic")
+    try rig.dj.start()
+    try rig.run(to: bar + 100)
+    rig.dj.loopRecord("A", on: true)
+    try rig.run(to: 2 * bar - 100)
+    #expect(rig.dj.isRecordingLoop("A"))
+    rig.dj.loopRecord("A", on: false)
+    for _ in 0..<200 where rig.dj.clips.isEmpty { try rig.run(to: rig.dj.frame + Rig.block) }
+    let one = try #require(rig.dj.clips.first)
+    let p = try #require(one.provenance)
+    #expect(p["deck"]?.string == "A" && p["mode"]?.string == "net")
+    #expect(p["source"]?["kind"]?.string == "net")
+    #expect(p["source"]?["share"]?["genre"]?.string == "techno")
+    #expect(p["shareCID"]?.string == a.netSource?.favoriteCID, "names the track it came from")
+    #expect(p["bar"]?.int == 2 && p["startBeat"]?.double == 4 && p["bars"]?.int == 1)
+    #expect(abs((p["tempo"]?["bpm"]?.double ?? 0) - 120 * 1.02) < 1e-6)
+    #expect(p["tempo"]?["pitch"]?.double == 0.25)
+    #expect(p["params"]?["eqLow"]?.double == 0.2)
+    #expect(p["stemsMuted"]?.array == [.string("mic")])
+    #expect(p["rolesOff"]?.array?.contains(.string("melody")) == true)
+    #expect(p["recorded"]?.string != nil && p["build"]?.string != nil)
+
+    // a crop and a sequence say what they were made from
+    let cropped = try #require(rig.dj.cropClip(one.id, from: 0, to: 2))
+    let cp = try #require(rig.dj.clip(cropped)?.provenance)
+    #expect(cp["op"]?.string == "crop" && cp["from"]?.string == one.id)
+    #expect(cp["beats"]?.array == [.int(0), .int(2)] && cp["parent"]?.canonicalJS == p.canonicalJS)
+    let seq = try #require(rig.dj.makeSequence([SequenceStep(clipID: cropped, repeats: 2)]))
+    let sp = try #require(rig.dj.clip(seq)?.provenance)
+    #expect(sp["op"]?.string == "sequence")
+    #expect(
+      sp["steps"]?.array?.first?["provenance"]?.canonicalJS == cp.canonicalJS,
+      "outlives the clips it used")
+  }
+
+  @Test func aSampleTakeNamesItsSampleByContent() throws {
+    let rig = try Rig()
+    let a = try #require(rig.dj["A"])
+    let src = ramp(bars: 8)
+    rig.dj.perform(.load(deck: "A", source: .sample(id: "", title: "ramp", grid: nil)), buffer: src)
+    rig.dj.perform(.grid(deck: "A", bpm: 120, offset: 0))
+    a.setPlaying(true)
+    try rig.dj.start()
+    defer { rig.dj.stop() }
+    try rig.run(to: bar + bar / 2)
+    rig.dj.loopRecord("A", on: true)
+    try rig.run(to: 2 * bar + bar / 4)
+    rig.dj.loopRecord("A", on: false)
+    let clip = try #require(try rig.runUntilClip())
+    let s = try #require(clip.provenance?["source"])
+    #expect(s["kind"]?.string == "sample" && s["title"]?.string == "ramp")
+    #expect(s["id"]?.string == src.contentID)
+    #expect(s["grid"]?["bpm"]?.double == 120)
   }
 
   @Test func theLoopChannelHasItsOwnMute() throws {
@@ -205,7 +358,8 @@ struct LoopRecordTests {
   @Test func theActionsRoundTrip() {
     for a in [
       DeckAction.loopRecord(deck: "A", on: true), .loopRecord(deck: "B", on: false),
-      .clip(deck: "L", id: "abc"),
+      .clip(deck: "L", id: "abc"), .clipLoop(id: "abc", on: true),
+      .clipGain(id: "abc", value: 0.5), .clipCrop(id: "abc", from: 1, to: 3),
     ] {
       #expect(DeckAction(json: a.json) == a)
     }

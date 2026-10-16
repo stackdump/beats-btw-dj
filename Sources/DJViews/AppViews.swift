@@ -80,6 +80,8 @@ public final class AppModel {
   var clips: [ClipState] = []
   var loopChannel = LoopChannelState()
   var recording: [String: RecordingState] = [:]
+  /// Loops picked to join into a sequence.
+  var selectedClips: Set<String> = []
   var crossfader = 0.5
   var master = 0.8
   var headphoneMix = 0.0
@@ -118,6 +120,13 @@ public final class AppModel {
   var stockLoops: [StockLoop] = []
   var stockLoopsLoading = false
   @ObservationIgnored let loopLibrary: StockLoopLibrary
+  /// Where LOOP-record clips are kept between launches: the app's own (`LoopLibrary()`) for the
+  /// real engine; for an injected one only if the test passes one.
+  @ObservationIgnored private var takeStore: LoopLibrary?
+  /// The row as last saved (ids in order), so a poll saves only when it changed.
+  @ObservationIgnored private var savedClipIDs: [String] = []
+  /// Saves run off the main thread, one at a time.
+  @ObservationIgnored private let saveQueue = DispatchQueue(label: "dj-vevr-se.loops.save")
   /// Per deck, the source its `sourceCID` was hashed from, so a poll doesn't re-hash.
   @ObservationIgnored private var sourceCIDs: [String: (DeckSourceDescriptor, String)] = [:]
   var walkReportPath: String?
@@ -154,12 +163,13 @@ public final class AppModel {
   /// `favorites`: where starred tracks are kept (tests pass a temporary file).
   public init(
     engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
-    loops: StockLoopLibrary = StockLoopLibrary()
+    loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil
   ) {
     injected = engine
     injectedPerf = perf
     favoritesStore = favorites
     loopLibrary = loops
+    takeStore = takes
     self.favorites = favorites.list()
   }
   private let injected: DJEngine?
@@ -173,6 +183,7 @@ public final class AppModel {
       stageModel = scopeHub.map { StageModel(hub: $0) }
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
+      restoreLoops(injected)
       poll()
       return
     }
@@ -180,6 +191,8 @@ public final class AppModel {
     do {
       let dj = try DJEngine()
       for d in dj.decks.values { d.loadDemo() }
+      if takeStore == nil { takeStore = LoopLibrary() }
+      restoreLoops(dj)
       dj.master = master
       try dj.start()
       let hub = ControllerHub(engine: dj)
@@ -341,21 +354,53 @@ public final class AppModel {
     pollLoops(dj)
   }
 
+  /// A clip's provenance as lines and JSON, worked out once per clip (it never changes).
+  @ObservationIgnored private var provenanceCache: [String: (lines: [String], json: String?)] = [:]
+  private func described(_ c: LoopClip) -> (lines: [String], json: String?) {
+    if let d = provenanceCache[c.id] { return d }
+    let d = (ClipState.describe(c.provenance), c.provenance?.canonicalJS)
+    provenanceCache[c.id] = d
+    return d
+  }
+
+  private func restoreLoops(_ dj: DJEngine) {
+    guard let store = takeStore else { return }
+    dj.restoreClips(store.load(sampleRate: dj.sampleRate))
+    savedClipIDs = dj.clips.map(\.id)
+  }
+
   private func pollLoops(_ dj: DJEngine) {
+    let ids = dj.clips.map(\.id)
+    if ids != savedClipIDs, let store = takeStore {
+      savedClipIDs = ids
+      let row = dj.clips
+      saveQueue.async {
+        do { try store.save(row) } catch { print("loop library: \(error)") }
+      }
+    }
     let l = dj.loopChannel
     let strip = LoopChannelState(
-      clipID: l.clipID, playing: l.playing, volume: l.volume, mute: l.mute,
-      overlay: l.clipID == nil ? nil : l.waveformOverlay, reverb: ReverbState(l.reverb))
+      looping: dj.loopingClips.count, volume: l.volume, mute: l.mute, reverb: ReverbState(l.reverb))
     if strip != loopChannel { loopChannel = strip }
-    // where a clip is: the deck playing it, else a deck holding it paused (the loop channel only
-    // counts while it plays)
-    let holders = dj.allDecks.filter { $0.clipID != nil && ($0.playing || $0 !== l) }
-      .sorted { $0.playing && !$1.playing }
+    // the deck holding a clip: the one playing it, else one holding it paused
+    let holders = dj.decks.values.filter { $0.clipID != nil }.sorted { $0.playing && !$1.playing }
     let row = dj.clips.map { c in
       ClipState(
-        id: c.id, title: c.title, source: c.source, bars: c.bars, bpm: c.bpm,
-        overview: c.waveform, playingOn: holders.first { $0.clipID == c.id }?.name)
+        id: c.id, title: c.title, source: c.source, bars: c.bars, beats: c.beats,
+        lengthLabel: c.lengthLabel, bpm: c.bpm,
+        overview: c.waveform, loop: dj.loopState(c.id), gain: dj.clipGain(c.id),
+        playhead: dj.loopPlayhead(c.id), onDeck: holders.first { $0.clipID == c.id }?.name,
+        steps: c.steps?.map { s in
+          StepState(
+            clipID: s.clipID,
+            name: dj.clip(s.clipID).map {
+              $0.title.split(separator: " ").suffix(2).joined(separator: " ")
+            }
+              ?? "missing", repeats: s.repeats)
+        }, provenance: described(c).lines, provenanceJSON: described(c).json)
     }
+    let present = Set(row.map(\.id))
+    if !selectedClips.isSubset(of: present) { selectedClips.formIntersection(present) }
     if row != clips { clips = row }
     var takes: [String: RecordingState] = [:]
     for n in dj.recordableDecks {
@@ -394,13 +439,46 @@ public final class AppModel {
     dj?.perform(.clip(deck: deck, id: id))
   }
   func removeClip(_ id: String) { dj?.removeClip(id) }
-  func toggleLoopChannel() {
-    guard let l = dj?.loopChannel, l.clipID != nil else { return }
-    if l.playing {
-      dj?.perform(.play(deck: "L", on: false))
-    } else if let id = l.clipID {
-      dj?.perform(.clip(deck: "L", id: id))  // back in time with its deck
+  /// Drag a tile onto another: it goes just before that one.
+  func moveClip(_ id: String, before: String?) {
+    dj?.moveClip(id, before: before)
+    if let dj { pollLoops(dj) }
+  }
+  /// Wait for pending library writes (tests).
+  func flushLoopLibrary() { saveQueue.sync {} }
+  /// A tile's ▶/■: in on the next downbeat, or out on it.
+  func toggleLoop(_ id: String) {
+    guard let dj else { return }
+    let on = dj.loopState(id)
+    dj.perform(.clipLoop(id: id, on: on == .off || on == .stopping))
+  }
+  func setClipGain(_ id: String, _ v: Double) { dj?.perform(.clipGain(id: id, value: v)) }
+  func toggleSelected(_ id: String) {
+    if selectedClips.contains(id) { selectedClips.remove(id) } else { selectedClips.insert(id) }
+  }
+  /// The selected loops, in row order, joined into a sequence at the end of the row.
+  func joinSelected() {
+    guard let dj, !selectedClips.isEmpty else { return }
+    let steps = dj.clips.filter { selectedClips.contains($0.id) }.map {
+      SequenceStep(clipID: $0.id)
     }
+    dj.perform(.clipSequence(steps: steps, replacing: nil))
+    selectedClips = []
+    pollLoops(dj)
+  }
+  /// Rewrite a sequence's steps (its chips, or a clip dropped on it).
+  func editSequence(_ id: String, _ steps: [SequenceStep]) {
+    dj?.perform(.clipSequence(steps: steps, replacing: id))
+    if let dj { pollLoops(dj) }
+  }
+  /// Keep beats `from..<to` of a clip (its tile's edges, dragged).
+  func cropClip(_ id: String, from: Int, to: Int) {
+    dj?.perform(.clipCrop(id: id, from: from, to: to))
+    if let dj { pollLoops(dj) }
+  }
+  func stopAllLoops() {
+    guard let dj else { return }
+    for id in dj.loopingClips { dj.perform(.clipLoop(id: id, on: false)) }
   }
   /// One reverb knob of a channel ("A", "B", "L"): reverbWet | reverbSize | reverbTone.
   func setReverb(_ deck: String, _ knob: String, _ v: Double) {

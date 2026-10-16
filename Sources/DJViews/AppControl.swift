@@ -439,7 +439,10 @@ extension AppModel {
                 ("id", .string($0.id)), ("title", .string($0.title)),
                 ("source", .string($0.source)), ("bars", .int($0.bars)), ("bpm", .number($0.bpm)),
               ])
-              if let on = $0.playingOn { c["playingOn"] = .string(on) }
+              c["loop"] = .string("\($0.loop)")
+              c["gain"] = .number($0.gain)
+              if let on = $0.onDeck { c["onDeck"] = .string(on) }
+              if let p = engine?.clip($0.id)?.provenance { c["provenance"] = p }
               return .object(c)
             })
         ),
@@ -447,8 +450,7 @@ extension AppModel {
           "channel",
           .object(
             JSONObject([
-              ("clip", loopChannel.clipID.map { .string($0) } ?? .null),
-              ("playing", .bool(loopChannel.playing)), ("volume", .number(loopChannel.volume)),
+              ("looping", .int(loopChannel.looping)), ("volume", .number(loopChannel.volume)),
               ("mute", .bool(loopChannel.mute)),
             ]))
         ),

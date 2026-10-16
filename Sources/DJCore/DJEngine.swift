@@ -30,6 +30,9 @@ public final class DJEngine {
   /// The row under the mixer: every take LOOP record has finished, oldest first.
   public internal(set) var clips: [LoopClip] = []
   var loopTakes: [String: LoopTake] = [:]
+  /// The loop bank's voices, as the main thread sees them (`startLoop` / `stopLoop`).
+  var loopVoices = [LoopVoice](repeating: LoopVoice(), count: LoopBank.voiceCount)
+  var clipGains: [String: Double] = [:]
   var loopCount = 0
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
@@ -104,7 +107,7 @@ public final class DJEngine {
       sampleRate = hw > 0 ? hw : offlineRate
       format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
     }
-    loopChannel = Deck(name: "L", sampleRate: sampleRate, format: format)
+    loopChannel = Deck(name: "L", sampleRate: sampleRate, format: format, loopBank: true)
     engine.attach(cueSum)
     engine.attach(headMaster)
     engine.attach(headBus)
@@ -376,14 +379,19 @@ public final class Deck: JogClock {
   /// Roles this deck leaves out of every net it compiles (offline stems; nil = none).
   public var roleFilter: RoleFilter?
 
-  init(name: String, sampleRate: Double, format: AVAudioFormat) {
+  /// The loop channel's clips, each on its own voice (nil on every other deck).
+  let bank: LoopBank?
+
+  init(name: String, sampleRate: Double, format: AVAudioFormat, loopBank: Bool = false) {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
     let wv = WaveDeckSource(sampleRate: sampleRate)
     cueSend.outputVolume = 0
     turntable = tt
     wave = wv
-    let core = DeckRenderer(turntable: tt, wave: wv)
+    let b = loopBank ? LoopBank(sampleRate: sampleRate) : nil
+    bank = b
+    let core = DeckRenderer(turntable: tt, wave: wv, bank: b)
     renderer = core
     capture = CaptureTap { core.renderedFrames }
     node = AVAudioSourceNode(format: format) { _, _, frames, abl in
