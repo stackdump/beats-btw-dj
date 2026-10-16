@@ -374,6 +374,24 @@ struct LoopRecordTests {
     #expect(rig.dj.loopingClips == [two.id])
   }
 
+  @Test func aNewSampleForgetsTheOldLoopRegion() throws {
+    // a deck that looped something (a clip moved onto it loops its whole length) and then
+    // loads a longer sample plays that sample to its end
+    let rig = try Rig()
+    let a = try #require(rig.dj["A"])
+    a.load(ramp(bars: 1), title: "short")
+    a.setLoop(0, Double(bar / 2))
+    a.setPlaying(true)
+    try rig.dj.start()
+    defer { rig.dj.stop() }
+    try rig.run(to: bar)
+    let long = ramp(bars: 4)
+    a.load(long, title: "long")
+    #expect(!a.looping && a.loopStart == nil)
+    try rig.run(to: rig.dj.frame + 3 * bar)
+    #expect(a.turntable.position > Double(bar), "past the old loop's end: \(a.turntable.position)")
+  }
+
   @Test func theLoopChannelHasItsOwnMute() throws {
     let rig = try Rig()
     let l = rig.dj.loopChannel

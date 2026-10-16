@@ -187,6 +187,7 @@ public final class Turntable: @unchecked Sendable {
       lengthAtomic.store(b._withUnsafeGuaranteedRef { $0.length }, ordering: .relaxed)
       pos = 0
       target = 0
+      looping = false  // a loop region belongs to the audio it was set on
     case .transport(let on): playing = on
     case .start:
       playing = true
