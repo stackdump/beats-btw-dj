@@ -392,7 +392,9 @@ struct BrowserSeedTests {
     s.handle(bytes: ccw)
     #expect(dj["A"]!.currentSpec?.seed == 4)
     #expect(dj["A"]!.playing && dj["A"]!.isNetLoop)
-    #expect(dj["A"]!.netProject?.modelCID == TrackSpec(genre: "techno", seed: 4).project().modelCID)
+    // the project a deck plays for seed 4 (whatever is layered on compose), as deck B loads it
+    loop(dj, "B", seed: 4)
+    #expect(dj["A"]!.netProject?.modelCID == dj["B"]!.netProject?.modelCID)
   }
 
   @Test func onlyAPlayingComposedLoopMoves() throws {
