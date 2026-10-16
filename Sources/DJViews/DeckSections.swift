@@ -93,11 +93,14 @@ struct ChoiceButton: View {
   let label: String
   let selected: Bool
   let tint: Color
+  /// A performance control (Master FX macros): live-button size, one line, never truncated.
+  var live = false
   let action: () -> Void
 
   var body: some View {
-    Toggle(label, isOn: Binding(get: { selected }, set: { _ in action() }))
-      .toggleStyle(.button).controlSize(.small).tint(tint)
+    let toggle = Toggle(label, isOn: Binding(get: { selected }, set: { _ in action() }))
+      .toggleStyle(.button).tint(tint)
+    if live { toggle.liveButton() } else { toggle.controlSize(.small) }
   }
 }
 
@@ -347,7 +350,7 @@ struct MasterFxPanel: View {
           Text(group).font(.caption2).foregroundStyle(.secondary)
           FlowRow(spacing: 4) {
             ForEach(MasterMacro.allCases.filter { $0.group == group }, id: \.rawValue) { m in
-              ChoiceButton(label: m.label, selected: running.contains(m), tint: tint) {
+              ChoiceButton(label: m.label, selected: running.contains(m), tint: tint, live: true) {
                 model.fire(name, m)
               }
             }

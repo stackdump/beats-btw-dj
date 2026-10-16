@@ -756,10 +756,11 @@ public struct ContentView: View {
       // candidate in full on every update: at 30 polls a second that took most of the main thread.
       GeometryReader { geo in
         let wide = geo.size.width >= Self.wideWidth
+        let mixer = Self.mixerWidth(window: geo.size.width, wide: wide)
         if panelsHeight > geo.size.height + 1 {
-          ScrollView(.vertical) { measured(panels(wide: wide)) }
+          ScrollView(.vertical) { measured(panels(wide: wide, mixer: mixer)) }
         } else {
-          measured(panels(wide: wide))
+          measured(panels(wide: wide, mixer: mixer))
             .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
             .clipped()
         }
@@ -783,12 +784,12 @@ public struct ContentView: View {
   }
 
   /// The three cards share one height (the tallest's), so their edges line up as one row.
-  private func deckRow(wide: Bool) -> some View {
+  private func deckRow(wide: Bool, mixer: CGFloat) -> some View {
     HStack(alignment: .top, spacing: DJStyle.l) {
       DeckView(name: "A", model: model, tint: DJStyle.deckA, wide: wide)
         .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckA)
       MixerView(model: model)
-        .frame(maxHeight: .infinity, alignment: .top).djCard()
+        .frame(width: mixer).frame(maxHeight: .infinity, alignment: .top).djCard()
       DeckView(name: "B", model: model, tint: DJStyle.deckB, wide: wide)
         .frame(maxHeight: .infinity, alignment: .top).djCard(tint: DJStyle.deckB)
     }
@@ -806,6 +807,21 @@ public struct ContentView: View {
     return 2 * deck + mixer + 2 * DJStyle.l + 2 * 16
   }()
 
+  /// The narrowest window that takes the stacked deck row (a deck at its 260 pt floor each).
+  static let stackedWidth: CGFloat = {
+    let deck = 260 + 2 * DJStyle.cardPadding
+    return 2 * deck + (160 + 2 * DJStyle.cardPadding) + 2 * DJStyle.l + 2 * 16
+  }()
+
+  /// The mixer's width: 160 pt at the narrowest, up to 220 as the window widens (15% of the
+  /// width past the layout's floor). Computed here rather than left to a flexible frame: an
+  /// `HStack` hands a flexible child its maximum before the decks have claimed their minimum, so
+  /// a mixer allowed to 220 pushed the row past a 1400 pt window.
+  static func mixerWidth(window: CGFloat, wide: Bool) -> CGFloat {
+    let slack = max(0, window - (wide ? wideWidth : stackedWidth))
+    return min(220, 160 + (slack * 0.15).rounded(.down))
+  }
+
   private func measured(_ content: some View) -> some View {
     content.padding()
       .frame(maxWidth: .infinity, alignment: .top)
@@ -816,31 +832,40 @@ public struct ContentView: View {
       }
   }
 
-  private func panels(wide: Bool) -> some View {
+  private func panels(wide: Bool, mixer: CGFloat) -> some View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
-      deckRow(wide: wide)
-      if let w = model.walk {
-        WalkPanel(
-          walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
-          back: { model.walkBack() }, stop: { model.stopWalk() }
-        )
-        .frame(height: 300)
-      } else if model.showMap {
-        DeviceMapView(
-          maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
-          highlight: model.lastControl.flatMap {
-            Date().timeIntervalSince($0.at) < 1.5 ? ($0.device, $0.group, $0.index) : nil
-          },
-          lights: model.deviceLights
-        )
-        .frame(height: 240)
-      }
-      if model.showPads, let pads = model.padLights["pads"] {
-        PadGridView(
-          pads: pads, tracks: model.padLights["track"] ?? [], scenes: model.padLights["scene"] ?? []
-        ) { model.pressPad($0, $1) }
-        .frame(width: 300, height: 300)
+      deckRow(wide: wide, mixer: mixer)
+      // The map (or the control walk) and the pad grid share a row: the map takes whatever the
+      // pads leave, so a wide window no longer stacks a 300 pt square under a 240 pt strip with
+      // the right half of both empty.
+      if showsLowerRow {
+        HStack(alignment: .top, spacing: DJStyle.xl) {
+          if let w = model.walk {
+            WalkPanel(
+              walk: w, reportPath: model.walkReportPath, skip: { model.walkSkip() },
+              back: { model.walkBack() }, stop: { model.stopWalk() }
+            )
+            .frame(maxWidth: .infinity, minHeight: 300, maxHeight: 300)
+          } else if model.showMap {
+            DeviceMapView(
+              maps: SurfaceProfile.all.map { ($0.name, $0.deviceMap()) },
+              highlight: model.lastControl.flatMap {
+                Date().timeIntervalSince($0.at) < 1.5 ? ($0.device, $0.group, $0.index) : nil
+              },
+              lights: model.deviceLights
+            )
+            .frame(maxWidth: .infinity, minHeight: 240, maxHeight: 240)
+          }
+          if model.showPads, let pads = model.padLights["pads"] {
+            PadGridView(
+              pads: pads, tracks: model.padLights["track"] ?? [],
+              scenes: model.padLights["scene"] ?? []
+            ) { model.pressPad($0, $1) }
+            .frame(width: 300, height: 300)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       if model.showScopes, let scopes = model.scopeHub {
         ScopePanelView(
@@ -851,6 +876,10 @@ public struct ContentView: View {
           windowHeight: model.scopeWindowHeight)
       }
     }
+  }
+
+  private var showsLowerRow: Bool {
+    model.walk != nil || model.showMap || (model.showPads && model.padLights["pads"] != nil)
   }
 
   private var bottomBar: some View {
@@ -960,12 +989,21 @@ struct DeckView: View {
   /// room): `ContentView` picks the wide layout when both decks fit at this width.
   static let sectionsWidth: (ideal: CGFloat, max: CGFloat) = (300, 460)
 
+  /// The deck's core (platter, readouts, rings, channel strip) is as wide as the window gives it,
+  /// within these bounds: the floor is the old fixed width, so the narrowest layouts are
+  /// unchanged. The cap is where its sliders and ring grid stop gaining anything; the ring grid
+  /// adds a column per ~62 pt (`NetRingsView`) as the core widens.
+  static let coreWidth: (min: CGFloat, max: CGFloat) = (260, 400)
+  /// A stacked deck (a window narrower than `ContentView.wideWidth`) stops widening here.
+  static let stackedMaxWidth: CGFloat = 520
+
   var body: some View {
     Group {
       if wide {
         HStack(alignment: .top, spacing: DJStyle.l) {
           if name == "A" { sectionsColumn }
           core.frame(maxHeight: .infinity, alignment: .top)
+            .frame(minWidth: Self.coreWidth.min, maxWidth: Self.coreWidth.max)
           if name != "A" { sectionsColumn }
         }
       } else {
@@ -973,7 +1011,8 @@ struct DeckView: View {
           core
           sections
         }
-        .frame(width: 260)
+        // stacked: the deck takes what the window leaves (the core and its sections together)
+        .frame(minWidth: Self.coreWidth.min, maxWidth: Self.stackedMaxWidth)
       }
     }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
@@ -1038,7 +1077,7 @@ struct DeckView: View {
         }
       }
     }
-    .frame(width: 260)
+    .frame(minWidth: Self.coreWidth.min, maxWidth: .infinity)
   }
 
   /// The deck's letter, what it plays (the most important line on the deck) and its star.
@@ -1121,7 +1160,7 @@ struct DeckView: View {
         ForEach(0..<4, id: \.self) { slot in
           Button("\(slot + 1)") { model.hotCue(name, slot) }
             .tint(state.cues.contains(slot) ? tint : nil)
-            .buttonStyle(.borderedProminent).controlSize(.small)
+            .buttonStyle(.borderedProminent).controlSize(.large)
             .contextMenu { Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) } }
             .help(
               state.cues.contains(slot)
@@ -1194,7 +1233,8 @@ struct MixerView: View {
         .font(.caption)
       }
     }
-    .frame(width: 160)
+    // 160 pt unless the row sets its width (`ContentView.mixerWidth`)
+    .frame(minWidth: 160)
   }
 }
 
@@ -1221,34 +1261,35 @@ struct NetPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      FlowRow(spacing: 4) {
+      FlowRow(spacing: 6) {
         ForEach(state.roles, id: \.self) { r in
           Toggle(
             r,
             isOn: Binding(
               get: { state.rolesOn.contains(r) }, set: { _ in model.toggleRole(name, r) })
           )
-          .toggleStyle(.button).controlSize(.small).tint(tint)
+          .toggleStyle(.button).liveButton().tint(tint)
           .macroPulseGlow(state.macroPulse.level(of: r))
         }
       }
-      FlowRow(spacing: 4) {
+      FlowRow(spacing: 6) {
         ForEach(NetMacro.allCases, id: \.rawValue) { m in
           MacroButton(macro: m, running: state.macroPulse.isRunning(m)) { model.fire(name, m) }
         }
-        Button("Panic") { model.panic(name) }.controlSize(.small).tint(.red)
+        Button("Panic") { model.panic(name) }.liveButton().tint(.red)
       }
-      HStack(spacing: 4) {
+      // A wrapping row, not an HStack: at live-mixing size these no longer fit one line in a
+      // 260 pt deck, and a squeezed button truncates its own label.
+      FlowRow(spacing: 6) {
         ForEach(0..<4, id: \.self) { n in
-          Button("Hit \(n + 1)") { model.stinger(name, n) }.controlSize(.small)
+          Button("Hit \(n + 1)") { model.stinger(name, n) }.liveButton()
         }
-        Spacer()
-        Button("Sync") { model.sync(name) }.controlSize(.small)
-        Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)
+        Button("Sync") { model.sync(name) }.liveButton()
+        Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.liveButton()
         Button(state.nextReady ? "Next ▶︎" : (state.nextComposing ? "…" : "Next")) {
           model.skipToNext(name)
         }
-        .controlSize(.small).disabled(!state.nextReady)
+        .liveButton().disabled(!state.nextReady)
       }
     }
   }
@@ -1313,6 +1354,15 @@ struct FlowLayout: Layout {
       rowHeight = max(rowHeight, size.height)
     }
     return (CGSize(width: maxX, height: y + rowHeight), positions)
+  }
+}
+
+extension View {
+  /// The size of a performance button: large enough to hit on a controller-side glance and to
+  /// show its whole label. `.small` controls truncated "Panic" and the macro names in a 260 pt
+  /// deck. One line, never squeezed: a row that runs out of width wraps (`FlowRow`) instead.
+  func liveButton() -> some View {
+    self.controlSize(.large).lineLimit(1).fixedSize()
   }
 }
 

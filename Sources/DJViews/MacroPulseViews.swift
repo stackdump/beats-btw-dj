@@ -75,7 +75,7 @@ struct MacroButton: View {
         }
       }
     } else {
-      Button(macro.label, action: fire).controlSize(.small)
+      Button(macro.label, action: fire).liveButton()
     }
   }
 
@@ -83,7 +83,7 @@ struct MacroButton: View {
     Button(macro.label, action: fire)
       .buttonStyle(.borderedProminent)
       .tint(MacroPulseStyle.runningFill.pulseColor)
-      .controlSize(.small)
+      .liveButton()
       .overlay(
         RoundedRectangle(cornerRadius: 5)
           .stroke(MacroPulseStyle.runningBorder.pulseColor, lineWidth: 1)
