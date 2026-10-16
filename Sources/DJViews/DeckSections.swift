@@ -170,6 +170,7 @@ struct LoadPanel: View {
           }
         }
       }
+      .arrowKeys([""] + all.categories, current: category) { category = $0 }
       ScrollView(.vertical) {
         LazyVStack(alignment: .leading, spacing: 1) {
           ForEach(hits.prefix(Self.shown), id: \.path) { loop in
@@ -180,6 +181,16 @@ struct LoadPanel: View {
         }
       }
       .frame(height: 220)
+      // over the list, the arrows load the loop before / after the one on the deck: audition
+      // through the list without clicking
+      .arrowKeys(
+        Array(hits.prefix(Self.shown)).map(\.path),
+        current: hits.first { $0.name == model.decks[name]?.title }?.path
+      ) { path in
+        if let loop = hits.first(where: { $0.path == path }) {
+          Task { await model.loadStockLoop(name, loop) }
+        }
+      }
       .task(id: filter) {
         let near = filter.tempo.map(Double.init)
         hits = await Task.detached(priority: .userInitiated) {
@@ -231,6 +242,7 @@ struct GeneratePanel: View {
   @State private var seed = String(Int.random(in: 1...999_999))
   @State private var cohesion = "v2"
   @State private var autoAdvance = false
+  static let structures = ["loop", "minimal", "standard", "extended"]
 
   private var spec: TrackSpec {
     TrackSpec(
@@ -245,15 +257,24 @@ struct GeneratePanel: View {
           ChoiceButton(label: g, selected: genre == g, tint: tint) { genre = g }
         }
       }
+      .arrowKeys(BeatsTables.shared.genreIDs, current: genre) { genre = $0 }
       FlowRow(spacing: 4) {
-        ForEach(["loop", "minimal", "standard", "extended"], id: \.self) { s in
+        ForEach(Self.structures, id: \.self) { s in
           ChoiceButton(label: s, selected: structure == s, tint: tint) { structure = s }
         }
       }
+      .arrowKeys(Self.structures, current: structure) { structure = $0 }
       HStack(spacing: 4) {
-        ChoiceButton(label: "v2 motif", selected: cohesion == "v2", tint: tint) { cohesion = "v2" }
+        HStack(spacing: 4) {
+          ChoiceButton(label: "v2 motif", selected: cohesion == "v2", tint: tint) {
+            cohesion = "v2"
+          }
           .help("Cohesion v2: motif + harmony")
-        ChoiceButton(label: "v1 legacy", selected: cohesion == "v1", tint: tint) { cohesion = "v1" }
+          ChoiceButton(label: "v1 legacy", selected: cohesion == "v1", tint: tint) {
+            cohesion = "v1"
+          }
+        }
+        .arrowKeys(["v2", "v1"], current: cohesion) { cohesion = $0 }
         Spacer()
         TextField("Seed", text: $seed).frame(width: 70).controlSize(.small)
         Button("Roll") { seed = String(Int.random(in: 1...999_999)) }.controlSize(.small)
@@ -297,6 +318,9 @@ struct FavoritesPanel: View {
             .help("Load onto deck \(name) (right-click to remove)")
         }
       }
+      .arrowKeys(model.favorites.map(\.cid), current: current) { cid in
+        if let f = model.favorites.first(where: { $0.cid == cid }) { model.loadFavorite(name, f) }
+      }
     }
   }
 }
@@ -324,6 +348,9 @@ struct TrackPanel: View {
                 Task { await model.setInstrument(name, channel: v.channel, i) }
               }
             }
+          }
+          .arrowKeys(v.options, current: v.instrument) { i in
+            Task { await model.setInstrument(name, channel: v.channel, i) }
           }
         }
       }
@@ -359,6 +386,14 @@ struct ReverbPanel: View {
             label: p.label, selected: p.value.isOn == reverb.isOn && p.value.near(reverb),
             tint: tint
           ) { model.setReverb(name, p.value) }
+        }
+      }
+      .arrowKeys(
+        Self.presets.map(\.label),
+        current: Self.presets.first { $0.value.isOn == reverb.isOn && $0.value.near(reverb) }?.label
+      ) { label in
+        if let p = Self.presets.first(where: { $0.label == label }) {
+          model.setReverb(name, p.value)
         }
       }
       LabeledSlider(

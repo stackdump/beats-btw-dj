@@ -932,6 +932,8 @@ public struct ContentView: View {
     }
     // the rings and the small animations pace themselves by the hub's visual level
     .environment(\.scopeHub, model.scopeHub)
+    // arrow keys step through whatever list of choices the mouse is over
+    .onAppear { HoverKeys.shared.install() }
     // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
     // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
     // bar, which are full at the window's minimum width
