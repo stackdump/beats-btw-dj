@@ -146,11 +146,12 @@ struct NetRingsRenderTests {
     savePNG(view, width: 320, height: 160, name: "rings-stingers")
     let px = try #require(renderPixels(view, width: 320, height: 160))
     // bands of rows that hold orange: the parts' row, then the stingers' much shorter one (the
-    // labels between them are white, and clear of the rings since the rings are padded)
+    // labels between them are white, and clear of the rings since the rings inset their marks).
+    // A ring's dots are spaced (`fittedBase`), so a band bridges gaps of a few rows between them.
     let orange = { (r: Int, _: Int, b: Int) in r > 150 && b < 100 }
     var bands: [Range<Int>] = []
     for y in 0..<160 where px.count(inX: 0..<320, y: y..<(y + 1), where: orange) > 0 {
-      if let last = bands.last, last.upperBound >= y - 2 {
+      if let last = bands.last, last.upperBound >= y - 8 {
         bands[bands.count - 1] = last.lowerBound..<(y + 1)
       } else {
         bands.append(y..<(y + 1))
