@@ -31,16 +31,36 @@ public enum RingGeometry {
   /// radius, so 4 x base across) may fill: the rest is clear space between the dots.
   public static let dotFill: CGFloat = 0.8
 
+  /// The smallest `base` a small ring (under `smallRing` pt: the 30 pt stingers) is fitted
+  /// down to, below `baseRadius`'s 1.5 pt floor, so its hits stay apart too. Rings in the parts
+  /// grid keep the 1.5 pt floor: smaller dots there would make room for arc heads on dense
+  /// rings, which are kept off them.
+  public static let minFittedBase: CGFloat = 0.75
+  public static let smallRing: CGFloat = 48
+
   /// The `base` a ring is drawn with: `baseRadius`, shrunk where full-velocity hits on
   /// neighbouring steps would touch (few steps in a small cell, e.g. an 8-step hihat in the
-  /// deck's 62 pt grid). Shrinking also shrinks the inset, which only widens the gap, so one
-  /// pass is enough.
+  /// deck's 62 pt grid, or any stinger ring). The inset shrinks with the base, which widens the
+  /// gap again, so the fit is repeated until it settles (a few passes); it never grows past
+  /// `baseRadius`, and every pass's base fits the gap its own inset leaves.
   public static func fittedBase(steps n: Int, size: CGFloat) -> CGFloat {
     let base = baseRadius(steps: n, size: size)
     guard n > 1 else { return base }
-    let r = size / 2 - inset(base: base)
-    let gap = 2 * r * CGFloat(sin(Double.pi / Double(n)))
-    return max(1.5, min(base, gap * dotFill / 4))
+    func fit(_ b: CGFloat) -> CGFloat {
+      let r = max(0, size / 2 - inset(base: b))
+      let gap = 2 * r * CGFloat(sin(Double.pi / Double(n)))
+      return min(base, gap * dotFill / 4)
+    }
+    var b = base
+    for _ in 0..<6 {
+      let next = fit(b)
+      if abs(next - b) < 0.01 { break }
+      b = next
+    }
+    // settle on a base that fits the gap its own inset leaves (the last pass may overshoot)
+    let floor = size < smallRing ? minFittedBase : 1.5
+    while b > floor && fit(b) < b - 0.001 { b -= 0.05 }
+    return max(floor, b)
   }
 
   /// Step `i` placed with the inset its ring's marks need.
