@@ -158,6 +158,37 @@ extension Deck {
   public func setRole(_ role: String, on: Bool) { if mode == .net { wave.setRoleMuted(role, !on) } }
   public func toggleRole(_ role: String) { setRole(role, on: !isRoleOn(role)) }
 
+  /// A controller's STEMS buttons on a net deck: each mutes a group of roles. "music" is
+  /// everything but the drums; "mic" is the lead, the nearest a net has to a vocal.
+  static let stems = ["music": ["bass", "melody", "harmony", "arp"], "mic": ["melody"]]
+
+  /// The roles of `stem` this deck's net has.
+  func stemRoles(_ stem: String) -> [String] {
+    let group = Self.stems[stem] ?? []
+    return roles.filter { group.contains($0) }
+  }
+
+  /// Is the STEMS group `stem` muted (its button pressed, not pressed again)?
+  public func isStemMuted(_ stem: String) -> Bool { mode == .net && stemsMuted[stem] != nil }
+
+  /// STEMS button: mute the group, or bring back what it silenced. Song sections mute and unmute
+  /// roles too, so "silent now" is not "muted by the button": the group remembers which roles
+  /// were playing when it muted them and brings back only those (and none another muted
+  /// group still holds).
+  public func toggleStem(_ stem: String) {
+    guard mode == .net else { return }
+    if let playing = stemsMuted.removeValue(forKey: stem) {
+      let held = Set(stemsMuted.values.joined())
+      for r in playing where !held.contains(r) { setRole(r, on: true) }
+    } else {
+      let rs = stemRoles(stem)
+      stemsMuted[stem] = rs.filter { r in
+        isRoleOn(r) || stemsMuted.values.contains { $0.contains(r) }
+      }
+      for r in rs { setRole(r, on: false) }
+    }
+  }
+
   /// Make slot `n` of a riff group (`bass-2`) the audible variant.
   public func activateSlot(role: String, slot: Int) {
     if mode == .net { wave.activateSlot("\(role)-\(slot)") }

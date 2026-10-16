@@ -138,7 +138,8 @@ public final class SurfaceController {
       else { break }
       dj.focus = d.name
       d.stepSeed(e.delta)
-    case .section, .sectionPrev, .sectionNext, .roleMute, .macro, .panic, .stinger, .nextTrack,
+    case .section, .sectionPrev, .sectionNext, .roleMute, .stemMute, .macro, .panic, .stinger,
+      .nextTrack,
       .keys, .sync, .quantize, .rewind, .pfl:
       perform(b, deck: deck, event: e, press: press, now: now)
     case .play, .cue, .hotcue, .clearcue, .loopIn, .loopOut, .loopHalve, .loopDouble:
@@ -181,6 +182,7 @@ public final class SurfaceController {
     case .sectionPrev: deck.stepSection(-1)
     case .sectionNext: deck.stepSection(1)
     case .roleMute: if let r = b.role { deck.toggleRole(r) }
+    case .stemMute: if let r = b.role { deck.toggleStem(r) }
     case .macro: if let id = b.macro { deck.fireMacro(id: id) }
     case .panic: deck.panic()
     case .stinger: deck.stinger(b.slot ?? 0)
@@ -273,6 +275,7 @@ public final class SurfaceController {
     let d = b.deck.flatMap { dj[$0] }
     switch b.action {
     case .roleMute: return d?.isRoleOn(b.role ?? "") == true ? leds.singleOn : leds.singleOff
+    case .stemMute: return d?.isStemMuted(b.role ?? "") == true ? leds.singleOn : leds.singleOff
     case .sectionPrev, .sectionNext:
       guard let d, d.mode == .net, !d.sections.isEmpty else { return leds.singleOff }
       return leds.singleOn

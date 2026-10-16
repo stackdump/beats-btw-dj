@@ -27,6 +27,7 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case section  // press: launch section `slot` of the song (at the next bar)
   case sectionPrev, sectionNext  // press: step the section launcher
   case roleMute  // press: toggle `role` (kick, bass, …) on/off
+  case stemMute  // press: toggle the role group `role` names ("music" = not drums, "mic" = lead)
   case macro  // press: fire the catalog macro named by `macro` (net or master chain)
   case panic  // press: restore every macro effect now
   case stinger  // press: ring stinger `slot` (0–3) for a bar

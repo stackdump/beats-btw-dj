@@ -47,6 +47,57 @@ struct SurfaceNetTests {
     #expect(dj.focus == "B")
   }
 
+  @Test func inpulseStemsButtonsMuteTheMusicOrTheLead() async throws {
+    let (dj, s, a) = try await make(.inpulse200MK3, structure: nil)  // a loop: every role plays
+    a.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    _ = try renderOffline(dj, frames: 2048)
+    let music = a.roles.filter { ["bass", "melody", "harmony", "arp"].contains($0) }
+    #expect(music.contains("melody") && music.allSatisfy { a.isRoleOn($0) } && a.isRoleOn("kick"))
+    _ = s.ledFrame()
+    // STEMS music (note icon, 0x09): everything but the drums goes, and its LED lights
+    s.handle(bytes: [0x91, 0x09, 0x7F])
+    s.handle(bytes: [0x91, 0x09, 0x00])
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(music.allSatisfy { !a.isRoleOn($0) } && a.isRoleOn("kick"))
+    #expect(a.isStemMuted("music") && !a.isStemMuted("mic"))
+    #expect(s.ledFrame().contains([0x91, 0x09, 0x7F]))
+    // STEMS mic (0x0A) on top, then music back: the lead stays out until mic is pressed again
+    s.handle(bytes: [0x91, 0x0A, 0x7F])
+    s.handle(bytes: [0x91, 0x09, 0x7F])
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(a.isRoleOn("bass") && !a.isRoleOn("melody") && !a.isStemMuted("music"))
+    s.handle(bytes: [0x91, 0x0A, 0x7F])
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(music.allSatisfy { a.isRoleOn($0) } && !a.isStemMuted("mic"))
+    // only changes go out: mic's LED went on and off between frames, music's went off
+    #expect(s.ledFrame() == [[0x91, 0x09, 0x00]])
+    // deck B's buttons are deck B's
+    s.handle(bytes: [0x92, 0x0A, 0x7F])
+    #expect(dj.focus == "B" && !a.isStemMuted("mic"))
+  }
+
+  @Test func aStemBringsBackOnlyWhatItSilenced() async throws {
+    // a song's intro has its music silent by arrangement: muting and unmuting the stem must
+    // not bring it in early
+    let (dj, s, a) = try await make(.inpulse200MK3)
+    a.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    _ = try renderOffline(dj, frames: 2048)
+    let silent = a.roles.filter {
+      ["bass", "melody", "harmony", "arp"].contains($0) && !a.isRoleOn($0)
+    }
+    #expect(!silent.isEmpty, "the intro holds some of the music back")
+    s.handle(bytes: [0x91, 0x09, 0x7F])
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(a.isStemMuted("music"))
+    s.handle(bytes: [0x91, 0x09, 0x7F])
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(!a.isStemMuted("music") && silent.allSatisfy { !a.isRoleOn($0) })
+  }
+
   @Test func apcSectionPadsLaunchSectionsAndLightTheCurrentOne() async throws {
     let (dj, s, a) = try await make(.apcMiniMK2)
     let secs = a.sections

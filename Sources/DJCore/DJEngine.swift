@@ -217,6 +217,9 @@ public final class Deck: JogClock {
   let capture: CaptureTap
   /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads.
   public internal(set) var clipID: String?
+  /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
+  /// pressing it again brings back). Cleared when a track loads.
+  var stemsMuted: [String: [String]] = [:]
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
   /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
   public var leftTap: ScopeTap { renderer.leftTap }
@@ -548,6 +551,7 @@ public final class Deck: JogClock {
     currentRawNets = nil
     seedTarget = nil
     clipID = nil
+    stemsMuted = [:]
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net

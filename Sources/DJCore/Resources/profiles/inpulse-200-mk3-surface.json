@@ -522,16 +522,16 @@
   {
    "group": "deckA.buttons",
    "index": 5,
-   "action": "unbound",
+   "action": "stemMute",
    "deck": "A",
-   "reason": "STEMS music (note icon), measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
+   "role": "music"
   },
   {
    "group": "deckA.buttons",
    "index": 6,
-   "action": "unbound",
+   "action": "stemMute",
    "deck": "A",
-   "reason": "STEMS mic, measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
+   "role": "mic"
   },
   {
    "group": "deckA.buttons",
@@ -734,16 +734,16 @@
   {
    "group": "deckB.buttons",
    "index": 5,
-   "action": "unbound",
+   "action": "stemMute",
    "deck": "B",
-   "reason": "STEMS music (note icon), measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
+   "role": "music"
   },
   {
    "group": "deckB.buttons",
    "index": 6,
-   "action": "unbound",
+   "action": "stemMute",
    "deck": "B",
-   "reason": "STEMS mic, measured 2026-10-16. Not bound yet: on net decks it would mute a group of roles (which ones is a choice to make); sample decks have no stems"
+   "role": "mic"
   },
   {
    "group": "deckB.buttons",

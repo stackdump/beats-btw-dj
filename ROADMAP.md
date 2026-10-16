@@ -89,7 +89,7 @@ session with `djctl monitor inpulse > captures/inpulse-<date>.log` (keep the 202
 log), saying each control's panel name as it is pressed:
 
 - [ ] Name the centre buttons 0x01–0x03 (deck buttons named 2026-10-16: 0x03 LOOP, bound to LOOP
-  record; 0x09 STEMS music, 0x0A STEMS mic, parked until their role groups are chosen):
+  record; 0x09 STEMS music, 0x0A STEMS mic, bound to `stemMute`):
   ASSIST/PREP, MASTER, BEATMATCH GUIDE.
 - [ ] Turn the browser encoder both ways and push it, with and without SHIFT.
 - [ ] Turn MASTER, then HEADPHONES, on its own (which one is CC 0x03 / 0x04).

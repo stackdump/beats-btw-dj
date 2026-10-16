@@ -39,6 +39,7 @@ extension SurfaceProfile.Binding {
     case .sectionPrev: return "previous section\(on)"
     case .sectionNext: return "next section\(on)"
     case .roleMute: return "mute \(role ?? "?")\(on)"
+    case .stemMute: return "STEMS \(role ?? "?") (mute group)\(on)"
     case .macro: return "macro \(macro ?? "?")\(on)"
     case .stinger: return "stinger \((slot ?? 0) + 1)\(on)"
     case .sync: return (slot == 1 ? "sync to bar" : "sync") + on

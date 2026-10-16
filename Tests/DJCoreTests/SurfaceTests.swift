@@ -157,9 +157,8 @@ struct SurfaceProfileTests {
     let names = Set(parked.map { "\($0.group).\(inpulse.group($0.group)?.name($0.index) ?? "?")" })
     #expect(
       names == [
-        "deckA.buttons.stemsMusic", "deckA.buttons.stemsMic", "deckA.shiftButtons.vinyl",
+        "deckA.shiftButtons.vinyl",
         "deckA.buttons.shift", "deckA.buttons.hotCueMode", "deckA.buttons.fxMode",
-        "deckB.buttons.stemsMusic", "deckB.buttons.stemsMic",
         "deckB.buttons.shift", "deckB.buttons.hotCueMode", "deckB.buttons.fxMode",
         "mixer.buttons.centre01", "mixer.buttons.centre02", "mixer.buttons.centre03",
       ], "\(names.sorted())")
@@ -292,10 +291,17 @@ struct Phase1ActionTests {
     #expect(a.playing)
     s.handle(bytes: [0x91, 0x06, 0x7F])  // CUE while playing: back to cue, pause
     #expect(!a.playing)
-    // LOOP / STEMS (0x03, 0x09, 0x0A) are parked until identified on the MK3.
+    // LOOP (0x03) is LOOP record; STEMS music / mic (0x09 / 0x0A) mute role groups.
+    func action(_ bytes: [UInt8]) -> SurfaceProfile.Binding? {
+      s.decode(bytes).flatMap { s.binding(for: $0) }
+    }
+    #expect(action([0x91, 0x03, 0x7F])?.action == .loopRecord)
+    #expect(action([0x92, 0x03, 0x7F])?.deck == "B")
     #expect(
-      s.handle(bytes: [0x91, 0x09, 0x7F])?.1
-        == .unbound(reason: s.binding(for: s.decode([0x91, 0x09, 0x7F])!)!.reason!))
+      action([0x91, 0x09, 0x7F]).map { ($0.action, $0.role) } ?? (.unbound, nil) == (
+        .stemMute, "music"
+      ))
+    #expect(action([0x91, 0x0A, 0x7F])?.role == "mic")
     a.loopIn()
     a.setPlaying(true)
     #expect(a.loopStart != nil && !a.looping)
