@@ -75,3 +75,32 @@ struct DisableTests {
     #expect(DJActionKind.lockKey(deck: "A", .macro, param: "drop") == "A.macro.drop")
   }
 }
+
+@MainActor
+struct AutoNextTests {
+  @Test func autoNextComposesAndPlaysTheNextVersion() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj.deterministic = true  // composes inline
+    let a = try #require(dj["A"])
+    let spec = TrackSpec(genre: "techno", seed: 42, structure: "minimal")
+    await a.generate(spec)
+    a.setPlaying(true)
+    // turned on after the track is already playing: no Queue next, nothing set beforehand
+    dj.perform(.autoAdvance(deck: "A", on: true))
+    a.service()
+    #expect(a.nextReady == spec.nextVersion, "the next version is composed at once")
+    #expect(spec.nextVersion.seed != 42 && spec.nextVersion.genre == "techno")
+    #expect(spec.nextVersion.structure == "minimal" && spec.nextVersion == spec.nextVersion)
+    a.wave.setTempo(3000)  // get to the end of the song quickly
+    try dj.start()
+    defer { dj.stop() }
+    for _ in 0..<4000 where a.advances == 0 {
+      _ = try renderOffline(dj, frames: 2048)
+      a.service()
+    }
+    #expect(a.advances == 1, "the song ended and handed over")
+    #expect(a.currentSpec?.seed == spec.nextVersion.seed && a.playing)
+    a.service()
+    #expect(a.nextReady == spec.nextVersion.nextVersion, "and the one after is on its way")
+  }
+}

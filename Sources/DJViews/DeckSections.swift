@@ -351,7 +351,6 @@ struct GeneratePanel: View {
   @State private var structure = "standard"
   @State private var seed = String(Int.random(in: 1...999_999))
   @State private var cohesion = "v2"
-  @State private var autoAdvance = false
   static let structures = ["loop", "minimal", "standard", "extended"]
 
   private var spec: TrackSpec {
@@ -395,18 +394,19 @@ struct GeneratePanel: View {
         Button("Roll") { seed = String(Int.random(in: 1...999_999)) }.controlSize(.small)
       }
       HStack(spacing: 4) {
-        ChoiceButton(label: "Auto-next", selected: autoAdvance, tint: tint) { autoAdvance.toggle() }
-          .help("Start the next track when this one ends")
+        // on the deck at once, whatever is playing: the next version of the song is composed in
+        // the background and plays when this one ends (or what Queue next queued)
+        let auto = model.decks[name]?.autoAdvance ?? false
+        ChoiceButton(label: "Auto-next", selected: auto, tint: tint) {
+          model.setAutoAdvance(name, !auto)
+        }
+        .help(
+          "When the song ends, play the next version (same genre and structure, a new seed),"
+            + " composed in the background — or the track Queue next queued")
         Spacer()
-        Button("Queue next") {
-          model.queueNext(name, spec)
-          model.setAutoAdvance(name, autoAdvance)
-        }
-        Button("Generate now") {
-          model.generate(name, spec)
-          model.setAutoAdvance(name, autoAdvance)
-        }
-        .buttonStyle(.borderedProminent).tint(tint)
+        Button("Queue next") { model.queueNext(name, spec) }
+        Button("Generate now") { model.generate(name, spec) }
+          .buttonStyle(.borderedProminent).tint(tint)
       }
       .controlSize(.small)
     }

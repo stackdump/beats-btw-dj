@@ -52,6 +52,8 @@ struct DeckState: Equatable {
   var clipID: String?
   /// Roles disabled on the deck (they stay off through new tracks).
   var disabledRoles: Set<String> = []
+  /// Auto-next: when the song ends, the next version plays (`Deck.autoAdvance`).
+  var autoAdvance = false
   var reverb = ReverbState()
 }
 
@@ -414,6 +416,7 @@ public final class AppModel {
       }
       state.clipID = d.clipID
       state.disabledRoles = d.disabledRoles
+      state.autoAdvance = d.autoAdvance
       state.reverb = ReverbState(d.reverb)
       decks[name] = state
     }

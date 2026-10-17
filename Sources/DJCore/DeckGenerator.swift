@@ -317,10 +317,53 @@ extension Deck {
       if abs(p - pitch) > 1e-6 { pitch = p }
     }
     guard mode == .net else { return }
+    // a song just handed over: until the audio thread starts it, the old one still reads as
+    // ended, and taking that for a new ending would skip a whole version
+    if startingNext {
+      if wave.isPlaying || !playing { startingNext = false } else { return }
+    }
     if playing && !wave.isPlaying && wave.hasEnded {
       playing = false
-      if autoAdvance, advanceToNext() { setPlaying(true) }
+      if autoAdvance {
+        // the next version, now; or as soon as it is composed
+        if advanceToNext() { startNext() } else { awaitingNext = true }
+      }
     }
-    if let provider = nextProvider, !next.isBusy { queueNext(provider()) }
+    if awaitingNext {
+      if !autoAdvance || playing {
+        awaitingNext = false
+      } else if advanceToNext() {
+        awaitingNext = false
+        startNext()
+      }
+    }
+    if let provider = nextProvider, !next.isBusy {
+      queueNext(provider())
+    } else if autoAdvance, !next.isBusy, let spec = currentSpec {
+      // auto-next keeps the next version of this song composed: no Queue next needed
+      queueNext(spec.nextVersion)
+    }
+  }
+}
+
+extension Deck {
+  /// Play the track that just took over (auto-next), and hold off end-of-song checks until it
+  /// is playing.
+  fileprivate func startNext() {
+    setPlaying(true)
+    startingNext = true
+  }
+}
+
+extension TrackSpec {
+  /// The next version of this song for auto-next: same genre, structure, cohesion and settings,
+  /// a new seed worked out from this one (so a recorded set replays the same chain), and none of
+  /// this song's per-track overrides (instrument changes belong to the song they were made on).
+  public var nextVersion: TrackSpec {
+    // a Park–Miller step over the 1…999 999 seed range the Generate panel uses
+    let s = (Int64(seed.rounded()) * 48_271) % 2_147_483_647
+    return TrackSpec(
+      genre: genre, seed: Double(abs(s) % 999_999 + 1), structure: structure, cohesion: cohesion,
+      extra: extra)
   }
 }

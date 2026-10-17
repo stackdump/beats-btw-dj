@@ -308,8 +308,15 @@ public final class Deck: JogClock {
   /// the song ended with `autoAdvance` on, or the Next button). A display that reacts to a
   /// hand-over (the ring's Auto-DJ swing) watches this move.
   public internal(set) var advances = 0
-  /// When a song ends (its `stop-transport` fires), start the pre-composed next one.
+  /// When a song ends (its `stop-transport` fires), start the next one: the one queued, or
+  /// (`service`) the next version of this song, composed in the background while this plays.
   public var autoAdvance = false
+  /// The song ended with auto-next on before its next version was composed: play that the
+  /// moment it is ready.
+  var awaitingNext = false
+  /// The next version was just started: wait for the audio thread to start it before looking
+  /// for the end of a song again.
+  var startingNext = false
   /// Called whenever no next track is composed or composing: keeps one coming.
   public var nextProvider: (() -> TrackSpec)?
   var generation = 0
