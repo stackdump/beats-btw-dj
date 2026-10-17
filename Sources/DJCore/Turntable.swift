@@ -36,6 +36,12 @@ public final class SampleBuffer: @unchecked Sendable {
 public enum TurntableCommand: BitwiseCopyable {
   /// An `Unmanaged<SampleBuffer>` retained by the sender.
   case load(UnsafeMutableRawPointer)
+  /// Replace the audio with another take of the same loop at another length (an
+  /// `Unmanaged<SampleBuffer>` retained by the sender: key lock's time-stretched copy, or the
+  /// original back), in phase: the playhead and the loop region scale with the length, and a
+  /// playing turntable runs at its new speed at once (no motor ease). `pitch` is its tempo
+  /// fader for the new audio (as `.pitch`), set in the same step so no block plays between.
+  case swap(UnsafeMutableRawPointer, pitch: Double)
   case transport(playing: Bool)
   /// Play at full speed at once, with no motor spin-up: a clip launched in time.
   case start
@@ -102,7 +108,10 @@ public final class Turntable: @unchecked Sendable {
 
   deinit {
     while let c = commands.pop() {
-      if case .load(let p) = c { Unmanaged<SampleBuffer>.fromOpaque(p).release() }
+      switch c {
+      case .load(let p), .swap(let p, _): Unmanaged<SampleBuffer>.fromOpaque(p).release()
+      default: break
+      }
     }
     drainRetired()
     buffer?.release()
@@ -121,6 +130,14 @@ public final class Turntable: @unchecked Sendable {
     let p = Unmanaged.passRetained(buffer).toOpaque()
     drainRetired()
     if !commands.push(.load(p)) { Unmanaged<SampleBuffer>.fromOpaque(p).release() }
+  }
+
+  /// Hand `buffer` over in place of the loaded one, in phase (`TurntableCommand.swap`).
+  public func swap(_ buffer: SampleBuffer, pitch: Double) {
+    precondition(buffer.sampleRate == sampleRate, "resample before loading")
+    let p = Unmanaged.passRetained(buffer).toOpaque()
+    drainRetired()
+    if !commands.push(.swap(p, pitch: pitch)) { Unmanaged<SampleBuffer>.fromOpaque(p).release() }
   }
 
   /// Free buffers the audio thread has swapped out. Called by `send`/`load`;
@@ -188,6 +205,31 @@ public final class Turntable: @unchecked Sendable {
       pos = 0
       target = 0
       looping = false  // a loop region belongs to the audio it was set on
+    case .swap(let p, let newPitch):
+      pitch = newPitch
+      let b = Unmanaged<SampleBuffer>.fromOpaque(p)
+      let newLength = Double(b._withUnsafeGuaranteedRef { $0.length })
+      if let old = buffer {
+        let oldLength = Double(old._withUnsafeGuaranteedRef { $0.length })
+        let scale = newLength / oldLength
+        var q = pos.truncatingRemainder(dividingBy: oldLength)
+        if q < 0 { q += oldLength }
+        pos = q * scale
+        target = pos
+        if looping {
+          loopStart *= scale
+          loopEnd = max(loopStart + 1, loopEnd * scale)
+        }
+        if !retired.push(old.toOpaque()) {
+          // Retire queue full (main thread not draining): leak rather than free here.
+        }
+      } else {
+        pos = 0
+        target = 0
+      }
+      buffer = b
+      lengthAtomic.store(Int(newLength), ordering: .relaxed)
+      if playing && !scrubbing { rate = (1 + pitch) * (1 + nudge) }
     case .transport(let on): playing = on
     case .start:
       playing = true

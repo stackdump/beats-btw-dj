@@ -257,6 +257,7 @@ extension DJEngine {
   public func removeClip(_ id: String) {
     stopLoop(id, now: true)
     clips.removeAll { $0.id == id }
+    forgetClipSound(id)
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
   }
 
@@ -317,6 +318,7 @@ extension DJEngine {
     stopLoop(id, now: true)
     sampleLibrary[new.id] = new.buffer
     if let g = clipGains[id] { clipGains[new.id] = g }
+    carryClipSound(from: id, to: new.id)
     if clip(new.id) == nil { clips[i] = new } else { clips.remove(at: i) }
     if wasLooping { startLoop(new.id, atOnce: true) }
   }
@@ -429,7 +431,7 @@ extension DJEngine {
   public func setClipGain(_ id: String, _ g: Double) {
     clipGains[id] = g
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
-      loopChannel.bank?.send(.gain(voice: v, Float(g)))
+      loopChannel.bank?.send(.gain(voice: v, Float(audibleClipGain(id))))
     }
   }
 
@@ -451,7 +453,8 @@ extension DJEngine {
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
       guard loopVoices[v].stopFrame != nil else { return }  // already in
       loopVoices[v].stopFrame = nil
-      bank.send(.start(voice: v, frame: 0))  // cancels the stop
+      // cancels the stop (or brings a fade-out back up)
+      bank.send(.start(voice: v, frame: 0, fade: loopFadeFrames(bpm: loopVoices[v].targetBPM)))
       return
     }
     guard let v = loopVoices.firstIndex(where: { $0.clipID == nil }) else { return }
@@ -462,17 +465,21 @@ extension DJEngine {
     var b = (clock.beat(at) - (clock.ref?.name == clip.source ? clip.startBeat : 0))
       .truncatingRemainder(dividingBy: beats)
     if b < 0 { b += beats }
-    let length = Double(clip.buffer.length)
-    let ratio = clock.bpm.map { $0 / clip.bpm } ?? 1
+    let target = clock.bpm ?? clip.bpm
+    // key-locked at another tempo: a stretched copy made before, if there is one for it
+    let audio = loopAudio(clip, at: target)
+    let length = Double(audio.buffer.length)
+    let ratio = target / audio.bpm
     let tt = bank.voices[v]
-    tt.load(clip.buffer)
+    tt.load(audio.buffer)
     tt.send(.loop(start: 0, end: length))
     tt.send(.pitch(ratio: ratio - 1))
     tt.send(.seek(sample: b * length / beats))
     tt.send(.start)
-    bank.send(.gain(voice: v, Float(clipGain(id))))
-    bank.send(.start(voice: v, frame: at))
-    loopVoices[v] = LoopVoice(clipID: id, ref: clock.ref?.name, ratio: ratio)
+    bank.send(.gain(voice: v, Float(audibleClipGain(id))))
+    bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(bpm: target, short: atOnce)))
+    loopVoices[v] = LoopVoice(
+      clipID: id, ref: clock.ref?.name, ratio: ratio, bufferBPM: audio.bpm, targetBPM: target)
   }
 
   func stopLoop(_ id: String, now: Bool) {
@@ -480,18 +487,19 @@ extension DJEngine {
     else { return }
     if !bank.isActive(v) && loopVoices[v].stopFrame == nil {
       // not in yet: never let it start
-      bank.send(.stop(voice: v, frame: 0))
+      bank.send(.stop(voice: v, frame: 0, fade: 0))
       loopVoices[v].stopFrame = 0
       return
     }
     let earliest = loopChannel.renderedFrames + (now ? 0 : Self.loopLead)
     let at = now ? earliest : loopClock(for: clip(id)).nextDownbeat(after: earliest)
-    bank.send(.stop(voice: v, frame: at))
+    let fade = loopFadeFrames(bpm: loopVoices[v].targetBPM, short: now)
+    bank.send(.stop(voice: v, frame: at, fade: fade))
     loopVoices[v].stopFrame = at
   }
 
-  /// Housekeeping (from `serviceLoopTakes`): free voices whose loop is out, and keep each loop
-  /// at its reference deck's tempo.
+  /// Housekeeping (from `serviceLoopTakes`): free voices whose loop is out, keep each loop at its
+  /// reference deck's tempo, and key-locked ones at their pitch (`serviceKeyLock`).
   func serviceLoops() {
     guard let bank = loopChannel.bank else { return }
     let now = loopChannel.renderedFrames
@@ -505,10 +513,14 @@ extension DJEngine {
       if bank.isActive(v) {
         for d in decks.values where d.clipID == id && d.playing { d.setPlaying(false) }
       }
-      guard let clip = clip(id), let ref = loopVoices[v].ref.flatMap({ decks[$0] }), ref.playing,
+      guard let clip = clip(id) else { continue }
+      if let ref = loopVoices[v].ref.flatMap({ decks[$0] }), ref.playing,
         let bpm = ref.effectiveBPM
-      else { continue }
-      let ratio = bpm / clip.bpm
+      {
+        loopVoices[v].targetBPM = bpm
+      }
+      serviceKeyLock(v, clip, now: now)
+      let ratio = loopVoices[v].targetBPM / loopVoices[v].bufferBPM
       if abs(ratio - loopVoices[v].ratio) > 1e-6 {
         loopVoices[v].ratio = ratio
         bank.voices[v].send(.pitch(ratio: ratio - 1))
@@ -551,14 +563,16 @@ extension DJEngine {
       }),
       let other = loopVoices[v].clipID.flatMap({ self.clip($0) })
     {
+      // what the voice holds may be a stretched copy: its length and tempo, not the clip's
       let tt = bank.voices[v]
       let rate = max(1e-3, tt.currentRate)
-      let samplesPerBeat = Double(other.buffer.length) / Double(other.beats)
-      var pos = tt.position.truncatingRemainder(dividingBy: Double(other.buffer.length))
-      if pos < 0 { pos += Double(other.buffer.length) }
+      let length = Double(tt.length > 0 ? tt.length : other.buffer.length)
+      let samplesPerBeat = length / Double(other.beats)
+      var pos = tt.position.truncatingRemainder(dividingBy: length)
+      if pos < 0 { pos += length }
       return LoopClock(
         ref: nil, origin: (loopChannel.renderedFrames, pos / samplesPerBeat),
-        framesPerBeat: samplesPerBeat / rate, bpm: other.bpm * rate)
+        framesPerBeat: samplesPerBeat / rate, bpm: loopVoices[v].bufferBPM * rate)
     }
     return LoopClock(
       ref: nil, origin: (loopChannel.renderedFrames, 0), framesPerBeat: 0, bpm: nil)
@@ -592,9 +606,18 @@ struct LoopVoice {
   var clipID: String?
   /// The deck whose tempo it follows.
   var ref: String?
+  /// Its turntable's speed: `targetBPM / bufferBPM`.
   var ratio = 1.0
+  /// The tempo the loaded audio plays at at speed 1: the clip's own, or a stretched copy's.
+  var bufferBPM = 120.0
+  /// The tempo it is to play at: its reference deck's, else the one it started at.
+  var targetBPM = 120.0
   /// Set once it is told to stop (it goes out at this frame).
   var stopFrame: Int?
+  /// Key lock: the tempo a stretch is wanted for and the frame it was first wanted at (it is
+  /// rendered once that has held for `DJEngine.stretchDebounce`), and the render in flight.
+  var stretchWant: (bpm: Double, since: Int)?
+  var stretching: Int?
 }
 
 extension Deck {

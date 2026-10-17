@@ -140,7 +140,12 @@ public struct MCPBridge {
       mixer on the next downbeat (several loop at once) · clipGain {id, value 0…1} · \
       clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \
       replacing?}: join clips into a sequence (or rewrite one) · clip {deck: L|A|B, id}: move a \
-      clip onto a deck (L = under the mixer). Deck "L" also takes param volume / mute (1 = muted).
+      clip onto a deck (L = under the mixer) · clipMute {id, on}: silent but still looping, in \
+      phase · clipSolo {id, on}: while any clip is soloed only soloed ones are heard · \
+      clipKeyLock {id, on}: at another tempo it keeps its pitch (a time-stretched copy, made in \
+      the background; dj_state.loops.clips[].stretched) · loopKeyLock {on}: the row's key lock, \
+      for clips without their own · loopFade {fade: off|10ms|beat|bar}: how loops come in and \
+      go out (default 10ms). Deck "L" also takes param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,

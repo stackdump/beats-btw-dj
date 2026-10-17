@@ -233,6 +233,11 @@ extension DJEngine {
     case .clipGain(let id, let v): setClipGain(id, v)
     case .clipCrop(let id, let from, let to): cropClip(id, from: from, to: to)
     case .clipSequence(let steps, let replacing): makeSequence(steps, replacing: replacing)
+    case .clipMute(let id, let on): setClipMute(id, on)
+    case .clipSolo(let id, let on): setClipSolo(id, on)
+    case .clipKeyLock(let id, let on): setClipKeyLock(id, on)
+    case .loopKeyLock(let on): setLoopKeyLock(on)
+    case .loopFade(let mode): if let f = LoopFade(rawValue: mode) { setLoopFade(f) }
     }
     return nil
   }

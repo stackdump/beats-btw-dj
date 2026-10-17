@@ -121,6 +121,16 @@ public enum DeckAction: Equatable, Sendable {
   case clipCrop(id: String, from: Int, to: Int)
   /// Join clips into a sequence (`DJEngine.makeSequence`), or rewrite the one `replacing` names.
   case clipSequence(steps: [SequenceStep], replacing: String?)
+  /// Mute a clip under the mixer: it plays on silent, in phase (`DJEngine.setClipMute`).
+  case clipMute(id: String, on: Bool)
+  /// Solo a clip: while any is soloed only soloed clips are heard (`DJEngine.setClipSolo`).
+  case clipSolo(id: String, on: Bool)
+  /// Key lock for one clip: at another tempo it keeps its pitch (`DJEngine.setClipKeyLock`).
+  case clipKeyLock(id: String, on: Bool)
+  /// The row's key lock, for clips without their own setting.
+  case loopKeyLock(on: Bool)
+  /// How loops come in and go out: off | 10ms | beat | bar (`LoopFade`).
+  case loopFade(mode: String)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -343,6 +353,12 @@ extension DeckAction {
           ("steps", steps.json),
           ("replacing", replacing.map { .string($0) } ?? .null),
         ])
+    case .clipMute(let id, let on): return o("clipMute", [("id", .string(id)), ("on", .bool(on))])
+    case .clipSolo(let id, let on): return o("clipSolo", [("id", .string(id)), ("on", .bool(on))])
+    case .clipKeyLock(let id, let on):
+      return o("clipKeyLock", [("id", .string(id)), ("on", .bool(on))])
+    case .loopKeyLock(let on): return o("loopKeyLock", [("on", .bool(on))])
+    case .loopFade(let mode): return o("loopFade", [("fade", .string(mode))])
     }
   }
 
@@ -386,6 +402,11 @@ extension DeckAction {
         steps: [SequenceStep](json: v["steps"]), replacing: v["replacing"]?.string)
     case "clipCrop":
       self = .clipCrop(id: v["id"]?.string ?? "", from: v["from"]?.int ?? 0, to: v["to"]?.int ?? 0)
+    case "clipMute": self = .clipMute(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
+    case "clipSolo": self = .clipSolo(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
+    case "clipKeyLock": self = .clipKeyLock(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
+    case "loopKeyLock": self = .loopKeyLock(on: v["on"]?.bool ?? false)
+    case "loopFade": self = .loopFade(mode: v["fade"]?.string ?? LoopFade.declick.rawValue)
     default: return nil
     }
   }
