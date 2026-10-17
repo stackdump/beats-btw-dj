@@ -599,8 +599,13 @@ public final class Deck: JogClock {
       title: title)
   }
 
-  /// Hand over a project compiled elsewhere (`WaveRunner.prepare`).
-  public func loadNet(_ prepared: WaveProject, project: Project, title: String? = nil) {
+  /// Hand over a project compiled elsewhere (`WaveRunner.prepare`). The channels' voice
+  /// settings (the sound panel) are the song's: another song starts without them unless
+  /// `keepVoices` (`keepsVoiceSettings`).
+  public func loadNet(
+    _ prepared: WaveProject, project: Project, title: String? = nil, keepVoices: Bool = false
+  ) {
+    if !keepVoices { wave.clearVoiceSettings() }
     // A hand-built net has no spec; `loadNet(_:)` for a track sets its source after.
     currentSpec = nil
     currentRawNets = nil

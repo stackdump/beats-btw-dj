@@ -162,7 +162,15 @@ public struct MCPBridge {
       loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
       off|10ms|beat|bar}: how loops come in and go out (default 10ms) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
-      app's). Deck "L" also takes \
+      app's) · voiceTweak {deck, channel, params}: shape a net deck's channel's synth voice \
+      live, on the song playing (no reload; channel from dj_state.voices[].channel): params \
+      {gainDB -48…24, attack s, decayScale × note length, maxDecay s, lowpass Hz (0 = off), \
+      distortion 0…1, vibratoRate Hz, vibratoDepth 0…0.1 of the frequency, pitchFrom / pitchTo \
+      × the note, pitchTime s (0 = no sweep)}, each optional (unset = the instrument's own); {} \
+      resets to the instrument's voice. Session-only: it lasts for the song on that deck (its \
+      section jumps and other instrument picks), not a new track, a favorite or a relaunch; \
+      dj_state.voices[].tweak shows it · voiceSynth {deck, channel, on}: a sampled channel \
+      (dj_state.voices[].sampled) plays its synth voice (on) or its sample. Deck "L" also takes \
       param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.

@@ -265,6 +265,30 @@ its copy; the two are now independent. Rules inherited from that split:
 - Instrument changes (`Deck.roleVoices`, `withInstrument`) are the share envelope's `tracks`
   override keyed by MIDI channel, so they record, star and share; applying one reloads the track
   from its start. Copying a deck loads the same descriptor on the other one.
+- **The sound panel** (`VoiceEditor.swift`): a long press (0.5 s, `InstrumentButton`; the click
+  that ends it does not pick) or right-click ▸ Edit sound… on an instrument opens its channel's
+  voice: level (dB on the instrument's), attack, decay (× note, max), brightness (post lowpass, 0
+  = off), drive, vibrato, and a pitch sweep (one group: setting any sets all three). A
+  `VoiceTweak` (only the fields set; empty = the instrument) is the poke `DeckAction.voiceTweak`
+  (params inline); `voiceSynth` makes a sampled channel play its synth voice (AUSampler params
+  are not shaped). **Live, no reload**: the main thread makes `VoiceLaneParams` (coefficients,
+  a mask; a clear bit restores the lane's own prepared value, so Reset is bit-exact) and sends
+  `WaveCommand.voice`; `WaveRunner.setVoice` sets every lane on that channel of the current and
+  pending projects at the next block (`voiceTweaksDoNotAllocate`). Every wavetable lane has its
+  pitch multipliers, lowpass coefficients and (saw / square) `MipTables` from prepare, so all of
+  it is live; what prepare decides from the instrument's own voice stays (engine, wave,
+  `.subtractive` filter envelope, `.unison`, stereo spread — a live lowpass or drive collapses a
+  spread lane to one pan). Strings take no sweep.
+- Voice settings are **session-only** (`WaveDeckSource.voiceSettings`, per channel, with the
+  instrument they were made for): applied to every project the deck loads (`load`, before the
+  hand-over: section jumps, relocations) and kept across an instrument pick on another channel
+  (`Deck.keepsVoiceSettings`: same share but its `tracks`); a new song, auto-next, a favorite or
+  the same song loaded again, a new instrument on that channel, or a relaunch start from the
+  instruments' own voices. Never in the share, a favorite or a CID; Copy to deck doesn't carry
+  them. Saved **variations** (`VoiceVariationStore`, `~/Library/Application
+  Support/dj-vevr-se/voices.json`, instrument → [{name, params, useSynth}]) show as chips after
+  their instrument ("laser · short zap"); a chip is the same `voiceTweak` (picking the
+  instrument first if needed), so sessions replay without the library.
 
 ## Control socket and MCP
 

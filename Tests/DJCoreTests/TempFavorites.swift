@@ -31,3 +31,10 @@ func temporaryLoopLibrary() throws -> StockLoopLibrary {
     roots: [dir.appendingPathComponent("root")], indexFile: dir.appendingPathComponent("index.json")
   )
 }
+
+/// A voice-variation library in a fresh temporary directory.
+func temporaryVoiceVariations() -> VoiceVariationStore {
+  VoiceVariationStore(
+    file: FileManager.default.temporaryDirectory
+      .appendingPathComponent("voices-\(UUID().uuidString)/voices.json"))
+}

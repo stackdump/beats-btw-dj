@@ -35,6 +35,11 @@ struct DeckState: Equatable {
   var sourceCID: String?
   /// Each role's instrument and what it could play instead (`Deck.roleVoices`).
   var voices: [RoleVoice] = []
+  /// What each of those channels plays (`Deck.channelVoice`), by channel: the sound panel's
+  /// starting point.
+  var channelVoices: [Int: ChannelVoice] = [:]
+  /// The channels' voice settings this session (the sound panel), by channel.
+  var voiceSettings: [Int: VoiceSetting] = [:]
   var quantize = "off"
   var scrubbing = false
   var pfl = false
@@ -154,6 +159,9 @@ public final class AppModel {
   var walk: ControlWalk?
   /// Starred tracks and samples, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
+  /// Saved ways to play each instrument (`VoiceVariationStore`), by instrument.
+  var variations: [String: [VoiceVariation]] = [:]
+  @ObservationIgnored let variationStore: VoiceVariationStore
   /// The tag the Favorites panels show (nil: all).
   var favoriteTag: String?
   /// Buttons the user locked (right-click ▸ Disable), by `DJActionKind.lockKey`; mirrored to
@@ -216,8 +224,11 @@ public final class AppModel {
   /// `favorites`: where starred tracks are kept (tests pass a temporary file).
   public init(
     engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
-    loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil
+    loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil,
+    voices: VoiceVariationStore = VoiceVariationStore()
   ) {
+    variationStore = voices
+    variations = voices.all()
     injected = engine
     injectedPerf = perf
     favoritesStore = favorites
@@ -393,9 +404,12 @@ public final class AppModel {
       state.sourceCID = sourceCID(name, d)
       if let previous, previous.sourceCID == state.sourceCID, previous.title == state.title {
         state.voices = previous.voices
+        state.channelVoices = previous.channelVoices
       } else {
         state.voices = d.roleVoices
+        for v in state.voices { state.channelVoices[v.channel] = d.channelVoice(v.channel) }
       }
+      state.voiceSettings = d.mode == .net ? d.wave.voiceSettings : [:]
       if d.mode == .net {
         var spin = ringSpins[name] ?? RingSpin()
         spin.observe(advances: d.advances, at: now)
@@ -957,6 +971,73 @@ public final class AppModel {
       return false
     }
     return await prepareAndLoad(deck, source)
+  }
+
+  // The sound panel (long press on an instrument): live voice tweaks, session-only, and the
+  // saved variations.
+
+  /// Shape a channel's voice, live (recorded; Reset is an empty tweak).
+  func setVoiceTweak(_ deck: String, channel: Int, _ tweak: VoiceTweak) {
+    dj?.perform(.voiceTweak(deck: deck, channel: channel, params: tweak))
+    refreshVoices(deck)
+  }
+
+  /// The panel's state without a whole poll (a slider sends many tweaks).
+  func refreshVoices(_ deck: String) {
+    guard let d = dj?[deck], d.mode == .net else { return }
+    decks[deck]?.voiceSettings = d.wave.voiceSettings
+  }
+
+  /// A sampled channel plays its synth voice (`on`) or the sample again.
+  func setSynthVoice(_ deck: String, channel: Int, _ on: Bool) {
+    dj?.perform(.voiceSynth(deck: deck, channel: channel, on: on))
+    refreshVoices(deck)
+  }
+
+  /// Play `variation` of `instrument` on a channel: picks the instrument first if the channel
+  /// plays another (a reload, as any pick), then its tweak and synth switch, as the panel would.
+  @discardableResult
+  func applyVariation(
+    _ deck: String, channel: Int, instrument: String, _ variation: VoiceVariation
+  ) async -> Bool {
+    guard let d = dj?[deck] else { return false }
+    if d.channelVoice(channel)?.instrument != instrument {
+      guard await setInstrument(deck, channel: channel, instrument) else { return false }
+    }
+    if d.usesSynthVoice(channel) != variation.useSynth {
+      dj?.perform(.voiceSynth(deck: deck, channel: channel, on: variation.useSynth))
+    }
+    setVoiceTweak(deck, channel: channel, variation.params)
+    return true
+  }
+
+  /// The variation of `instrument` a channel's settings are now, if they are one.
+  func currentVariation(_ instrument: String, _ setting: VoiceSetting?) -> VoiceVariation? {
+    guard let setting, !setting.isDefault, setting.instrument == instrument else { return nil }
+    return variations[instrument]?.first {
+      $0.params == setting.tweak && $0.useSynth == setting.useSynth
+    }
+  }
+
+  /// Keep a channel's settings as a named variation of its instrument.
+  func saveVariation(_ instrument: String, name: String, _ setting: VoiceSetting) {
+    let v = VoiceVariation(name: name, params: setting.tweak, useSynth: setting.useSynth)
+    do { variations[instrument] = try variationStore.save(v, for: instrument) } catch {
+      status = "voices: \(error)"
+    }
+  }
+  func renameVariation(_ instrument: String, _ name: String, to new: String) {
+    do { variations[instrument] = try variationStore.rename(name, to: new, for: instrument) } catch {
+      status = "voices: \(error)"
+    }
+  }
+  func deleteVariation(_ instrument: String, _ name: String) {
+    do {
+      let left = try variationStore.delete(name, for: instrument)
+      variations[instrument] = left.isEmpty ? nil : left
+    } catch {
+      status = "voices: \(error)"
+    }
   }
 
   func queueNext(_ deck: String, _ spec: TrackSpec) {
