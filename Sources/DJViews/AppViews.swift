@@ -1504,9 +1504,13 @@ struct DeckView: View {
   private var transport: some View {
     VStack(alignment: .leading, spacing: DJStyle.xs) {
       transportRow
+      // the second line: LOOP's tap length and grab, then the hot cues (beside ▶ / Cue / LOOP
+      // on the first line they were squeezed until their numbers no longer showed)
       HStack(spacing: 4) {
         TapLengthChip(model: model)
         GrabBarsControl(name: name, model: model)
+        Spacer(minLength: DJStyle.s)
+        hotCues
       }
     }
     .overlay(alignment: .topTrailing) {
@@ -1534,23 +1538,27 @@ struct DeckView: View {
         .lockable(DJActionKind.lockKey(deck: name, .pfl), model)
       LoopRecordButton(name: name, model: model)
       Spacer(minLength: 0)
-      HStack(spacing: DJStyle.xs) {
-        ForEach(0..<4, id: \.self) { slot in
-          let key = DJActionKind.lockKey(deck: name, .hotcue, param: "\(slot)")
-          let locked = model.isLocked(key)
-          Button("\(slot + 1)") { model.hotCue(name, slot) }
-            .tint(state.cues.contains(slot) ? tint : nil)
-            .buttonStyle(.borderedProminent).controlSize(.small)
-            .environment(\.isEnabled, !locked).opacity(locked ? 0.4 : 1)
-            .contextMenu {
-              Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) }
-              Button(locked ? "Enable" : "Disable") { model.setLocked(key, !locked) }
-                .environment(\.isEnabled, true)
-            }
-            .help(
-              state.cues.contains(slot)
-                ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
-        }
+    }
+  }
+
+  /// Hot cues 1–4: set at the playhead, then jump; right-click to clear or lock.
+  private var hotCues: some View {
+    HStack(spacing: DJStyle.xs) {
+      ForEach(0..<4, id: \.self) { slot in
+        let key = DJActionKind.lockKey(deck: name, .hotcue, param: "\(slot)")
+        let locked = model.isLocked(key)
+        Button("\(slot + 1)") { model.hotCue(name, slot) }
+          .tint(state.cues.contains(slot) ? tint : nil)
+          .buttonStyle(.borderedProminent).controlSize(.small)
+          .environment(\.isEnabled, !locked).opacity(locked ? 0.4 : 1)
+          .contextMenu {
+            Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) }
+            Button(locked ? "Enable" : "Disable") { model.setLocked(key, !locked) }
+              .environment(\.isEnabled, true)
+          }
+          .help(
+            state.cues.contains(slot)
+              ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
       }
     }
   }
