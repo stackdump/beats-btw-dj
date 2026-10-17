@@ -548,3 +548,88 @@ it plays, outlined when stopped, the downbeat lamp wider), and which deck is fas
   bar 1's rhythm).
 - Balance targets by genre (jazz and lofi want the bass and keys forward and the hats lower; the
   dance targets are a single rule of thumb).
+
+## 9. Part G (2026-10-17): a song of its own per seed (`.variety`)
+
+The complaint: "we get the same underlying notes, but different instruments". Measured over 30
+seeds per genre (8 genres, standard songs and loops, the note log before and after the pass):
+beats' generator draws **only the melody** from the seed. The key, scale and tempo are the
+genre's (`proj.rootNote = genre.rootNote`); the cohesion-v2 chord plan is one of one or two
+`chordProgs` per genre (techno: one, i–VII–i–VII); the bass is the plan's roots on the genre's
+groove mask (`chordBassRing`); the pad is the plan (`chordPadNet`); the drums are seeded from the
+genre's name (`drumSeed(genreName)`, `"genre:role:letter"` per slot). So 30 techno seeds played
+1–2 bass phrases, 1–2 pad phrases and 3 drum parts between them, under 30 different 4-bar
+motifs. dj's own `.arpeggio` made it worse for the arp: one figure (`arpPattern`) over the same
+chords, so every trance seed had the same arp (13 distinct arp bars in 30 seeds, 99% shared).
+
+`.variety` (`TrackVariety.swift`), seeded from the track's seed, one random stream per decision
+(`varietyRandom("key" | "progression" | "bass" | "hihat" | "snare" | "kick", genre, seed)`):
+
+- **Key** (`transposeTrack`): every tonal note −5…+6 semitones, the project's `rootNote` with it
+  (so `.kickTune`, `DeckPerform`'s keys and every later fix read the new key). `.register` then
+  puts each part back in its octave.
+- **Progression** (`reharmonize`, cohesion v2, seven-note keys): a root per bar from
+  `progressionTable` (by scale: minor, major, dorian, mixolydian, phrygian; 5–8 each; beats'
+  own `chordProgs` for the genre join the pool first). Each bar's pad chord and bass move along
+  the key by the shortest number of scale steps that puts the root there (triads stay triads);
+  a walking bass's chromatic approach is re-aimed a semitone from the moved next note; melody
+  and arp notes on the beat that are no longer chord tones go to the nearest one that does not
+  repeat a neighbour (beats snaps its motif's beats the same way). Pentatonic / blues genres
+  (ambient, lofi, blues) only change key: beats' degree arithmetic is mod 7 there.
+- **Bass figure** (`varyBassFigure`, after `.register` and `.bassLine`, root-per-bar basses
+  only): rhythm (as composed / a pickup into every second bar, on the 16th before the downbeat
+  in four-on-the-floor genres, else the last off-beat eighth, never on a kick / every other hit
+  of a busy mask) × line (roots / the fifth on every second hit / the fifth in the back half /
+  one octave jump mid-bar). Each bar's first and last notes stay the composed root, so the bass
+  states the chord where the groove puts it and `.bassLine` / `.approach` still lead into the
+  next chord; figure notes stay under the pad and above E1. Walking and bossa basses are the
+  genre's figure and stay.
+- **Drums** (`varyDrums`): per part, the same choice in every slot (A / B / C keep their
+  differences): hats as composed / ghost sixteenths / thinned to eighths / moved an eighth;
+  0–2 ghost snares off the backbeat; outside four-on-the-floor, sometimes one ghost kick on a
+  free eighth. Ghosts at a third to a half of the part's velocity, never on the downbeat or next
+  to a hit.
+- **Arp** (`.arpeggio`, `ArpFigure.seeded(seed, variant:)`): the ladder's shape (up, down, up
+  and down, broken, pedal, beats-like), span (4–6 chord tones), first tone and rate (sixteenths
+  or eighths; a C variant always eighths), from the seed and the slot's letter.
+
+Two fixes the pass needed in older ones: `.bassLine` places each ring on its own, so a sparser C
+slot could sit an octave from the others and the bass jumped an octave where sections met; a
+ring a fifth or more from the part's median now moves an octave toward it. `.approach` comes
+from above when the step below the next root would be under E1.
+
+Measured (30 seeds, standard songs, as played; distinct 4-bar phrases across seeds, before →
+after; "rel." = relative to the track's root, i.e. not counting a transposition):
+
+| genre (v2) | melody | arp | bass | harmony | drums |
+|---|---|---|---|---|---|
+| techno | 84 → 84 (rel. 84) | – | 1 → 36 (rel. 32) | 1 → 27 (rel. 8) | 5 → 70 (rel. 70) |
+| house | 84 → 84 (rel. 84) | – | 3 → 33 (rel. 29) | 3 → 29 (rel. 10) | 6 → 22 (rel. 22) |
+| trance | 85 → 85 (rel. 85) | 7 → 90 (rel. 90) | 3 → 31 (rel. 28) | 2 → 28 (rel. 13) | 7 → 110 (rel. 110) |
+| edm | 78 → 78 (rel. 78) | 16 → 90 (rel. 89) | 2 → 30 (rel. 27) | 2 → 27 (rel. 13) | 8 → 124 (rel. 124) |
+| dnb | 84 → 84 (rel. 84) | – | 1 → 34 (rel. 27) | 1 → 27 (rel. 9) | 6 → 70 (rel. 70) |
+| jazz | 65 → 65 (rel. 65) | – | 2 → 27 (rel. 14) | 2 → 26 (rel. 10) | 11 → 55 (rel. 55) |
+| lofi | 60 → 60 (rel. 60) | – | 2 → 19 (rel. 2) | 2 → 19 (rel. 2) | 2 → 10 (rel. 10) |
+| ambient | 60 → 60 (rel. 60) | – | 1 → 17 (rel. 6) | 1 → 11 (rel. 1) | 3 → 24 (rel. 24) |
+
+The melody already was the seed's (every phrase unique to its seed) and is unchanged in count;
+v1 (free-form) gains the key and drums only (its bass and melody are beats' own lines).
+
+Rendered (`djctl render <g> <seed> --synth --seconds 90`, techno / house / trance / jazz / lofi /
+dnb × seeds 7, 42, 1234, with and without the flag): no clipped samples either way, peaks within
+±0.7 dB, RMS within ±0.6 dB, every track as much in key as before (jazz's walking-bass approach
+notes aside), chord tones on beats 0.98–1.00, semitone rubs per 100 overlapping pairs 2.89 → 2.66
+on average (house 7: 1.9 → 4.3 and dnb 1234: 2.2 → 3.7 are the worst; jazz 7: 8.4 → 5.6 the
+best). `djctl render` now reports on the played project (its key), not the composed one.
+
+Trade-offs: a key offset puts a genre off its conventional key (dubstep / trap low D / E for sub
+weight, metal's E): `.register` keeps the parts in their octaves, so the bass's register is
+kept but its exact pitch moves up to a tritone. The kick follows (`.kickTune`'s root-or-fifth
+nearest 50 Hz). The seeded progressions are diatonic and shortest-move, so the motif still fits
+them (beats only re-snaps beats; off-beat passing notes stay as composed).
+
+`VarietyTests` holds it: per genre (techno, house, trance, lofi, jazz, dnb), 30 loop seeds give
+bass ≥ 8, harmony ≥ 6, drums ≥ 4, arp ≥ 10 distinct 4-bar patterns and 30 melodies with a mean
+pairwise pitch Jaccard ≤ 0.25; the seven-note genres ≥ 3 progressions relative to the root;
+without the flag the bass is still the genre's (≤ 3); in key, chord tones on beats and semitone
+rubs no worse than without it.

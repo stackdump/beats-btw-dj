@@ -57,7 +57,12 @@ struct MusicalityTests {
         #expect(a.arcs.count == b.arcs.count, "\(genre) \(id) arcs")
         // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
         // steps, `.motif` a melody's second bars (bar 1's rhythm), `.buildup` / `.crash` the
-        // fill chains' (a roll, a crash); nothing else gains or loses notes
+        // fill chains' (a roll, a crash), `.variety` a bass pickup or every other bass hit and
+        // ghost drum hits (all on the net's own transitions); nothing else gains or loses notes
+        let unvaried = DJMusicality.apply(
+          t.composed, spec: t.spec, fixes: .all.subtracting(.variety)
+        ).nets[id]!
+        #expect(Set(b.bindings.keys).isSubset(of: Set(b.transitions.keys)), "\(genre) \(id)")
         if id.hasPrefix("fill-") {
           continue
         } else if b.track.group == "arp" || b.track.group == "melody" {
@@ -65,7 +70,7 @@ struct MusicalityTests {
         } else if b.track.group == "harmony" {
           #expect(Set(a.bindings.keys).isSubset(of: Set(b.bindings.keys)), "\(genre) \(id)")
         } else {
-          #expect(a.bindings.count == b.bindings.count, "\(genre) \(id) bound transitions")
+          #expect(a.bindings.count == unvaried.bindings.count, "\(genre) \(id) bound transitions")
         }
       }
       #expect(t.played.structure.map(\.steps) == t.composed.structure.map(\.steps))
@@ -213,7 +218,8 @@ struct MusicalityTests {
     // The deck plays with the gain: prepared with .loudness the project carries it.
     let p = played("lofi", 42).played
     var o = WaveOptions.extended
-    #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain > 1.5)
+    // (lofi/42 is the quietest of them; `.variety` moved it a little louder, so 1.2, not 1.5)
+    #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain > 1.2)
     o.musicality = []
     #expect(WaveRunner.prepare(p, sampleRate: 22_050, opts: o).gain == 1)
   }
@@ -295,8 +301,12 @@ struct MusicalityTests {
   @Test(arguments: ["techno", "trance", "jazz", "dubstep"])
   func melodiesStepRatherThanRepeat(genre: String) throws {
     let t = played(genre, 42)
-    let flat = playedWithout(t, .contour)
-    let stepped = playedWithout(t)
+    // `.variety`'s new chords re-snap the beat notes away from their neighbours, which does
+    // part of `.contour`'s work: A/B it on the track as beats composed it, then check the
+    // played melody still steps
+    let flat = playedWithout(t, [.contour, .variety])
+    let stepped = playedWithout(t, .variety)
+    #expect(try #require(report(playedWithout(t)).melodyRepeats) < 0.45, "\(genre) as played")
     let a = report(flat)
     let b = report(stepped)
     let before = try #require(a.melodyRepeats)
@@ -325,7 +335,12 @@ struct MusicalityTests {
       #expect(a.padColor == 0)
       #expect(b.inKey >= a.inKey)
       #expect(b.harmonyInBassRange == 0)
-      #expect(b.semitoneClashes <= a.semitoneClashes + 1, "\(genre)/\(seed)")
+      // the rubs the sevenths add, on beats' chords (`.variety`'s progressions move where a
+      // seventh lands against the tune; VarietyTests holds their rubs to beats' level)
+      let plain: DJMusicality.Fixes = .all.subtracting(.variety)
+      let x = report(DJMusicality.apply(t.composed, spec: t.spec, fixes: plain.subtracting(.color)))
+      let y = report(DJMusicality.apply(t.composed, spec: t.spec, fixes: plain))
+      #expect(y.semitoneClashes <= x.semitoneClashes + 1, "\(genre)/\(seed)")
     }
     let techno = played("techno", 42)
     let plain = DJMusicality.apply(

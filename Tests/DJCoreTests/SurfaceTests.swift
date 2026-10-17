@@ -412,7 +412,12 @@ struct BrowserSeedTests {
     s.handle(bytes: ccw)
     #expect(dj["A"]!.currentSpec?.seed == 4)
     #expect(dj["A"]!.playing && dj["A"]!.isNetLoop)
-    #expect(dj["A"]!.netProject?.modelCID == TrackSpec(genre: "techno", seed: 4).project().modelCID)
+    // the deck plays seed 4 as its options play it (`.variety` moves a loop's key, so not
+    // the composed project itself)
+    let four = TrackSpec(genre: "techno", seed: 4)
+    let played = DJMusicality.apply(
+      four.project(), spec: four, fixes: dj["A"]!.waveOptions.musicality)
+    #expect(dj["A"]!.netProject?.modelCID == played.modelCID)
   }
 
   @Test func onlyAPlayingComposedLoopMoves() throws {
