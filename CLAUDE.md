@@ -5,6 +5,45 @@ Native DJ-controller tooling for Petri-net music. Private repo
 because the hardware — a Hercules DJControl Inpulse 200 MK3 — is plugged in
 there. Not on valoper, not deployed to pflow.dev.
 
+## The theme: a random walk on a music generator
+
+The app is a **random walk over the generator's space of known configurations**. A
+configuration is everything that names a piece of music — genre, seed, structure, cohesion,
+the share overrides (instrument picks, initial mutes), the deck's knobs and role filter — and
+each one renders to the same audio every time (beats' determinism, content-addressed by CID).
+The performer **pokes**; the app answers by **recomputing to a nearby known configuration**,
+under structural rules, rather than editing audio freely.
+
+- **Pokes are moves in configuration space**: the seed wheel (±1 seed), Generate / Next /
+  auto-next (`TrackSpec.nextVersion`: same song settings, the next seed), an instrument pick
+  (a `tracks` override), a role disabled (`roleFilter`), STEMS / role mutes, macros, a section
+  jump, a loop taken from the stream. Each is a `DeckAction` (or recorded MIDI), so a session
+  replays the same walk.
+- **Rules keep the walk musical**:
+  - **Time:** every move lands on a structural boundary. Swaps at the next bar, sections on
+    the bar, loops in and out on the downbeat or launch quantum. Loops follow the louder
+    deck's tempo.
+  - **Memory:** the user's choices survive the recompute. A disabled role stays out of every
+    new compile, a picked instrument keeps choosing its sound by name, and favorites, tags,
+    crates and the loop library persist.
+  - **Derivation:** anything the app chooses for itself (the next version's seed, a sampler
+    pick, a loop's phase) is a pure function of the current configuration. Never wall-clock
+    randomness at run time.
+  - **Provenance:** what a move produced records where it came from (`LoopProvenance`, a
+    favorite's descriptor, a session's events), so the walk can be retraced or walked back.
+- **Coordinates vs moves**: beats' `compose()` is the coordinate system and stays
+  byte-identical (Origin and boundary, GO-DIVERGENCE.md). dj's moves and rules live in
+  `DJMusicality.apply`, the share overrides, the runner and the engine.
+
+New features fit the theme as three things:
+1. **A kind of poke:** a `DeckAction` with codec, dispatch and round-trip test, or a controller
+   binding.
+2. **The rule that picks the configuration it lands on:** deterministic, seeded from the
+   current one.
+3. **The boundary it lands at:** beat, bar, phrase or section.
+
+If a feature can't say all three, question it.
+
 ## Origin and boundary
 
 Split from beats-bitwrap-io `public/jog/` at `b7704ba` (2026-10-07). beats keeps
@@ -100,6 +139,14 @@ its copy; the two are now independent. Rules inherited from that split:
 - `resonance` is the loop feedback per period *at 220 Hz*, scaled per note so every pitch rings
   equally long; the loop lowpass's phase delay is taken off the delay line so strings play in
   tune. String delay lines are allocated at prepare (`pluckedStringsDoNotAllocate`).
+- A per-note pitch envelope (`VoiceSpec.pitchFrom` / `pitchTo` / `pitchTime`) makes zaps:
+  `laser` is beats' stinger one-shot (12.2× → 0.42× over 0.4 s); the band-limited table
+  steps down as the note falls; measured allocation-free (`laserSweepsDoNotAllocate`).
+- An instrument the user picked (a `tracks` override) marks the net's `Track.picked` (never
+  encoded: CIDs stay beats'); its sampled sound is then chosen by the name
+  (`VoiceCatalog.sources(picked:)`: a sound whose name fits first, else the name in the pick
+  hash). The composer's choices keep the category pick, so generated tracks sound as before.
+- Roles beats lists no instruments for (harmony) get `Deck.fallbackOptions` in the panel.
 - `InstrumentTableTests` hold each entry to: in tune (fundamental partial < 5 cents), rings
   and decays, and within 3 dB of the lead voice — re-run it when adding or retuning one.
   `dj_audition` (or `djctl ctl audition '{"instrument":…}'`) plays one on the Mac's output.
