@@ -62,6 +62,13 @@ extension AppModel {
         if case .macro(_, let id) = action, !Deck.isMacro(id: id) {
           throw ControlRequestError.bad("unknown macro \(id) (see dj_catalog)")
         }
+        if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
+          throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")
+        }
+        if case .wanderLock(_, let dim, _) = action, !WanderLock.isValid(dim) {
+          throw ControlRequestError.bad(
+            "wanderLock dimension must be one of \(WanderLock.dimensions) or keep:<role>")
+        }
       }
       // the library's ops go the way the Loops row's buttons do (its Undo, its removed/)
       switch action {
@@ -69,6 +76,9 @@ extension AppModel {
       case .clipRestore(let id, nil):
         guard restoreRemoved(id) else { throw ControlRequestError.bad("no removed loop \(id)") }
       case .clipForget(let id): deleteForever(id)
+      // as the panel's buttons do: remembered for the deck
+      case .wanderPace(let deck, let bars): setWanderPace(deck, bars)
+      case .wanderLock(let deck, let dim, let on): setWanderLock(deck, dim, on)
       default: dj.perform(action)
       }
       poll()
@@ -576,6 +586,8 @@ extension AppModel {
     o["quantize"] = .string(s.quantize)
     o["autoAdvance"] = .bool(d.autoAdvance)
     o["hotCues"] = .array(s.cues.sorted().map { .int($0) })
+    // the deck's walk: on, pace, the countdown, paused (steering), locks, the newest moves
+    o["wander"] = d.wanderJSON(lockedActions: engine?.lockedActions ?? [])
     if s.isNet {
       o["sections"] = .array(
         s.sections.enumerated().map { i, sec in

@@ -37,6 +37,7 @@ public final class OfflineConductor {
         d.service()
       }
       dj.serviceLoopTakes()
+      dj.serviceWander()
     }
     let status = try dj.engine.renderOffline(AVAudioFrameCount(Self.blockFrames), to: out)
     guard status == .success else { return ([], []) }
@@ -70,6 +71,8 @@ public final class SessionPlayer {
   /// Roles left out of every net deck's render (stems for listening tests). Applied when a
   /// deck compiles, so the session — and its CID — are untouched.
   public var roleFilter: RoleFilter?
+  /// Each deck's wander log after the last `render`: the walk the replay took.
+  public private(set) var wanderLogs: [String: [WanderMove]] = [:]
 
   /// `samples` resolves a sample's content id (the demo loop is built in).
   public init(
@@ -130,6 +133,7 @@ public final class SessionPlayer {
       left += l
       right += r
     }
+    wanderLogs = dj.decks.mapValues(\.wander.log)
     left.removeLast(max(0, left.count - session.frames))
     right.removeLast(max(0, right.count - session.frames))
     return RenderedAudio(sampleRate: session.sampleRate, left: left, right: right)

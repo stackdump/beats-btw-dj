@@ -136,6 +136,14 @@ public struct MCPBridge {
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       queueNext {deck, share: {genre, seed, structure?}} · \
+      wander {deck, on}: the deck walks by itself, one move per phrase (a mute, a macro, a \
+      stinger, the next seed, another instrument, structure or genre, swapped in at the next \
+      bar), drawn from its configuration so a recording replays the same walk; \
+      dj_state.decks.X.wander shows on, pace, nextMoveInBars, paused (the browser wheel steers \
+      and pauses it for a phrase), locks and the log of moves · wanderPace {deck, bars: \
+      4|8|16|32} · wanderLock {deck, dimension: genre|tempo|key|structure|instruments|\
+      arrangement|fx|keep:<role>, on}: what the walk must not change (tempo: within 6 % of now; \
+      keep:bass keeps the bass's instrument and never mutes it) · \
       loopRecord {deck, on, bars?}: LOOP record, held (on true) then let go (on false): the \
       deck's bars from the downbeat before the press to the one after the release become a \
       clip, looping under the mixer (dj_state.loops); with bars (1-64) on the press, a release \

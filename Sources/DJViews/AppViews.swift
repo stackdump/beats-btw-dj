@@ -60,6 +60,12 @@ struct DeckState: Equatable {
   /// Auto-next: when the song ends, the next version plays (`Deck.autoAdvance`).
   var autoAdvance = false
   var reverb = ReverbState()
+  /// The deck's walk (`Deck.wander`): on, pace, locks, its log.
+  var wander = WanderState()
+  /// Bars to the walk's next move (or, paused, until it resumes); nil while off.
+  var wanderCountdown: Int?
+  /// Why a walk that is on stands still ("every move is locked"), if it does.
+  var wanderIdle: String?
 }
 
 /// A channel's reverb knobs, for SwiftUI.
@@ -170,6 +176,9 @@ public final class AppModel {
   var lockedButtons: Set<String> = []
   static let lockedButtonsKey = "lockedButtons"
   static func disabledRolesKey(_ deck: String) -> String { "disabledRoles.\(deck)" }
+  /// A deck's wander locks and pace, remembered across launches (wander itself starts off).
+  static func wanderLocksKey(_ deck: String) -> String { "wanderLocks.\(deck)" }
+  static func wanderPaceKey(_ deck: String) -> String { "wanderPace.\(deck)" }
   @ObservationIgnored let favoritesStore: FavoritesStore
   /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
   var stockLoops: [StockLoop] = []
@@ -432,6 +441,9 @@ public final class AppModel {
       state.disabledRoles = d.disabledRoles
       state.autoAdvance = d.autoAdvance
       state.reverb = ReverbState(d.reverb)
+      state.wander = d.wander
+      state.wanderCountdown = d.wanderCountdown
+      state.wanderIdle = d.wanderIdleReason(lockedActions: dj.lockedActions)
       decks[name] = state
     }
     let tempo = decksPlayingTempo
@@ -1066,7 +1078,8 @@ public final class AppModel {
     defaults.set(lockedButtons.sorted(), forKey: Self.lockedButtonsKey)
   }
 
-  /// Bring back the locks and disabled roles of the last run.
+  /// Bring back the locks, disabled roles and wander settings (its locks and pace) of the last
+  /// run.
   private func restoreLocks(_ dj: DJEngine) {
     lockedButtons = Set(defaults.stringArray(forKey: Self.lockedButtonsKey) ?? [])
     dj.lockedActions = lockedButtons
@@ -1074,7 +1087,59 @@ public final class AppModel {
       for r in defaults.stringArray(forKey: Self.disabledRolesKey(name)) ?? [] {
         d.setRoleDisabled(r, true)
       }
+      for l in defaults.stringArray(forKey: Self.wanderLocksKey(name)) ?? [] {
+        d.setWanderLock(l, true)
+      }
+      let pace = defaults.integer(forKey: Self.wanderPaceKey(name))
+      if pace > 0 { d.setWanderPace(pace) }
     }
+  }
+
+  // MARK: wander
+
+  /// The deck's walk on or off (the Wander button; the Inpulse's browser push).
+  func setWander(_ deck: String, _ on: Bool) {
+    dj?.perform(.wander(deck: deck, on: on))
+    poll()
+  }
+
+  /// Bars per wander move (4, 8, 16, 32), remembered for the deck.
+  func setWanderPace(_ deck: String, _ bars: Int) {
+    dj?.perform(.wanderPace(deck: deck, bars: bars))
+    defaults.set(dj?[deck]?.wander.pace ?? bars, forKey: Self.wanderPaceKey(deck))
+    poll()
+  }
+
+  /// Lock a dimension of the walk (or keep a part), or free it; remembered for the deck. The
+  /// tempo and key locks hold what plays at the moment they are set.
+  func setWanderLock(_ deck: String, _ dimension: String, _ on: Bool) {
+    dj?.perform(.wanderLock(deck: deck, dimension: dimension, on: on))
+    defaults.set(dj?[deck]?.wander.locks.sorted() ?? [], forKey: Self.wanderLocksKey(deck))
+    poll()
+  }
+
+  /// ★ on a move of the walk: star the track it led to (or played on); again, unstar it.
+  @discardableResult
+  func keepWanderMove(_ move: WanderMove) -> Favorite? {
+    guard let spec = move.spec else { return nil }
+    if let cid = DeckSourceDescriptor.net(spec).favoriteCID, isFavoriteSpec(spec) {
+      removeFavorite(cid: cid)
+      return nil
+    }
+    let name = BeatsTables.shared.genres[spec.genre]?.name ?? spec.genre
+    do {
+      let f = Favorite(title: generateTrackName(genre: name, seed: spec.seed), source: .net(spec))
+      favorites = try favoritesStore.add(f)
+      return f
+    } catch {
+      status = "favorites: \(error)"
+      return nil
+    }
+  }
+
+  func isFavoriteSpec(_ spec: TrackSpec?) -> Bool {
+    guard let cid = spec.flatMap({ DeckSourceDescriptor.net($0).favoriteCID }) else { return false }
+    return favorites.contains { $0.cid == cid }
   }
   func fire(_ deck: String, _ macro: NetMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
   func fire(_ deck: String, _ macro: MasterMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
@@ -1850,6 +1915,7 @@ struct NetPanel: View {
             .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         Spacer()
+        WanderButton(name: name, on: state.wander.on, model: model, tint: tint)
         Button("Sync") { model.sync(name) }.controlSize(.small)
           .lockable(DJActionKind.lockKey(deck: name, .sync), model)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)

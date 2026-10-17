@@ -38,7 +38,9 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case rewind  // press: back to the start
   case keys  // note-on/off: play the live voice, scale-locked (focus deck)
   case nudge  // continuous, centred: momentary tempo nudge (focus deck)
-  case seedStep  // relative: the playing loop's seed +/- each click, recomposed (focus deck)
+  case seedStep  // relative: the playing net's seed +/- each click, recomposed; grabs wander
+  case wander  // press: wander on/off (focus deck)
+  case wanderPace  // relative: wander's pace 4 → 8 → 16 → 32 bars and back (focus deck)
   case unbound  // parked on purpose; see `reason`
 }
 

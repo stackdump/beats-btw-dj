@@ -58,7 +58,9 @@ extension SurfaceProfile.Binding {
     case .nextTrack: return "next track\(on)"
     case .keys: return "live keys (focus deck)"
     case .nudge: return "tempo nudge (focus deck)"
-    case .seedStep: return "loop seed ± (playing loop)"
+    case .seedStep: return "seed ± (playing net; grabs wander)"
+    case .wander: return "wander on/off (focus deck)"
+    case .wanderPace: return "wander pace ± (focus deck)"
     case .shift: return "SHIFT"
     default: return action.rawValue + on
     }

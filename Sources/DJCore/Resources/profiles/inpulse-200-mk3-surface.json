@@ -437,7 +437,7 @@
     "centre02",
     "centre03"
    ],
-   "comment": "0x00 browser push [MIXXX], never captured. 0x01-0x03 measured = ASSIST/PREP, MASTER, BEATMATCH GUIDE in some order (capture order proves nothing; identify live)"
+   "comment": "0x00 browser push [MIXXX] [UNVERIFIED], never captured; bound to wander (on/off on the focus deck). 0x01-0x03 measured = ASSIST/PREP, MASTER, BEATMATCH GUIDE in some order (capture order proves nothing; identify live)"
   },
   {
    "id": "mixer.browser",
@@ -449,7 +449,7 @@
    "names": [
     "browser"
    ],
-   "comment": "[MIXXX] browser encoder (0xB0 01, relative); never captured. Bound to seedStep: each click moves the playing loop (focus deck, else the only one playing) one seed on or back and recomposes it"
+   "comment": "[MIXXX] browser encoder (0xB0 01, relative); never captured. Bound to seedStep: each click moves the playing net (focus deck, else the only one playing; a loop or a song) one seed on or back, recomposed and swapped at the next bar; on a wandering deck it grabs the walk"
   },
   {
    "id": "mixer.shiftBrowser",
@@ -461,7 +461,7 @@
    "names": [
     "browser"
    ],
-   "comment": "[MIXXX] SHIFT + browser encoder (0xB3 01); never captured"
+   "comment": "[MIXXX] SHIFT + browser encoder (0xB3 01); never captured. Bound to wanderPace: the focus deck's wander pace, 4 / 8 / 16 / 32 bars, one step per click"
   },
   {
    "id": "mixer.shiftButtons",
@@ -987,8 +987,7 @@
   {
    "group": "mixer.buttons",
    "index": 0,
-   "action": "unbound",
-   "reason": "[MIXXX] browser push (0x90 00) never captured, and the app has no track browser: tracks come from the composer (LOAD = nextTrack). Candidate once captured: next track on the focus deck (no deckless action for it yet)"
+   "action": "wander"
   },
   {
    "group": "mixer.buttons",
@@ -1016,8 +1015,7 @@
   {
    "group": "mixer.shiftBrowser",
    "index": 0,
-   "action": "unbound",
-   "reason": "[MIXXX] SHIFT + browser encoder (0xB3 01) never captured; no track browser in the app"
+   "action": "wanderPace"
   },
   {
    "group": "mixer.shiftButtons",

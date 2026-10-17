@@ -81,6 +81,9 @@ public struct DeckParams: Equatable, Sendable {
   public var reverbTone = 0.5
   /// Roles disabled on the deck (`Deck.disabledRoles`), sorted.
   public var disabledRoles: [String] = []
+  /// The deck's walk as the session starts (`Deck.wander`: on, pace, step, locks and what they
+  /// hold), so a replay draws the same moves; no log.
+  public var wander = WanderState()
   public init() {}
 }
 
@@ -169,6 +172,14 @@ public enum DeckAction: Equatable, Sendable {
   case voiceTweak(deck: String, channel: Int, params: VoiceTweak)
   /// A sampled channel plays its synth voice (`on`) or the sample again (`Deck.setSynthVoice`).
   case voiceSynth(deck: String, channel: Int, on: Bool)
+  /// Wander on or off on a net deck: one move per phrase, drawn from the deck's configuration
+  /// (`Deck.setWander`). The moves are derived, so a replay walks the same path.
+  case wander(deck: String, on: Bool)
+  /// Bars per wander move: 4 | 8 | 16 | 32 (`Deck.setWanderPace`).
+  case wanderPace(deck: String, bars: Int)
+  /// Lock a dimension the walk must not change, or free it (`Deck.setWanderLock`): genre |
+  /// tempo | key | structure | instruments | arrangement | fx | keep:<role>.
+  case wanderLock(deck: String, dimension: String, on: Bool)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -321,6 +332,7 @@ extension DeckParams {
     ])
     // only when touched, so sets from before the reverb keep their canonical text and CID
     if !disabledRoles.isEmpty { o["disabledRoles"] = .array(disabledRoles.map { .string($0) }) }
+    if wander != WanderState() { o["wander"] = wander.json }
     if reverbWet != 0 || reverbSize != 0.5 || reverbTone != 0.5 {
       o["reverbWet"] = .number(reverbWet)
       o["reverbSize"] = .number(reverbSize)
@@ -344,6 +356,7 @@ extension DeckParams {
     reverbSize = v["reverbSize"]?.double ?? reverbSize
     reverbTone = v["reverbTone"]?.double ?? reverbTone
     disabledRoles = v["disabledRoles"]?.array?.compactMap(\.string) ?? []
+    if let w = v["wander"] { wander = WanderState(json: w) }
   }
 }
 
@@ -426,6 +439,10 @@ extension DeckAction {
       return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
     case .voiceSynth(let deck, let channel, let on):
       return o("voiceSynth", [d(deck), ("channel", .int(channel)), ("on", .bool(on))])
+    case .wander(let deck, let on): return o("wander", [d(deck), ("on", .bool(on))])
+    case .wanderPace(let deck, let bars): return o("wanderPace", [d(deck), ("bars", .int(bars))])
+    case .wanderLock(let deck, let dimension, let on):
+      return o("wanderLock", [d(deck), ("dimension", .string(dimension)), ("on", .bool(on))])
     }
   }
 
@@ -501,6 +518,13 @@ extension DeckAction {
     case "voiceSynth":
       guard let ch = v["channel"]?.int else { return nil }
       self = .voiceSynth(deck: deck, channel: ch, on: v["on"]?.bool ?? false)
+    case "wander": self = .wander(deck: deck, on: v["on"]?.bool ?? false)
+    case "wanderPace":
+      guard let bars = v["bars"]?.int else { return nil }
+      self = .wanderPace(deck: deck, bars: bars)
+    case "wanderLock":
+      guard let dim = v["dimension"]?.string else { return nil }
+      self = .wanderLock(deck: deck, dimension: dim, on: v["on"]?.bool ?? true)
     default: return nil
     }
   }

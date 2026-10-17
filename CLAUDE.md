@@ -31,6 +31,31 @@ under structural rules, rather than editing audio freely.
     randomness at run time.
   - **Provenance:** what a move produced records where it came from (`LoopProvenance`, a
     favorite's descriptor, a session's events), so the walk can be retraced or walked back.
+- **Wander is the walk made autonomous** (`Wander.swift`, the deck's Wander section): a net deck
+  with wander on takes one move per phrase (pace 4/8/16/32 bars, default 16) on its own bar
+  clock, entering the phrase's last bar: a role mute, STEMS, a net macro over that bar, a master
+  FX macro, a stinger (small, ~62 %), a nearby seed (±1…7), a seed with another instrument on
+  one tonal role, the same seed in another structure, or a neighbouring genre (same family,
+  nearest tempo: `Wander.neighbours`) — weights in `WanderMoveKind.weight`. Swaps land at the
+  next phrase's first bar with the transport still running (`PreparedTrack(startTick:)`,
+  `SwapStart`). The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
+  deck's step counter, so moves are **derived, never recorded**; only the pokes are
+  (`DeckAction.wander` / `.wanderPace` / `.wanderLock`, the controller's MIDI), plus the walk's
+  settings in a session's starting `DeckParams.wander`, so a replay walks the same path
+  (`WanderReplayTests`). Moves never touch disabled roles or locked buttons
+  (`DJEngine.lockedActions`). **Locks** (per deck, remembered in the app's defaults): genre,
+  tempo (genre hops within ±6 % of the tempo at lock time), key (genre hops keep the scale and
+  root; every new spec pins `extra["keyOffset"]` = `TrackSpec.pinnedKeyOffset`, which a pass
+  that moves keys per seed must honour), structure (no structure moves; hops stay in the
+  family), instruments (no instrument moves; every new spec carries the deck's instruments in
+  its `tracks` override), arrangement (no mutes / STEMS), fx (no macros / stingers), and
+  `keep:<role>` (its instrument rides along, never muted or re-picked; its notes still change
+  with the seed until beats has per-part seeds). Everything locked: wander says so and stands
+  still. **Steering**: the browser wheel steps the seed (loops and now songs, swapped at the
+  next bar) and pauses a wandering deck until a whole phrase passes with no turn; SHIFT + wheel
+  sets the pace, the browser push toggles it (both `[MIXXX]`, uncaptured). Sample decks don't
+  wander. The log (newest first, ★ stars the track a move led to) is in the panel and
+  `dj_state.decks.X.wander`.
 - **Coordinates vs moves**: beats' `compose()` is the coordinate system and stays
   byte-identical (Origin and boundary, GO-DIVERGENCE.md). dj's moves and rules live in
   `DJMusicality.apply`, the share overrides, the runner and the engine.

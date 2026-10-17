@@ -155,13 +155,26 @@ public final class SurfaceController {
       // centred control: 0.5 = no nudge, full travel = ± the tempo-fader range
       dj[dj.focus]?.nudge((e.value - 0.5) * 2 * Deck.pitchRange)
     case .seedStep:
-      // deck-less: the focus deck if it is playing a loop, else the one loop that is playing
-      let loops = dj.decks.values.filter { $0.playing && $0.isNetLoop }.sorted { $0.name < $1.name }
+      // deck-less: the focus deck if it is playing a composed net (loop or song), else the one
+      // that is; turning it on a wandering deck grabs the walk (it waits for a quiet phrase)
+      let nets = dj.decks.values.filter { $0.playing && $0.mode == .net && $0.currentSpec != nil }
+        .sorted { $0.name < $1.name }
       guard e.delta != 0,
-        let d = loops.first(where: { $0.name == dj.focus }) ?? (loops.count == 1 ? loops[0] : nil)
+        let d = nets.first(where: { $0.name == dj.focus }) ?? (nets.count == 1 ? nets[0] : nil)
       else { break }
       dj.focus = d.name
       d.stepSeed(e.delta)
+      d.grabWander()
+    case .wander:
+      // deck-less: the focus deck's walk on or off (locked with its on-screen button too)
+      guard press, let d = dj[dj.focus], d.mode == .net,
+        !dj.lockedActions.contains(DJActionKind.lockKey(deck: d.name, .wander))
+      else { break }
+      if let i = b.index { flashed[Self.key(b.group, i)] = now }
+      d.setWander(!d.wander.on)
+    case .wanderPace:
+      guard e.delta != 0, let d = dj[dj.focus], d.mode == .net else { break }
+      d.stepWanderPace(e.delta)
     case .section, .sectionPrev, .sectionNext, .roleMute, .stemMute, .macro, .panic, .stinger,
       .nextTrack,
       .keys, .sync, .quantize, .rewind, .pfl:
@@ -342,6 +355,10 @@ public final class SurfaceController {
       guard let d, let t = dj.loopTakeProgress(d.name) else { return leds.singleOff }
       return t.released ? leds.singleBlink : leds.singleOn
     case .shift: return (shift ?? shiftHeld) ? leds.singleOn : leds.singleOff
+    case .wander:
+      // lit while the focus deck wanders, blinking while the wheel holds it
+      guard let w = dj[dj.focus]?.wander, w.on else { return leds.singleOff }
+      return w.paused ? leds.singleBlink : leds.singleOn
     default: return leds.singleOn
     }
   }
