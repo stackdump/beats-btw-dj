@@ -27,6 +27,14 @@ struct ClipState: Equatable, Identifiable {
   var provenance: [String] = []
   /// The same, as the JSON the library keeps.
   var provenanceJSON: String?
+  /// Its colour, one of `LoopClip.palette` (nil: the row's violet).
+  var color: String?
+  /// The genre of the net it was taken from (searched by the row's filter).
+  var genre: String?
+  /// What the deck was playing when it was taken.
+  var originTitle: String?
+  /// Whether "Load source on A/B" can load that again (`DJEngine.clipOrigin`).
+  var canLoadOrigin = false
 }
 
 extension ClipState {
@@ -165,8 +173,10 @@ struct LoopRowView: View {
         Text("tap a loop to bring it in or out on the next downbeat").font(.caption)
           .foregroundStyle(.secondary)
       }
-      if model.clips.isEmpty {
-        Text("No loops yet")
+      if !model.clips.isEmpty || !model.removedLoops.isEmpty { LoopLibraryBar(model: model) }
+      let shown = model.visibleClips
+      if shown.isEmpty {
+        Text(model.clips.isEmpty ? "No loops yet" : "No loops match")
           .font(.caption).foregroundStyle(.tertiary)
           .frame(maxWidth: .infinity, minHeight: 64)
       } else {
@@ -175,7 +185,7 @@ struct LoopRowView: View {
           columns: [GridItem(.adaptive(minimum: 210, maximum: 210), spacing: DJStyle.s)],
           alignment: .leading, spacing: DJStyle.s
         ) {
-          ForEach(model.clips) { clip in ClipTile(clip: clip, model: model) }
+          ForEach(shown) { clip in ClipTile(clip: clip, model: model) }
         }
       }
     }
@@ -209,9 +219,10 @@ struct ClipTile: View {
 
   var body: some View {
     let on = clip.loop == .on || clip.loop == .stopping
-    let color = clip.onDeck.map { deckTint($0) } ?? LoopRowView.tint
+    let color = clip.onDeck.map { deckTint($0) } ?? clipTint(clip.color)
     let pending = clip.loop == .starting || clip.loop == .stopping
     VStack(alignment: .leading, spacing: DJStyle.xs) {
+      ClipTitleField(clip: clip, model: model)
       waveform(on: on).frame(height: 40)
       if let steps = clip.steps { stepChips(steps) }
       HStack(spacing: DJStyle.xs) {
@@ -236,12 +247,11 @@ struct ClipTile: View {
         )
         .font(.caption).monospacedDigit()
         Spacer(minLength: 0)
-        if let i = model.clips.firstIndex(where: { $0.id == clip.id }), i < 8 {
-          // the Inpulse pad (LOOP pad mode) that switches it
-          Text(i < 4 ? "A\(i + 1)" : "B\(i - 3)").font(.caption2.monospaced())
+        if let slot = model.padSlot(clip.id) {
+          // the Inpulse pad (LOOP pad mode) that switches it, by its place on the whole row
+          Text(slot).font(.caption2.monospaced())
             .padding(.horizontal, 4).background(Capsule().fill(Color.secondary.opacity(0.2)))
-            .help(
-              "Inpulse pad \(i < 4 ? i + 1 : i - 3) on deck \(i < 4 ? "A" : "B"), in LOOP pad mode")
+            .help("Inpulse pad \(slot.dropFirst()) on deck \(slot.prefix(1)), in LOOP pad mode")
         }
         if let on = clip.onDeck {
           Text("on \(on)").font(.caption2.bold()).foregroundStyle(deckTint(on))
@@ -279,7 +289,8 @@ struct ClipTile: View {
         } label: {
           Image(systemName: "xmark")
         }
-        .buttonStyle(.borderless).help("Take it off the row (and out of the library)")
+        .buttonStyle(.borderless)
+        .help("Take it off the row (kept under Removed; Undo for a few seconds)")
       }
       .controlSize(.small)
     }
@@ -291,7 +302,9 @@ struct ClipTile: View {
         color.opacity(on ? 0.8 : (pending ? 0.5 : 0.25)),
         style: StrokeStyle(lineWidth: 1, dash: pending ? [4, 3] : []))
     )
-    .draggable(clip.id)
+    .contextMenu { menu }
+    // the id for drops in the app; a WAV file for Finder
+    .draggable(ClipDrag(id: clip.id, clip: model.engine?.clip(clip.id)))
     // dropped on a sequence: a new last step; on another tile: reordered, just before it
     .dropDestination(for: String.self) { ids, _ in
       guard let id = ids.first, id != clip.id, model.clips.contains(where: { $0.id == id }) else {
@@ -333,22 +346,55 @@ struct ClipTile: View {
     }
   }
 
+  /// Right-click on a tile.
+  @ViewBuilder private var menu: some View {
+    Button("Rename…") { showInfo = true }
+    Menu("Colour") {
+      Button("None") { model.setClipColor(clip.id, nil) }
+      ForEach(LoopClip.palette, id: \.self) { name in
+        Button(name.capitalized) { model.setClipColor(clip.id, name) }
+      }
+    }
+    Divider()
+    Button("Load source on A") { Task { await model.loadOrigin(clip.id, on: "A") } }
+      .disabled(!clip.canLoadOrigin)
+    Button("Load source on B") { Task { await model.loadOrigin(clip.id, on: "B") } }
+      .disabled(!clip.canLoadOrigin)
+    Button("Export WAV…") { model.exportClip(clip.id) }
+    Divider()
+    Button("Remove") { model.removeClip(clip.id) }
+  }
+
   private var provenanceView: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(clip.title).font(.headline)
+      ClipNameEditor(clip: clip, model: model)
+      ClipColorSwatches(current: clip.color) { model.setClipColor(clip.id, $0) }
+        .padding(.bottom, 4)
       if clip.provenance.isEmpty {
         Text("No record of where it came from").foregroundStyle(.secondary)
       }
       ForEach(Array(clip.provenance.enumerated()), id: \.offset) { _, line in
         Text(line).font(.caption).monospacedDigit()
       }
-      if let json = clip.provenanceJSON {
-        Button("Copy as JSON") {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(json, forType: .string)
-        }
-        .controlSize(.small).padding(.top, 4)
+      HStack(spacing: DJStyle.s) {
+        Button("Load source on A") { Task { await model.loadOrigin(clip.id, on: "A") } }
+        Button("on B") { Task { await model.loadOrigin(clip.id, on: "B") } }
       }
+      .controlSize(.small).padding(.top, 4).disabled(!clip.canLoadOrigin)
+      .help(
+        clip.canLoadOrigin
+          ? "Load the track it was taken from, at the section it was in"
+          : "Its source can't be loaded again (a sample not in memory)")
+      HStack(spacing: DJStyle.s) {
+        Button("Export WAV…") { model.exportClip(clip.id) }
+        if let json = clip.provenanceJSON {
+          Button("Copy as JSON") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(json, forType: .string)
+          }
+        }
+      }
+      .controlSize(.small)
     }
     .padding(12).frame(minWidth: 280, alignment: .leading)
   }

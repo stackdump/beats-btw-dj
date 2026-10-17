@@ -55,7 +55,14 @@ extension AppModel {
           throw ControlRequestError.bad("unknown macro \(id) (see dj_catalog)")
         }
       }
-      dj.perform(action)
+      // the library's ops go the way the Loops row's buttons do (its Undo, its removed/)
+      switch action {
+      case .clipRemove(let id): removeClip(id)
+      case .clipRestore(let id, nil):
+        guard restoreRemoved(id) else { throw ControlRequestError.bad("no removed loop \(id)") }
+      case .clipForget(let id): deleteForever(id)
+      default: dj.perform(action)
+      }
       poll()
       return a["deck"]?.string.flatMap { deckJSON($0) } ?? controlState()
 
@@ -441,9 +448,24 @@ extension AppModel {
               ])
               c["loop"] = .string("\($0.loop)")
               c["gain"] = .number($0.gain)
+              if let color = $0.color { c["color"] = .string(color) }
+              c["canLoadSource"] = .bool($0.canLoadOrigin)
               if let on = $0.onDeck { c["onDeck"] = .string(on) }
               if let p = engine?.clip($0.id)?.provenance { c["provenance"] = p }
               return .object(c)
+            })
+        ),
+        (
+          "removed",
+          .array(
+            removedLoops.map {
+              .object(
+                JSONObject([
+                  ("id", .string($0.id)), ("title", .string($0.title)),
+                  ("source", .string($0.source)), ("beats", .int($0.beats)),
+                  ("bpm", .number($0.bpm)), ("index", .int($0.index)),
+                  ("removed", .string($0.removed)),
+                ]))
             })
         ),
         (
