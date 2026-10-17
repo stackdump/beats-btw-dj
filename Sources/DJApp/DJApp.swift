@@ -3,9 +3,23 @@ import DJCore
 import DJViews
 import SwiftUI
 
+/// Owns the shutdown: a deck keeps playing as long as the process lives, so closing the window
+/// quits, and the engine is stopped from the delegate rather than from a view (a view's
+/// `onReceive` is gone once its window has closed, and `stop()` then never ran).
+final class AppDelegate: NSObject, NSApplicationDelegate {
+  let model = MainActor.assumeIsolated { AppModel() }
+
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    MainActor.assumeIsolated { model.stop() }
+  }
+}
+
 @main
 struct DJApp: App {
-  @State private var model = AppModel()
+  @NSApplicationDelegateAdaptor private var delegate: AppDelegate
+  private var model: AppModel { delegate.model }
 
   init() {
     // Run unbundled (`swift run DJApp`) as a normal foreground app with a Dock icon.
@@ -24,11 +38,6 @@ struct DJApp: App {
       // A DJ booth is dark: the decks' tints and the rings are drawn for it.
       .preferredColorScheme(.dark)
       .task { model.start() }
-      .onReceive(
-        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
-      ) { _ in
-        model.stop()
-      }
     }
     // The content scrolls (ContentView), so the window no longer sizes itself to it: open at a
     // size that shows two decks with their section columns (the wide layout) and the bottom bar,

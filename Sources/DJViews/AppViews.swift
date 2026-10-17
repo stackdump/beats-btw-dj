@@ -303,10 +303,10 @@ public final class AppModel {
   }
 
   public func stop() {
+    dj?.stop()  // silence first: the rest can take a moment
     controlServer?.stop()
     scopeHub?.perf.stop()
     hub?.stop()
-    dj?.stop()
   }
 
   /// Refresh the display state from the engine (30 Hz in the app).
