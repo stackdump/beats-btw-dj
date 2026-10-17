@@ -1396,18 +1396,16 @@ struct DeckView: View {
     }
   }
 
-  /// Play / pause, cue (PFL), LOOP record with its tap length and grab buttons, and the four
-  /// hot cues, in one row; where the deck is too narrow for that, the tap length and grab
-  /// buttons go on a line of their own under it.
+  /// Play / pause, cue (PFL), LOOP record and the four hot cues in one row, and LOOP's tap
+  /// length and grab buttons on a line under it. The core is 260 pt wide, which never holds
+  /// them beside LOOP, so this is fixed rather than a `ViewThatFits` (which would lay out both
+  /// candidates on every update, 30 polls a second per deck, to pick the same one each time).
   private var transport: some View {
-    ViewThatFits(in: .horizontal) {
-      transportRow(capture: true)
-      VStack(alignment: .leading, spacing: DJStyle.xs) {
-        transportRow(capture: false)
-        HStack(spacing: 4) {
-          TapLengthChip(model: model)
-          GrabBarsControl(name: name, model: model)
-        }
+    VStack(alignment: .leading, spacing: DJStyle.xs) {
+      transportRow
+      HStack(spacing: 4) {
+        TapLengthChip(model: model)
+        GrabBarsControl(name: name, model: model)
       }
     }
     .overlay(alignment: .topTrailing) {
@@ -1417,8 +1415,7 @@ struct DeckView: View {
     }
   }
 
-  /// `capture`: the tap length and grab buttons beside LOOP (else LOOP alone).
-  private func transportRow(capture: Bool) -> some View {
+  private var transportRow: some View {
     HStack(spacing: DJStyle.s) {
       Button {
         model.togglePlay(name)
@@ -1432,11 +1429,7 @@ struct DeckView: View {
       .accessibilityLabel(state.playing ? "Pause" : "Play")
       Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
         .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
-      if capture {
-        LoopCaptureControls(name: name, model: model)
-      } else {
-        LoopRecordButton(name: name, model: model)
-      }
+      LoopRecordButton(name: name, model: model)
       Spacer(minLength: 0)
       HStack(spacing: DJStyle.xs) {
         ForEach(0..<4, id: \.self) { slot in
