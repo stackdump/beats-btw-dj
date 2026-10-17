@@ -42,7 +42,7 @@ struct ClipProvenanceDetails: View {
 
 /// A pad's "Settings…": everything about its clip, bound to the same `ClipState` the Loops row
 /// shows and changed through the same model calls (so the row and the board never disagree):
-/// name and colour, a crop to the beat, level, mute / solo / key lock, the loop channel's
+/// name and colour, a crop to the beat, level, mute / solo / key lock, its FX, the loop channel's
 /// launch, fade and tempo rules, which deck holds it, where it came from, and — for a loop
 /// taken from a net — the instruments of that track, opened in the sound panel for tuning.
 struct ClipSettingsView: View {
@@ -100,6 +100,7 @@ struct ClipSettingsView: View {
       }
       section("Edges") { cropEditor(clip) }
       section("Sound") { soundEditor(clip) }
+      section("FX") { ClipFxEditor(clip: clip, model: model) }
       section("Every loop") { channelRules }
       section("Where it plays") { placement(clip) }
       section("Where it came from") { ClipProvenanceDetails(clip: clip, model: model) }

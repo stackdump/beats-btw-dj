@@ -496,7 +496,7 @@ public final class AppModel {
 
   /// What the library keeps of the row, to tell when it needs saving.
   private static func rowSignature(_ clips: [LoopClip]) -> [String] {
-    clips.map { "\($0.id)|\($0.title)|\($0.color ?? "")" }
+    clips.map { "\($0.id)|\($0.title)|\($0.color ?? "")|\($0.fx.json.canonicalJS)" }
   }
 
   func pollLoops(_ dj: DJEngine) {
@@ -550,7 +550,7 @@ public final class AppModel {
               ?? "missing", repeats: s.repeats)
         }, provenance: described(c).lines, provenanceJSON: described(c).json,
         color: c.color, genre: c.originGenre, originTitle: c.originTitle,
-        canLoadOrigin: canLoadOrigin(c.id, dj))
+        canLoadOrigin: canLoadOrigin(c.id, dj), fx: c.fx)
     }
     let present = Set(row.map(\.id))
     if !selectedClips.isSubset(of: present) { selectedClips.formIntersection(present) }
@@ -632,6 +632,7 @@ public final class AppModel {
   func setClipMute(_ id: String, _ on: Bool) { soundAction(.clipMute(id: id, on: on)) }
   func setClipSolo(_ id: String, _ on: Bool) { soundAction(.clipSolo(id: id, on: on)) }
   func setClipKeyLock(_ id: String, _ on: Bool) { soundAction(.clipKeyLock(id: id, on: on)) }
+  func setClipFx(_ id: String, _ fx: LoopFX) { soundAction(.clipFx(id: id, fx: fx)) }
   func setLoopKeyLock(_ on: Bool) { soundAction(.loopKeyLock(on: on)) }
   func setLoopFade(_ f: LoopFade) { soundAction(.loopFade(mode: f.rawValue)) }
   private func soundAction(_ a: DeckAction) {

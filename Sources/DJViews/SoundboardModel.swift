@@ -34,6 +34,8 @@ struct SoundPad: Equatable, Identifiable {
   var slot: String?
   var isSequence: Bool
   var overview: WaveformOverview
+  /// Its after effects; `fx.isActive` shows the FX badge.
+  var fx: LoopFX
 
   init(_ c: ClipState, slot: String?) {
     id = c.id
@@ -53,6 +55,7 @@ struct SoundPad: Equatable, Identifiable {
     self.slot = slot
     isSequence = c.steps != nil
     overview = c.overview
+    fx = c.fx
   }
 
   /// A loop pad's LED, as the APC's loop page and the Inpulse's LOOP pads light it
@@ -97,6 +100,8 @@ enum SoundPadCommand: Equatable {
   case move(String)
   /// Off the row, with Undo (`AppModel.removeClip`).
   case remove
+  /// Its after effects (a preset from the FX menu).
+  case fx(LoopFX)
 }
 
 /// How the pads are laid out for `count` pads in `width` points: as many columns as fit at the
@@ -199,6 +204,7 @@ extension AppModel {
     case .fade(let f): return .loopFade(mode: f.rawValue)
     case .move(let deck): return .clip(deck: deck, id: id)
     case .remove: return .clipRemove(id: id)
+    case .fx(let fx): return .clipFx(id: id, fx: fx)
     }
   }
 

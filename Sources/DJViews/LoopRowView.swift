@@ -45,6 +45,8 @@ struct ClipState: Equatable, Identifiable {
   var originTitle: String?
   /// Whether "Load source on A/B" can load that again (`DJEngine.clipOrigin`).
   var canLoadOrigin = false
+  /// Its after effects (`LoopClip.fx`).
+  var fx = LoopFX()
 }
 
 extension ClipState {
@@ -299,6 +301,7 @@ struct ClipTile: View {
   /// The crop being dragged, in beats (nil when not cropping).
   @State private var crop: (from: Int, to: Int)?
   @State private var showInfo = false
+  @State private var showFx = false
 
   var body: some View {
     let on = clip.loop == .on || clip.loop == .stopping
@@ -419,6 +422,12 @@ struct ClipTile: View {
       )
       .tint(LoopRowView.tint)
       .help("Key lock: at another tempo it keeps its pitch (time-stretched, not sped up)")
+      Toggle("FX", isOn: $showFx)
+        .tint(clip.fx.isActive ? ClipFxBadge.tint : nil)
+        .help(clip.fx.isActive ? "FX: \(clip.fx.summary)" : "Drive, distortion and tone")
+        .popover(isPresented: $showFx) {
+          ClipFxEditor(clip: clip, model: model).padding(12).frame(width: 360)
+        }
       Spacer(minLength: 0)
       if clip.stretching {
         Text("stretching…").font(.caption2).foregroundStyle(.secondary)
@@ -463,6 +472,7 @@ struct ClipTile: View {
         Button(name.capitalized) { model.setClipColor(clip.id, name) }
       }
     }
+    ClipFxMenu(fx: clip.fx) { model.setClipFx(clip.id, $0) }
     Divider()
     Button("Load source on A") { Task { await model.loadOrigin(clip.id, on: "A") } }
       .disabled(!clip.canLoadOrigin)

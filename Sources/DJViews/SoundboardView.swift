@@ -179,6 +179,7 @@ struct SoundPadView: View {
           if pad.muted { badge("M", .orange) }
           if pad.soloed { badge("S", .yellow) }
           if pad.keyLock { Image(systemName: "lock.fill").font(.caption2) }
+          if pad.fx.isActive { ClipFxBadge(fx: pad.fx) }
           if let d = pad.onDeck { badge("on \(d)", deckTint(d)) }
           if let s = pad.slot { Text(s).font(.caption2.monospaced()).foregroundStyle(.secondary) }
           Text(pad.stateLabel.uppercased()).font(.caption2.bold()).monospacedDigit()
@@ -254,6 +255,7 @@ struct SoundPadMenu: View {
     Toggle("Mute", isOn: Binding(get: { pad.muted }, set: { run(.mute($0)) }))
     Toggle("Solo", isOn: Binding(get: { pad.soloed }, set: { run(.solo($0)) }))
     Toggle("Key lock", isOn: Binding(get: { pad.keyLock }, set: { run(.keyLock($0)) }))
+    ClipFxMenu(fx: pad.fx) { run(.fx($0)) }
     Menu("Fade (every loop)") {
       ForEach(LoopFade.allCases, id: \.self) { f in
         Toggle(f.label, isOn: Binding(get: { fade == f }, set: { _ in run(.fade(f)) }))
