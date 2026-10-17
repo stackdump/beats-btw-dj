@@ -159,7 +159,9 @@ public struct MCPBridge {
       only soloed ones are heard · clipKeyLock {id, on}: at another tempo it keeps its pitch (a \
       time-stretched copy, made in the background; dj_state.loops.clips[].stretched) · \
       loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
-      off|10ms|beat|bar}: how loops come in and go out (default 10ms). Deck "L" also takes \
+      off|10ms|beat|bar}: how loops come in and go out (default 10ms) · tapBars {bars: 1-64 or \
+      null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
+      app's). Deck "L" also takes \
       param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.

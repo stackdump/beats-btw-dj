@@ -88,8 +88,13 @@ public final class AppModel {
   var lastRemoval: LoopRemoval?
   /// What the Loops row shows (its header's chips, search and tempo filter).
   var loopFilter = LoopFilter()
+  /// The first playing deck's tempo (`decksPlayingTempo`), for the row's tempo filter.
+  private(set) var playingTempo: Double?
   /// The library's `removed/` as last read (after each save).
   @ObservationIgnored var diskRemoved: [RemovedLoop] = []
+  /// Bumped by every change to `diskRemoved` made on the main thread (`deleteForever`): a list
+  /// read on `saveQueue` before it is stale and is dropped (`publishRemoved`).
+  @ObservationIgnored var diskRemovedEpoch = 0
   /// Per clip, whether its source can be loaded again; dropped when `sampleLibrary` changes.
   @ObservationIgnored var originCache: [String: Bool] = [:]
   @ObservationIgnored var originCacheSamples = -1
@@ -121,7 +126,7 @@ public final class AppModel {
   static let keepScreenAwakeKey = "keepScreenAwake"
   /// How many bars a quick tap of LOOP records (1, 2, 4 or 8; 2 until changed). Saved in the
   /// app's defaults as `loopTapBars`; sent with each press, and given to the engine for the
-  /// controllers' LOOP buttons (`DJEngine.tapTakeBars`).
+  /// controllers' LOOP buttons (`DJEngine.tapTakeBars`, through `perform(.tapBars)`).
   private(set) var tapBars = 2
   static let tapBarsKey = "loopTapBars"
   static let tapBarChoices = [1, 2, 4, 8]
@@ -174,6 +179,9 @@ public final class AppModel {
   var engine: DJEngine? { dj }
   var router: ControllerRouter? { hub?.router ?? injectedRouter }
 
+  /// Is the Shift key down? The on-screen APC shows its SHIFT layer (the loop page) meanwhile.
+  /// Tests inject their own.
+  @ObservationIgnored var shiftKeyHeld: () -> Bool = { NSEvent.modifierFlags.contains(.shift) }
   /// Seconds on a steadily increasing clock: the time base of display animations (the ring
   /// swing). Tests inject their own.
   @ObservationIgnored var uptime: () -> Double = { ProcessInfo.processInfo.systemUptime }
@@ -214,7 +222,7 @@ public final class AppModel {
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
       restoreLoops(injected)
-      injected.tapTakeBars = tapBars
+      if injected.tapTakeBars != tapBars { injected.perform(.tapBars(bars: tapBars)) }
       poll()
       return
     }
@@ -224,7 +232,7 @@ public final class AppModel {
       for d in dj.decks.values { d.loadDemo() }
       if takeStore == nil { takeStore = LoopLibrary() }
       restoreLoops(dj)
-      dj.tapTakeBars = tapBars
+      if dj.tapTakeBars != tapBars { dj.perform(.tapBars(bars: tapBars)) }
       if let q = defaults.object(forKey: Self.loopQuantizeKey) as? Int { dj.setLoopQuantum(q) }
       loopQuantum = dj.loopQuantum
       dj.master = master
@@ -324,7 +332,9 @@ public final class AppModel {
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
     inpulseOutput = AudioDevices.inpulse()
-    if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name) {
+    // with Shift down the mirror shows the loop page a shift-click reaches
+    let shiftLayer: Bool? = showPads && shiftKeyHeld() ? true : nil
+    if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name, shift: shiftLayer) {
       padPort = apc.port
       padLights = apc.groups
     } else {
@@ -385,6 +395,8 @@ public final class AppModel {
       state.reverb = ReverbState(d.reverb)
       decks[name] = state
     }
+    let tempo = decksPlayingTempo
+    if tempo != playingTempo { playingTempo = tempo }
     pollLoops(dj)
   }
 
@@ -418,10 +430,10 @@ public final class AppModel {
       savedScenes = dj.scenes
       let row = dj.clips
       let scenes = dj.scenes
+      let epoch = diskRemovedEpoch
       saveQueue.async {
         do { try store.save(row, scenes: scenes) } catch { print("loop library: \(error)") }
-        let gone = store.removed()
-        Task { @MainActor in self.diskRemoved = gone }
+        self.publishRemoved(store.removed(), epoch: epoch)
       }
     }
     pollRemoved(dj)
@@ -502,7 +514,9 @@ public final class AppModel {
   func setTapBars(_ n: Int) {
     guard Self.tapBarChoices.contains(n) else { return }
     tapBars = n
-    dj?.tapTakeBars = n
+    // through `perform`: a controller's LOOP tap is recorded as MIDI, so a session needs the
+    // length it was made with
+    dj?.perform(.tapBars(bars: n))
     defaults.set(n, forKey: Self.tapBarsKey)
   }
   /// The tap-length chip's click: the next of 1, 2, 4, 8 (round to 1).

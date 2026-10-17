@@ -199,6 +199,78 @@ struct LoopLaunchTests {
     #expect(rig.dj.loopingClips == [one.id], "an unknown scene does nothing")
   }
 
+  @Test func aWaitingLoopFollowsItsDeckWhenTheTempoMovesDuringTheCountdown() async throws {
+    let rig = try Rig()
+    defer { rig.dj.stop() }
+    let (one, _) = try await twoTakes(rig)
+    let a = try #require(rig.dj["A"])
+    let l = rig.dj.loopChannel
+    rig.dj.stopAllLoops()
+    try rig.settle()
+    rig.dj.perform(.loopQuantize(beats: 32))
+    // just past an 8-bar line, so the wait is a long one
+    while rig.dj.loopClock(for: one).nextBoundary(
+      after: l.renderedFrames + DJEngine.loopLead, every: 32) - l.renderedFrames < 5 * bar
+    {
+      try rig.run(to: rig.dj.frame + bar / 2)
+    }
+    rig.dj.perform(.clipLoop(id: one.id, on: true))
+    let planned = try #require(rig.dj.loopSwitchFrame(one.id))
+    let line = rig.dj.loopClock(for: one).beat(planned)
+    #expect(onLine(line, every: 32))
+    // a bar into the countdown, deck A's tempo fader goes up 5 %: its line comes sooner
+    try rig.run(to: rig.dj.frame + bar)
+    a.pitch = 0.625
+    try rig.run(to: rig.dj.frame + 8 * Rig.block)
+    let moved = try #require(rig.dj.loopSwitchFrame(one.id))
+    #expect(moved < planned - 10_000, "follows the deck: \(moved) vs \(planned)")
+    #expect(abs(rig.dj.loopClock(for: one).beat(moved) - line) < 0.01, "the same line of A")
+    try rig.run(to: moved + bar / 2)
+    #expect(rig.dj.loopState(one.id) == .on)
+    let e = edge(l, moved)
+    #expect(e.before == 0 && e.after > 0.001, "comes in on the moved frame: \(e)")
+    // and in phase with A, at A's new tempo
+    let v = try #require(rig.dj.loopVoices.firstIndex { $0.clipID == one.id })
+    let tt = try #require(l.bank).voices[v]
+    let phase = (tt.position / Double(tt.length)).truncatingRemainder(dividingBy: 1)
+    let s = try #require(a.beatState)
+    let err = abs(phase - s.barPhase)
+    #expect(min(err, 1 - err) < 0.01, "\(phase) vs \(s.barPhase)")
+  }
+
+  @Test func aMuteDuringASceneCountdownLeavesTheScenesLevelForTheBoundary() throws {
+    let rig = try Rig()
+    defer { rig.dj.stop() }
+    let (x, y) = (testClip(1), testClip(2))
+    rig.dj.restoreClips([x, y])
+    try rig.dj.start()
+    rig.dj.setLooping(x.id, true)
+    rig.dj.setLooping(y.id, true)
+    try rig.settle()
+    let l = rig.dj.loopChannel
+    func level(_ from: Int, _ to: Int) -> Double {
+      var left: [Float] = []
+      var right: [Float] = []
+      _ = l.capture.copy(from: from, to: to, left: &left, right: &right)
+      return left.map { Double(abs($0)) }.reduce(0, +) / Double(max(1, left.count))
+    }
+    rig.dj.perform(.loopQuantize(beats: 16))
+    let at = rig.dj.launchScene(clips: [
+      SceneClip(clipID: x.id, gain: 0.5), SceneClip(clipID: y.id, gain: 1),
+    ])
+    #expect(at - l.renderedFrames > bar, "a 4-bar countdown")
+    try rig.run(to: rig.dj.frame + 4 * Rig.block)
+    let both = level(l.renderedFrames - 1024, l.renderedFrames)
+    rig.dj.perform(.clipMute(id: y.id, on: true))
+    try rig.run(to: at - 4096)
+    let before = level(at - 8192, at - 4096)
+    try rig.run(to: at + 8192)
+    let after = level(at + 2048, at + 6144)
+    // x alone at 1 until the boundary (y muted), then at the scene's 0.5
+    #expect(abs(before / both - 0.0150 / 0.0400) < 0.02, "x still at 1: \(before) of \(both)")
+    #expect(abs(after / before - 0.5) < 0.02, "the scene's level on its boundary: \(after)")
+  }
+
   @Test func scenesAreRenamedOverwrittenDeletedAndFollowACrop() async throws {
     let rig = try Rig()
     defer { rig.dj.stop() }

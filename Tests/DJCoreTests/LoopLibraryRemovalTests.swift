@@ -108,6 +108,23 @@ struct LoopLibraryRemovalTests {
     #expect(dj.clips.count == 3, "not twice")
   }
 
+  @Test func undoingARemovalKeepsItsMuteSoloAndKeyLock() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let (a, b, c) = (take(1), take(2), take(3))
+    dj.restoreClips([a, b, c])
+    dj.perform(.clipMute(id: a.id, on: true))
+    dj.perform(.clipKeyLock(id: a.id, on: true))
+    dj.perform(.clipSolo(id: b.id, on: true))
+    dj.perform(.clipKeyLock(id: c.id, on: false))
+    for x in [a, b, c] { dj.perform(.clipRemove(id: x.id)) }
+    #expect(dj.clipSolos.isEmpty && dj.clipMutes.isEmpty, "off the row, they are not heard")
+    for x in [a, b, c] { dj.perform(.clipRestore(id: x.id, at: nil)) }
+    #expect(dj.isClipMuted(a.id) && dj.isKeyLocked(a.id) && !dj.isClipSoloed(a.id))
+    #expect(dj.isClipSoloed(b.id) && !dj.isClipMuted(b.id))
+    #expect(dj.clipKeyLocks[c.id] == false, "its own setting, not the row's")
+    #expect(dj.audibleClipGain(c.id) == 0, "b is soloed again")
+  }
+
   @Test func namesAndColoursAreKeptAndRecorded() throws {
     let lib = tempLoopLibrary()
     defer { removeLoopLibrary(lib) }
