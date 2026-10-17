@@ -33,7 +33,7 @@ struct AppControlTests {
   @Test func favoritesStarListAndReloadATrack() async throws {
     let m = try favoritesModel()
     await #expect { try await call(m, "favorites", #"{"action":"add","deck":"A"}"#) } throws: {
-      "\($0)".contains("samples can't be")
+      "\($0)".contains("nothing to star")  // the demo loop has no file
     }
     let b = try await call(
       m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
@@ -98,6 +98,39 @@ struct AppControlTests {
     await #expect {
       try await call(m, "stockLoops", #"{"action":"load","deck":"A","path":"/nope.caf"}"#)
     } throws: { "\($0)".contains("from action list") }
+  }
+
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func aStockLoopCanBeStarredTaggedAndReloaded() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites(), loops: try temporaryLoopLibrary())
+    m.start()
+    let list = try await call(m, "stockLoops", #"{"category":"Drums"}"#)
+    let path = try #require(list["loops"]?.array?.first?["path"]?.string)
+    _ = try await call(m, "stockLoops", "{\"action\":\"load\",\"deck\":\"A\",\"path\":\"\(path)\"}")
+    #expect(m.decks["A"]?.sourceCID == "file:" + path, "a sample from a file can be starred")
+    let added = try await call(m, "favorites", #"{"action":"add","deck":"A"}"#)
+    let fav = try #require(added["favorites"]?.array?.first)
+    #expect(fav["kind"]?.string == "sample" && fav["file"]?.string == path)
+    #expect(m.isFavorite("A"))
+    let cid = try #require(fav["cid"]?.string)
+    let tagged = try await call(
+      m, "favorites", "{\"action\":\"tags\",\"cid\":\"\(cid)\",\"tags\":[\"drums\",\"chill\"]}")
+    #expect(
+      tagged["favorites"]?.array?.first?["tags"]?.array == [.string("drums"), .string("chill")])
+    let b = try await call(
+      m, "favorites", "{\"action\":\"load\",\"deck\":\"B\",\"cid\":\"\(cid)\"}")
+    #expect(b["title"]?.string == "Chill Hip-Hop Beat 08" && b["bpm"]?.double == 120)
+    #expect(m.isFavorite("B"), "reloaded from its file: the same favorite")
+    // the demo loop has no file: nothing to star
+    m.loadDemo("B")
+    m.poll()
+    await #expect { try await call(m, "favorites", #"{"action":"add","deck":"B"}"#) } throws: {
+      "\($0)".contains("nothing to star")
+    }
   }
 
   @Test func stateDescribesBothDecks() async throws {

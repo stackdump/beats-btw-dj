@@ -156,7 +156,34 @@ extension Deck {
 
   public func isRoleOn(_ role: String) -> Bool { mode == .net && wave.isRoleAudible(role) }
   public func setRole(_ role: String, on: Bool) { if mode == .net { wave.setRoleMuted(role, !on) } }
-  public func toggleRole(_ role: String) { setRole(role, on: !isRoleOn(role)) }
+  public func toggleRole(_ role: String) {
+    guard !disabledRoles.contains(role) else { return }  // a disabled role stays off
+    setRole(role, on: !isRoleOn(role))
+  }
+
+  /// Disable a role (`on`) — or enable it again. A disabled role is left out of every net
+  /// this deck compiles from now on (new generations, the queued next track, section jumps:
+  /// it is in `roleFilter`), and muted at once in the one playing; `service()` keeps it muted
+  /// if a section of the current song brings it back before the next compile. Enabling lets
+  /// it play again now.
+  public func setRoleDisabled(_ role: String, _ disabled: Bool) {
+    if disabled {
+      disabledRoles.insert(role)
+      setRole(role, on: false)
+    } else {
+      disabledRoles.remove(role)
+      setRole(role, on: true)
+    }
+    var f = roleFilter ?? RoleFilter()
+    if disabled { f.mute.insert(role) } else { f.mute.remove(role) }
+    roleFilter = f.isEmpty ? nil : f
+  }
+
+  /// Keep disabled roles muted in the song playing (a section may unmute them).
+  func enforceDisabledRoles() {
+    guard mode == .net, !disabledRoles.isEmpty else { return }
+    for r in disabledRoles where isRoleOn(r) { setRole(r, on: false) }
+  }
 
   /// A controller's STEMS buttons on a net deck: each mutes a group of roles. "music" is
   /// everything but the drums; "mic" is the lead, the nearest a net has to a vocal.
