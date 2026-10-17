@@ -266,6 +266,12 @@ extension AppModel {
       if !on, let cid = lastSession { o["cid"] = .string(cid) }
       return .object(o)
 
+    case "notes":
+      return try controlNotes(p)
+
+    case "journal":
+      return controlJournal(p)
+
     default:
       throw ControlRequestError.bad("unknown method \(method)")
     }

@@ -171,6 +171,15 @@ public final class AppModel {
   static let lockedButtonsKey = "lockedButtons"
   static func disabledRolesKey(_ deck: String) -> String { "disabledRoles.\(deck)" }
   @ObservationIgnored let favoritesStore: FavoritesStore
+  /// The journal (JournalModel.swift): the run's event log, the notes it holds, its latest lines.
+  var notes: [TrackNote] = []
+  var journalEntries: [JournalEntry] = []
+  /// Per deck, the key its track's notes are under (`NoteTarget.key`), refreshed by `poll`.
+  var deckNoteKeys: [String: String] = [:]
+  @ObservationIgnored let notesStore: NotesStore
+  @ObservationIgnored var journal: Journal?
+  @ObservationIgnored let journalDir: URL?
+  @ObservationIgnored var journalSeen = -1
   /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
   var stockLoops: [StockLoop] = []
   var stockLoopsLoading = false
@@ -225,8 +234,12 @@ public final class AppModel {
   public init(
     engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
     loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil,
-    voices: VoiceVariationStore = VoiceVariationStore()
+    voices: VoiceVariationStore = VoiceVariationStore(), notes: NotesStore = NotesStore(),
+    journal: URL? = nil
   ) {
+    notesStore = notes
+    journalDir = journal
+    self.notes = notes.list()
     variationStore = voices
     variations = voices.all()
     injected = engine
@@ -252,6 +265,7 @@ public final class AppModel {
       restoreLocks(injected)
       restoreLoops(injected)
       if injected.tapTakeBars != tapBars { injected.perform(.tapBars(bars: tapBars)) }
+      if let journalDir { openJournal(injected, in: journalDir) }
       poll()
       return
     }
@@ -270,6 +284,7 @@ public final class AppModel {
       }
       loopFollow = dj.loopFollow
       dj.master = master
+      openJournal(dj, in: journalDir ?? Journal.defaultDirectory)
       try dj.start()
       let hub = ControllerHub(engine: dj)
       // warm the stock loop index (a first scan takes seconds) so the Load panel opens ready
@@ -346,6 +361,7 @@ public final class AppModel {
 
   public func stop() {
     dj?.stop()  // silence first: the rest can take a moment
+    closeJournal()
     controlServer?.stop()
     scopeHub?.perf.stop()
     hub?.stop()
@@ -437,6 +453,7 @@ public final class AppModel {
     let tempo = decksPlayingTempo
     if tempo != playingTempo { playingTempo = tempo }
     pollLoops(dj)
+    pollJournal(dj)
   }
 
   /// A clip's provenance as lines and JSON, worked out once per clip (it never changes).
@@ -575,7 +592,7 @@ public final class AppModel {
   }
   /// Drag a tile onto another: it goes just before that one.
   func moveClip(_ id: String, before: String?) {
-    dj?.moveClip(id, before: before)
+    dj?.perform(.clipMove(id: id, before: before))
     if let dj { pollLoops(dj) }
   }
   /// Wait for pending library writes (tests).
@@ -801,6 +818,7 @@ public final class AppModel {
     }
     do {
       favorites = try favoritesStore.add(f)
+      journal?.record(.favoriteAdd(f))
       return f
     } catch {
       status = "favorites: \(error)"
@@ -808,7 +826,10 @@ public final class AppModel {
     }
   }
   func removeFavorite(cid: String) {
-    do { favorites = try favoritesStore.remove(cid: cid) } catch {
+    do {
+      favorites = try favoritesStore.remove(cid: cid)
+      journal?.record(.favoriteRemove(cid: cid))
+    } catch {
       status = "favorites: \(error)"
     }
   }
@@ -866,7 +887,10 @@ public final class AppModel {
     let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !n.isEmpty else { return }
     var made = defaults.stringArray(forKey: Self.cratesKey) ?? []
-    if !made.contains(n) { made.append(n) }
+    if !made.contains(n) {
+      made.append(n)
+      journal?.record(.crateAdd(name: n))
+    }
     defaults.set(made, forKey: Self.cratesKey)
     favorites = favoritesStore.list()  // observed: the crate bar redraws
   }
@@ -883,7 +907,10 @@ public final class AppModel {
         source: .sample(
           id: "", title: loop.name, grid: BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)),
         file: path)
-      do { favorites = try favoritesStore.add(f) } catch {
+      do {
+        favorites = try favoritesStore.add(f)
+        journal?.record(.favoriteAdd(f))
+      } catch {
         status = "favorites: \(error)"
         return
       }
@@ -901,6 +928,7 @@ public final class AppModel {
   /// Delete a crate: its tag comes off every favorite (they stay starred).
   func deleteCrate(_ crate: String) {
     for f in favorites where f.tags.contains(crate) { removeFromCrate(f.cid, crate) }
+    journal?.record(.crateDelete(name: crate))
     defaults.set(
       (defaults.stringArray(forKey: Self.cratesKey) ?? []).filter { $0 != crate },
       forKey: Self.cratesKey)
@@ -909,7 +937,10 @@ public final class AppModel {
 
   /// A favorite's tags, replaced (the editor's add / remove).
   func setFavoriteTags(_ cid: String, _ tags: [String]) {
-    do { favorites = try favoritesStore.setTags(cid: cid, tags) } catch {
+    do {
+      favorites = try favoritesStore.setTags(cid: cid, tags)
+      journal?.record(.favoriteTags(cid: cid, tags: tags))
+    } catch {
       status = "favorites: \(error)"
     }
   }
@@ -1022,12 +1053,18 @@ public final class AppModel {
   /// Keep a channel's settings as a named variation of its instrument.
   func saveVariation(_ instrument: String, name: String, _ setting: VoiceSetting) {
     let v = VoiceVariation(name: name, params: setting.tweak, useSynth: setting.useSynth)
-    do { variations[instrument] = try variationStore.save(v, for: instrument) } catch {
+    do {
+      variations[instrument] = try variationStore.save(v, for: instrument)
+      journal?.record(.variationSave(instrument: instrument, variation: v))
+    } catch {
       status = "voices: \(error)"
     }
   }
   func renameVariation(_ instrument: String, _ name: String, to new: String) {
-    do { variations[instrument] = try variationStore.rename(name, to: new, for: instrument) } catch {
+    do {
+      variations[instrument] = try variationStore.rename(name, to: new, for: instrument)
+      journal?.record(.variationRename(instrument: instrument, name: name, to: new))
+    } catch {
       status = "voices: \(error)"
     }
   }
@@ -1035,6 +1072,7 @@ public final class AppModel {
     do {
       let left = try variationStore.delete(name, for: instrument)
       variations[instrument] = left.isEmpty ? nil : left
+      journal?.record(.variationDelete(instrument: instrument, name: name))
     } catch {
       status = "voices: \(error)"
     }
@@ -1062,6 +1100,7 @@ public final class AppModel {
   /// Lock a button (and the controller buttons bound to the same action), or unlock it.
   func setLocked(_ key: String, _ locked: Bool) {
     if locked { lockedButtons.insert(key) } else { lockedButtons.remove(key) }
+    dj?.perform(.lock(key: key, on: locked))  // recorded: it changes what the controllers do
     dj?.lockedActions = lockedButtons
     defaults.set(lockedButtons.sorted(), forKey: Self.lockedButtonsKey)
   }
@@ -1142,6 +1181,7 @@ public final class AppModel {
       isRecording = false
       do {
         let saved = try SessionStore().save(session)
+        journal?.record(.mark("session.saved \(saved.cid)"))
         lastSession = saved.cid
         lastSessionValue = session
         status = String(
@@ -1152,6 +1192,7 @@ public final class AppModel {
     } else {
       do {
         recorder = try SessionRecorder.start(on: dj)
+        journal?.record(.mark("session.start"))
         isRecording = true
         status = "recording"
       } catch {

@@ -22,6 +22,8 @@ public final class SessionRecorder {
     // the defaults, so say so first. The tap length matters too: a controller's LOOP tap is
     // recorded as raw MIDI, and its length comes from the replaying engine.
     for a in engine.loopSettings where !DJEngine.defaultLoopSettings.contains(a) { r.record(a) }
+    // Locked actions too: a locked controller binding does nothing, so recorded MIDI needs them.
+    for key in engine.lockedActions.sorted() { r.record(.lock(key: key, on: true)) }
     return r
   }
 
@@ -147,6 +149,7 @@ extension DJEngine {
       recorded = .load(deck: deck, source: .sample(id: id, title: title, grid: gridded))
     }
     recorder?.record(recorded)
+    journal?.record(.action(recorded))
   }
 
   /// Run an action. Returns the beat grid of a freshly loaded sample, for the record.
@@ -267,6 +270,9 @@ extension DJEngine {
     case .voiceTweak(let n, let channel, let params):
       deck(n)?.setVoiceTweak(params, channel: channel)
     case .voiceSynth(let n, let channel, let on): deck(n)?.setSynthVoice(on, channel: channel)
+    case .clipMove(let id, let before): moveClip(id, before: before)
+    case .lock(let key, let on):
+      if on { lockedActions.insert(key) } else { lockedActions.remove(key) }
     }
     return nil
   }

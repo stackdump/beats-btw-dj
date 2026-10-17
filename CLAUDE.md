@@ -31,6 +31,9 @@ under structural rules, rather than editing audio freely.
     randomness at run time.
   - **Provenance:** what a move produced records where it came from (`LoopProvenance`, a
     favorite's descriptor, a session's events), so the walk can be retraced or walked back.
+    The **journal** is the system of record for all of it: every poke and every store change
+    of a run, from a checkpoint, so any run can be rebuilt (`Journal.replay`). A state change
+    that is neither a `DeckAction` nor a `JournalEvent` is a bug.
 - **Coordinates vs moves**: beats' `compose()` is the coordinate system and stays
   byte-identical (Origin and boundary, GO-DIVERGENCE.md). dj's moves and rules live in
   `DJMusicality.apply`, the share overrides, the runner and the engine.
@@ -268,8 +271,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - Anything the UI does to a deck goes through `DJEngine.perform` (recorded); on-screen pad
   presses go through `ControllerRouter.press` (recorded as MIDI).
 - No dropdowns on the deck: its controls beyond the core are `DeckSections` — a strip of toggle
-  buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load); which
-  are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s, lit when current.
+  buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load, Notes,
+  History); which are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s,
+  lit when current.
 - A wide window (`ViewThatFits`) gives each deck two columns: core beside the mixer, sections on
   the outer side (A left, B right); narrower stacks the sections under the core.
 - Favorites (`FavoritesStore`, `~/Library/Application Support/dj-vevr-se/favorites.json`) keep
@@ -317,6 +321,37 @@ its copy; the two are now independent. Rules inherited from that split:
   changes) and `DJBuildDate` into Info.plist; `BuildInfo.current` reads them ("dev" unbundled).
   It shows in the app's footer, in `dj_state.build`, and as MCP `serverInfo.version`
   (`djctl` itself is unbundled, so that one says "dev").
+
+## The journal and notes (DJCore/Journal)
+
+- One append-only JSONL file per app run, `~/Library/Application Support/dj-vevr-se/journal/
+  journal-<UTC start>.jsonl` (`$DJ_JOURNAL_DIR` overrides; tests pass a directory). Line 0 is a
+  checkpoint (`JournalState`: decks' sources + `DeckParams`, playing, follow, voice settings,
+  mixer, the loop row by clip id with gains/mute/solo/key lock, scenes, removed clips, row
+  settings, locks, and the stores: favorites, crates, variations, notes); then one event per
+  line: `{"v":1,"seq","t" (ISO ms, metadata only — never read back),"f" (engine frame),"k",…}`.
+- It is a second sink beside `SessionRecorder` at the same hooks (`perform`, the router's
+  MIDI, the tempo grid), so UI, controllers, MCP and the socket all land in it; the app adds
+  the store events (`favorite.*`, `crate.*`, `variation.*`, `note.*`, `library.restore`,
+  `sample.file`, `mark`). Encoded and written on the journal's own queue, never the audio
+  thread (`JournalRealTimeTests`); one `write` per line, `fsync` ≤ 1/s; a torn last line is
+  dropped on read. New state that persists or changes what a replay does needs an event.
+- `Journal.replay` stands a fresh offline engine on the checkpoint (clip audio from the loop
+  library by id, samples via `sample.file` paths) and applies the events at their frames with
+  `OfflineConductor`, as `SessionPlayer` does; the stores replay through the stores' own pure
+  edit functions (`FavoritesStore.adding`…). Deterministic offline; a live journal replays as
+  exactly as live timing allows (async composes and sampled round robin can shift a take —
+  then clip events fall back to the library's clip by id). `djctl journal list | show |
+  replay [--to SEQ|--at S] [--render f.wav] | export-session --from --to` (a slice → a normal
+  `Session`, starting at rest: playheads and the row at `from` are not in it).
+- **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
+  CID (same genre + seed + settings = same track, so the note returns whenever that
+  configuration plays again), a sample by content id (+ file, so starred samples carry them),
+  a clip by id. Journal events are their source of truth; `notes.json` is the projection for
+  launch, replaced by the newest journal's if they differ. UI: the deck's ✎ Notes section
+  (one-tap notes at the current bar, a field, the list; right-click edits), History (the
+  journal's latest lines, notes in yellow), ✎ on clip tiles and favorites; `dj_notes`,
+  `dj_journal`.
 
 ## Hardware notes (macOS)
 
