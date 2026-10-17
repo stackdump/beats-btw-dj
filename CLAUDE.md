@@ -47,7 +47,7 @@ under structural rules, rather than editing audio freely.
   settings in a session's starting `DeckParams.wander`, so a replay walks the same path
   (`WanderReplayTests`). Moves never touch disabled roles or locked buttons
   (`DJEngine.lockedActions`). **Locks** (per deck, remembered in the app's defaults): genre,
-  tempo (genre hops within ±6 % of the tempo at lock time), key (genre hops keep the scale and
+  tempo (genre hops within ±6 % of the tempo at lock time), palette (no palette hops), key (genre hops keep the scale and
   root; every new spec pins `extra["keyOffset"]` = `TrackSpec.pinnedKeyOffset`, which a pass
   that moves keys per seed must honour), structure (no structure moves; hops stay in the
   family), instruments (no instrument moves; every new spec carries the deck's instruments in
@@ -259,12 +259,35 @@ its copy; the two are now independent. Rules inherited from that split:
   never joins the GM pools (`localOnlyBanks`), and `music/*` / `records/*` are never read.
   Publishing refuses any set that plays it (`Session.localOnlySounds`; `djctl publish
   --allow-local-sounds` / the Publish… checkbox override); local renders are fine.
-- **Palettes** (`SoundPalette`, `categories.json` `palettes` + `bankCategories`): a whole-track
-  role → category map, the `tracks` override `palette` (recorded with its asset version,
-  `minecraft@32`), the poke `DeckAction.setPalette` (next bar, same song). Picked instruments
-  and a picked kit keep theirs; picks seeded by track seed + role. Local-only banks skip the
-  tuning check on load (their importer tuned them). Unavailable palettes grey out with their
-  reason; tests skip without the assets. Wander's `palette` lock carries the palette and kit into each new track (`Wander.carry`).
+- **Palettes are how a track chooses its sound** (`SoundPalette`, `Resources/voices/palettes.json`,
+  `PaletteSound.swift`): 13 named sound worlds (Studio = each instrument's own sound, the
+  default, never written into a share; Synth = beats' voices only; Synthwave, 8-bit, Acoustic
+  band, Orchestral, Lo-fi tape, Jazz club, Club, Ambient, World strings, 90s sound card (Apple
+  DLS, local only), Minecraft (local only)). Per role (`kit`, bass, melody, harmony, arp,
+  stinger, `*`) a pool of options — `own`, `synth`, `synth:<instrument|drums-kit>`,
+  `cat:<category>`, `gm:<n>` (SoundFont floor), `dls:<n>`, `bank:<bankCategory>`, `inst:<name>`,
+  kit ids — plus `hints` (another genre's room/echo, `WaveOptions.forPalette`) and Wander
+  `neighbours`. `Project.applySound(seed:)` (run in `TrackSpec.finish`, the raw-nets prepare and
+  after every sound poke) resolves each net to `Track.sound` (`TrackSound`: override, option,
+  palette kit, the composer's instrument) from the seed + role over the options installed here;
+  a `synth:` option swaps the instrument itself, so balance/loudness probes see it. Pokes:
+  `setPalette` (the `tracks` override `palette` on every role channel, `minecraft@32` with its
+  asset version), `setRoleVoice` (fine-tune: `tracks` `voice` on the role's channels; nil =
+  "reset to palette", also dropping an instrument or kit picked for it), `setKit` — all next bar,
+  same song (`Deck.retarget`). **Memory:** the deck's palette, kit pick and role overrides carry
+  into every new track (`TrackSpec.carryingSound`: `nextVersion`, the seed wheel, Generate,
+  every Wander swap; beats puts each role on the same channel in every genre). Wander's
+  `palette` move (weight 2) hops to a neighbour on the same song; the `palette` and
+  `instruments` locks stop it, kept roles keep their option. A palette whose sounds aren't
+  installed greys out with the role and reason (`unavailableReason`, cached; `rescan`). Publish
+  refuses palettes, options and kits from `SamplerSource.localOnlyFiles` (Minecraft bank, Apple's
+  `gs_instruments.dls`). UI: the deck's **Sound** section — palette cards on top (`.arrowKeys`),
+  "Fine-tune" folded below (`Deck.roleSounds`: each role's pick, options, ↺ palette, instruments
+  / all kits, long press = VoiceEditor); Generate has a palette row. `dj_palettes`, `dj_generate
+  palette`, `dj_state.decks.X.sound`. `PaletteTests` hold every palette to resolving here (or
+  saying why), Synth = the no-sampler render bit for bit, and ±4 dB LUFS of Synth
+  (`IntegratedLoudness`, BS.1770; `djctl render --palette ID` prints `lufs` and each role's
+  option).
 
 ## Musicality (docs/musicality-notes.md)
 
@@ -332,7 +355,7 @@ its copy; the two are now independent. Rules inherited from that split:
 - Anything the UI does to a deck goes through `DJEngine.perform` (recorded); on-screen pad
   presses go through `ControllerRouter.press` (recorded as MIDI).
 - No dropdowns on the deck: its controls beyond the core are `DeckSections` — a strip of toggle
-  buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load, Notes,
+  buttons folding panels open (Perform, Master FX, Sound, Favorites, Generate, Load, Notes,
   History); which are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s,
   lit when current.
 - A wide window (`ViewThatFits`) gives each deck two columns: core beside the mixer, sections on
