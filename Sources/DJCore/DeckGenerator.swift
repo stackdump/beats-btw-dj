@@ -108,10 +108,18 @@ public final class PreparedTrack: @unchecked Sendable {
 
   /// `opts`: the deck's (`Deck.waveOptions`), so its sampled instruments load into that
   /// deck's bank. `.extended` alone plays every instrument on a synth voice.
-  public convenience init(spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended) {
+  ///
+  /// `startTick`: where the net starts (its control nets replayed to there), so a song swapped
+  /// in mid-song keeps the transport where it is instead of going back to its first bar. A tick
+  /// at or past the song's end, or any tick on a loop (no structure), starts at 0.
+  public convenience init(
+    spec: TrackSpec, sampleRate: Double, opts: WaveOptions = .extended, startTick: Int = 0
+  ) {
+    let project = spec.project()
+    let length = project.structure.reduce(0) { $0 + $1.steps }
     self.init(
-      source: .net(spec), project: spec.project(), seed: spec.seed, sampleRate: sampleRate,
-      opts: opts)
+      source: .net(spec), project: project, seed: spec.seed, sampleRate: sampleRate,
+      opts: opts, startTick: startTick > 0 && startTick < length ? startTick : 0)
   }
 
   /// A raw-`nets` share envelope's project (`Share.rawNetsProject()`, named by the payload's
@@ -140,7 +148,7 @@ public final class PreparedTrack: @unchecked Sendable {
 
   private init(
     source: DeckSourceDescriptor, project: Project, seed: Double, sampleRate: Double,
-    opts: WaveOptions
+    opts: WaveOptions, startTick: Int = 0
   ) {
     self.source = source
     self.project = project
@@ -152,7 +160,7 @@ public final class PreparedTrack: @unchecked Sendable {
     var o = opts
     o.voicingSeed = seed
     if case .net(let spec) = source { o = o.forGenre(spec.genre) }
-    prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o)
+    prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o, startTick: startTick)
   }
 }
 
@@ -236,16 +244,22 @@ final class NextTrackSlot: Sendable {
 extension Deck {
   /// Compose `spec` on a background thread, then load it (at the next bar if the deck is
   /// playing). Returns false if a newer `generate` superseded this one meanwhile.
+  ///
+  /// `startTick` (a song swapped in while one plays): where it starts, so the transport keeps
+  /// going (`PreparedTrack.init(spec:startTick:)`); `.nextBar` reads the deck's tick on the
+  /// compose thread just before it prepares, and starts the song at the bar after it.
   @MainActor @discardableResult
-  public func generate(_ spec: TrackSpec) async -> Bool {
+  public func generate(_ spec: TrackSpec, startTick: SwapStart = .top) async -> Bool {
     generation += 1
     let mine = generation
     let sr = wave.sampleRate
     let bank = wave.samplers
     let filter = roleFilter
+    let wave = self.wave
     let track = await Task.detached(priority: .userInitiated) {
       PreparedTrack(
-        spec: spec, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter))
+        spec: spec, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter),
+        startTick: startTick.tick(wave.tick))
     }.value
     guard mine == generation else { return false }
     loadNet(track)
@@ -267,21 +281,32 @@ extension Deck {
     return spec.structure?.isEmpty ?? true
   }
 
-  /// The browser wheel on a playing loop: the same genre, `delta` seeds on, composed in the
-  /// background and swapped in at the next bar (inline in `deterministic` replay). Clicks that
-  /// land while one composes count from the seed it is heading to; the latest wins. Nil (and
-  /// nothing happens) unless the deck holds a composed loop.
+  /// The browser wheel on a playing net deck: the same genre (and everything else the spec
+  /// says), `delta` seeds on, composed in the background and swapped in at the next bar (inline
+  /// in `deterministic` replay). A loop starts the new seed from its top, as it always has; a
+  /// song keeps the transport going: the new seed comes in at the bar after the swap, not at its
+  /// first bar. Clicks that land while one composes count from the seed it is heading to; the
+  /// latest wins. Nil (and nothing happens) unless the deck holds a composed net.
   @discardableResult
   public func stepSeed(_ delta: Int) -> TrackSpec? {
-    guard delta != 0, isNetLoop, var spec = seedTarget ?? currentSpec else { return nil }
-    spec.seed += Double(delta)
+    guard delta != 0, mode == .net, var spec = seedTarget ?? currentSpec else { return nil }
+    spec.seed = max(1, spec.seed + Double(delta))
+    swap(to: spec, start: isNetLoop ? .top : .nextBar)
+    return spec
+  }
+
+  /// Compose `spec` and hand it over at the next bar, starting where `start` says: inline in
+  /// `deterministic` replay, else in the background (`seedTarget` holds it while it composes).
+  func swap(to spec: TrackSpec, start: SwapStart) {
     if deterministic {
-      loadNet(PreparedTrack(spec: spec, sampleRate: wave.sampleRate, opts: waveOptions))
+      loadNet(
+        PreparedTrack(
+          spec: spec, sampleRate: wave.sampleRate, opts: waveOptions,
+          startTick: start.tick(wave.tick)))
     } else {
       seedTarget = spec
-      Task { @MainActor in await self.generate(spec) }
+      Task { @MainActor in await self.generate(spec, startTick: start) }
     }
-    return spec
   }
 
   /// Start composing the next track in the background (cancels an earlier request).
@@ -344,6 +369,25 @@ extension Deck {
     } else if autoAdvance, !next.isBusy, let spec = currentSpec {
       // auto-next keeps the next version of this song composed: no Queue next needed
       queueNext(spec.nextVersion)
+    }
+  }
+}
+
+/// Where a track swapped onto a playing deck starts (`Deck.generate`, `Deck.swap`).
+public enum SwapStart: Sendable, Equatable {
+  /// Its first tick (a new song, a loop).
+  case top
+  /// The bar after the one the deck is in when it is prepared: the transport keeps going.
+  case nextBar
+  /// This tick (a phrase boundary worked out beforehand: Wander).
+  case tick(Int)
+
+  /// The tick to start at, given the deck's tick now.
+  func tick(_ now: Int) -> Int {
+    switch self {
+    case .top: 0
+    case .nextBar: (now / 16 + 1) * 16
+    case .tick(let t): t
     }
   }
 }

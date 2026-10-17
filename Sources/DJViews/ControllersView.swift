@@ -192,7 +192,8 @@ struct SpotView: View {
       ("headphone cue", "🎧"), ("loop record (hold)", "LOOP rec"), (" in/out", ""),
       ("STEMS music (mute group)", "−music"), ("STEMS mic (mute group)", "−lead"),
       ("live keys (focus deck)", "live keys"), ("tempo nudge (focus deck)", "nudge"),
-      ("loop seed ± (playing loop)", "seed ±"), ("stinger ", "sting "),
+      ("seed ± (playing net; grabs wander)", "seed ±"), ("stinger ", "sting "),
+      ("wander on/off (focus deck)", "wander"), ("wander pace ± (focus deck)", "pace ±"),
     ]
     for (a, b) in swaps { s = s.replacingOccurrences(of: a, with: b) }
     return deck.isEmpty ? s : "\(deck) \(s)"

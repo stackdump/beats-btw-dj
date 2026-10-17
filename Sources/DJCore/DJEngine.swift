@@ -266,6 +266,8 @@ public final class Deck: JogClock {
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
+  /// The deck's walk (Wander.swift): on/off, pace, step, locks, the log of moves.
+  public internal(set) var wander = WanderState()
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
   /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
   public var leftTap: ScopeTap { renderer.leftTap }

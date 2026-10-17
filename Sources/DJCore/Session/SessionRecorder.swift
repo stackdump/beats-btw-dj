@@ -36,6 +36,8 @@ public final class SessionRecorder {
       decks[name] = try d.sourceDescriptor()
       params[name] = d.currentParams
     }
+    // a replay's decks start with no bar seen: so do these (they are at rest, at tick 0)
+    for d in engine.decks.values { d.wander.lastBar = nil }
     initial = (decks, params)
     crossfader = engine.crossfader
     master = engine.master
@@ -103,6 +105,7 @@ extension Deck {
     p.reverbSize = reverb.size
     p.reverbTone = reverb.tone
     p.disabledRoles = disabledRoles.sorted()
+    p.wander = wander.settings
     return p
   }
 
@@ -120,6 +123,7 @@ extension Deck {
     reverb.size = p.reverbSize
     reverb.tone = p.reverbTone
     for r in p.disabledRoles { setRoleDisabled(r, true) }
+    wander = p.wander
   }
 }
 
@@ -273,6 +277,9 @@ extension DJEngine {
     case .clipMove(let id, let before): moveClip(id, before: before)
     case .lock(let key, let on):
       if on { lockedActions.insert(key) } else { lockedActions.remove(key) }
+    case .wander(let n, let on): deck(n)?.setWander(on)
+    case .wanderPace(let n, let bars): deck(n)?.setWanderPace(bars)
+    case .wanderLock(let n, let dimension, let on): deck(n)?.setWanderLock(dimension, on)
     }
     return nil
   }
