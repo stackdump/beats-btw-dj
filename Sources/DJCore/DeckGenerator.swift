@@ -79,6 +79,7 @@ public struct TrackSpec: Sendable, Equatable {
     var p = layers
     p["genre"] = .string(genre)
     Share(payload: .object(p)).finishComposed(&project)
+    project.applySound(seed: seed)
   }
 
   /// `compose` plus `finish`: the project this spec plays.
@@ -131,10 +132,12 @@ public final class PreparedTrack: @unchecked Sendable {
     let canonical = payload.canonicalJS
     let ordered = (try? JSONValue.parse(canonical)) ?? payload
     let share = Share(payload: ordered, cid: BeatsCID.shareCID(canonical: canonical))
-    guard let project = share.rawNetsProject() else { return nil }
+    guard var project = share.rawNetsProject() else { return nil }
+    let seed = DeckSourceDescriptor.voicingSeed(rawNets: payload)
+    project.applySound(seed: seed)
     self.init(
-      source: .rawNets(payload: payload), project: project,
-      seed: DeckSourceDescriptor.voicingSeed(rawNets: payload), sampleRate: sampleRate, opts: opts)
+      source: .rawNets(payload: payload), project: project, seed: seed, sampleRate: sampleRate,
+      opts: opts)
   }
 
   /// Either kind of net source; nil for `.none` / `.sample` (or nets-less payloads).
@@ -159,7 +162,9 @@ public final class PreparedTrack: @unchecked Sendable {
     }
     var o = opts
     o.voicingSeed = seed
-    if case .net(let spec) = source { o = o.forGenre(spec.genre) }
+    if case .net(let spec) = source {
+      o = o.forGenre(spec.genre).forPalette(project.palette, genre: spec.genre)
+    }
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o, startTick: startTick)
   }
 }
@@ -403,13 +408,15 @@ extension Deck {
 
 extension TrackSpec {
   /// The next version of this song for auto-next: same genre, structure, cohesion and settings,
-  /// a new seed worked out from this one (so a recorded set replays the same chain), and none of
-  /// this song's per-track overrides (instrument changes belong to the song they were made on).
+  /// a new seed worked out from this one (so a recorded set replays the same chain), the deck's
+  /// sound choices (palette, kit, role overrides: `carryingSound`) and none of this song's other
+  /// per-track overrides (instrument picks belong to the song they were made on).
   public var nextVersion: TrackSpec {
     // a Park–Miller step over the 1…999 999 seed range the Generate panel uses
     let s = (Int64(seed.rounded()) * 48_271) % 2_147_483_647
     return TrackSpec(
       genre: genre, seed: Double(abs(s) % 999_999 + 1), structure: structure, cohesion: cohesion,
-      extra: extra)
+      extra: extra
+    ).carryingSound(from: self)
   }
 }

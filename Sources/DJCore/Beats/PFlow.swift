@@ -136,6 +136,9 @@ public struct Track {
   /// The sound palette this net's role plays from (`SoundPalette`, a `tracks` override's
   /// `palette`), nil = its instrument's category. dj-only, never encoded.
   public var palette: String?
+  /// What the palette (or the user's role override) resolved this net to play
+  /// (`Project.applySound`). dj-only, never encoded.
+  public var sound = TrackSound()
   public var instrumentSet: [JSONValue] = []
   public var mix: JSONValue?
   public var group: String?

@@ -346,9 +346,9 @@ public struct PublicProbe: Sendable {
 }
 
 extension Session {
-  /// What in the session plays local-only sounds (`SamplerSource.localOnlyBanks`): a palette
-  /// or kit from the Minecraft bank, on a deck at the start, in a load, or as a poke. Empty for
-  /// a set that may be published.
+  /// What in the session plays local-only sounds (`SamplerSource.localOnlyFiles`: the Minecraft
+  /// bank, Apple's GM bank): a palette, role option or kit from one, on a deck at the start, in
+  /// a load, or as a poke. Empty for a set that may be published.
   public var localOnlySounds: [String] {
     var out: [String] = []
     func check(_ d: DeckSourceDescriptor, _ at: String) {
@@ -365,6 +365,9 @@ extension Session {
         if let p = o["palette"]?.string, SoundPalette.named(p)?.isLocalOnly == true {
           out.append("\(at) ch \(ch) palette \(p)")
         }
+        if let v = o["voice"]?.string, SoundPalette.isLocalOnly(option: v) {
+          out.append("\(at) ch \(ch) voice \(v)")
+        }
       }
     }
     for name in decks.keys.sorted() { if let d = decks[name] { check(d, "deck \(name)") } }
@@ -377,6 +380,8 @@ extension Session {
         out.append("setKit \(deck) @\(e.frame) \(kit)")
       case .setPalette(let deck, let p?) where SoundPalette.named(p)?.isLocalOnly == true:
         out.append("setPalette \(deck) @\(e.frame) \(p)")
+      case .setRoleVoice(let deck, let role, let v?) where SoundPalette.isLocalOnly(option: v):
+        out.append("setRoleVoice \(deck) \(role) @\(e.frame) \(v)")
       default: break
       }
     }
@@ -385,7 +390,5 @@ extension Session {
     return out.filter { seen.insert($0).inserted }
   }
 
-  static func isLocalOnly(kit: String) -> Bool {
-    DrumKits.parse(kit).map { SamplerSource.localOnlyBanks.contains($0.file) } ?? false
-  }
+  static func isLocalOnly(kit: String) -> Bool { SoundPalette.isLocalOnly(option: kit) }
 }

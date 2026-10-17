@@ -42,8 +42,10 @@ struct DeckState: Equatable {
   var voiceSettings: [Int: VoiceSetting] = [:]
   /// The drum kit the net's drums play (`Deck.kit`), nil = beats' synth kit.
   var kit: String?
-  /// The sound palette the track plays from (`Deck.palette`), nil = none.
+  /// The sound palette the track plays from (`Deck.palette`), nil = the default.
   var palette: String?
+  /// Each palette role, what it plays and what it could (`Deck.roleSounds`).
+  var roleSounds: [RoleSoundRow] = []
   var quantize = "off"
   var scrubbing = false
   var pfl = false
@@ -438,9 +440,11 @@ public final class AppModel {
       if let previous, previous.sourceCID == state.sourceCID, previous.title == state.title {
         state.voices = previous.voices
         state.channelVoices = previous.channelVoices
+        state.roleSounds = previous.roleSounds
       } else {
         state.voices = d.roleVoices
         for v in state.voices { state.channelVoices[v.channel] = d.channelVoice(v.channel) }
+        state.roleSounds = d.roleSounds
       }
       state.voiceSettings = d.mode == .net ? d.wave.voiceSettings : [:]
       state.kit = d.kit

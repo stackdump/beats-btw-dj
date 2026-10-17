@@ -193,12 +193,15 @@ extension Project {
             net.track.mix = .object(merged)
           }
           if let inst = o["instrument"]?.string, !inst.isEmpty {
+            if net.track.sound.composed == nil { net.track.sound.composed = net.track.instrument }
             net.track.instrument = inst
             net.track.picked = true
           }
-          // dj's sound choices (never read by beats): a drum kit, a palette ("" = none)
+          // dj's sound choices (never read by beats): a drum kit, a palette, a role's own
+          // palette option ("" = none)
           if let kit = o["kit"]?.string { net.track.kit = kit.isEmpty ? nil : kit }
           if let pal = o["palette"]?.string { net.track.palette = pal.isEmpty ? nil : pal }
+          if let v = o["voice"]?.string { net.track.sound.override = v.isEmpty ? nil : v }
           if let set = o["instrumentSet"], set.isTruthy, let arr = set.array {
             net.track.instrumentSet = arr
           }

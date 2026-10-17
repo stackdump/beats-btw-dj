@@ -201,6 +201,11 @@ public enum DeckAction: Equatable, Sendable {
   /// Link the loops' master FX to the decks' (`DJEngine.setLoopFxLink`): a master macro fired
   /// on a net deck fires on the loop channel too, and a deck's panic releases it.
   case loopFxLink(on: Bool)
+  /// Play one role of a net deck's track with a palette option (`SoundPalette` grammar:
+  /// `gm:4`, `synth:pwm-lead`, `cat:keys.epiano`, `inst:piano`, a kit id for `kit`…) or, nil,
+  /// the palette's own pick again — also dropping an instrument or kit picked for it
+  /// (`Deck.setRoleVoice`): the same song at the next bar; carried into every new track.
+  case setRoleVoice(deck: String, role: String, voice: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -473,6 +478,10 @@ extension DeckAction {
       return o("setPalette", [d(deck), ("palette", palette.map { .string($0) } ?? .null)])
     case .clipFx(let id, let fx): return o("clipFx", [("id", .string(id)), ("fx", fx.json)])
     case .loopFxLink(let on): return o("loopFxLink", [("on", .bool(on))])
+    case .setRoleVoice(let deck, let role, let voice):
+      return o(
+        "setRoleVoice",
+        [d(deck), ("role", .string(role)), ("voice", voice.map { .string($0) } ?? .null)])
     }
   }
 
@@ -567,6 +576,9 @@ extension DeckAction {
       guard let id = v["id"]?.string else { return nil }
       self = .clipFx(id: id, fx: LoopFX(json: v["fx"]))
     case "loopFxLink": self = .loopFxLink(on: v["on"]?.bool ?? false)
+    case "setRoleVoice":
+      guard let role = v["role"]?.string, !role.isEmpty else { return nil }
+      self = .setRoleVoice(deck: deck, role: role, voice: v["voice"]?.string)
     default: return nil
     }
   }

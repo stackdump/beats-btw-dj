@@ -96,6 +96,8 @@ extension Deck {
     if let s = wave.latest?.space { o.space = s }
     if let e = wave.latest?.echo { o.echo = e }
     if let b = wave.latest?.balance { o.trackBalance = b }
+    // a palette changed on the same song brings its room and echo
+    if let genre = currentSpec?.genre { o = o.forPalette(netProject?.palette, genre: genre) }
     return o
   }
 

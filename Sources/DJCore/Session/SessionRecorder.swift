@@ -284,6 +284,7 @@ extension DJEngine {
     case .setPalette(let n, let palette): deck(n)?.setPalette(palette)
     case .clipFx(let id, let fx): setClipFx(id, fx)
     case .loopFxLink(let on): setLoopFxLink(on)
+    case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
     }
     return nil
   }
