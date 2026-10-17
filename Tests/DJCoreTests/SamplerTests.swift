@@ -138,9 +138,11 @@ struct SamplerTests {
     #expect(bank.references(of: 3) == 2)
   }
 
-  @Test func aFullBankEvictsTheLeastRecentlyUsedUnreferencedSlot() {
+  @Test func aFullBankEvictsTheLeastRecentlyUsedUnreferencedSlot() throws {
     let bank = SamplerBank(sampleRate: sr)
-    for p in 0..<SamplerBank.capacity { #expect(bank.slot(for: [.gm(p)]) == p) }
+    // Stop here if a load failed (it can under a heavily loaded full suite): the releases below
+    // would give back slots never taken, and `release` traps on that, ending the whole run.
+    for p in 0..<SamplerBank.capacity { try #require(bank.slot(for: [.gm(p)]) == p) }
     // Give back 5, then 9, then 17 (taking 9 once more in between): 5 is least recently used.
     bank.release(5)
     bank.release(9)
