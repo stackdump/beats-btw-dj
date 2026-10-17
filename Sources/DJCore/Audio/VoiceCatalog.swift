@@ -210,6 +210,10 @@ public final class VoiceCatalog: @unchecked Sendable {
 }
 
 extension VoiceCatalog {
+  /// beats instruments that always play their own synth voice, never a sample: a sampled
+  /// sustained patch can't do what they do (a laser is a pitch zap: `VoiceSpec.pitchFrom`).
+  public static let synthOnly: Set<String> = ["laser"]
+
   /// Words in a sound's name that stand for an instrument, beyond the instrument's own words
   /// ("chiptune" sounds are named "Bitrate", "8-Bit"…).
   static let nameWords: [String: [String]] = [

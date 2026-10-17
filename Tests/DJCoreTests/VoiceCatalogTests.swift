@@ -10,7 +10,7 @@ struct VoiceCatalogTests {
     for set in BeatsTables.shared.instrumentSets.values {
       for pool in set.values { names.formUnion(pool) }
     }
-    for n in names.sorted() where !n.hasPrefix("drums") {
+    for n in names.sorted() where !n.hasPrefix("drums") && !VoiceCatalog.synthOnly.contains(n) {
       let c = catalog.categoryOf[n]
       #expect(c != nil, "\(n) has no category")
       if let c {
@@ -18,6 +18,9 @@ struct VoiceCatalogTests {
           !catalog.pool(c).isEmpty || catalog.gm[c] != nil || catalog.keepSynth.contains(c),
           "\(n) → \(c) can play nothing")
       }
+    }
+    for n in VoiceCatalog.synthOnly {
+      #expect(catalog.categoryOf[n] == nil, "\(n) is synth-only: no sample category")
     }
   }
 
