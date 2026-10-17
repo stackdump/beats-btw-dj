@@ -102,6 +102,12 @@ public final class AppModel {
   @ObservationIgnored let screenWakeLock = ScreenWakeLock()
   @ObservationIgnored var defaults = UserDefaults.standard
   static let keepScreenAwakeKey = "keepScreenAwake"
+  /// How many bars a quick tap of LOOP records (1, 2, 4 or 8; 2 until changed). Saved in the
+  /// app's defaults as `loopTapBars`; sent with each press, and given to the engine for the
+  /// controllers' LOOP buttons (`DJEngine.tapTakeBars`).
+  private(set) var tapBars = 2
+  static let tapBarsKey = "loopTapBars"
+  static let tapBarChoices = [1, 2, 4, 8]
   // Scopes (SPEC modes 1…6): the panel under the decks, and what it shows.
   var showScopes = false
   var scopeKind: ScopeKind = .live
@@ -179,6 +185,8 @@ public final class AppModel {
 
   public func start() {
     guard dj == nil else { return }
+    let savedTap = defaults.integer(forKey: Self.tapBarsKey)
+    if Self.tapBarChoices.contains(savedTap) { tapBars = savedTap }
     if let injected {
       dj = injected
       scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
@@ -186,6 +194,7 @@ public final class AppModel {
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
       restoreLoops(injected)
+      injected.tapTakeBars = tapBars
       poll()
       return
     }
@@ -195,6 +204,7 @@ public final class AppModel {
       for d in dj.decks.values { d.loadDemo() }
       if takeStore == nil { takeStore = LoopLibrary() }
       restoreLoops(dj)
+      dj.tapTakeBars = tapBars
       dj.master = master
       try dj.start()
       let hub = ControllerHub(engine: dj)
@@ -432,9 +442,26 @@ public final class AppModel {
   }
   func setCrossfader(_ v: Double) { dj?.perform(.crossfader(v)) }
   // LOOP record and the row under the decks
+  /// The press carries the tap length (a quick release records exactly that many bars).
   func loopRecord(_ deck: String, on: Bool) {
-    dj?.perform(.loopRecord(deck: deck, on: on))
+    dj?.perform(.loopRecord(deck: deck, on: on, bars: on ? tapBars : nil))
     if let dj { pollLoops(dj) }
+  }
+  /// The ⟲ buttons: the last `bars` bars `deck` played, as a clip looping on the row.
+  func grabBars(_ deck: String, bars: Int) {
+    dj?.perform(.grabBars(deck: deck, bars: bars))
+    if let dj { pollLoops(dj) }
+  }
+  func setTapBars(_ n: Int) {
+    guard Self.tapBarChoices.contains(n) else { return }
+    tapBars = n
+    dj?.tapTakeBars = n
+    defaults.set(n, forKey: Self.tapBarsKey)
+  }
+  /// The tap-length chip's click: the next of 1, 2, 4, 8 (round to 1).
+  func stepTapBars() {
+    let c = Self.tapBarChoices
+    setTapBars(c[((c.firstIndex(of: tapBars) ?? 0) + 1) % c.count])
   }
   func playClip(_ id: String, on deck: String) {
     guard dj?.clip(id) != nil else { return }
@@ -1282,8 +1309,29 @@ struct DeckView: View {
     }
   }
 
-  /// Play / pause, cue (PFL) and the four hot cues, in one row.
+  /// Play / pause, cue (PFL), LOOP record with its tap length and grab buttons, and the four
+  /// hot cues, in one row; where the deck is too narrow for that, the tap length and grab
+  /// buttons go on a line of their own under it.
   private var transport: some View {
+    ViewThatFits(in: .horizontal) {
+      transportRow(capture: true)
+      VStack(alignment: .leading, spacing: DJStyle.xs) {
+        transportRow(capture: false)
+        HStack(spacing: 4) {
+          TapLengthChip(model: model)
+          GrabBarsControl(name: name, model: model)
+        }
+      }
+    }
+    .overlay(alignment: .topTrailing) {
+      if state.scrubbing {
+        Text("SCRATCH").font(.caption2.bold()).foregroundStyle(tint).offset(y: -14)
+      }
+    }
+  }
+
+  /// `capture`: the tap length and grab buttons beside LOOP (else LOOP alone).
+  private func transportRow(capture: Bool) -> some View {
     HStack(spacing: DJStyle.s) {
       Button {
         model.togglePlay(name)
@@ -1297,7 +1345,11 @@ struct DeckView: View {
       .accessibilityLabel(state.playing ? "Pause" : "Play")
       Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
         .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
-      LoopRecordButton(name: name, model: model)
+      if capture {
+        LoopCaptureControls(name: name, model: model)
+      } else {
+        LoopRecordButton(name: name, model: model)
+      }
       Spacer(minLength: 0)
       HStack(spacing: DJStyle.xs) {
         ForEach(0..<4, id: \.self) { slot in
@@ -1309,11 +1361,6 @@ struct DeckView: View {
               state.cues.contains(slot)
                 ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
         }
-      }
-    }
-    .overlay(alignment: .trailing) {
-      if state.scrubbing {
-        Text("SCRATCH").font(.caption2.bold()).foregroundStyle(tint).offset(y: -26)
       }
     }
   }
