@@ -5,9 +5,9 @@ with something that runs on the Mac with the three controllers plugged in.
 
 Status legend: **done** · **in progress** · **next** · later.
 
-## Where we are (2026-10-11)
+## Where we are (2026-10-14)
 
-All of it is on `main` (Phase 3 landed there directly; `phase5-scopes` merged in 69f8431).
+Phases 1–5 are on `main` (Phase 3 landed there directly; `phase5-scopes` merged in 69f8431).
 README's "Where we are" says what the app does; this is what each phase still has open.
 
 - **Phase 1** — done. Open: the Inpulse hardware pass (checklist below), MPK pad NOTE mode.
@@ -16,9 +16,16 @@ README's "Where we are" says what the app does; this is what each phase still ha
   "Left out"). The counterMelody deviation is kept and goes back to beats (GO-DIVERGENCE.md §5).
 - **Phase 3** — done, 3.1–3.5; in 3.3 the send FX (reverb / delay), Pan and Shape macros are
   not ported and each needs a design call. Which master macros go on Inpulse pads is open.
+  (Phase 6 has since added dj's own send reverb and tempo echo under `WaveOptions.extended`;
+  porting beats' Tone sends for parity is still the open 3.3 item.)
 - **Phase 4** — done. Open: the Inpulse headphone-knob mapping.
 - **Phase 5** — done, 5.1–5.7 (5.7: beats' scopes and Stage, [SCOPES.md](SCOPES.md)). Open:
   the scopes and Stage have not been checked in a live window ("Needs a person" in SCOPES.md).
+- **Phase 6** — **in progress**, on the Mac only. Parts A–F (32 `DJMusicality.Fixes` flags,
+  [docs/musicality-notes.md](docs/musicality-notes.md)) are merged on `main`. Every fix is measured on the 24-track matrix; **none has been
+  confirmed by ear**. 6.0 (landing them) is done; 6.1 is the listening loop; 6.2–6.7 are what the
+  measurements and [docs/research/realism-2026-10.md](docs/research/realism-2026-10.md)
+  (branch `research/realism`) still rank as unmusical.
 
 
 ## Open work (2026-10-17)
@@ -462,6 +469,234 @@ display is the check that layout (sizes, spacing, the 3-way deck column) looks r
 
 ---
 
+## Phase 6 — Tracks that sound like music **(in progress; parts A–F merged, 6.1 next)**
+
+Goal: a `standard` song of any catalogue genre, any seed, played on a net deck with
+`WaveOptions.extended`, is something a listener calls a track and a DJ can mix — form on
+4 / 8 / 16-bar lines with intros and outros long enough to blend, a hook you can hum after one
+play, harmony that goes somewhere and comes back, a rhythm section in every genre that has
+one, and a mix that translates to monitors, headphones and a phone. The 4-bar loop was already
+music ([realism audit](docs/research/realism-2026-10.md), verdict); the track was not.
+
+Where this phase stands (2026-10-14): six parts in two days
+([docs/musicality-notes.md](docs/musicality-notes.md)) turned the audit's top gaps into 32
+`DJMusicality.Fixes` flags — key, grid, register, groove, loudness (A); fills, voicing, energy
+arc, ducking, contour, sevenths (C); the arp playing the chords, snare rolls, crashes, bass
+motion, open hats, stereo (D); legato, cadences, approach notes, the drop gap, hat choke, a
+room (E); band-limited filtered voices, unison, echo, a tuned kick, bar-2 motif, part balance
+(F). Each has a before / after on the 24-track matrix and a test that proves the "before" was
+wrong. **None has been heard by a person.** The notes say so at every level that was set
+("by measurement, not by ear"). Two things decide the order below: the ear comes first (6.1),
+and the biggest remaining gaps — form, harmony, the chill family's beat — are things a
+binding-rewriting pass cannot reach, because they need other section lengths, a slotted pad
+and other role tables: beats' generator (6.2, 6.3, 6.5 each have a beats half).
+
+How the pass and the generator divide the work, so each stage knows where it lives:
+
+| Where | What it may change | CID | Used for |
+|---|---|---|---|
+| `DJMusicality` pass (`PreparedTrack.played`) | bindings and initial markings of the composed nets; never places / transitions / arcs | unchanged | wrong notes, timing, register, dynamics, voicing, drum gestures on the fill chains |
+| runner, `WaveOptions.extended` | how a binding sounds: voices, lanes, sends, stereo, levels, gaps | unchanged | sound design, mix, section-edge gestures |
+| beats' generator, a new `cohesion` / `structure` value | nets, section lengths, role tables, the chord plan | **new** (an old share plays as it did) | form, harmony per section, roles per section |
+| `compose-experiments` techniques (`TrackSpec.extra` → `traits`) | compose-time notes, stored in the envelope | new | A/B by ear only; not a product path (6.0 decides each) |
+
+### 6.0 Land parts A–F **(done: merged on main)**
+
+- Run part F's listen checklist on `val/run-1b7960bf` (`make run-app-release`; `djctl render
+  <g> 42 --out`), write the first [listening log](#61-listen-then-measure) entries, then merge
+  to `main` and **push**. 47 signed commits on one laptop disk is the risk; the fixes are all
+  behind `WaveOptions.extended` and every parity fixture is green, so `main` can take them.
+- Commit or drop the uncommitted `Deck.tempoMatch` refactor and `Session/SessionMix.swift`.
+- Decide each `compose-experiments` technique: `keyLock` is `.key`; `chordSnap` is what
+  cohesion v2 + `.contour` / `.cadence` already do; `hook` and `layerBudget` are real ideas and
+  move into the pass as 6.4 and 6.2 items (notes unchanged → CID unchanged). The branch stays as
+  the A/B lab (`--options`, `--mute` / `--solo` stems are worth keeping on `djctl render`).
+- Open the beats issue / branch for GO-DIVERGENCE §5 item 4 — drift, fills, tension key, the
+  chill-family table, the arp built from the motif — as `cohesion: "v3"` so published v2 shares
+  keep their sound. The audit's M1 / M2 / M5 are the JS tests that would have caught all of them.
+- Exit: `main` plays part F; `docs/musicality-notes.md` has a "heard" column for parts A–F.
+
+### 6.1 Listen, then measure **(next, with 6.0)**
+
+Everything so far is a number. This stage puts a person in the loop and gives the numbers their
+targets.
+
+- **A fixed listening panel.** `make listen` renders 12 genres × seed 42 (plus the seeds the log
+  names), 90 s each, `--fixes all` and the previous part, to named WAVs in `.build/listen/`
+  (never committed), plus a stem set (`--solo`) per genre. A short script plays A / B blind and
+  records the pick — the matrix compares runs; this compares the two things a person can hold
+  in their head.
+- **A listening log** (`docs/listening-log.md`): one line per (genre, seed, build): a verdict in
+  three words — *track*, *loop*, *broken* — then the first thing wrong, in the audit's
+  dimensions (form, harmony, melody, groove, arrangement, sound, mix), and on which device
+  (monitors, headphones, phone). The log's top complaints rank 6.2–6.6; a stage that fixes
+  nothing the log names is dropped.
+- **References, not rules of thumb.** Three to five tracks per family Matt actually plays, as
+  local files (`$DJ_REFERENCES`, never committed, never published): run them through the same
+  tooling — integrated LUFS, LRA, true peak, long-term spectrum and slope, side / mid, section
+  lengths from beat tracking — and write the per-family bands into `Resources/beats/targets.json`
+  with the measurement they came from. `Loudness.targetDB`, `MixBalance.targetDB`,
+  `SpaceSpec.forGenre` levels, `stereoPlacement` widths and the hat level all become table
+  entries that name their reference instead of a number in a Swift file.
+- **A nightly trend, not a gate**: the audit's M8 — Yang & Lerch pitch-class / inter-onset /
+  note-length overlap of the matrix against the previous build and against the references'
+  MIDI (Basic Pitch on the stems). It is a regression alarm; it never decides a merge.
+- Exit: every catalogue genre has a log entry at seed 42 with a verdict and a first complaint;
+  the reference table exists and at least the loudness, width and spectral-slope targets name
+  it.
+
+### 6.2 Form a DJ can mix
+
+Audit rank 1 and still the largest gap: `standard` sections are 4 or 12 bars, intros and
+outros 4 bars, songs ~110 s. `.phrases` splits a 12-bar section 4 + 4 + 2 + 2 so phrase changes
+land on 2 / 4-bar lines, but the section is still 12 bars and the song still ends before a DJ
+could mix out of it.
+
+- **beats half** — a `structure: "dj"` (or an extended family) in beats' structure tables:
+  intro / outro 16–32 bars, drums-forward and mixable (kick, hats, bass; no lead); buildup
+  8–16; drop / chorus 16–32; breakdown 8–16; phrases 4 or 8 bars, so A-B-A-B is 4 × 4 or 4 × 8;
+  songs 4–6 min. Distil P(next section) and P(length | section) per family from the Harmonix
+  Set (912 annotated pop / EDM tracks) and check the tables in like `tables.json`, hash in the
+  version. Ships as `cohesion: "v3"` with the 6.0 bug fixes.
+- **dj half** — the pass keeps the grid (`.timing`, `.phrases` already hold any section
+  length); `layerBudget` from `compose-experiments` becomes a pass stage (at most N melodic
+  roles per section, by muting slots in the control nets: intro 1, drop 3, breakdown 1 …);
+  `.dropGap` grows a song-family form — a band stop (everything but the lead) before a chorus
+  — and the buildup gets the audit's remaining gestures: a noise riser on a stinger lane and the
+  kick out for the last bar, not only the last beat.
+- **Performable form.** Matt's live decks were endless loops (audit §1); sections exist but a
+  set is mixed from loops. Add to the deck a *mix-in / mix-out* control: on `section next` into
+  an outro the deck plays the drums-forward tail for 16 bars and stops on a bar line; `sync`
+  already aligns bars. This is what makes 6.2's intros and outros a DJ tool rather than a longer
+  song.
+- Exit: M1 — every structure event at `tick % 64 == 0`, phrases 4 or 8 bars, intro and outro
+  ≥ 16 bars in the dance families; songs 4–6 min; the log says *mixable* for techno, house,
+  trance and edm at seed 42.
+
+### 6.3 Harmony that goes somewhere
+
+Audit rank 5; "section harmony and cadences" has been the open item at the end of parts C, D
+and E. One 4-chord loop at one chord per bar plays for the whole song; the pad is a single
+unslotted ring, so the bridge and solo melody (`harmonic` +5 / +4) move away from a pad that
+does not.
+
+- **dj first, cheap**: a per-section harmony plan applied where `EnergyCurve` already knows
+  the section edges — the runner transposes the pad / bass / arp lanes by a per-section
+  interval table (bridge +5, solo +4, breakdown to the relative minor / major), so the parts
+  move together and the melody's offsets stop fighting the pad. A pass-level cadence: the
+  pad's chord at bar 4 / 8 of a phrase resolves (V → I, ♭VII → i in minor dance genres) by
+  rebinding that bar's pad steps; `.voicing` then re-voices it. Harmonic rhythm per section —
+  2 bars per chord in intros / breakdowns, 1 in drops, 2 per bar into a chorus — by rebinding
+  the pad ring (the ring is 64 steps; the plan repeats within it).
+- **beats half**: the pad becomes slotted (`harmony-N`) so a section can carry its own
+  progression; progressions drawn per family from a chord-transition table (McGill Billboard,
+  CC0; RS200, CC BY) with the cadence as a Markov constraint at bar 4 / 8; 7ths and 9ths per
+  genre at compose time (`.color` already adds the seventh after the fact). `cohesion: "v3"`.
+- Exit: ≥ 2 distinct progressions in song-form genres; a cadence at every phrase end
+  (`phraseEndsOnChordTones` extended to the pad: *harmonic* phrase ends); pad motion per change
+  stays ≤ 4 semitones (`padMotion`); semitone rubs do not rise; the log stops naming *harmony*
+  first for jazz, lofi, house and trance.
+
+### 6.4 A hook, and an answer
+
+Melody is one 4-bar cell; `.motif` makes bar 2 restate bar 1, `.cadence` closes phrases,
+`.contour` stops the hammering. Still missing: anything at 8 bars, a hook that survives the
+section change, and a step-dominated interval profile.
+
+- **Question and answer across 8 bars**: rings repeat every 4 bars, so bars 5–8 cannot answer
+  bars 1–4 without new slot topology. Runner-side first: alternate cycles of a melody ring play
+  transposed to the dominant / a step up and end open, then the home cycle closes (the same
+  mechanism as 6.3's per-section transposition, per cycle). A pass-side version later, if beats
+  v3 gives slots an 8-bar ring.
+- **The hook** (`compose-experiments`' best idea, as a pass stage): one 1–2 bar chord-tone hook
+  per track from (genre, seed), played in every melodic section, varied per section — Fragment
+  in intros / breakdowns, Transposed in buildups, Play in drops / choruses, Inverted in
+  bridges, Augmented in solos — by rebinding the melody ring's first bars; its notes snap to
+  each bar's chord so it survives the chord plan.
+- **Contour by corpus**: replace the uniform −2…+2 degree walk's result with a degree-bigram
+  table per family (RS200 melodies, CC BY) at the pass (rebinding passing tones toward the
+  table's likely next degree); reverse direction by step after a leap; aim the phrase's peak
+  near two-thirds of its length. Target the interval histogram at steps ≥ 0.45, repeats ≤ 0.3
+  (audit: 54 % repeats today).
+- **The other parts get a motif too**: the bass's bar 2 echoes bar 1's rhythm; arp patterns per
+  genre (trance up-down sixteenths, synthwave eighths with octave jumps, house off-beat stabs)
+  and an arp that follows the phrase's density curve rather than a fixed rate.
+- Exit: `melodyIdeaRepeats` stays 1.0 and a new `answerPhrases` (8-bar pairs whose second half
+  ends closed after an open first) ≥ 0.9 in song-form genres; repeats ≤ 0.3; in the log,
+  *hummable* for at least half the genres at seed 42.
+
+### 6.5 A beat in every genre, with a human drummer's hands
+
+- **The chill family's missing beat** (found in part F): lofi, jazz and bossa `standard` songs
+  never play a kick or snare, because the theme table activates them only in buildup / drop /
+  pre-chorus / solo. beats half: fix the table (verse / chorus unmute kick and snare: boom-bap
+  with swing for lofi, brushes for jazz, bossa clave). dj half, until then: the pass rewrites
+  those roles' control-net unmutes for the chill family.
+- **Groove templates**: per family, a 16-position table of (offset ms, velocity scale) per drum
+  voice distilled from the Groove MIDI Dataset / E-GMD (CC BY 4.0), checked in like
+  `tables.json` — how MPC and Ableton grooves work. Swing becomes a tempo-scaled ratio
+  (Friberg & Sundström; Linn's 54–66 %), not a fixed share of a sixteenth; `humanize` becomes
+  seeded 1/f noise keyed by `(seed, net, tick)` so a CID renders the same twice (this also
+  fixes the farm's `Math.random()` humanize once backported). Velocity, not microtiming, is
+  where the groove lives (Senn 2018; Davies 2013): keep the shifts to a few ms.
+- **Buildup gestures the fills chain can carry**: a resonance sweep — the voices' own filters
+  (`FilterEnvelope`) follow `EnergyCurve`'s opening lowpass through a buildup; snare density
+  doubling per 2 bars is `.buildup` already.
+- Exit: every catalogue genre at seed 42 has a kick and snare where its style has one
+  (`MusicalityReport.hasBeat` per section); M6 — distinct velocities per hat position > 1,
+  groove consistency 0.9–0.99, measured swing within 2 % of the family's table.
+
+### 6.6 Sound and a mix that translate
+
+Part F balanced the synth lanes and gave the voices filters. The sampled path — what the app
+plays by default — has none of it, and nothing has been checked on a second speaker.
+
+- **Sampled instruments inside the fixes**: per-slot `.balance` (the bank already renders slots
+  as groups for ducking and the room), an echo group, per-category stereo width (keys and pads
+  wide above 300 Hz, bass mono outright), and the loudness probe hearing the samplers (lofi /
+  jazz / bossa are ~2 LU hot when they load).
+- **Sound design, by ear from the log**: balance targets per family (jazz and lofi want bass
+  and keys forward and hats down; the dance targets are one rule of thumb); a sub-octave sine
+  under dnb / dubstep basses; the filter envelope on the arp (a trance pluck); pad shimmer and
+  room level set from 6.1's references; narrower ambient pads (its low side is −26 dB).
+- **Mastering, allocation-free**: a true-peak ceiling at −1 dBTP (a lookahead limiter on the
+  deck's master, measured like every other runner stage), an integrated target per the
+  reference table (so two decks crossfade without a level jump: ≤ 2 LU across genres on both
+  paths), and a long-term spectral-slope check per family (falling, no 16 kHz bump; hats are
+  the usual offender).
+- **Translation test** in the log: each genre on monitors, headphones and a phone speaker;
+  fold to mono and nothing disappears (`StereoTests` holds the sum; only ears hold the rest).
+- Exit: M7 — LUFS spread ≤ 2 LU across genres, synth and sampled; true peak ≤ −1 dBTP; slope
+  inside the family's reference band; `balanceErrorDB` ≤ 2 dB on the sampled path; the log's
+  *mix* complaints gone for the dance genres.
+
+### 6.7 Live, shared and upstream
+
+- **The fixes under performance**: every pass / runner fix across section jumps (`trackEnergy`,
+  `trackBalance` are reused; check the rest), role mutes, macros, scratching and a swap; loop
+  (endless) decks and raw-`nets` share decks get the runner fixes (stereo, room, balance, voices)
+  and not the pass — say so in the deck state and SCOPES, or give them the pass's runner-only
+  subset explicitly.
+- **The first published set** (Phase 4.5 is still unused): a 10-minute two-deck set with part F
+  or later, published to cdn.stackdump.com, listened to outside the app. The CDN copy is the
+  "does it hold up elsewhere" check.
+- **Upstream**: beats' `cohesion: "v3"` PR with the 6.0 bug fixes and the 6.2 / 6.3 / 6.5
+  tables; M1 / M2 / M5 as JS tests in beats; the fixture set regenerated at the new beats commit
+  and the matching GO-DIVERGENCE §5 entries dropped. `cohesion: "v2"` stays byte-identical for
+  every published share.
+- Exit: one set on the CDN; beats v3 merged or open with the three bug fixes; the pass's
+  `Fixes.all` and `WaveOptions.extended` documented as the product path in README's "Where we
+  are".
+
+### Order
+
+6.0 and 6.1 first and together — nothing else merges without a log entry. Then 6.2 and 6.5's
+beats halves start (they are one `cohesion: "v3"` branch in beats with a table each) while
+6.3's and 6.4's dj halves land here, since those are pass and runner work the matrix already
+measures. 6.6 runs throughout, driven by the log. 6.7 closes the phase. Every stage ships one
+flag at a time, matrix before / after, "before was wrong" test, release allocation count,
+listen checklist, log entry — the part A–F discipline, plus the ear.
+
 ## Standing rules
 
 - Profiles and layouts are data (`Sources/DJCore/Resources/profiles`), one
@@ -473,6 +708,13 @@ display is the check that layout (sizes, spacing, the 3-way deck column) looks r
 - Where dj and beats' JS differ by design (decided 2026-10-12), dj keeps its behaviour and the
   improvement is backported to beats; the list is GO-DIVERGENCE.md §5. Fixtures still hold
   every other path to the JS.
+- A musicality change is a `DJMusicality.Fixes` flag (or a `WaveOptions.extended` setting),
+  off on the parity path, with a before / after on the matrix, a test that shows the "before"
+  was wrong, and a release-build allocation count if it touches the runner. **Measured, then
+  heard**: from 6.1 on it also needs a listening-log entry before it merges — the numbers say a
+  fix did what it set out to; only ears say it sounds better.
+- Targets come from references, not rules of thumb: a level, width, length or spectral target
+  written into code names the reference measurement it came from (6.1).
 
 ## Verification notes (2026-10-08)
 
