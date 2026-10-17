@@ -62,7 +62,7 @@
     "trance-lead": "synth.lead", "tape-lead": "synth.lead", "detuned-saw": "synth.lead",
     "duo-lead": "synth.lead", "scream-lead": "synth.lead", "screech": "synth.lead",
     "hoover": "synth.lead", "wobble-lead": "synth.lead", "distorted-lead": "synth.lead",
-    "chiptune": "synth.lead", "laser": "synth.lead",
+    "chiptune": "synth.lead",
     "pluck": "synth.pluck", "bright-pluck": "synth.pluck", "muted-pluck": "synth.pluck",
     "edm-pluck": "synth.pluck", "edm-stab": "synth.stab", "rave-stab": "synth.stab",
     "sitar": "ethnic"

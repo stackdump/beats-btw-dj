@@ -165,15 +165,28 @@ public final class VoiceCatalog: @unchecked Sendable {
   ///
   /// A `keepSynth` category offers its synth voice as one of the picks only beside installed
   /// sounds; with none (no distorted guitar ships with Logic) a SoundFont program comes first.
-  public func sources(instrument: String, role: String, seed: Double) -> [SamplerSource]? {
+  ///
+  /// `picked`: the user chose this instrument (a share `tracks` override). Then the pick follows
+  /// the name — a sound whose name has one of the instrument's words first (`wobble-lead` → a
+  /// wobble patch, `chiptune` → a bitrate synth), else the seeded pick with the name in the
+  /// hash — so changing between instruments of one category changes the sound. Without it
+  /// (what the composer chose) the pick is the category's, as before: tracks keep their sound.
+  public func sources(instrument: String, role: String, seed: Double, picked: Bool = false)
+    -> [SamplerSource]?
+  {
     guard let category = categoryOf[instrument] else { return nil }
-    let pool = pool(category)
+    var pool = pool(category)
     let synth = keepSynth.contains(category)
+    if picked, let i = pool.firstIndex(where: { Self.matches($0.name, instrument) }) {
+      pool.insert(pool.remove(at: i), at: 0)
+      return pool.flatMap(\.sources)
+    }
     let offersSynth = synth && !pool.isEmpty
     let count = pool.count + (offersSynth ? 1 : 0)
     var ordered: [SamplerSource] = []
     if count > 0 {
-      let pick = Int(Self.stableHash("\(seed)|\(role)|\(category)") % UInt64(count))
+      let key = picked ? "\(seed)|\(role)|\(category)|\(instrument)" : "\(seed)|\(role)|\(category)"
+      let pick = Int(Self.stableHash(key) % UInt64(count))
       if offersSynth && pick == pool.count { return nil }
       for k in 0..<pool.count { ordered += pool[(pick + k) % pool.count].sources }
     }
@@ -193,5 +206,29 @@ public final class VoiceCatalog: @unchecked Sendable {
       h = h &* 0x100_0000_01b3
     }
     return h
+  }
+}
+
+extension VoiceCatalog {
+  /// Words in a sound's name that stand for an instrument, beyond the instrument's own words
+  /// ("chiptune" sounds are named "Bitrate", "8-Bit"…).
+  static let nameWords: [String: [String]] = [
+    "chiptune": ["bitrate", "8-bit", "8 bit", "chip"], "tape-lead": ["tape", "vhs"],
+    "talkbox": ["talk", "vocoder"], "screech": ["screech", "scream"],
+    "scream-lead": ["scream", "screech"], "supersaw": ["supersaw", "super saw"],
+    "detuned-saw": ["detune"], "pwm-lead": ["pwm", "pulse"], "sync-lead": ["sync"],
+    "trance-lead": ["trance"], "hoover": ["hoover"], "wobble-lead": ["wobble"],
+    "music-box": ["music box"], "steel-drum": ["steel"],
+    "electric-piano": ["electric piano", "rhodes", "wurli"],
+    "glass-pad": ["glass"], "dark-pad": ["dark"], "warm-pad": ["warm"], "am-pad": ["am "],
+  ]
+  /// Generic words that say nothing about which sound fits.
+  static let vagueWords: Set<String> = ["lead", "pad", "synth", "saw", "am", "fm", "big", "duo"]
+
+  /// Does a sound's name fit the instrument (one of its words, or of `nameWords`)?
+  static func matches(_ sound: String, _ instrument: String) -> Bool {
+    let name = sound.lowercased()
+    let own = instrument.split(separator: "-").map(String.init).filter { !vagueWords.contains($0) }
+    return (own + (nameWords[instrument] ?? [])).contains { name.contains($0) }
   }
 }

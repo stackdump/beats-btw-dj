@@ -126,6 +126,10 @@ public struct Track {
   public var channel = 1
   public var defaultVelocity = 100
   public var instrument = ""
+  /// The instrument was chosen by the user (a share `tracks` override), not the composer: its
+  /// sampled sound is picked by the name (`VoiceCatalog.sources(picked:)`). dj-only, never
+  /// encoded: the project's canonical text and CID are beats'.
+  public var picked = false
   public var instrumentSet: [JSONValue] = []
   public var mix: JSONValue?
   public var group: String?

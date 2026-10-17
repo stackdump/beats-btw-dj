@@ -1,13 +1,355 @@
 {
-  "comment": "Per-instrument synth voices for the app (InstrumentTable). Each entry overlays the instrument's wave-engine family voice. Engine params are beats' Tone.js presets (public/audio/tone-engine.js); level is calibrated by InstrumentTableTests to sit with the family voices. Sampled instruments are chosen separately, by category (categories.json, VoiceCatalog).",
-  "instruments": {
-    "acoustic-guitar": {"engine": "pluck", "attackNoise": 2, "dampening": 3000, "resonance": 0.96, "lowpass": 4000, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.709},
-    "bright-pluck": {"engine": "pluck", "attackNoise": 2, "dampening": 8000, "resonance": 0.95, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.473},
-    "distorted-guitar": {"engine": "pluck", "attackNoise": 4, "dampening": 6000, "resonance": 0.99, "lowpass": 5000, "distortion": 0.8, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.265},
-    "electric-guitar": {"engine": "pluck", "attackNoise": 3, "dampening": 5000, "resonance": 0.98, "lowpass": 6000, "distortion": 0.3, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.43},
-    "harpsichord": {"engine": "pluck", "attackNoise": 4, "dampening": 1500, "resonance": 0.85, "lowpass": 6000, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.732},
-    "muted-pluck": {"engine": "pluck", "attackNoise": 0.5, "dampening": 2000, "resonance": 0.7, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 1.509},
-    "pluck": {"engine": "pluck", "attackNoise": 1, "dampening": 4000, "resonance": 0.9, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.89},
-    "sitar": {"engine": "pluck", "attackNoise": 3, "dampening": 3000, "resonance": 0.98, "vibratoRate": 6, "vibratoDepth": 0.019, "attack": 0.001, "decayScale": 8, "maxDecay": 4, "level": 0.456}
+ "comment": "Per-instrument synth voices for the app (InstrumentTable). Each entry overlays the instrument's wave-engine family voice. Engine params are beats' Tone.js presets (public/audio/tone-engine.js); level is calibrated by InstrumentTableTests to sit with the family voices. Sampled instruments are chosen separately, by category (categories.json, VoiceCatalog).",
+ "instruments": {
+  "acoustic-guitar": {
+   "engine": "pluck",
+   "attackNoise": 2,
+   "dampening": 3000,
+   "resonance": 0.96,
+   "lowpass": 4000,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.709
+  },
+  "bright-pluck": {
+   "engine": "pluck",
+   "attackNoise": 2,
+   "dampening": 8000,
+   "resonance": 0.95,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.473
+  },
+  "distorted-guitar": {
+   "engine": "pluck",
+   "attackNoise": 4,
+   "dampening": 6000,
+   "resonance": 0.99,
+   "lowpass": 5000,
+   "distortion": 0.8,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.265
+  },
+  "electric-guitar": {
+   "engine": "pluck",
+   "attackNoise": 3,
+   "dampening": 5000,
+   "resonance": 0.98,
+   "lowpass": 6000,
+   "distortion": 0.3,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.43
+  },
+  "harpsichord": {
+   "engine": "pluck",
+   "attackNoise": 4,
+   "dampening": 1500,
+   "resonance": 0.85,
+   "lowpass": 6000,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.732
+  },
+  "muted-pluck": {
+   "engine": "pluck",
+   "attackNoise": 0.5,
+   "dampening": 2000,
+   "resonance": 0.7,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 1.509
+  },
+  "pluck": {
+   "engine": "pluck",
+   "attackNoise": 1,
+   "dampening": 4000,
+   "resonance": 0.9,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.89
+  },
+  "sitar": {
+   "engine": "pluck",
+   "attackNoise": 3,
+   "dampening": 3000,
+   "resonance": 0.98,
+   "vibratoRate": 6,
+   "vibratoDepth": 0.019,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 4,
+   "level": 0.456
+  },
+  "laser": {
+   "wave": "saw",
+   "lowpass": 10000,
+   "attack": 0.001,
+   "decayScale": 8,
+   "maxDecay": 0.15,
+   "pitchFrom": 12.23,
+   "pitchTo": 0.4204,
+   "pitchTime": 0.4,
+   "level": 0.25
+  },
+  "hoover": {
+   "attack": 0.05,
+   "decayScale": 0.8,
+   "maxDecay": 2.5,
+   "level": 0.212
+  },
+  "screech": {
+   "distortion": 0.9,
+   "lowpass": 16000,
+   "attack": 0.001,
+   "decayScale": 1.0,
+   "maxDecay": 3,
+   "level": 0.184
+  },
+  "scream-lead": {
+   "distortion": 0.8,
+   "lowpass": 8000,
+   "attack": 0.003,
+   "decayScale": 1.0,
+   "maxDecay": 3,
+   "level": 0.187
+  },
+  "distorted-lead": {
+   "wave": "square",
+   "distortion": 0.6,
+   "lowpass": 4800,
+   "attack": 0.005,
+   "decayScale": 0.8,
+   "level": 0.182
+  },
+  "wobble-lead": {
+   "lowpass": 2400,
+   "attack": 0.01,
+   "decayScale": 0.8,
+   "level": 0.174
+  },
+  "talkbox": {
+   "lowpass": 1200,
+   "attack": 0.01,
+   "decayScale": 0.8,
+   "level": 0.174
+  },
+  "tape-lead": {
+   "lowpass": 3000,
+   "attack": 0.01,
+   "decayScale": 0.7,
+   "level": 0.189
+  },
+  "sync-lead": {
+   "wave": "square",
+   "lowpass": 6400,
+   "attack": 0.003,
+   "decayScale": 0.9,
+   "level": 0.101
+  },
+  "duo-lead": {
+   "vibratoRate": 5,
+   "vibratoDepth": 0.006,
+   "attack": 0.01,
+   "decayScale": 0.8,
+   "level": 0.176
+  },
+  "detuned-saw": {
+   "decayScale": 0.8,
+   "level": 0.172
+  },
+  "big-saw": {
+   "decayScale": 0.9,
+   "maxDecay": 2,
+   "level": 0.163
+  },
+  "trance-lead": {
+   "decayScale": 1.0,
+   "maxDecay": 2,
+   "attack": 0.005,
+   "level": 0.155
+  },
+  "lead": {
+   "attack": 0.01,
+   "decayScale": 1.0,
+   "level": 0.158
+  },
+  "chiptune": {
+   "lowpass": 16000,
+   "attack": 0.001,
+   "decayScale": 0.3,
+   "maxDecay": 0.3,
+   "level": 0.173
+  },
+  "pwm-lead": {
+   "attack": 0.02,
+   "decayScale": 0.8,
+   "maxDecay": 2,
+   "level": 0.115
+  },
+  "brass": {
+   "attack": 0.08,
+   "lowpass": 2400,
+   "decayScale": 0.8,
+   "level": 0.238
+  },
+  "trumpet": {
+   "attack": 0.04,
+   "lowpass": 2800,
+   "vibratoRate": 5,
+   "vibratoDepth": 0.006,
+   "level": 0.277
+  },
+  "sax": {
+   "wave": "square",
+   "attack": 0.05,
+   "lowpass": 3200,
+   "distortion": 0.08,
+   "vibratoRate": 5,
+   "vibratoDepth": 0.008,
+   "level": 0.338
+  },
+  "flute": {
+   "wave": "sine",
+   "attack": 0.08,
+   "lowpass": 4000,
+   "vibratoRate": 5.5,
+   "vibratoDepth": 0.01,
+   "level": 0.279
+  },
+  "clavinet": {
+   "attack": 0.003,
+   "decayScale": 0.25,
+   "maxDecay": 0.4,
+   "level": 0.195
+  },
+  "piano": {
+   "wave": "soft",
+   "attack": 0.005,
+   "decayScale": 0.6,
+   "maxDecay": 0.8,
+   "level": 0.18
+  },
+  "electric-piano": {
+   "wave": "sine",
+   "attack": 0.01,
+   "decayScale": 0.6,
+   "maxDecay": 0.6,
+   "level": 0.15
+  },
+  "edm-pluck": {
+   "lowpass": 8000,
+   "attack": 0.001,
+   "decayScale": 0.35,
+   "maxDecay": 0.05,
+   "level": 0.452
+  },
+  "edm-stab": {
+   "lowpass": 6000,
+   "distortion": 0.2,
+   "attack": 0.001,
+   "maxDecay": 0.04,
+   "level": 0.597
+  },
+  "rave-stab": {
+   "lowpass": 5000,
+   "attack": 0.003,
+   "maxDecay": 0.03,
+   "level": 0.647
+  },
+  "pad": {
+   "wave": "sine",
+   "attack": 0.15,
+   "level": 0.247
+  },
+  "warm-pad": {
+   "attack": 0.2,
+   "level": 0.411
+  },
+  "glass-pad": {
+   "wave": "sine",
+   "attack": 0.25,
+   "maxDecay": 3,
+   "level": 0.45
+  },
+  "dark-pad": {
+   "wave": "square",
+   "lowpass": 800,
+   "attack": 0.25,
+   "level": 0.372
+  },
+  "am-pad": {
+   "attack": 0.2,
+   "vibratoRate": 2,
+   "vibratoDepth": 0.003,
+   "level": 0.407
+  },
+  "strings": {
+   "wave": "saw",
+   "lowpass": 3000,
+   "attack": 0.15,
+   "decayScale": 0.9,
+   "level": 0.289
+  },
+  "choir": {
+   "vibratoRate": 4.5,
+   "vibratoDepth": 0.01,
+   "attack": 0.15,
+   "level": 0.291
+  },
+  "organ": {
+   "attack": 0.01,
+   "vibratoRate": 5,
+   "vibratoDepth": 0.006,
+   "decayScale": 1.0,
+   "level": 0.138
+  },
+  "rave-organ": {
+   "attack": 0.003,
+   "distortion": 0.15,
+   "decayScale": 0.6,
+   "level": 0.287
+  },
+  "marimba": {
+   "wave": "soft",
+   "maxDecay": 0.2,
+   "level": 0.199
+  },
+  "kalimba": {
+   "wave": "sine",
+   "maxDecay": 0.27,
+   "level": 0.139
+  },
+  "music-box": {
+   "maxDecay": 0.2,
+   "level": 0.193
+  },
+  "steel-drum": {
+   "wave": "soft",
+   "maxDecay": 0.27,
+   "vibratoRate": 0,
+   "lowpass": 6000,
+   "level": 0.171
+  },
+  "vibes": {
+   "wave": "sine",
+   "maxDecay": 0.6,
+   "vibratoRate": 3,
+   "vibratoDepth": 0.002,
+   "level": 0.101
+  },
+  "am-bell": {
+   "maxDecay": 0.5,
+   "lowpass": 5000,
+   "level": 0.129
   }
+ }
 }
