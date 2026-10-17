@@ -169,6 +169,10 @@ public enum DeckAction: Equatable, Sendable {
   case voiceTweak(deck: String, channel: Int, params: VoiceTweak)
   /// A sampled channel plays its synth voice (`on`) or the sample again (`Deck.setSynthVoice`).
   case voiceSynth(deck: String, channel: Int, on: Bool)
+  /// Play a net deck's drums on a sampled kit (`DrumKit.id`) or, nil, beats' synth kit
+  /// (`Deck.setKit`): the same song, swapped at the next bar; a `tracks` override, so it stars
+  /// and shares.
+  case setKit(deck: String, kit: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -426,6 +430,8 @@ extension DeckAction {
       return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
     case .voiceSynth(let deck, let channel, let on):
       return o("voiceSynth", [d(deck), ("channel", .int(channel)), ("on", .bool(on))])
+    case .setKit(let deck, let kit):
+      return o("setKit", [d(deck), ("kit", kit.map { .string($0) } ?? .null)])
     }
   }
 
@@ -501,6 +507,7 @@ extension DeckAction {
     case "voiceSynth":
       guard let ch = v["channel"]?.int else { return nil }
       self = .voiceSynth(deck: deck, channel: ch, on: v["on"]?.bool ?? false)
+    case "setKit": self = .setKit(deck: deck, kit: v["kit"]?.string)
     default: return nil
     }
   }

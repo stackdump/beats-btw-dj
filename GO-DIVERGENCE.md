@@ -130,6 +130,19 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
      seeded from the seed (`.variety`, `TrackVariety.swift`). In beats it would change what a
      seed composes, so a new cohesion version (`v3`) rather than an edit to v2.
 
+5. **Sampled drum kits** (dj option, off by default; `DrumKits`, `SamplerSource.kit`). beats'
+   drum lanes always play its synth kits (`_synthDrumKit` / `drumVoice`). A dj track may pick a
+   sound bank's kit instead — a GM percussion preset (bank 128) of an installed SoundFont or
+   Apple's `gs_instruments.dls`, or a melodic "kit" preset with fixed-pitch zones — as a
+   `tracks` override (`{"10": {"kit": "MuseScore_General.sf2#128:0"}, "11": …}` on every drum
+   channel; beats ignores the key, so the share still composes and plays there, on the synth
+   kit). The deck plays each drum kind on its GM key (kick 36, snare 38, clap 39, closed hat
+   42, open hat 46, crash 49) through its `SamplerBank`, the kit level-matched on load to the
+   synth kit (`kitTargetRMSdB`) and moved by `.balance`'s kick trim. The parity path
+   (`WaveOptions()`: no bank, no instrument table) never samples drums, so the fixtures and
+   `compose()` are unchanged. For beats: a kit choice would be a share-payload change, so only
+   if beats wants sampled kits at all, and then with banks it may redistribute.
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX
   sub-macros), so it is just octave-down for a bar.

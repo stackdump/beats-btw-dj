@@ -128,7 +128,7 @@ struct GuitarVoicingTests {
         "\(path) is not in \(category)")
     case .sf2(_, let program):
       #expect(catalog.gm[category]?.contains(program) == true, "\(source) is not in \(category)")
-    case .gm:
+    case .gm, .kit:
       Issue.record("\(category) fell back to \(source)")
       return
     }

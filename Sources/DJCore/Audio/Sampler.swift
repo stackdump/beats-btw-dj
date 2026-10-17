@@ -12,14 +12,21 @@ public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
   /// A General MIDI program (0-based) from macOS's own gs_instruments.dls.
   case gm(Int)
   /// A General MIDI program (0-based) from a SoundFont bank (absolute path to the .sf2),
-  /// melodic bank (MSB 0x79). Drum kits (0x78) are never sampled: beats' kits play as is.
+  /// melodic bank (MSB 0x79).
   case sf2(String, program: Int)
+  /// A drum kit from a sound bank (.sf2 or .dls, absolute path) for a net's drum lanes
+  /// (`DrumKits`): `bank` 128 is the percussion bank (MSB 0x78, GM kits), any other a melodic
+  /// bank whose preset maps fixed-pitch drum zones onto the GM keys (a "kit" preset). Played
+  /// only when a track picks it (`Track.kit`); beats' synth kits are the default.
+  case kit(String, bank: Int, program: Int)
 
   public var description: String {
     switch self {
     case .exs(let p): return "exs:" + ((p as NSString).lastPathComponent as String)
     case .gm(let n): return "gm:\(n)"
     case .sf2(let p, let n): return "sf2:" + ((p as NSString).lastPathComponent as String) + "#\(n)"
+    case .kit(let p, let b, let n):
+      return "kit:" + ((p as NSString).lastPathComponent as String) + "#\(b):\(n)"
     }
   }
 
@@ -40,9 +47,16 @@ public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
     return .exs(name)
   }
 
+  /// A drum kit (`kit`), level-checked as one (`SamplerInstrument.normalizeKit`).
+  public var isKit: Bool {
+    if case .kit = self { return true }
+    return false
+  }
+
   public var isAvailable: Bool {
     switch self {
-    case .exs(let p), .sf2(let p, _): return FileManager.default.fileExists(atPath: p)
+    case .exs(let p), .sf2(let p, _), .kit(let p, _, _):
+      return FileManager.default.fileExists(atPath: p)
     case .gm: return FileManager.default.fileExists(atPath: Self.gmBank.path)
     }
   }
@@ -58,11 +72,16 @@ public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
   /// The floor under every category: General MIDI from a free, complete bank.
   public static let floorSoundFont = "MuseScore_General.sf2"
 
+  /// Banks in the SoundFont folder that are not General MIDI and so never join a category's
+  /// `gm` programs: they are played only by name (`minecraft-local.sf2`: the Minecraft
+  /// palette's own programs and kit, built on this Mac from the user's game assets).
+  public static let localOnlyBanks: Set<String> = ["minecraft-local.sf2"]
+
   /// The .sf2 banks in `dir`, in the order voicing tries them: any others by name, then
   /// `floorSoundFont` last (the floor).
   public static func soundFonts(in dir: String = soundFontDir) -> [String] {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-    return names.filter { $0.lowercased().hasSuffix(".sf2") }
+    return names.filter { $0.lowercased().hasSuffix(".sf2") && !localOnlyBanks.contains($0) }
       .sorted { ($0 == floorSoundFont ? 1 : 0, $0) < ($1 == floorSoundFont ? 1 : 0, $1) }
       .map { (dir as NSString).appendingPathComponent($0) }
   }
@@ -122,6 +141,13 @@ public final class SamplerInstrument: @unchecked Sendable {
       try unit.loadSoundBankInstrument(
         at: URL(fileURLWithPath: path), program: UInt8(clamping: program),
         bankMSB: UInt8(kAUSampler_DefaultMelodicBankMSB), bankLSB: UInt8(kAUSampler_DefaultBankLSB))
+    case .kit(let path, let bank, let program):
+      let percussion = bank >= 128
+      try unit.loadSoundBankInstrument(
+        at: URL(fileURLWithPath: path), program: UInt8(clamping: program),
+        bankMSB: UInt8(
+          percussion ? kAUSampler_DefaultPercussionBankMSB : kAUSampler_DefaultMelodicBankMSB),
+        bankLSB: UInt8(clamping: percussion ? 0 : bank))
     }
     au = unit.auAudioUnit
     let fmt = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
@@ -220,6 +246,68 @@ public final class SamplerInstrument: @unchecked Sendable {
     timestamp.mSampleTime = 0
     lastCheck = (rms, pitch.cents, pitch.level > 0)
     return rms > Self.silentRMSdB && pitch.level > 0 && abs(pitch.cents) <= Self.maxDetuneCents
+  }
+
+  /// The phrase a drum kit is measured on: a bar at 120 BPM of four-on-the-floor kick,
+  /// sixteenth hats and a backbeat snare, on the GM keys the drum lanes play
+  /// (`DrumKits.gmNote`).
+  static let kitPhrase: [(note: Int, at: Double, seconds: Double)] = (0..<16).flatMap {
+    i -> [(note: Int, at: Double, seconds: Double)] in
+    let at = Double(i) * 0.125
+    var hits: [(note: Int, at: Double, seconds: Double)] = [(42, at, 0.1)]
+    if i % 4 == 0 { hits.append((36, at, 0.3)) }
+    if i % 8 == 4 { hits.append((38, at, 0.3)) }
+    return hits
+  }
+  /// RMS of beats' synth kit ("drums") on `kitPhrase` at velocity 100 (measured:
+  /// `SampledKitTests.theSynthKitSetsTheKitTarget`): what a sampled kit is brought to, so a
+  /// sampled kit sits in the mix where the synth kit did.
+  public static let kitTargetRMSdB = -15.0
+  /// The kit voices that must sound for a kit to play: kick, snare, closed hat.
+  static let kitVoices = [36, 38, 42]
+
+  /// `normalize` for a drum kit: level-matched on `kitPhrase` to `kitTargetRMSdB`, and turned
+  /// away if its kick, snare or closed hat is silent. No tuning check (drums are unpitched).
+  @discardableResult
+  func normalizeKit(sampleRate sr: Double) -> Bool {
+    gain = 1
+    let rms = phraseRMS(Self.kitPhrase, seconds: 2.25, sampleRate: sr)
+    var quietest = 0.0
+    for note in Self.kitVoices {
+      let r = phraseRMS([(note, 0, 0.3)], seconds: 0.3, sampleRate: sr)
+      quietest = min(quietest, r)
+    }
+    gain = min(20, max(0.02, pow(10, (Self.kitTargetRMSdB - rms) / 20)))
+    lastCheck = (min(rms, quietest), 0, quietest > Self.silentRMSdB)
+    return rms > Self.silentRMSdB && quietest > Self.silentRMSdB
+  }
+
+  /// RMS (dB) of `phrase` played at velocity 100 over `seconds`, then silenced and reset.
+  private func phraseRMS(
+    _ phrase: [(note: Int, at: Double, seconds: Double)], seconds: Double, sampleRate sr: Double
+  ) -> Double {
+    let total = Int(seconds * sr)
+    let block = 512
+    var buf = [Float](repeating: 0, count: block)
+    var sum = 0.0
+    var t = 0
+    let ons = phrase.map { Int(($0.at * sr).rounded()) }
+    let offs = phrase.map { Int((($0.at + $0.seconds) * sr).rounded()) }
+    while t < total {
+      let n = min(block, total - t)
+      for (k, p) in phrase.enumerated() {
+        if offs[k] >= t && offs[k] < t + n { send(0x80, UInt8(p.note), 0, at: offs[k] - t) }
+        if ons[k] >= t && ons[k] < t + n { send(0x90, UInt8(p.note), 100, at: ons[k] - t) }
+      }
+      for i in 0..<n { buf[i] = 0 }
+      buf.withUnsafeMutableBufferPointer { renderAdding(frames: n, $0.baseAddress!, nil) }
+      for i in 0..<n { sum += Double(buf[i]) * Double(buf[i]) }
+      t += n
+    }
+    send(0xB0, 123, 0, at: 0)
+    au.reset()
+    timestamp.mSampleTime = 0
+    return 10 * log10(max(sum / Double(max(1, total)), 1e-20))
   }
 
   deinit {
@@ -351,7 +439,15 @@ public final class SamplerBank: @unchecked Sendable {
         failures[s] = "load failed: \(loadError.map { Self.describe($0) } ?? "unknown")"
         continue
       }
-      guard inst.normalize(sampleRate: sampleRate) else {
+      if s.isKit {
+        guard inst.normalizeKit(sampleRate: sampleRate) else {
+          unloadable.insert(s)
+          failures[s] = String(
+            format: "a kit without a kick, snare or hat (quietest %.1f dB)",
+            inst.lastCheck?.rmsDB ?? -200)
+          continue
+        }
+      } else if !inst.normalize(sampleRate: sampleRate) {
         unloadable.insert(s)  // silent or out of tune: never published
         let c = inst.lastCheck
         let rms = c.map { String(format: "%.1f", $0.rmsDB) } ?? "?"

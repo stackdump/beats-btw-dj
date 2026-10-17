@@ -504,7 +504,7 @@ case "ctl":
   }
 
 case "render":
-  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance]
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--kit ID]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
   // --room renders it a second time without the reverb and reports the room's return level;
@@ -540,6 +540,12 @@ case "render":
     }
     positional.removeSubrange(i...(i + 1))
   }
+  // --kit ID: the drums on a sampled kit (`DrumKits`, e.g. MuseScore_General.sf2#128:0)
+  var kit: String?
+  if let i = positional.firstIndex(of: "--kit"), positional.indices.contains(i + 1) {
+    kit = positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
   let synth = positional.contains("--synth")
   let room = positional.contains("--room")
   let balance = positional.contains("--balance")
@@ -550,7 +556,18 @@ case "render":
     )
     exit(2)
   }
-  let spec = TrackSpec(genre: positional[0], seed: seed, structure: structure)
+  var spec = TrackSpec(genre: positional[0], seed: seed, structure: structure)
+  if let kit {
+    guard DrumKits.source(for: kit) != nil else {
+      stderr("no kit \(kit); installed: " + DrumKits.installed.map(\.id).joined(separator: ", "))
+      exit(2)
+    }
+    if case .net(let s)? = DeckSourceDescriptor.net(spec).withKit(
+      kit, channels: spec.project().drumChannels)
+    {
+      spec = s
+    }
+  }
   let sr = 48_000.0
   var deckOpts = WaveOptions.extended
   deckOpts.musicality = fixes

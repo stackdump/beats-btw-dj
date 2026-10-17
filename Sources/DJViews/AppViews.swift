@@ -40,6 +40,8 @@ struct DeckState: Equatable {
   var channelVoices: [Int: ChannelVoice] = [:]
   /// The channels' voice settings this session (the sound panel), by channel.
   var voiceSettings: [Int: VoiceSetting] = [:]
+  /// The drum kit the net's drums play (`Deck.kit`), nil = beats' synth kit.
+  var kit: String?
   var quantize = "off"
   var scrubbing = false
   var pfl = false
@@ -410,6 +412,7 @@ public final class AppModel {
         for v in state.voices { state.channelVoices[v.channel] = d.channelVoice(v.channel) }
       }
       state.voiceSettings = d.mode == .net ? d.wave.voiceSettings : [:]
+      state.kit = d.kit
       if d.mode == .net {
         var spin = ringSpins[name] ?? RingSpin()
         spin.observe(advances: d.advances, at: now)

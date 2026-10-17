@@ -291,7 +291,7 @@ public final class Deck: JogClock {
   public private(set) var loaded: SampleBuffer?
   public private(set) var mode: DeckMode = .sample
   /// The project a net deck is playing (nil in sample mode).
-  public private(set) var netProject: Project?
+  public internal(set) var netProject: Project?
   /// The net's tempo before the pitch fader: the project's own BPM.
   public private(set) var netBaseBPM = 120.0
   /// What `generate` / `advanceToNext` last loaded.
