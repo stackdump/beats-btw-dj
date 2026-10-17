@@ -63,11 +63,13 @@ public final class ControllerRouter {
   ) -> RouteResult {
     if jogProfile.matches(portName: port), let e = jogProfile.parse(bytes) {
       dj.recorder?.record(midi: port, bytes)
+      dj.journal?.record(.midi(port: port, bytes: bytes))
       for a in jogAdapters { a.handle(e) }
       return .jog(e)
     }
     guard let s = surfaces[port] else { return .ignored }
     dj.recorder?.record(midi: port, bytes)
+    dj.journal?.record(.midi(port: port, bytes: bytes))
     guard let (e, outcome) = s.handle(bytes: bytes, now: now) else { return .undecoded }
     return .surface(e, outcome)
   }

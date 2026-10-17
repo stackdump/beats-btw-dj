@@ -169,6 +169,12 @@ public enum DeckAction: Equatable, Sendable {
   case voiceTweak(deck: String, channel: Int, params: VoiceTweak)
   /// A sampled channel plays its synth voice (`on`) or the sample again (`Deck.setSynthVoice`).
   case voiceSynth(deck: String, channel: Int, on: Bool)
+  /// Move a clip on the row to just before `before` (to the end if nil) (`DJEngine.moveClip`).
+  case clipMove(id: String, before: String?)
+  /// Lock an action (right-click ▸ Disable) or unlock it: a controller binding with this key does
+  /// nothing while locked (`DJEngine.lockedActions`, `SurfaceProfile.Binding.lockKey`). A poke,
+  /// because it changes what recorded MIDI does on replay.
+  case lock(key: String, on: Bool)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -426,6 +432,9 @@ extension DeckAction {
       return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
     case .voiceSynth(let deck, let channel, let on):
       return o("voiceSynth", [d(deck), ("channel", .int(channel)), ("on", .bool(on))])
+    case .clipMove(let id, let before):
+      return o("clipMove", [("id", .string(id)), ("before", before.map { .string($0) } ?? .null)])
+    case .lock(let key, let on): return o("lock", [("key", .string(key)), ("on", .bool(on))])
     }
   }
 
@@ -501,6 +510,12 @@ extension DeckAction {
     case "voiceSynth":
       guard let ch = v["channel"]?.int else { return nil }
       self = .voiceSynth(deck: deck, channel: ch, on: v["on"]?.bool ?? false)
+    case "clipMove":
+      guard let id = v["id"]?.string else { return nil }
+      self = .clipMove(id: id, before: v["before"]?.string)
+    case "lock":
+      guard let key = v["key"]?.string else { return nil }
+      self = .lock(key: key, on: v["on"]?.bool ?? true)
     default: return nil
     }
   }
