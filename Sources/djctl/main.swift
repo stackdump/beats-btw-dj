@@ -559,7 +559,8 @@ case "render":
   trackOpts.musicality = fixes
   let track = PreparedTrack(spec: spec, sampleRate: sr, opts: trackOpts)
   let (log, controls) = NoteLog.captureAll(track.played)
-  let report = MusicalityReport(project: track.project, log: log, controls: controls)
+  // the played project: `.variety` moves the key, and the report reads it from the project
+  let report = MusicalityReport(project: track.played, log: log, controls: controls)
   if let notesOut {
     // one note per line: tick net group note velocity channel steps
     let lines = log.map {

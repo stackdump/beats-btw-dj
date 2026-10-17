@@ -121,6 +121,14 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
      buildup / drop / pre-chorus / solo, which their `standard` songs do not have: a lofi song
      is hats, bass, keys and no beat. Not fixed in dj yet (it needs the role control nets'
      unmutes rewritten); a table change in beats is the simple fix.
+   - every seed of a genre is the same backing track: the key, scale and tempo are the
+     genre's, cohesion v2's chord plan comes from one or two `chordProgs` per genre (techno has
+     one), the bass is the plan's roots on the genre's groove mask, the pad is the plan, and
+     the drums are seeded from the genre's name (`drumSeed(genreName)`, and
+     `"genre:role:letter"` per slot) — so only the melody and the instrument picks follow the
+     seed. dj moves each track to its own key, progression, bass figure and drum detail,
+     seeded from the seed (`.variety`, `TrackVariety.swift`). In beats it would change what a
+     seed composes, so a new cohesion version (`v3`) rather than an edit to v2.
 
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX

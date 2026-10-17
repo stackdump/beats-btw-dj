@@ -183,11 +183,20 @@ public enum DJMusicality {
     /// `MixBalance.targetDB`; `.loudness` then sets the track's level. Synth voices only.
     public static let balance = Fixes(rawValue: 1 << 31)
 
+    /// A track of its own per seed (`TrackVariety.swift`): beats draws only the melody from the
+    /// seed, so every seed of a genre had the same key, chords, bass and drums. Seeded from the
+    /// track's seed: a key offset (−5…+6 semitones, the root moving with it, so `.kickTune`
+    /// follows), a progression from `progressionTable` (pad and bass moved along the key, the
+    /// melody's beat notes snapped to the new chords), a bass figure (rhythm × line, the first
+    /// note of each bar still the root where the groove put it) and drum detail (ghost hats,
+    /// snares and kicks; hats thinned or moved an eighth).
+    public static let variety = Fixes(rawValue: 1 << 32)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
       .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space, .subtractive,
-      .unison, .echo, .kickTune, .motif, .balance,
+      .unison, .echo, .kickTune, .motif, .balance, .variety,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -200,7 +209,7 @@ public enum DJMusicality {
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
       "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo,
       "kickTune": .kickTune, "motif": .motif, "balance": .balance,
-      "none": [],
+      "variety": .variety, "none": [],
     ]
   }
 
@@ -211,11 +220,13 @@ public enum DJMusicality {
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
+    if fixes.contains(.variety) { varyHarmony(&p, genre: genre, spec: spec) }
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.bassLine) { leadBass(&p) }
+    if fixes.contains(.variety) { varyFigures(&p, genre: genre, spec: spec) }
     if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
-    if fixes.contains(.arpeggio) { arpeggiate(&p) }
+    if fixes.contains(.arpeggio) { arpeggiate(&p, seed: spec.seed) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.cadence) { resolvePhraseEnds(&p) }
@@ -362,7 +373,9 @@ public enum DJMusicality {
   /// bar around the cycle (the ring loops: the last bar leads back to the first), every note
   /// from E1 up to the bass part's highest note or A2 (`bassCeiling`), whichever is higher, and
   /// under the pad's lowest note. Ties keep the composed octave. (A bar `.register` left under
-  /// E1, where it is felt more than heard, comes up into the window.)
+  /// E1, where it is felt more than heard, comes up into the window.) Then a ring placed a
+  /// fifth or more from the rest of the part moves an octave toward it, so sections meet
+  /// without an octave jump.
   static func leadBass(_ p: inout Project) {
     guard var top = notes(p, group: "bass").max() else { return }
     top = max(top, bassCeiling)
@@ -428,6 +441,20 @@ public enum DJMusicality {
         guard s != 0 else { continue }
         for x in bars[b] { nb.bindings[x.key]?.note = x.note + s }
       }
+      p.nets[id] = nb
+    }
+    // Each ring is placed on its own, so a section's slot can land an octave from the others
+    // (a sparser C variant, say) and the bass jumps an octave where the sections meet: a ring
+    // whose median sits a fifth or more from the part's moves an octave toward it, where all
+    // its notes still fit.
+    guard let partMedian = median(notes(p, group: "bass")) else { return }
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], isBarRing(nb), part(nb) == "bass" else { continue }
+      let ring = ringNotes(nb)
+      guard let m = median(ring.map(\.note)), abs(m - partMedian) >= 7 else { continue }
+      let s = m > partMedian ? -12 : 12
+      guard ring.allSatisfy({ $0.note + s >= bassFloor && $0.note + s <= top }) else { continue }
+      for x in ring { nb.bindings[x.key]?.note = x.note + s }
       p.nets[id] = nb
     }
   }
@@ -1067,12 +1094,58 @@ public enum DJMusicality {
   /// chord twice, a step higher the third time, then back down to lead into the next bar.
   static let arpPattern = [0, 1, 2, 3, 1, 2, 3, 4, 2, 3, 4, 3, 2, 1, 2, 1]
 
+  /// An arp figure: which tone of a `span`-tone ladder each sixteenth plays, its first tone
+  /// (`start`, up the ladder), and whether it plays every sixteenth or every eighth.
+  struct ArpFigure: Hashable {
+    var shape: Int
+    var span: Int
+    var start: Int
+    var rate: Int
+
+    static let shapes = 6
+
+    /// The ladder index for sixteenth `s` (0…15).
+    func tone(_ s: Int) -> Int {
+      let i = s / rate
+      let n = span
+      let x: Int
+      switch shape {
+      case 1: x = n - 1 - i % n  // down
+      case 2:  // up and down
+        let period = max(1, 2 * n - 2)
+        let k = i % period
+        x = k < n ? k : period - k
+      case 3: x = (i / 2 + (i % 2) * 2) % n  // broken: 0 2 1 3 2 4 …
+      case 4: x = i % 2 == 0 ? 0 : 1 + (i / 2) % max(1, n - 1)  // pedal on the lowest tone
+      case 5: x = min(n - 1, arpPattern[s])  // beats' figure (dj's first `.arpeggio`)
+      default: x = i % n  // up
+      }
+      return (x + start) % n
+    }
+
+    /// The figure a slot of variant `variant` plays in a track of `seed`: drawn from the seed
+    /// and the variant's letter, so every A slot plays one figure and a B slot another. A C
+    /// variant (which beats composes sparser) plays eighths.
+    static func seeded(_ seed: Double, variant: String) -> ArpFigure {
+      let u = UInt32(bitPattern: jsToInt32(seed))
+      var rng = Mulberry32(seed: Int(Int32(bitPattern: u ^ hashStr("dj-arp/" + variant))))
+      let shape = rng.nextInt(shapes)
+      let span = 4 + rng.nextInt(3)
+      let start = rng.nextInt(span)
+      var rate = rng.nextInt(3) == 2 ? 2 : 1
+      if variant == "C" { rate = 2 }
+      return ArpFigure(shape: shape, span: span, start: start, rate: rate)
+    }
+  }
+
   /// Every arp ring whose length is a whole pad cycle is rewritten bar by bar: in a bar where
-  /// it had notes it now plays the bar's pad chord in `arpPattern`, every sixteenth (every
-  /// eighth in a C variant, which beats composes sparser), from the lowest chord tone at or
-  /// above the ring's median less a fourth, one step long, at the velocity it had. Bars it
-  /// left silent stay silent: the arrangement's phrasing is kept, the notes are the chord's.
-  static func arpeggiate(_ p: inout Project) {
+  /// it had notes it now plays the bar's pad chord as a ladder of `span` chord tones from the
+  /// lowest at or above the ring's median less a fourth, in the slot's `ArpFigure` (up, down,
+  /// up and down, broken, a pedal or beats-like, from a seeded first tone, every sixteenth or
+  /// eighth: seeded from the track's seed and the slot's variant), one step long, at the
+  /// velocity it had. Bars it left silent stay silent: the arrangement's phrasing is kept, the
+  /// notes are the chord's.
+  static func arpeggiate(_ p: inout Project, seed: Double) {
     let (chords, padBars) = padChords(p)
     guard padBars > 0 else { return }
     for id in p.nets.keys {
@@ -1087,24 +1160,24 @@ public enum DJMusicality {
         continue
       }
       let low = m - 5
-      let rate = nb.riffVariant == "C" ? 2 : 1
+      let figure = ArpFigure.seeded(seed, variant: nb.riffVariant)
       var bound = OrderedMap<MidiBinding>()
       for bar in 0..<(nb.transitions.count / 16) {
         let inBar = steps.filter { $0.step / 16 == bar }
         guard let chord = chords[bar % padBars], !chord.isEmpty,
           let velocity = inBar.map(\.binding.velocity).max()
         else { continue }
-        // the chord's tones from `low` up, five of them
+        // the chord's tones from `low` up, `span` of them
         var ladder: [Int] = []
         var n = low
-        while ladder.count < 5 && n < low + 48 {
+        while ladder.count < figure.span && n < low + 48 {
           if chord.contains(((n % 12) + 12) % 12) { ladder.append(n) }
           n += 1
         }
-        guard ladder.count == 5 else { continue }
-        for s in stride(from: 0, to: 16, by: rate) {
+        guard ladder.count == figure.span else { continue }
+        for s in stride(from: 0, to: 16, by: figure.rate) {
           var b = template
-          b.note = max(0, min(127, ladder[arpPattern[s]]))
+          b.note = max(0, min(127, ladder[figure.tone(s)]))
           b.velocity = velocity
           b.duration = 0
           b.durationSteps = 1
@@ -1218,8 +1291,8 @@ public enum DJMusicality {
 
   /// In each bass ring (not in the offbeat-bass dance genres, nor jazz), a bar of three notes
   /// or more whose next bar (round the cycle) starts on another pitch class ends on the scale
-  /// step next to that note, from below when the line comes up to it, from above when it comes
-  /// down. Only a last note in the second half of the bar, more than a whole tone from the
+  /// step next to that note, from below when the line comes up to it (unless that step is under
+  /// E1), from above when it comes down. Only a last note in the second half of the bar, more than a whole tone from the
   /// target, moves; the downbeats, and so the roots, stay.
   static func approachChordChanges(_ p: inout Project, genre: GenreDef) {
     guard genre.name != "jazz", !bassLockedToFourOnTheFloor(genre) else { return }
@@ -1235,8 +1308,10 @@ public enum DJMusicality {
         guard let target = bars[(b + 1) % count].first, let last = bars[b].last,
           pc(target.note) != pc(bars[b][0].note), last.step % 16 >= 8,
           abs(last.note - target.note) > 2,
-          let c = neighbour(target.note, up: last.note > target.note, key: key),
-          abs(c - target.note) <= 2, c >= bassFloor
+          let near = neighbour(target.note, up: last.note > target.note, key: key),
+          // from above where the step below would be under E1
+          let c = near >= bassFloor ? near : neighbour(target.note, up: true, key: key),
+          abs(c - target.note) <= 2
         else { continue }
         nb.bindings[last.key]?.note = c
       }
