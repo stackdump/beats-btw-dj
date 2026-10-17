@@ -174,6 +174,10 @@ final class Lane {
   var pluckA = 0.0
   var vibPhase = 0.0
   var vibInc = 0.0
+  // pitch envelope: each voice's current multiplier, its per-sample step, where it stops
+  var pmOn = false
+  var pm: [Double] = []
+  var pmMul = 1.0
   // sampled instrument: a slot in the deck's SamplerBank (-1 = synth voice); notes sound
   // there and this lane only keeps their note-offs (sample time, fixed capacity)
   var samplerSlot = -1
@@ -285,6 +289,18 @@ private func tonalLane(
     lane.pluckA = 1 - exp(-2 * Double.pi * min(voice.dampening, sr * 0.45) / sr)
   }
   lane.vibInc = voice.vibratoRate / sr
+  if voice.pitchTime > 0 && voice.pitchFrom != voice.pitchTo && !lane.isPluck {
+    lane.pmOn = true
+    lane.pm = [Double](repeating: 1, count: poly)
+    lane.pmMul = pow(voice.pitchTo / voice.pitchFrom, 1 / (voice.pitchTime * sr))
+    if voice.wave == "saw" || voice.wave == "square" {
+      // a swept note crosses octaves: band-limited tables, re-chosen as it falls
+      let t = MipTables.shared(voice.wave, sampleRate: sr)
+      lane.mip = t.samples
+      lane.mipTop = t.top
+      lane.mipBase = [Int](repeating: 0, count: poly)
+    }
+  }
   if voice.lowpass > 0 { lane.post = biquad(type: "lowpass", fc: voice.lowpass, q: 1, sr: sr) }
   lane.st[slotAttMul] = exp(-1 / (voice.attack * sr))
   if tables[voice.wave] == nil { tables[voice.wave] = buildTable(voice.wave) }
@@ -480,7 +496,7 @@ private func buildLanes(
             ?? tonalVoice(instrument: tr.instrument, group: tr.group)
           lane = tonalLane(
             voice, sr, tr.group == "harmony" ? 6 : 4, tables: &tables, seed: lanes.count)
-          bindSampler(lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts)
+          bindSampler(lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: tr.picked)
           if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
           if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
         } else {
@@ -581,10 +597,13 @@ private func buildLanes(
 /// role and one loads (off the audio thread: this may load an EXS from disk, or evict an
 /// unused one). The reference taken on the slot is the project's, given back in
 /// `WaveProject.deinit`.
-private func bindSampler(_ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions) {
+private func bindSampler(
+  _ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions, picked: Bool = false
+) {
   guard let bank = opts.samplers, opts.instruments != nil,
     let sources = VoiceCatalog.shared.sources(
-      instrument: instrument, role: role.isEmpty ? "melody" : role, seed: opts.voicingSeed),
+      instrument: instrument, role: role.isEmpty ? "melody" : role, seed: opts.voicingSeed,
+      picked: picked),
     let slot = bank.slot(for: sources)
   else { return }
   lane.samplerSlot = slot
@@ -1392,8 +1411,9 @@ public final class WaveRunner {
       let width = min(1, max(0, Double(note - 52) / 15))
       lane.voicePan[v] = lane.pan + lane.voiceSpread[v] * width
     }
+    if lane.pmOn { lane.pm[v] = lane.voice.pitchFrom }
     if !lane.mip.isEmpty {
-      let hz = lane.inc[v] * sampleRate
+      let hz = lane.inc[v] * sampleRate * (lane.pmOn ? lane.voice.pitchFrom : 1)
       var k = 0
       while k < lane.mipTop.count - 1 && lane.mipTop[k] < hz * 1.06 { k += 1 }
       lane.mipBase[v] = k * (waveTableSize + 1)
@@ -1575,7 +1595,21 @@ public final class WaveRunner {
         if spread { side += y * lane.voicePan[k] }
         continue
       }
-      let rate = lane.inc[k] * fmk * vib
+      var rate = lane.inc[k] * fmk * vib
+      if lane.pmOn {
+        let p = lane.pm[k]
+        rate *= p
+        let next = p * lane.pmMul
+        let to = lane.voice.pitchTo
+        lane.pm[k] = lane.pmMul < 1 ? (next < to ? to : next) : (next > to ? to : next)
+        if !lane.mip.isEmpty {
+          // falling: step down to the richest table that still fits under Nyquist
+          let hz = rate * sampleRate
+          var b = lane.mipBase[k] / (waveTableSize + 1)
+          while b > 0 && lane.mipTop[b - 1] >= hz * 1.06 { b -= 1 }
+          lane.mipBase[k] = b * (waveTableSize + 1)
+        }
+      }
       var osc: Double
       if lane.phase2.isEmpty {
         var ph = lane.phase[k] + rate

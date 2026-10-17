@@ -51,6 +51,12 @@ public struct VoiceSpec: Equatable {
   public var lowpass = 0.0
   /// Tone.Distortion amount after the lowpass (0 = off).
   public var distortion = 0.0
+  /// Per-note pitch envelope (laser zaps, Tone's frequency.exponentialRampToValueAtTime): the
+  /// note starts at `pitchFrom` × its frequency and glides exponentially to `pitchTo` ×
+  /// over `pitchTime` seconds, then holds. `pitchTime` 0 = off.
+  public var pitchFrom = 1.0
+  public var pitchTo = 1.0
+  public var pitchTime = 0.0
 
   public init(kind: String, carrier: String) {
     self.kind = kind

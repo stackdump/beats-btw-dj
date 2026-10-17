@@ -1,3 +1,4 @@
+import Darwin
 import Testing
 
 @testable import DJCore
@@ -15,6 +16,11 @@ struct InstrumentTableTests {
     (48, 0, 0.5), (52, 0.02, 0.5), (55, 0.04, 0.5), (60, 0.06, 0.5), (64, 0.5, 0.25),
     (67, 0.75, 0.25), (72, 1.0, 0.5),
   ]
+
+  /// Does the entry give the instrument a voice of its own (not just a sampler)?
+  func hasVoice(_ name: String) -> Bool {
+    table.voice(instrument: name, group: "melody") != tonalVoice(instrument: name, group: "melody")
+  }
 
   func render(_ name: String, _ notes: [(note: Int, at: Double, seconds: Double)], _ s: Double)
     -> [Float]
@@ -81,10 +87,56 @@ struct InstrumentTableTests {
       tonalVoice(instrument: "supersaw", group: "melody"), notes: Self.phrase, sampleRate: sr,
       seconds: 2)
     let ref = rmsDB(lead[...])
-    for name in plucked {
+    // every entry with a voice of its own, not just the strings: a new one must sit in the mix
+    for name in table.names where hasVoice(name) {
       let db = rmsDB(render(name, Self.phrase, 2)[...])
       #expect(abs(db - ref) < 3, "\(name) at \(db) dB vs lead \(ref) dB")
     }
+  }
+
+  /// The melody instruments that all fell into the default saw (beats' `tonalVoice`) now each
+  /// sound like themselves: none renders the same as the plain saw lead.
+  @Test func melodyLeadsNoLongerShareOneSaw() {
+    let saw = WaveRunner.audition(
+      tonalVoice(instrument: "supersaw", group: "melody"), notes: Self.phrase, sampleRate: sr,
+      seconds: 2)
+    let names = [
+      "flute", "trumpet", "sax", "brass", "sync-lead", "lead", "duo-lead", "detuned-saw",
+      "distorted-lead", "hoover", "wobble-lead", "screech", "big-saw", "trance-lead", "talkbox",
+      "tape-lead", "scream-lead", "laser",
+    ]
+    for name in names {
+      #expect(hasVoice(name), "\(name) has its own voice")
+      #expect(render(name, Self.phrase, 2) != saw, "\(name) is not the plain saw")
+    }
+  }
+
+  /// A laser is a zap: each note starts 12× high and dives exponentially to 0.42× over 0.4 s
+  /// (beats' stinger one-shot: 3200 → 110 Hz at C4), then dies. Pitch by zero crossings (two
+  /// per cycle of a saw): a bright sweep through kilohertz fools an autocorrelation by octaves.
+  @Test func laserZaps() {
+    let a = render("laser", [(60, 0, 0.5)], 0.5)
+    let voice = table.voice(instrument: "laser", group: "melody")
+    #expect(voice.pitchTime == 0.4 && voice.pitchFrom > voice.pitchTo)
+    func expected(_ t: Double) -> Double {
+      midiHz(60) * voice.pitchFrom * pow(voice.pitchTo / voice.pitchFrom, t / voice.pitchTime)
+    }
+    func measured(_ t: Double, _ span: Double) -> Double {
+      let lo = Int(t * sr)
+      let hi = Int((t + span) * sr)
+      var crossings = 0
+      for i in (lo + 1)..<hi where (a[i - 1] < 0) != (a[i] < 0) { crossings += 1 }
+      return Double(crossings) / 2 / span
+    }
+    var last = Double.infinity
+    for (t, span) in [(0.01, 0.01), (0.05, 0.02), (0.1, 0.03), (0.2, 0.05)] {
+      let f = measured(t, span)
+      let want = expected(t + span / 2)
+      #expect(abs(cents(f, want)) < 100, "at \(t) s: \(f) Hz vs \(want) Hz")
+      #expect(f < last, "it falls")
+      last = f
+    }
+    #expect(rmsDB(a[Int(0.45 * sr)...]) < rmsDB(a[0..<4800]) - 20, "and dies")
   }
 
   @Test func sitarBends() {

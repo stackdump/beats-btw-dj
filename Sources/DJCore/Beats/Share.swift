@@ -192,7 +192,10 @@ extension Project {
             for (k, v) in mix.object?.entries ?? [] { merged[k] = v }
             net.track.mix = .object(merged)
           }
-          if let inst = o["instrument"]?.string, !inst.isEmpty { net.track.instrument = inst }
+          if let inst = o["instrument"]?.string, !inst.isEmpty {
+            net.track.instrument = inst
+            net.track.picked = true
+          }
           if let set = o["instrumentSet"], set.isTruthy, let arr = set.array {
             net.track.instrumentSet = arr
           }

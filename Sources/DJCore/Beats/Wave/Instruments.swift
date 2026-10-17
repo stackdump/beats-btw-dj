@@ -70,6 +70,9 @@ extension VoiceSpec {
     if let x = v["vibratoDepth"]?.double { vibratoDepth = x }
     if let x = v["lowpass"]?.double { lowpass = x }
     if let x = v["distortion"]?.double { distortion = x }
+    if let x = v["pitchFrom"]?.double { pitchFrom = x }
+    if let x = v["pitchTo"]?.double { pitchTo = x }
+    if let x = v["pitchTime"]?.double { pitchTime = x }
   }
 }
 

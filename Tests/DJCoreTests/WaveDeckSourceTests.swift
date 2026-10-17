@@ -391,3 +391,35 @@ struct WaveDeckSourceTests {
     src.drainRetired()
   }
 }
+
+extension WaveDeckSourceTests {
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func laserSweepsDoNotAllocate() {
+    let sr = 48_000.0
+    let runner = WaveRunner(sampleRate: sr, opts: .extended)
+    // a song whose melody is a laser (synth voice: no sampler bank here)
+    var p = project("trance", 7, "minimal")
+    var lasers = 0
+    for id in p.nets.keys where p.nets[id]!.track.group == "melody" {
+      p.nets[id]!.track.instrument = "laser"
+      lasers += 1
+    }
+    let prepared = WaveRunner.prepare(p, sampleRate: sr, opts: .extended)
+    #expect(lasers > 0 && prepared.lanes.contains { $0.pmOn }, "a swept lane to measure")
+    runner.load(prepared: prepared)
+    runner.setTempo(480)
+    runner.play()
+    var l = [Float](repeating: 0, count: 128)
+    var r = [Float](repeating: 0, count: 128)
+    func run(_ n: Int) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n { runner.process(lp.baseAddress!, rp.baseAddress!, frames: 128) }
+        }
+      }
+    }
+    run(200)
+    let report = countAllocations { run(3000) }
+    #expect(report.allocations == 0, "process allocated \(report.allocations) times")
+  }
+}
