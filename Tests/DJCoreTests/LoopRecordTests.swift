@@ -407,8 +407,8 @@ struct LoopRecordTests {
     rig.dj.stopAllLoops()
     try rig.run(to: rig.dj.frame + bar + 4096)
     #expect(rig.dj.loopingClips.isEmpty)
-    // the top-left pad (56) is deck A's half-time macro: orange, dim
-    #expect(s.ledFrame().contains([0x92, 56, 9]))
+    // the top-left pad (56) is the aimed deck's first stinger: white, dim
+    #expect(s.ledFrame().contains([0x92, 56, 3]))
     s.handle(bytes: [0x90, 0x7A, 0x7F])  // SHIFT down
     // the loop page: loops are dark until they play (loop 1 is there but off)
     #expect(s.ledFrame().contains([0x92, 56, 0]))
@@ -426,12 +426,12 @@ struct LoopRecordTests {
     // SHIFT up: the grid's own colours come back, and the loops keep playing
     s.handle(bytes: [0x80, 0x7A, 0x00])
     let back = s.ledFrame()
-    #expect(back.contains([0x92, 56, 9]) && back.contains([0x92, 57, 9]))
-    #expect(s.lights()["pads"]?[56] == PadLight(colorIndex: 9, level: .dim))
+    #expect(back.contains([0x92, 56, 3]) && back.contains([0x92, 57, 3]))
+    #expect(s.lights()["pads"]?[56] == PadLight(colorIndex: 3, level: .dim))
     try rig.run(to: rig.dj.frame + bar + 4096)
     #expect(Set(rig.dj.loopingClips) == [one.id, two.id])
-    // without SHIFT the pad is its macro again, not the loop
-    #expect(s.binding(for: try #require(s.decode([0x90, 56, 0x7F])))?.action == .macro)
+    // without SHIFT the pad is its stinger again, not the loop
+    #expect(s.binding(for: try #require(s.decode([0x90, 56, 0x7F])))?.action == .stinger)
   }
 
   @Test func aNewSampleForgetsTheOldLoopRegion() throws {
