@@ -29,6 +29,12 @@ struct DeviceMapTests {
     #expect(
       row("track", 0).action == "play · deck A" && row("track", 0).shiftedAction == "unbound"
         || row("track", 0).shiftedAction?.hasPrefix("quantize") == true)
+    // SHIFT turns the grid into the loop page, read like text from the top-left
+    #expect(row("pads", 56).shiftedAction == "loop 1 in/out")
+    #expect(row("pads", 63).shiftedAction == "loop 8 in/out")
+    #expect(row("pads", 48).shiftedAction == "loop 9 in/out")
+    #expect(row("pads", 0).shiftedAction == "loop 57 in/out")
+    #expect(row("pads", 7).shiftedAction == "loop 64 in/out")
     #expect(row("faders", 4).action == "headphone mix")
     #expect(row("shift", 0).action == "SHIFT")
     let mpk = SurfaceProfile.mpkMiniMK2.deviceMap()

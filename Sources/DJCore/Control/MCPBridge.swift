@@ -283,6 +283,10 @@ public struct MCPBridge {
           "pads (8×8 grid, 0-63) | track (0-7) | scene (0-7) | drumPads (0-15); dj_catalog lists what each is bound to"
         ),
         "index": prop("integer", "Pad index within the group"),
+        "shift": prop(
+          "boolean",
+          "true to hold SHIFT around the press. SHIFT + pads is the loop page: loops 1-64 read like text, top-left (pad 56) = loop 1, top row 1-8, the next row down 9-16 (in/out on the downbeat)"
+        ),
       ],
       required: ["group", "index"]),
     tool(

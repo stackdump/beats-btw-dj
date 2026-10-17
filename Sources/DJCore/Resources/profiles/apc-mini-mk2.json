@@ -10,7 +10,7 @@
    "type": "note",
    "first": 0,
    "count": 64,
-   "comment": "8x8 RGB grid; 0 = bottom-left, +1 right, +8 up"
+   "comment": "8x8 RGB grid; 0 = bottom-left, +1 right, +8 up; SHIFT held: the loop page, loops 1-64 read like text (top-left = loop 1, top row 1-8, the next row down 9-16)"
   },
   {
    "id": "track",
@@ -61,7 +61,9 @@
   "rgbFullStatus": 150,
   "singleOff": 0,
   "singleOn": 1,
-  "singleBlink": 2
+  "singleBlink": 2,
+  "rgbBlinkStatus": 158,
+  "comment": "Pad status bytes from Akai's APC mini mk2 protocol chart: 0x92 solid 50 %, 0x96 solid 100 % (seen on this unit); 0x9E blink at 1/4 note [UNVERIFIED] (loop page: a loop on its way in or out)"
  },
  "layout": [
   {
@@ -742,6 +744,454 @@
    "index": 7,
    "action": "nextTrack",
    "deck": "B"
+  },
+  {
+   "group": "pads",
+   "index": 56,
+   "action": "clipToggle",
+   "slot": 0,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 57,
+   "action": "clipToggle",
+   "slot": 1,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 58,
+   "action": "clipToggle",
+   "slot": 2,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 59,
+   "action": "clipToggle",
+   "slot": 3,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 60,
+   "action": "clipToggle",
+   "slot": 4,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 61,
+   "action": "clipToggle",
+   "slot": 5,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 62,
+   "action": "clipToggle",
+   "slot": 6,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 63,
+   "action": "clipToggle",
+   "slot": 7,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 48,
+   "action": "clipToggle",
+   "slot": 8,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 49,
+   "action": "clipToggle",
+   "slot": 9,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 50,
+   "action": "clipToggle",
+   "slot": 10,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 51,
+   "action": "clipToggle",
+   "slot": 11,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 52,
+   "action": "clipToggle",
+   "slot": 12,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 53,
+   "action": "clipToggle",
+   "slot": 13,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 54,
+   "action": "clipToggle",
+   "slot": 14,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 55,
+   "action": "clipToggle",
+   "slot": 15,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 40,
+   "action": "clipToggle",
+   "slot": 16,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 41,
+   "action": "clipToggle",
+   "slot": 17,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 42,
+   "action": "clipToggle",
+   "slot": 18,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 43,
+   "action": "clipToggle",
+   "slot": 19,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 44,
+   "action": "clipToggle",
+   "slot": 20,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 45,
+   "action": "clipToggle",
+   "slot": 21,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 46,
+   "action": "clipToggle",
+   "slot": 22,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 47,
+   "action": "clipToggle",
+   "slot": 23,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 32,
+   "action": "clipToggle",
+   "slot": 24,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 33,
+   "action": "clipToggle",
+   "slot": 25,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 34,
+   "action": "clipToggle",
+   "slot": 26,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 35,
+   "action": "clipToggle",
+   "slot": 27,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 36,
+   "action": "clipToggle",
+   "slot": 28,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 37,
+   "action": "clipToggle",
+   "slot": 29,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 38,
+   "action": "clipToggle",
+   "slot": 30,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 39,
+   "action": "clipToggle",
+   "slot": 31,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 24,
+   "action": "clipToggle",
+   "slot": 32,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 25,
+   "action": "clipToggle",
+   "slot": 33,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 26,
+   "action": "clipToggle",
+   "slot": 34,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 27,
+   "action": "clipToggle",
+   "slot": 35,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 28,
+   "action": "clipToggle",
+   "slot": 36,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 29,
+   "action": "clipToggle",
+   "slot": 37,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 30,
+   "action": "clipToggle",
+   "slot": 38,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 31,
+   "action": "clipToggle",
+   "slot": 39,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 16,
+   "action": "clipToggle",
+   "slot": 40,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 17,
+   "action": "clipToggle",
+   "slot": 41,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 18,
+   "action": "clipToggle",
+   "slot": 42,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 19,
+   "action": "clipToggle",
+   "slot": 43,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 20,
+   "action": "clipToggle",
+   "slot": 44,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 21,
+   "action": "clipToggle",
+   "slot": 45,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 22,
+   "action": "clipToggle",
+   "slot": 46,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 23,
+   "action": "clipToggle",
+   "slot": 47,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 8,
+   "action": "clipToggle",
+   "slot": 48,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 9,
+   "action": "clipToggle",
+   "slot": 49,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 10,
+   "action": "clipToggle",
+   "slot": 50,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 11,
+   "action": "clipToggle",
+   "slot": 51,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 12,
+   "action": "clipToggle",
+   "slot": 52,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 13,
+   "action": "clipToggle",
+   "slot": 53,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 14,
+   "action": "clipToggle",
+   "slot": 54,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 15,
+   "action": "clipToggle",
+   "slot": 55,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 0,
+   "action": "clipToggle",
+   "slot": 56,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 1,
+   "action": "clipToggle",
+   "slot": 57,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 2,
+   "action": "clipToggle",
+   "slot": 58,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 3,
+   "action": "clipToggle",
+   "slot": 59,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 4,
+   "action": "clipToggle",
+   "slot": 60,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 5,
+   "action": "clipToggle",
+   "slot": 61,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 6,
+   "action": "clipToggle",
+   "slot": 62,
+   "shift": true
+  },
+  {
+   "group": "pads",
+   "index": 7,
+   "action": "clipToggle",
+   "slot": 63,
+   "shift": true
   }
  ]
 }

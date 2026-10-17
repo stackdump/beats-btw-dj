@@ -42,6 +42,8 @@ public final class SurfaceController {
   /// Palette indices (APC mini mk2 velocity → colour chart).
   enum Color {
     static let off: UInt8 = 0, red: UInt8 = 5, orange: UInt8 = 9, cyan: UInt8 = 37
+    /// The SHIFT loop page: Akai's chart index 48 (#B98CFF).
+    static let violet: UInt8 = 48
   }
   static let flashSeconds = 0.18
   /// Centre detent for pitch faders: ±2 % of travel snaps to zero.
@@ -66,8 +68,20 @@ public final class SurfaceController {
 
   /// The binding for an event under the current shift state.
   public func binding(for e: ControlEvent) -> SurfaceProfile.Binding? {
-    let candidates = exact[Self.key(e.group, e.index)] ?? groupWide[e.group] ?? []
-    return candidates.first { $0.shift == nil || $0.shift == shiftHeld }
+    layer(exact[Self.key(e.group, e.index)] ?? groupWide[e.group] ?? [])
+  }
+
+  /// The binding a control answers to under the current shift state: one made for this layer
+  /// (`shift` equal to `shiftHeld`) wins over one for either layer (`shift` nil), so a
+  /// `"shift": true` entry beside a plain one is that control's SHIFT layer (the APC's loop
+  /// page over its grid).
+  private func layer(_ candidates: [SurfaceProfile.Binding]) -> SurfaceProfile.Binding? {
+    candidates.first { $0.shift == shiftHeld } ?? candidates.first { $0.shift == nil }
+  }
+
+  /// The binding a control's LED shows: the same layer its press would reach.
+  private func lit(_ group: String, _ index: Int) -> SurfaceProfile.Binding? {
+    layer(exact[Self.key(group, index)] ?? [])
   }
 
   public func outcome(for e: ControlEvent) -> SurfaceOutcome {
@@ -222,15 +236,20 @@ public final class SurfaceController {
       for (i, note) in g.controlNumbers.enumerated() {
         let k = Self.key(g.id, i)
         let full = now - (flashed[k] ?? -1) < Self.flashSeconds
-        let (color, lit) = rgbState(exact[k]?.first)
+        let (color, level) = rgbState(lit(g.id, i))
         // APC: the status byte's low nibble is the brightness, so no channel here.
-        emit(0, note, full || lit ? leds.rgbFullStatus : leds.rgbDimStatus, color)
+        let status =
+          switch full ? PadLight.Level.full : level {
+          case .full: leds.rgbFullStatus
+          case .blink: leds.rgbBlinkStatus ?? leds.rgbDimStatus
+          case .dim, .off: leds.rgbDimStatus
+          }
+        emit(0, note, status, color)
       }
     }
     for g in profile.groups where leds.singleGroups.contains(g.id) {
       for (i, note) in g.controlNumbers.enumerated() {
-        let b = exact[Self.key(g.id, i)]?.first
-        emit(g.channel ?? 0, note, 0x90, singleState(b, leds))
+        emit(g.channel ?? 0, note, 0x90, singleState(lit(g.id, i), leds))
       }
     }
     return out
@@ -247,13 +266,16 @@ public final class SurfaceController {
       out[g.id] = g.controlNumbers.indices.map { i in
         let k = Self.key(g.id, i)
         let full = now - (flashed[k] ?? -1) < Self.flashSeconds
-        let (color, lit) = rgbState(exact[k]?.first)
-        return PadLight(colorIndex: color, level: (full || lit) ? .full : .dim)
+        let (color, level) = rgbState(lit(g.id, i))
+        if full { return PadLight(colorIndex: color, level: .full) }
+        // a surface that cannot blink a pad shows it dim, and so does its mirror
+        let shown: PadLight.Level = level == .blink && leds.rgbBlinkStatus == nil ? .dim : level
+        return PadLight(colorIndex: color, level: shown)
       }
     }
     for g in profile.groups where leds.singleGroups.contains(g.id) {
       out[g.id] = g.controlNumbers.indices.map { i in
-        let v = singleState(exact[Self.key(g.id, i)]?.first, leds)
+        let v = singleState(lit(g.id, i), leds)
         let level: PadLight.Level =
           v == leds.singleBlink ? .blink : (v == leds.singleOn ? .full : .off)
         return PadLight(colorIndex: 0, level: level)
@@ -314,8 +336,27 @@ public final class SurfaceController {
     }
   }
 
-  /// (palette colour, solid-bright?) for a grid pad.
-  private func rgbState(_ b: SurfaceProfile.Binding?) -> (UInt8, Bool) {
+  /// (palette colour, brightness) for a grid pad. Never `.off`: an unlit pad is a dim pad of
+  /// colour 0, which is how the APC is told to go dark.
+  private func rgbState(_ b: SurfaceProfile.Binding?) -> (UInt8, PadLight.Level) {
+    if let b, b.action == .clipToggle { return clipState(b.slot) }
+    let (color, bright) = deckPadState(b)
+    return (color, bright ? .full : .dim)
+  }
+
+  /// The loop page: violet full while the slot's loop plays, blinking on its way in or out,
+  /// dark for a slot with no loop.
+  private func clipState(_ slot: Int?) -> (UInt8, PadLight.Level) {
+    guard let slot, dj.clips.indices.contains(slot) else { return (Color.off, .dim) }
+    switch dj.loopState(dj.clips[slot].id) {
+    case .on: return (Color.violet, .full)
+    case .starting, .stopping: return (Color.violet, .blink)
+    case .off: return (Color.off, .dim)
+    }
+  }
+
+  /// (palette colour, solid-bright?) for a pad bound to a deck.
+  private func deckPadState(_ b: SurfaceProfile.Binding?) -> (UInt8, Bool) {
     guard let b, b.action != .unbound, let d = b.deck.flatMap({ dj[$0] }) else {
       return (Color.off, false)
     }

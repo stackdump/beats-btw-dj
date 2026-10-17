@@ -25,9 +25,16 @@ public enum APCPalette {
     (53, "magenta", "#d63ad6"),
   ]
 
-  /// The pinned colour of an index; nil for off (0) and for an index beats does not draw.
+  /// Indices dj lights that beats never does, with their colour from Akai's velocity chart:
+  /// the SHIFT loop page's violet.
+  public static let extras: [(index: UInt8, name: String, hex: String)] = [
+    (48, "violet", "#b98cff")
+  ]
+
+  /// The pinned colour of an index; nil for off (0) and for an index neither beats nor dj
+  /// draws.
   public static func pinned(_ index: UInt8) -> ScopeColor? {
-    entries.first { $0.index == index }.flatMap { ScopeColor(hex: $0.hex) }
+    (entries + extras).first { $0.index == index }.flatMap { ScopeColor(hex: $0.hex) }
   }
 
   /// Any index as a colour: the pinned one, else a hue picked from the index (a stray index

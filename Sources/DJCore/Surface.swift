@@ -107,9 +107,14 @@ public struct SurfaceProfile: Codable, Sendable {
     public var singleGroups: [String]
     public var rgbDimStatus: UInt8
     public var rgbFullStatus: UInt8
+    /// Status byte that blinks an RGB pad (APC: 0x9E, 1/4 note), or nil when the surface has
+    /// none: then a pad that would blink shows dim.
+    public var rgbBlinkStatus: UInt8?
     public var singleOff: UInt8
     public var singleOn: UInt8
     public var singleBlink: UInt8
+    /// Where the status bytes come from, and which are not yet seen on a unit.
+    public var comment: String?
   }
 
   public var name: String

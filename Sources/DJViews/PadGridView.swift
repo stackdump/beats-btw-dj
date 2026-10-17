@@ -66,7 +66,8 @@ public struct PadGridView: View {
       Canvas { ctx, _ in
         func rgb(_ l: PadLight) -> Color {
           let c = AkaiPalette.rgb(l.colorIndex)
-          let k: Double = l.level == .full ? 1 : (l.level == .dim ? 0.28 : 0)
+          // a blinking pad (a loop on its way in or out) draws lit: the mirror does not animate
+          let k: Double = l.level == .dim ? 0.28 : (l.level == .off ? 0 : 1)
           return Color(red: c.r * k, green: c.g * k, blue: c.b * k)
         }
         func single(_ l: PadLight, _ on: Color) -> Color {
