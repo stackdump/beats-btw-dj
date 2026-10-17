@@ -433,7 +433,8 @@ public final class AppModel {
     if sceneRow != scenes { scenes = sceneRow }
     let l = dj.loopChannel
     let strip = LoopChannelState(
-      looping: dj.loopingClips.count, volume: l.volume, mute: l.mute, reverb: ReverbState(l.reverb))
+      looping: dj.loopingClips.count, volume: l.volume, mute: l.mute, reverb: ReverbState(l.reverb),
+      fade: dj.loopFade, keyLock: dj.loopKeyLock)
     if strip != loopChannel { loopChannel = strip }
     // the deck holding a clip: the one playing it, else one holding it paused
     let holders = dj.decks.values.filter { $0.clipID != nil }.sorted { $0.playing && !$1.playing }
@@ -442,6 +443,8 @@ public final class AppModel {
         id: c.id, title: c.title, source: c.source, bars: c.bars, beats: c.beats,
         lengthLabel: c.lengthLabel, bpm: c.bpm,
         overview: c.waveform, loop: dj.loopState(c.id), gain: dj.clipGain(c.id),
+        muted: dj.isClipMuted(c.id), soloed: dj.isClipSoloed(c.id), keyLock: dj.isKeyLocked(c.id),
+        stretched: dj.isClipStretched(c.id), stretching: dj.isClipStretching(c.id),
         playhead: dj.loopPlayhead(c.id), countdown: dj.loopCountdown(c.id).map(LoopCountdown.init),
         onDeck: holders.first { $0.clipID == c.id }?.name,
         steps: c.steps?.map { s in
@@ -529,6 +532,17 @@ public final class AppModel {
     dj.perform(.clipLoop(id: id, on: on == .off || on == .stopping))
   }
   func setClipGain(_ id: String, _ v: Double) { dj?.perform(.clipGain(id: id, value: v)) }
+  // how the loops sound (LoopSound.swift)
+  func setClipMute(_ id: String, _ on: Bool) { soundAction(.clipMute(id: id, on: on)) }
+  func setClipSolo(_ id: String, _ on: Bool) { soundAction(.clipSolo(id: id, on: on)) }
+  func setClipKeyLock(_ id: String, _ on: Bool) { soundAction(.clipKeyLock(id: id, on: on)) }
+  func setLoopKeyLock(_ on: Bool) { soundAction(.loopKeyLock(on: on)) }
+  func setLoopFade(_ f: LoopFade) { soundAction(.loopFade(mode: f.rawValue)) }
+  private func soundAction(_ a: DeckAction) {
+    guard let dj else { return }
+    dj.perform(a)
+    pollLoops(dj)
+  }
   func toggleSelected(_ id: String) {
     if selectedClips.contains(id) { selectedClips.remove(id) } else { selectedClips.insert(id) }
   }

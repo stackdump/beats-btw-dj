@@ -154,8 +154,13 @@ public struct MCPBridge {
       clip onto a deck (L = under the mixer) · clipRemove {id}: off the row, its audio kept \
       (dj_state.loops.removed) · clipRestore {id, at?}: a removed clip back where it was (or at \
       index at) · clipForget {id}: delete a removed clip for good · clipRename {id, title} · \
-      clipColor {id, color: red|orange|yellow|green|teal|blue|violet|pink or null}. \
-      Deck "L" also takes param volume / mute (1 = muted).
+      clipColor {id, color: red|orange|yellow|green|teal|blue|violet|pink or null} · clipMute \
+      {id, on}: silent but still looping, in phase · clipSolo {id, on}: while any clip is soloed \
+      only soloed ones are heard · clipKeyLock {id, on}: at another tempo it keeps its pitch (a \
+      time-stretched copy, made in the background; dj_state.loops.clips[].stretched) · \
+      loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
+      off|10ms|beat|bar}: how loops come in and go out (default 10ms). Deck "L" also takes \
+      param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,

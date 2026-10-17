@@ -17,6 +17,14 @@ struct ClipState: Equatable, Identifiable {
   var loop: DJEngine.LoopState = .off
   /// Its level under the mixer.
   var gain = 1.0
+  /// Muted / soloed under the mixer (it plays on, silent, while muted or soloed out).
+  var muted = false
+  var soloed = false
+  /// Key lock: on (its own setting or the row's); and whether a time-stretched copy is
+  /// playing, or being made.
+  var keyLock = false
+  var stretched = false
+  var stretching = false
   /// How far through the loop it is (0…1), while it plays under the mixer.
   var playhead: Double?
   /// While it waits to come in or go out: how long until it switches.
@@ -177,6 +185,10 @@ struct LoopChannelState: Equatable {
   var volume = 0.8
   var mute = false
   var reverb = ReverbState()
+  /// How loops come in and go out.
+  var fade = LoopFade.declick
+  /// The row's key lock, for clips without their own.
+  var keyLock = false
 }
 
 /// The row under the decks: every LOOP-record take as a clip, and the loop channel that plays
@@ -217,6 +229,13 @@ struct LoopRowView: View {
         )
         .frame(width: 220)
         .help("The loops' reverb (the takes themselves are dry)")
+        fadeChoices
+        Toggle(
+          "🔒 key",
+          isOn: Binding(get: { model.loopChannel.keyLock }, set: { model.setLoopKeyLock($0) })
+        )
+        .toggleStyle(.button).controlSize(.small)
+        .help("Key lock for every loop without its own: at another tempo a loop keeps its pitch")
         Spacer(minLength: 0)
         Text(
           "tap a loop to bring it in or out on the next \(DJEngine.quantumLabel(model.loopQuantum))"
@@ -248,6 +267,18 @@ struct LoopRowView: View {
     }
   }
 
+  /// "Fade: off | 10 ms | 1 beat | 1 bar": how loops come in and go out on the downbeat.
+  private var fadeChoices: some View {
+    HStack(spacing: 3) {
+      Text("Fade").font(.caption).foregroundStyle(.secondary).fixedSize()
+      ForEach(LoopFade.allCases, id: \.self) { f in
+        ChoiceButton(label: f.label, selected: model.loopChannel.fade == f, tint: Self.tint) {
+          model.setLoopFade(f)
+        }
+      }
+    }
+    .help("How a loop comes in and goes out: 10 ms only takes the click off")
+  }
 }
 
 func deckTint(_ deck: String?) -> Color {
@@ -344,6 +375,7 @@ struct ClipTile: View {
         .help("Take it off the row (kept under Removed; Undo for a few seconds)")
       }
       .controlSize(.small)
+      soundRow
     }
     .padding(DJStyle.s)
     .frame(width: 210)
@@ -371,6 +403,29 @@ struct ClipTile: View {
       }
       return true
     }
+  }
+
+  /// Mute, solo and key lock for this loop under the mixer.
+  private var soundRow: some View {
+    HStack(spacing: DJStyle.xs) {
+      Toggle("M", isOn: Binding(get: { clip.muted }, set: { model.setClipMute(clip.id, $0) }))
+        .tint(.orange).help("Mute: it plays on silently, and comes back in time")
+      Toggle("S", isOn: Binding(get: { clip.soloed }, set: { model.setClipSolo(clip.id, $0) }))
+        .tint(.yellow).help("Solo: only soloed loops are heard under the mixer")
+      Toggle(
+        "🔒 key", isOn: Binding(get: { clip.keyLock }, set: { model.setClipKeyLock(clip.id, $0) })
+      )
+      .tint(LoopRowView.tint)
+      .help("Key lock: at another tempo it keeps its pitch (time-stretched, not sped up)")
+      Spacer(minLength: 0)
+      if clip.stretching {
+        Text("stretching…").font(.caption2).foregroundStyle(.secondary)
+      } else if clip.stretched {
+        Text("stretched").font(.caption2).foregroundStyle(LoopRowView.tint)
+          .help("Playing a time-stretched copy at the tempo it is following")
+      }
+    }
+    .toggleStyle(.button).controlSize(.mini)
   }
 
   /// A sequence's steps: tap a chip for ×1 → ×2 → ×4; right-click to move or remove it.

@@ -44,6 +44,9 @@ there. In short:
   on"), and a waiting tile counts down to it ("in 3"). "Save scene" keeps the loops playing
   now (and their levels) as a chip: tap it and exactly those come in, the rest go out, on one
   boundary. Scenes are saved with the row.
+  Each loop has mute (silent, still in phase), solo and 🔒 key (key lock: at another tempo it
+  plays a WSOLA time-stretched copy, made in the background, instead of going sharp or flat);
+  loops come in and go out with a fade (off, 10 ms de-click, 1 beat, 1 bar).
   Every channel has a reverb (Apple's AUReverb2: wet, size, tone) in its Reverb section.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com

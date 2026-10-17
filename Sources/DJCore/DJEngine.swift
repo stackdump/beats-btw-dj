@@ -33,6 +33,15 @@ public final class DJEngine {
   /// The loop bank's voices, as the main thread sees them (`startLoop` / `stopLoop`).
   var loopVoices = [LoopVoice](repeating: LoopVoice(), count: LoopBank.voiceCount)
   var clipGains: [String: Double] = [:]
+  /// How the loops sound (LoopSound.swift): muted and soloed clips, key lock (per clip, and the
+  /// row's default), the start / stop fade, and the time-stretched copies key lock plays.
+  var clipMutes: Set<String> = []
+  var clipSolos: Set<String> = []
+  var clipKeyLocks: [String: Bool] = [:]
+  public internal(set) var loopKeyLock = false
+  public internal(set) var loopFade = LoopFade.declick
+  var stretchCache: [String: (bpm: Double, buffer: SampleBuffer)] = [:]
+  var stretchToken = 0
   var loopCount = 0
   /// Clips taken off the row, newest first, each with the place it had (`removeClip`,
   /// `restoreClip`).

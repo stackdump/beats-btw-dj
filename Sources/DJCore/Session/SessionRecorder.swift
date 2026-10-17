@@ -253,6 +253,11 @@ extension DJEngine {
       if let clips { launchScene(clips: clips) } else { launchScene(name) }
     case .sceneRename(let name, let to): renameScene(name, to: to)
     case .sceneDelete(let name): deleteScene(name)
+    case .clipMute(let id, let on): setClipMute(id, on)
+    case .clipSolo(let id, let on): setClipSolo(id, on)
+    case .clipKeyLock(let id, let on): setClipKeyLock(id, on)
+    case .loopKeyLock(let on): setLoopKeyLock(on)
+    case .loopFade(let mode): if let f = LoopFade(rawValue: mode) { setLoopFade(f) }
     }
     return nil
   }

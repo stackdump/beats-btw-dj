@@ -282,7 +282,7 @@ struct LoopLaunchTests {
     tt.send(.loop(start: 0, end: Double(n)))
     tt.send(.start)
     bank.send(.gain(voice: 0, 1))
-    bank.send(.start(voice: 0, frame: 0))
+    bank.send(.start(voice: 0, frame: 0, fade: 0))
     bank.send(.gainAt(voice: 0, 0.25, frame: 700))
     var out: [Float] = []
     let l = UnsafeMutablePointer<Float>.allocate(capacity: 512)
@@ -291,8 +291,12 @@ struct LoopLaunchTests {
       bank.render(frames: 512, left: l, right: nil, startFrame: b * 512)
       out += UnsafeBufferPointer(start: l, count: 512)
     }
+    // it starts on its frame and ramps there over `rampFrames`, like any level change
+    let r = bank.rampFrames
     #expect(out[100..<700].allSatisfy { abs($0 - 0.5) < 1e-6 }, "\(out[699])")
-    #expect(out[700..<1536].allSatisfy { abs($0 - 0.125) < 1e-6 }, "\(out[700])")
+    #expect(out[701] < 0.5 && out[701] > 0.125, "\(out[701])")
+    #expect(zip(out[700..<700 + r], out[701...]).allSatisfy { $1 <= $0 + 1e-6 }, "falling")
+    #expect(out[(700 + r)..<1536].allSatisfy { abs($0 - 0.125) < 1e-6 }, "\(out[700 + r])")
     // a plain level change cancels one still waiting
     bank.send(.gainAt(voice: 0, 0, frame: 2000))
     bank.send(.gain(voice: 0, 1))
