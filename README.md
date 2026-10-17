@@ -33,6 +33,10 @@ there. In short:
   clip. Any number of clips loop under the mixer at once, each in or out on the downbeat, in
   time with its deck; drag a tile's edge to crop it to the beat, join tiles into sequences,
   move one onto A or B. The row is saved (`~/Library/Application Support/dj-vevr-se/loops`).
+  Loops launch on a beat, a bar, or a 2-, 4- or 8-bar phrase of the playing deck ("Launch
+  on"), and a waiting tile counts down to it ("in 3"). "Save scene" keeps the loops playing
+  now (and their levels) as a chip: tap it and exactly those come in, the rest go out, on one
+  boundary. Scenes are saved with the row.
   Every channel has a reverb (Apple's AUReverb2: wet, size, tone) in its Reverb section.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com

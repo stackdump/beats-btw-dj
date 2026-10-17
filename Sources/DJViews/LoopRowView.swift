@@ -19,6 +19,8 @@ struct ClipState: Equatable, Identifiable {
   var gain = 1.0
   /// How far through the loop it is (0…1), while it plays under the mixer.
   var playhead: Double?
+  /// While it waits to come in or go out: how long until it switches.
+  var countdown: LoopCountdown?
   /// The deck (A/B) holding it: the one playing it, else one holding it paused.
   var onDeck: String?
   /// A sequence's steps (nil for a take).
@@ -99,6 +101,50 @@ extension ClipState {
   }
 }
 
+/// How long a waiting clip has until it switches (`DJEngine.loopCountdown`), for its tile.
+struct LoopCountdown: Equatable {
+  /// Beats to go, rounded up (1 on the last beat).
+  var beats: Int
+  /// How much of the wait has gone by, 0…1 (the ring), in hundredths.
+  var progress: Double
+  /// "in 3" (beats), "in 4 bars" once it is more than two bars off.
+  var label: String
+  /// Beats to go, unrounded (the control socket's).
+  var beatsLeft: Double
+
+  init(beats left: Double, of total: Double) {
+    beatsLeft = left
+    beats = max(1, Int((left - 1e-6).rounded(.up)))
+    progress = total > 0 ? ((1 - left / total) * 100).rounded() / 100 : 1
+    label = beats > 8 ? "in \((beats + 3) / 4) bars" : "in \(beats)"
+  }
+
+  init(_ c: (beats: Double, of: Double)) { self.init(beats: c.beats, of: c.of) }
+}
+
+/// A saved scene, as its chip.
+struct SceneState: Equatable, Identifiable {
+  var name: String
+  var id: String { name }
+  /// Its clips still on the row, of all it was saved with.
+  var count: Int
+  var missing: Int
+  /// Exactly its clips are looping now (and none waiting to switch).
+  var active: Bool
+
+  /// The engine's scenes, in order.
+  @MainActor static func row(_ dj: DJEngine) -> [SceneState] {
+    let looping = Set(dj.loopingClips)
+    let settled = dj.clips.allSatisfy { dj.loopSwitchFrame($0.id) == nil }
+    return dj.scenes.map { s in
+      let ids = s.clips.map(\.clipID).filter { dj.clip($0) != nil }
+      return SceneState(
+        name: s.name, count: ids.count, missing: s.clips.count - ids.count,
+        active: settled && Set(ids) == looping)
+    }
+  }
+}
+
 /// One step of a sequence, for its chip.
 struct StepState: Equatable {
   var clipID: String
@@ -162,9 +208,12 @@ struct LoopRowView: View {
         .frame(width: 220)
         .help("The loops' reverb (the takes themselves are dry)")
         Spacer(minLength: 0)
-        Text("tap a loop to bring it in or out on the next downbeat").font(.caption)
-          .foregroundStyle(.secondary)
+        Text(
+          "tap a loop to bring it in or out on the next \(DJEngine.quantumLabel(model.loopQuantum))"
+        )
+        .font(.caption).foregroundStyle(.secondary)
       }
+      LaunchBar(model: model)
       if model.clips.isEmpty {
         Text("No loops yet")
           .font(.caption).foregroundStyle(.tertiary)
@@ -255,7 +304,7 @@ struct ClipTile: View {
         }
         .tint(on || clip.loop == .starting ? LoopRowView.tint : nil).buttonStyle(.borderedProminent)
         .opacity(pending ? 0.6 : 1)
-        .help(on ? "Out on the next downbeat" : "In on the next downbeat")
+        .help(on ? "Out on the next launch boundary" : "In on the next launch boundary")
         Slider(
           value: Binding(get: { clip.gain }, set: { model.setClipGain(clip.id, $0) }), in: 0...1
         )
@@ -361,6 +410,12 @@ struct ClipTile: View {
     )
     .contentShape(Rectangle())
     .onTapGesture { model.toggleLoop(clip.id) }
+    .overlay(alignment: .topTrailing) {
+      if let c = clip.countdown {
+        LoopCountdownBadge(countdown: c, stopping: clip.loop == .stopping).padding(2)
+          .allowsHitTesting(false)
+      }
+    }
     .overlay {
       GeometryReader { geo in
         let w = geo.size.width
@@ -387,7 +442,7 @@ struct ClipTile: View {
         .allowsHitTesting(true)
       }
     }
-    .help("Tap: in/out on the next downbeat. Drag an edge to crop it to the beat")
+    .help("Tap: in/out on the next launch boundary. Drag an edge to crop it to the beat")
   }
 
   private func handle(height: CGFloat) -> some View {
@@ -413,6 +468,110 @@ struct ClipTile: View {
         }
         crop = nil
       }
+  }
+}
+
+/// The row's second line: what loops launch on (a beat, a bar, 2, 4 or 8 bars), and the scenes —
+/// "Save scene" keeps the loops playing now; a scene's chip brings exactly those back.
+struct LaunchBar: View {
+  let model: AppModel
+  /// The scene being renamed, and the name typed so far.
+  @State private var renaming: String?
+  @State private var newName = ""
+
+  var body: some View {
+    HStack(alignment: .top, spacing: DJStyle.m) {
+      HStack(spacing: 3) {
+        Text("Launch on").font(.caption).foregroundStyle(.secondary).fixedSize()
+        ForEach(DJEngine.launchQuanta, id: \.self) { q in
+          ChoiceButton(
+            label: DJEngine.quantumLabel(q), selected: model.loopQuantum == q,
+            tint: LoopRowView.tint
+          ) { model.setLoopQuantum(q) }
+          .help("Loops and scenes come in and go out on the next \(DJEngine.quantumLabel(q))")
+        }
+      }
+      Divider().frame(height: 18)
+      Button("Save scene") { model.saveScene() }
+        .controlSize(.small).disabled(model.loopChannel.looping == 0)
+        .help("Keep the loops playing now (and their levels) as a scene")
+      FlowRow(spacing: 4) {
+        ForEach(model.scenes) { scene in SceneChip(scene: scene, model: model, rename: rename) }
+      }
+      Spacer(minLength: 0)
+    }
+    .alert(
+      "Rename scene",
+      isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+    ) {
+      TextField("Name", text: $newName)
+      Button("Rename") {
+        if let r = renaming { model.renameScene(r, to: newName) }
+        renaming = nil
+      }
+      Button("Cancel", role: .cancel) { renaming = nil }
+    }
+  }
+
+  private func rename(_ name: String) {
+    newName = name
+    renaming = name
+  }
+}
+
+/// A scene: tap to launch it (its loops in, the others out, on the next launch boundary);
+/// right-click to rename, overwrite or delete it. Lit while exactly its loops play.
+struct SceneChip: View {
+  let scene: SceneState
+  let model: AppModel
+  let rename: (String) -> Void
+
+  var body: some View {
+    Button {
+      model.launchScene(scene.name)
+    } label: {
+      HStack(spacing: 3) {
+        Text(scene.name)
+        Text("\(scene.count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+      }
+    }
+    .buttonStyle(.borderedProminent).controlSize(.small)
+    .tint(scene.active ? LoopRowView.tint : Color.secondary.opacity(0.35))
+    .contextMenu {
+      Button("Rename…") { rename(scene.name) }
+      Button("Overwrite with the loops playing now") { model.saveScene(scene.name) }
+      Button("Delete", role: .destructive) { model.deleteScene(scene.name) }
+    }
+    .help(
+      "Launch: these \(scene.count) loops in, the others out, on the next "
+        + DJEngine.quantumLabel(model.loopQuantum)
+        + (scene.missing > 0 ? " (\(scene.missing) no longer on the row)" : "")
+        + ". Right-click: rename, overwrite, delete")
+  }
+}
+
+/// A waiting clip's countdown: a ring that fills as the boundary nears, and "in 3".
+struct LoopCountdownBadge: View {
+  let countdown: LoopCountdown
+  /// Going out (amber) rather than coming in (the loops' violet).
+  let stopping: Bool
+  static let outTint = Color(red: 1.0, green: 0.7, blue: 0.25)
+
+  var body: some View {
+    let tint = stopping ? Self.outTint : LoopRowView.tint
+    HStack(spacing: 3) {
+      ZStack {
+        Circle().stroke(tint.opacity(0.3), lineWidth: 2)
+        Circle().trim(from: 0, to: countdown.progress)
+          .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+          .rotationEffect(.degrees(-90))
+      }
+      .frame(width: 11, height: 11)
+      Text(countdown.label).font(.caption2.bold().monospacedDigit()).foregroundStyle(tint)
+    }
+    .padding(.horizontal, 4).padding(.vertical, 1)
+    .background(Capsule().fill(Color.black.opacity(0.65)))
+    .accessibilityLabel(stopping ? "Out \(countdown.label)" : "In \(countdown.label)")
   }
 }
 

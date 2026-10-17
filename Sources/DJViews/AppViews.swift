@@ -82,6 +82,12 @@ public final class AppModel {
   var recording: [String: RecordingState] = [:]
   /// Loops picked to join into a sequence.
   var selectedClips: Set<String> = []
+  /// What loops start and stop on, in beats (the row's "Launch on"). Saved in the app's defaults
+  /// as `loopQuantize`.
+  var loopQuantum = DJEngine.defaultLoopQuantum
+  static let loopQuantizeKey = "loopQuantize"
+  /// The saved scenes, as chips.
+  var scenes: [SceneState] = []
   var crossfader = 0.5
   var master = 0.8
   var headphoneMix = 0.0
@@ -127,6 +133,8 @@ public final class AppModel {
   @ObservationIgnored private var takeStore: LoopLibrary?
   /// The row as last saved (ids in order), so a poll saves only when it changed.
   @ObservationIgnored private var savedClipIDs: [String] = []
+  /// The scenes as last saved, likewise.
+  @ObservationIgnored private var savedScenes: [LoopScene] = []
   /// Saves run off the main thread, one at a time.
   @ObservationIgnored private let saveQueue = DispatchQueue(label: "dj-vevr-se.loops.save")
   /// Per deck, the source its `sourceCID` was hashed from, so a poll doesn't re-hash.
@@ -195,6 +203,8 @@ public final class AppModel {
       for d in dj.decks.values { d.loadDemo() }
       if takeStore == nil { takeStore = LoopLibrary() }
       restoreLoops(dj)
+      if let q = defaults.object(forKey: Self.loopQuantizeKey) as? Int { dj.setLoopQuantum(q) }
+      loopQuantum = dj.loopQuantum
       dj.master = master
       try dj.start()
       let hub = ControllerHub(engine: dj)
@@ -368,18 +378,28 @@ public final class AppModel {
   private func restoreLoops(_ dj: DJEngine) {
     guard let store = takeStore else { return }
     dj.restoreClips(store.load(sampleRate: dj.sampleRate))
+    dj.restoreScenes(store.loadScenes())
     savedClipIDs = dj.clips.map(\.id)
+    savedScenes = dj.scenes
   }
 
   private func pollLoops(_ dj: DJEngine) {
     let ids = dj.clips.map(\.id)
-    if ids != savedClipIDs, let store = takeStore {
+    if ids != savedClipIDs || dj.scenes != savedScenes, let store = takeStore {
       savedClipIDs = ids
+      savedScenes = dj.scenes
       let row = dj.clips
+      let scenes = dj.scenes
       saveQueue.async {
-        do { try store.save(row) } catch { print("loop library: \(error)") }
+        do { try store.save(row, scenes: scenes) } catch { print("loop library: \(error)") }
       }
     }
+    if dj.loopQuantum != loopQuantum {
+      loopQuantum = dj.loopQuantum
+      defaults.set(loopQuantum, forKey: Self.loopQuantizeKey)
+    }
+    let sceneRow = SceneState.row(dj)
+    if sceneRow != scenes { scenes = sceneRow }
     let l = dj.loopChannel
     let strip = LoopChannelState(
       looping: dj.loopingClips.count, volume: l.volume, mute: l.mute, reverb: ReverbState(l.reverb))
@@ -391,7 +411,8 @@ public final class AppModel {
         id: c.id, title: c.title, source: c.source, bars: c.bars, beats: c.beats,
         lengthLabel: c.lengthLabel, bpm: c.bpm,
         overview: c.waveform, loop: dj.loopState(c.id), gain: dj.clipGain(c.id),
-        playhead: dj.loopPlayhead(c.id), onDeck: holders.first { $0.clipID == c.id }?.name,
+        playhead: dj.loopPlayhead(c.id), countdown: dj.loopCountdown(c.id).map(LoopCountdown.init),
+        onDeck: holders.first { $0.clipID == c.id }?.name,
         steps: c.steps?.map { s in
           StepState(
             clipID: s.clipID,
@@ -481,6 +502,31 @@ public final class AppModel {
   func stopAllLoops() {
     guard let dj else { return }
     for id in dj.loopingClips { dj.perform(.clipLoop(id: id, on: false)) }
+  }
+  /// The row's "Launch on": what loops (and scenes) start and stop on, in beats.
+  func setLoopQuantum(_ beats: Int) {
+    dj?.perform(.loopQuantize(beats: beats))
+    if let dj { pollLoops(dj) }
+  }
+  /// "Save scene": the loops playing now, as the next "Scene n" (or over scene `name`).
+  func saveScene(_ name: String? = nil) {
+    guard let dj else { return }
+    dj.perform(.sceneSave(name: name ?? dj.nextSceneName))
+    pollLoops(dj)
+  }
+  /// A scene's chip: its loops in, the others out, on the next launch boundary.
+  func launchScene(_ name: String) {
+    dj?.perform(.sceneLaunch(name: name, clips: nil))
+    if let dj { pollLoops(dj) }
+  }
+  func renameScene(_ name: String, to: String) {
+    let to = to.trimmingCharacters(in: .whitespaces)
+    dj?.perform(.sceneRename(name: name, to: to))
+    if let dj { pollLoops(dj) }
+  }
+  func deleteScene(_ name: String) {
+    dj?.perform(.sceneDelete(name: name))
+    if let dj { pollLoops(dj) }
   }
   /// One reverb knob of a channel ("A", "B", "L"): reverbWet | reverbSize | reverbTone.
   func setReverb(_ deck: String, _ knob: String, _ v: Double) {

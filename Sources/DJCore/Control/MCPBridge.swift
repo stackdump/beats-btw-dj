@@ -137,7 +137,13 @@ public struct MCPBridge {
       loopRecord {deck, on}: LOOP record, held (on true) then let go (on false): the deck's \
       bars from the downbeat before the press to the one after the release become a clip, \
       looping under the mixer (dj_state.loops) · clipLoop {id, on}: a clip in or out under the \
-      mixer on the next downbeat (several loop at once) · clipGain {id, value 0…1} · \
+      mixer on the next launch boundary (several loop at once; dj_state.loops.clips[].switchIn \
+      is the beats until a waiting one switches) · clipGain {id, value 0…1} · \
+      loopQuantize {beats: 1|4|8|16|32}: what loops launch on (a beat, a bar, 2/4/8 bars of the \
+      reference deck, phrases on its bars 1, 5, 9…; default 4) · sceneSave {name}: the loops \
+      playing now (and their levels) as a scene (overwrites one of that name) · sceneLaunch \
+      {name}: its loops in, every other out, all on the next launch boundary · sceneRename \
+      {name, to} · sceneDelete {name} (dj_state.loops.scenes, .quantize) · \
       clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \
       replacing?}: join clips into a sequence (or rewrite one) · clip {deck: L|A|B, id}: move a \
       clip onto a deck (L = under the mixer). Deck "L" also takes param volume / mute (1 = muted).
