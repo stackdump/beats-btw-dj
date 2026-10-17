@@ -385,8 +385,8 @@ struct GeneratePanel: View {
             cohesion = "v1"
           }
           .help(
-            "Cohesion v1: no shared theme — each part writes its own line, looser and more"
-              + " random (the parts can clash)")
+            "Cohesion v1: no shared theme — each part writes its own line; the melody keeps one"
+              + " rhythm from seed to seed, so it varies less than shared motif")
         }
         .arrowKeys(["v2", "v1"], current: cohesion) { cohesion = $0 }
         Spacer()
