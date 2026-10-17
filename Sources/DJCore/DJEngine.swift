@@ -433,7 +433,10 @@ public final class Deck: JogClock {
   init(name: String, sampleRate: Double, format: AVAudioFormat, loopBank: Bool = false) {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
-    let wv = WaveDeckSource(sampleRate: sampleRate)
+    // The runner's own switches (groove, energy, stereo, room, echo, samplers in the loudness
+    // curve) come from its init options, not the prepared project: build it with the same
+    // extended options every deck prepares with, as `djctl render` does, so live matches render.
+    let wv = WaveDeckSource(sampleRate: sampleRate, opts: .extended(samplers: nil))
     cueSend.outputVolume = 0
     turntable = tt
     wave = wv
