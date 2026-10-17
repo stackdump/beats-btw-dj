@@ -117,6 +117,23 @@ struct VarietyTests {
     }
   }
 
+  /// A key-locked walk pins the key (`TrackSpec.pinnedKeyOffset`): every seed then plays in
+  /// it, the seed's own key pick set aside, while the rest of the song still varies.
+  @Test func aPinnedKeyHoldsAcrossSeeds() {
+    for genre in ["techno", "jazz"] {
+      for offset in [-5, 0, 3, 6] {
+        for s in seeds.prefix(6) {
+          var spec = TrackSpec(genre: genre, seed: s)
+          spec.extra["keyOffset"] = .number(Double(offset))
+          let composed = spec.project()
+          let played = DJMusicality.apply(composed, spec: spec)
+          #expect(
+            played.rootNote == (composed.rootNote ?? 60) + offset, "\(genre) \(s) \(offset)")
+        }
+      }
+    }
+  }
+
   /// The key moves with the root: every tonal note in the new key, the project's root
   /// moved by the same offset as the notes (so `.kickTune` tunes the kick to it), the
   /// melody's beat notes still chord tones, and no more semitone rubs than beats' own key.

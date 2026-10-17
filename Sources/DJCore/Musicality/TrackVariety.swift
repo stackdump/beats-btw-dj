@@ -73,7 +73,9 @@ extension DJMusicality {
   /// phrase the chords the track lands on.
   static func varyHarmony(_ p: inout Project, genre: GenreDef, spec: TrackSpec) {
     var keyRng = varietyRandom("key", genre: genre.name, seed: spec.seed)
-    transposeTrack(&p, by: keyOffsets[keyRng.nextInt(keyOffsets.count)])
+    let drawn = keyOffsets[keyRng.nextInt(keyOffsets.count)]
+    // a key-locked walk pins the key it holds (`TrackSpec.pinnedKeyOffset`, from the genre root)
+    transposeTrack(&p, by: spec.pinnedKeyOffset ?? drawn)
     guard p.cohesion == "v2" else { return }
     var progRng = varietyRandom("progression", genre: genre.name, seed: spec.seed)
     let pool = progressions(for: genre)
