@@ -49,7 +49,7 @@ revert any by its merge commit.
 **Release checks**
 - One clean full `make swift-test` and `make swift-rt-test` on main with nothing else
   running (only filtered runs since the merges).
-- Push main (two commits ahead of origin at f9aa3a8, plus this roadmap).
+- Push main after the next merges (pushed through this roadmap on 2026-10-17).
 - Known failing tests: `tracksPlayAtOneLoudness`, `theKickNoLongerIsTheMix(funk)`,
   `theWindowInTheDark`, `theHeaderLeavesRoomForTheStatusAtTheWindowsMinimumWidth`. Flaky
   only under parallel load: `sampledInstrumentsDoNotAllocate` (the background sampler load
