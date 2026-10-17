@@ -36,6 +36,9 @@ extension AppModel {
     case "catalog":
       return controlCatalog()
 
+    case "palettes":
+      return controlPalettes(deck: p["deck"]?.string)
+
     case "perform":
       guard let a = p["action"], let action = DeckAction(json: a) else {
         throw ControlRequestError.bad(
@@ -49,7 +52,7 @@ extension AppModel {
         let d = try requireDeck(deck)
         let netOnly = [
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
-          "setPalette",
+          "setPalette", "setRoleVoice",
         ]
         if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
@@ -64,6 +67,15 @@ extension AppModel {
         }
         if case .macro(_, let id) = action, !Deck.isMacro(id: id) {
           throw ControlRequestError.bad("unknown macro \(id) (see dj_catalog)")
+        }
+        if case .setPalette(_, let p?) = action, SoundPalette.named(p) == nil {
+          throw ControlRequestError.bad(
+            "unknown palette \(p) (one of: \(SoundPalette.all.map(\.id).joined(separator: ", ")))")
+        }
+        if case .setRoleVoice(_, let role, _) = action, !d.roleSounds.contains(where: { $0.role == role }) {
+          throw ControlRequestError.bad(
+            "deck \(deck) has no role \(role) (roles: "
+              + d.roleSounds.map(\.role).joined(separator: ", ") + ")")
         }
         if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
           throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")
@@ -100,13 +112,19 @@ extension AppModel {
       // composition options: an `options` object and/or the same keys flat
       var options = p["options"]?.object ?? JSONObject()
       for k in ComposeOptions.keys { if let v = p[k] { options[k] = v } }
-      let spec: TrackSpec
+      var spec: TrackSpec
       do {
         spec = try ComposeOptions.apply(
           options, to: TrackSpec(genre: genre, seed: p["seed"]?.double ?? 1, structure: structure))
       } catch let e as ComposeOptions.Invalid {
         throw ControlRequestError.bad(e.description)
       }
+      // the deck's sound carries over, as the Generate panel's does; `palette` chooses another
+      let palette = p["palette"]?.string
+      if let palette, SoundPalette.named(palette) == nil {
+        throw ControlRequestError.bad("unknown palette \(palette) (see dj_palettes)")
+      }
+      spec = generateSpec(deck, spec, palette: palette)
       await composeAndLoad(deck, spec)
       poll()
       return deckJSON(deck) ?? .null
@@ -656,6 +674,10 @@ extension AppModel {
             return .object(e)
           })
       }
+      // the sound palette and what each role plays from it
+      o["palette"] = .string(d.playingPalette?.id ?? SoundPalette.defaultID)
+      if let k = d.kit { o["kit"] = .string(k) }
+      o["sound"] = .array(s.roleSounds.map(\.json))
       if let spec = d.currentSpec {
         let options = ComposeOptions.describe(spec)
         if !options.entries.isEmpty { o["options"] = .object(options) }
@@ -674,11 +696,41 @@ extension AppModel {
     return .object(o)
   }
 
+  /// Every palette: what it is, whether it plays here (and why not), and each role's options;
+  /// with `deck`, which one that deck plays and what each role plays from it.
+  func controlPalettes(deck: String?) -> JSONValue {
+    let current = deck.flatMap { engine?[$0]?.playingPalette?.id }
+    var o = JSONObject()
+    o["default"] = .string(SoundPalette.defaultID)
+    o["palettes"] = .array(
+      SoundPalette.all.map { p in
+        var e = JSONObject([
+          ("id", .string(p.id)), ("label", .string(p.label)), ("icon", .string(p.icon)),
+          ("description", .string(p.description)), ("localOnly", .bool(p.isLocalOnly)),
+          ("neighbours", .array(p.neighbours.map { .string($0) })),
+        ])
+        if let why = PaletteCard.unavailableHere[p.id] ?? nil { e["unavailable"] = .string(why) }
+        e["roles"] = .object(
+          JSONObject(
+            SoundPalette.roleOrder.compactMap { r in
+              p.roles[r].map { (r, .array($0.map { .string($0) })) }
+            }))
+        if let current { e["playing"] = .bool(current == p.id) }
+        return .object(e)
+      })
+    if let deck, let d = engine?[deck] {
+      o["deck"] = .string(deck)
+      o["sound"] = .array(d.roleSounds.map(\.json))
+    }
+    return .object(o)
+  }
+
   func controlCatalog() -> JSONValue {
     var o = JSONObject()
     o["decks"] = .array((engine?.decks.keys.sorted() ?? []).map { .string($0) })
     o["genres"] = .array(BeatsTables.shared.genres.keys.sorted().map { .string($0) })
     o["structures"] = .array(Self.structures.map { .string($0) })
+    o["palettes"] = .array(SoundPalette.all.map { .string($0.id) })
     o["voices"] = .object(
       JSONObject(
         VoiceCatalog.shared.sounds.keys.sorted().map { c in

@@ -68,7 +68,7 @@
     "sitar": "ethnic"
   },
   "bankCategories": {
-    "comment": "Categories played from one local bank by program name (SoundPalette): the Minecraft palette's, from minecraft-local.sf2, which `make minecraft` builds on this Mac from the user's own game assets (never committed, shipped or published). `kit` names a kit preset's program instead of sounds.",
+    "comment": "Categories played from one local bank by program name (a palette option `bank:<name>`, Resources/voices/palettes.json): the Minecraft palette's, from minecraft-local.sf2, which `make minecraft` builds on this Mac from the user's own game assets (never committed, shipped or published). `kit` names a kit preset's program instead of sounds.",
     "minecraft.bass": { "bank": "minecraft-local.sf2", "sounds": ["bassattack", "didgeridoo", "guitar"] },
     "minecraft.lead": {
       "bank": "minecraft-local.sf2", "sounds": ["harp2", "pling", "bit", "flute", "banjo", "trumpet"]
@@ -86,18 +86,6 @@
         "goat_horn_call4", "goat_horn_call5", "goat_horn_call6", "goat_horn_call7", "bell_use",
         "bell_resonate", "amethyst_shimmer", "anvil_land", "orb"
       ]
-    }
-  },
-  "palettes": {
-    "comment": "A palette sets every role's category for a whole track (SoundPalette; the `tracks` override `palette`). A role's own instrument pick still wins, and a kit pick wins over the palette's kit. Picks inside a category are seeded by the track seed + role, as voicing's are.",
-    "minecraft": {
-      "label": "Minecraft",
-      "roles": {
-        "kick": "minecraft.kit", "snare": "minecraft.kit", "hihat": "minecraft.kit",
-        "clap": "minecraft.kit", "bass": "minecraft.bass", "melody": "minecraft.lead",
-        "harmony": "minecraft.pad", "pad": "minecraft.pad", "arp": "minecraft.mallet",
-        "stinger": "minecraft.fx"
-      }
     }
   }
 }

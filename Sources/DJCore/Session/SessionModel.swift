@@ -194,6 +194,11 @@ public enum DeckAction: Equatable, Sendable {
   /// version: `minecraft@32`) or, nil, none (`Deck.setPalette`): every role's category from the
   /// palette, picked instruments and kits keeping theirs; the same song, at the next bar.
   case setPalette(deck: String, palette: String?)
+  /// Play one role of a net deck's track with a palette option (`SoundPalette` grammar:
+  /// `gm:4`, `synth:pwm-lead`, `cat:keys.epiano`, `inst:piano`, a kit id for `kit`…) or, nil,
+  /// the palette's own pick again — also dropping an instrument or kit picked for it
+  /// (`Deck.setRoleVoice`): the same song at the next bar; carried into every new track.
+  case setRoleVoice(deck: String, role: String, voice: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -464,6 +469,10 @@ extension DeckAction {
       return o("setKit", [d(deck), ("kit", kit.map { .string($0) } ?? .null)])
     case .setPalette(let deck, let palette):
       return o("setPalette", [d(deck), ("palette", palette.map { .string($0) } ?? .null)])
+    case .setRoleVoice(let deck, let role, let voice):
+      return o(
+        "setRoleVoice",
+        [d(deck), ("role", .string(role)), ("voice", voice.map { .string($0) } ?? .null)])
     }
   }
 
@@ -554,6 +563,9 @@ extension DeckAction {
       self = .wanderLock(deck: deck, dimension: dim, on: v["on"]?.bool ?? true)
     case "setKit": self = .setKit(deck: deck, kit: v["kit"]?.string)
     case "setPalette": self = .setPalette(deck: deck, palette: v["palette"]?.string)
+    case "setRoleVoice":
+      guard let role = v["role"]?.string, !role.isEmpty else { return nil }
+      self = .setRoleVoice(deck: deck, role: role, voice: v["voice"]?.string)
     default: return nil
     }
   }

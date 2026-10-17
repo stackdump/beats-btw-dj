@@ -43,9 +43,10 @@ struct MinecraftTests {
     #expect(p.label == "Minecraft")
     #expect(p.isLocalOnly)
     #expect(p.kit == MinecraftBank.kitID)
-    for role in ["kick", "snare", "hihat", "bass", "melody", "harmony", "arp", "stinger"] {
-      let c = try #require(p.roles[role].flatMap { SoundPalette.categories[$0] }, "\(role)")
+    for role in ["kit", "bass", "melody", "harmony", "arp", "stinger"] {
+      let c = try #require(p.roles[role]?.first.flatMap(SoundPalette.bankCategory), "\(role)")
       #expect(c.bank == MinecraftBank.fileName)
+      #expect((c.kit != nil) == (role == "kit"), "\(role)")
       for s in c.sounds { #expect(MinecraftBank.program(named: s) != nil, "\(role): \(s)") }
     }
     let programs = MinecraftBank.programs.map(\.program)

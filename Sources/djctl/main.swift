@@ -592,11 +592,7 @@ case "render":
       stderr("palette \(p.id) can't play here: \(why)")
       exit(2)
     }
-    if case .net(let s)? = DeckSourceDescriptor.net(spec).withPalette(
-      p.recorded(), channels: spec.project().channels)
-    {
-      spec = s
-    }
+    spec = spec.withPalette(p.id)
   }
   let sr = 48_000.0
   var deckOpts = WaveOptions.extended
@@ -620,6 +616,9 @@ case "render":
   let render = OfflineRender(track: track, source: source, seconds: seconds)
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   var audio = render.metrics.dictionary
+  audio["lufs"] = round3(
+    IntegratedLoudness.lufs(left: render.left, right: render.right, sampleRate: sr))
+  if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
   let levels = render.sectionLevels(track.played)
   audio["sections"] = levels.map { ["name": $0.name, "rmsDB": round3($0.db)] }
   if let lo = levels.map(\.db).min(), let hi = levels.map(\.db).max() {
@@ -655,6 +654,15 @@ case "render":
     audio["balanceDB"] = levels.mapValues(round3)
     if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
   }
+  // what each palette role plays (`TrackSound.option`), and what the sampler loaded per net
+  var sound: [String: String] = [:]
+  for role in track.played.soundRoles {
+    if let nb = track.played.soundNet(role) {
+      sound[role] = nb.track.sound.option ?? (nb.track.picked ? "picked \(nb.track.instrument)" : "own")
+    }
+  }
+  audio["sound"] = sound
+  audio["sampled"] = source.sampledNets
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,

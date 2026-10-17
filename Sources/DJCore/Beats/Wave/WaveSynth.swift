@@ -117,6 +117,11 @@ public func drumKind(_ note: Int) -> String {
   return "kick"
 }
 
+/// One of beats' synth drum kits (`drums`, `drums-808`, …): what `drumVoice` voices by name.
+public func isSynthDrumKit(_ name: String) -> Bool { kits[name] != nil }
+/// beats' synth drum kits, by name.
+public var synthDrumKits: [String] { kits.keys.sorted() }
+
 public func drumVoice(kind: String, instrument: String) -> VoiceSpec {
   let k = kits[instrument] ?? kits["drums"]!
   switch kind {

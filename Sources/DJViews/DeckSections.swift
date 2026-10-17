@@ -51,7 +51,7 @@ struct DeckSections: View {
       return !state.wander.on ? "Wander" : (state.wander.paused ? "Wander ⏸" : "Wander ●")
     case .masterfx: return state.masterRunning.isEmpty ? "Master FX" : "Master FX ●"
     case .reverb: return state.reverb.isOn ? "Reverb ●" : "Reverb"
-    case .track: return "Instruments"
+    case .track: return "Sound"
     case .favorites: return model.favorites.isEmpty ? "★ Favorites" : "★ \(model.favorites.count)"
     case .generate: return "Generate"
     case .load: return "Load"
@@ -363,6 +363,8 @@ struct GeneratePanel: View {
   /// Keep the seed after Generate / Queue next (regenerate the same track); off, the seed moves
   /// on to the next version's, so pressing Generate again gives a new song.
   @AppStorage("generate.lockSeed") private var lockSeed = false
+  /// The palette the next Generate / Queue next plays from; nil = the deck's own (it carries).
+  @State private var palette: String?
   static let structures = ["loop", "minimal", "standard", "extended"]
 
   /// After a Generate / Queue next: on to the next seed in the walk (`TrackSpec.nextVersion`,
@@ -391,6 +393,7 @@ struct GeneratePanel: View {
         }
       }
       .arrowKeys(Self.structures, current: structure) { structure = $0 }
+      paletteRow
       HStack(spacing: 4) {
         HStack(spacing: 4) {
           ChoiceButton(label: "shared motif", selected: cohesion == "v2", tint: tint) {
@@ -430,17 +433,35 @@ struct GeneratePanel: View {
             + " composed in the background — or the track Queue next queued")
         Spacer()
         Button("Queue next") {
-          model.queueNext(name, spec)
+          model.queueNext(name, model.generateSpec(name, spec, palette: palette))
           advanceSeed()
         }
         Button("Generate now") {
-          model.generate(name, spec)
+          model.generate(name, model.generateSpec(name, spec, palette: palette))
           advanceSeed()
         }
         .buttonStyle(.borderedProminent).tint(tint)
       }
       .controlSize(.small)
     }
+  }
+}
+
+extension GeneratePanel {
+  /// The palette for the new track: the deck's own unless another is chosen here.
+  private var paletteRow: some View {
+    let cards = PaletteCard.cards(current: palette ?? model.decks[name]?.palette)
+    let playable = cards.filter { $0.unavailable == nil }.map(\.id)
+    return FlowRow(spacing: 4) {
+      ForEach(cards) { c in
+        ChoiceButton(label: "\(c.icon) \(c.label)", selected: c.selected, tint: tint) {
+          palette = c.id
+        }
+        .disabled(c.unavailable != nil)
+        .help(c.unavailable.map { "Can't play here: \($0)" } ?? c.description)
+      }
+    }
+    .arrowKeys(playable, current: cards.first(where: \.selected)?.id) { palette = $0 }
   }
 }
 
@@ -573,88 +594,21 @@ struct TagEditor: View {
   }
 }
 
-/// Copy the track to the other deck, and pick each role's instrument. A long press (or
-/// right-click) on an instrument opens its channel's sound (`VoiceEditor`); each instrument's
-/// saved variations follow it as chips, one click to play.
+/// The track's sound: copy it to the other deck, choose its palette, fine-tune its roles
+/// (`SoundChoices`).
 struct TrackPanel: View {
   let name: String
   let state: DeckState
   let model: AppModel
   let tint: Color
-  /// The sound panel open: its channel, and the button it hangs from.
-  @State private var editing: Editing?
-
-  struct Editing: Equatable {
-    var channel: Int
-    var anchor: String
-  }
 
   var body: some View {
     let other = name == "A" ? "B" : "A"
     VStack(alignment: .leading, spacing: 6) {
+      SoundChoices(name: name, state: state, model: model, tint: tint)
       Button("Copy to deck \(other)") { Task { await model.copyDeck(from: name, to: other) } }
         .controlSize(.small)
-        .help("Load this track, with its instrument changes, onto deck \(other)")
-      SoundChoices(name: name, state: state, model: model, tint: tint)
-      ForEach(state.voices, id: \.channel) { v in
-        VStack(alignment: .leading, spacing: 3) {
-          Text(v.role).font(.caption2).foregroundStyle(.secondary)
-          FlowRow(spacing: 4) {
-            ForEach(v.options, id: \.self) { i in
-              instrument(i, v)
-              ForEach(model.variations[i] ?? [], id: \.name) { variation in
-                ChoiceButton(
-                  label: variation.label(i),
-                  selected: i == v.instrument
-                    && model.currentVariation(i, state.voiceSettings[v.channel])?.name
-                      == variation.name,
-                  tint: tint
-                ) {
-                  Task {
-                    await model.applyVariation(
-                      name, channel: v.channel, instrument: i, variation)
-                  }
-                }
-                .help("\(i) with its saved sound \"\(variation.name)\"")
-              }
-            }
-          }
-          .arrowKeys(v.options, current: v.instrument) { i in
-            Task { await model.setInstrument(name, channel: v.channel, i) }
-          }
-        }
-      }
-      if !state.voices.isEmpty {
-        Text(
-          "Changing one reloads the track from its start: tweak the deck that isn't live."
-            + " Hold one (or right-click) to shape its sound, live."
-        )
-        .font(.caption2).foregroundStyle(.tertiary)
-      }
-    }
-  }
-
-  private func instrument(_ i: String, _ v: RoleVoice) -> some View {
-    let current = i == v.instrument
-    let setting = state.voiceSettings[v.channel]
-    let tweaked =
-      current && setting.map { !$0.isDefault && $0.instrument == i } == true
-      && model.currentVariation(i, setting) == nil
-    return InstrumentButton(
-      label: tweaked ? "\(i) ✎" : i,
-      selected: current && model.currentVariation(i, setting) == nil, tint: tint,
-      pick: {
-        guard !current else { return }
-        Task { await model.setInstrument(name, channel: v.channel, i) }
-      },
-      edit: { editing = Editing(channel: v.channel, anchor: i) }
-    )
-    .popover(
-      isPresented: Binding(
-        get: { editing == Editing(channel: v.channel, anchor: i) },
-        set: { if !$0 { editing = nil } })
-    ) {
-      VoiceEditor(deck: name, role: v.role, channel: v.channel, model: model, tint: tint)
+        .help("Load this track, with its palette and sound changes, onto deck \(other)")
     }
   }
 }
@@ -839,7 +793,7 @@ struct WanderPanel: View {
     case "instruments": return "No instrument changes: every new seed keeps these instruments"
     case "arrangement": return "No mutes or STEMS changes"
     case "fx": return "No macros, FX or stingers"
-    case "palette": return "Keep the sound palette and drum kit: every new track plays from them"
+    case "palette": return "No palette hops: the walk keeps this sound palette"
     default: return WanderLock.label(d)
     }
   }

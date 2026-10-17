@@ -2,7 +2,8 @@ import Testing
 
 @testable import DJCore
 
-/// Wander's palette lock: the palette and the drum kit go with every track the walk swaps in.
+/// Wander and the deck's sound: the palette and the drum kit go with every track the walk swaps
+/// in; the palette lock stops palette hops.
 struct WanderPaletteLockTests {
   func walkSwaps(locks: Set<String>) -> [TrackSpec] {
     let spec = TrackSpec(genre: "techno", seed: 42, structure: "standard")
@@ -33,10 +34,15 @@ struct WanderPaletteLockTests {
     #expect(WanderLock.dimensions.contains("palette") && WanderLock.isValid("palette"))
   }
 
-  @Test func withoutTheLockASwapStartsFromItsOwnSounds() {
+  /// Unlocked, the deck's sound still goes with every swap (it is the deck's configuration);
+  /// only a palette hop moves it, and only to one of the palette's neighbours.
+  @Test func withoutTheLockTheSoundCarriesAndOnlyHopsToANeighbour() {
+    let neighbours = Set(SoundPalette.named("minecraft")?.neighbours ?? [])
     for s in walkSwaps(locks: []) {
-      #expect(s.project().palette == nil)
-      #expect(s.project().drumKit == nil)
+      let p = s.project()
+      let id = SoundPalette.named(p.palette)?.id
+      #expect(id == "minecraft" || neighbours.contains(id ?? ""), "\(p.palette ?? "none")")
+      #expect(p.drumKit == "MuseScore_General.sf2#128:0", "\(s.genre) \(s.seed)")
     }
   }
 }

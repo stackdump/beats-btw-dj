@@ -174,19 +174,24 @@ extension Deck {
   /// was voiced. The id is recorded with the asset version it plays here (`recorded`) when it
   /// comes without one.
   ///
-  /// Wander's "palette" lock (`WanderLock.dimensions`, `Wander.carry`) takes the palette and
-  /// the kit into every new track the walk swaps in; without it a swap starts from the new
-  /// track's own instruments, as it drops instrument picks.
+  /// Wander's "palette" lock (`WanderLock.dimensions`) keeps the walk from hopping palettes
+  /// (`WanderMoveKind.palette`); the palette and kit go with every swap either way.
+  ///
+  /// The default palette (Studio) is written as none. Role overrides and kit picks stay, and
+  /// the palette goes with every new track the deck makes (`TrackSpec.carryingSound`).
   public func setPalette(_ palette: String?) {
     guard mode == .net, var project = netProject else { return }
-    var id = palette.flatMap { $0.isEmpty ? nil : $0 }
-    if let p = id, SoundPalette.version(p) == nil, let known = SoundPalette.named(p) {
-      id = known.recorded()
-    }
+    let id = SoundPalette.normalized(palette)
     guard project.palette != id else { return }
-    let channels = project.channels
+    // a composed track's every role channel (as `TrackSpec.withPalette` writes it), so a
+    // palette set here and one chosen before Generate name the same configuration
+    var channels = project.channels
+    if let g = currentSpec?.genre {
+      channels = Array(Set(channels + TrackSpec.soundChannels(genre: g))).sorted()
+    }
     guard !channels.isEmpty else { return }
     project.setPalette(id)
+    project.applySound(seed: voicingSeed)
     retarget(project) { $0.withPalette(id, channels: channels) }
   }
 }

@@ -67,12 +67,15 @@ public enum WanderMoveKind: String, CaseIterable, Sendable {
   case structure
   /// A neighbouring genre (`Wander.neighbours`), a new seed.
   case genre
+  /// The same song in a neighbouring sound palette (`SoundPalette.neighbours`), swapped in at
+  /// the next phrase.
+  case palette
 
   /// Out of 100. Tuned for a walk you can follow: about two moves in three change the mix of
   /// the track playing, one in three moves to another track, one in twenty to another genre.
   public var weight: Int {
     switch self {
-    case .role: 30
+    case .role: 28
     case .stem: 6
     case .macro: 13
     case .fx: 8
@@ -81,11 +84,12 @@ public enum WanderMoveKind: String, CaseIterable, Sendable {
     case .instrument: 9
     case .structure: 4
     case .genre: 5
+    case .palette: 2
     }
   }
 
   /// Moves that put another track on the deck (swapped in at the next bar).
-  public var swaps: Bool { [.seed, .instrument, .structure, .genre].contains(self) }
+  public var swaps: Bool { [.seed, .instrument, .structure, .genre, .palette].contains(self) }
 
   /// The lock dimension that removes this kind (nil: none removes it outright).
   var lock: String? {
@@ -95,6 +99,7 @@ public enum WanderMoveKind: String, CaseIterable, Sendable {
     case .instrument: "instruments"
     case .structure: "structure"
     case .genre: "genre"
+    case .palette: "palette"
     case .seed: nil
     }
   }
@@ -184,6 +189,10 @@ struct WanderVoice: Equatable, Sendable {
   var channel: Int
   var instrument: String
   var options: [String]
+  /// The user set this role's sound (`DeckAction.setRoleVoice`): no instrument move re-picks it.
+  var overridden = false
+  /// The palette option it plays (`TrackSound.option`), nil = its instrument's own sound.
+  var option: String? = nil
 }
 
 /// Everything a move is chosen from: the deck's configuration and what the user fixed.
@@ -205,6 +214,9 @@ struct WanderContext: Sendable {
   /// lock carries into every new track.
   var palette: String? = nil
   var kit: String? = nil
+  /// The channels the track plays on (where a carried palette is written); empty = compose the
+  /// new spec to find them.
+  var channels: [Int] = []
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -298,6 +310,8 @@ public enum Wander {
   static func kinds(_ c: WanderContext) -> [WanderMoveKind] {
     WanderMoveKind.allCases.filter { k in
       if let l = k.lock, c.locked(l) { return false }
+      // a palette hop changes every role's sound: the instruments lock holds them too
+      if k == .palette && c.locked("instruments") { return false }
       if k.swaps && c.keepsEverything { return false }
       if c.isLoop && k == .structure { return false }
       return true
@@ -404,7 +418,7 @@ public enum Wander {
     case .instrument:
       let voices = c.voices.filter { v in
         v.roles.contains(where: tonalRoles.contains) && !v.roles.contains(where: c.kept.contains)
-          && v.options.contains { $0 != v.instrument }
+          && !v.overridden && v.options.contains { $0 != v.instrument }
       }
       guard !voices.isEmpty else { return nil }
       let v = rng.pick(voices)
@@ -440,6 +454,32 @@ public enum Wander {
       return WanderPlan(
         kind: .genre, action: .swap(s),
         detail: "\(c.spec.genre) → \(g) · seed \(seedText(s.seed))")
+
+    case .palette:
+      let here = SoundPalette.playing(c.palette)
+      let options = (here?.neighbours ?? []).filter { id in
+        id != here?.id && PaletteCard.unavailableHere[id].map { $0 == nil } == true
+      }
+      guard let from = here, !options.isEmpty else { return nil }
+      let to = rng.pick(options)
+      var s = c.spec
+      let channels = c.channels.isEmpty ? s.project().channels : c.channels
+      if case .net(let next)? = DeckSourceDescriptor.net(s).withPalette(
+        SoundPalette.normalized(to), channels: channels)
+      {
+        s = next
+      }
+      // kept roles keep the sound they play: pinned as their own option
+      for v in c.voices where v.roles.contains(where: c.kept.contains) && !v.overridden {
+        if case .net(let next)? = DeckSourceDescriptor.net(s).withTrackField(
+          "voice", v.option ?? "own", channels: [v.channel])
+        {
+          s = next
+        }
+      }
+      return WanderPlan(
+        kind: .palette, action: .swap(s),
+        detail: "palette \(from.label) → \(SoundPalette.named(to)?.label ?? to)")
     }
   }
 
@@ -482,33 +522,57 @@ public enum Wander {
   ) {
     if !keepLayers { s.layers = JSONObject() }
     if let key = c.key, c.locked("key") { s.extra["keyOffset"] = .number(Double(key.offset)) }
-    // the palette lock: the palette and the kit go with every new track, on its own channels
-    if c.locked("palette"), c.palette != nil || c.kit != nil {
-      let p = TrackSpec(
-        genre: s.genre, seed: s.seed, structure: s.structure, cohesion: s.cohesion, extra: s.extra
-      ).project()
+    // the deck's sound — palette, kit pick, role overrides — goes with every new track (the
+    // palette lock only stops palette hops)
+    s = s.carryingSound(from: c.spec)
+    if c.palette != nil || c.kit != nil, s.palette != c.palette || !specNamesKit(s, c.kit) {
+      let p =
+        c.channels.isEmpty
+        ? TrackSpec(
+          genre: s.genre, seed: s.seed, structure: s.structure, cohesion: s.cohesion,
+          extra: s.extra
+        ).project() : nil
       var d = DeckSourceDescriptor.net(s)
-      if let pal = c.palette { d = d.withPalette(pal, channels: p.channels) ?? d }
-      if let kit = c.kit { d = d.withKit(kit, channels: p.drumChannels) ?? d }
+      if let pal = c.palette, s.palette != pal {
+        d = d.withPalette(pal, channels: p?.channels ?? c.channels) ?? d
+      }
+      if let kit = c.kit, !specNamesKit(s, kit) {
+        d = d.withKit(kit, channels: p?.drumChannels ?? c.channels.filter(isDrumChannel)) ?? d
+      }
       if case .net(let next) = d { s = next }
     }
+    // (a role the palette voices is pinned by its option, so the next seed's pick can't move
+    // it; one with its own override already rides along)
     let pins = c.voices.filter { v in
-      c.locked("instruments") || v.roles.contains(where: c.kept.contains)
+      (c.locked("instruments") || v.roles.contains(where: c.kept.contains)) && !v.overridden
     }
     guard !pins.isEmpty else { return }
+    for v in pins where v.option != nil {
+      if case .net(let next)? = DeckSourceDescriptor.net(s).withTrackField(
+        "voice", v.option, channels: [v.channel])
+      {
+        s = next
+      }
+    }
     let target =
       sameGenre
       ? nil
       : TrackSpec(
         genre: s.genre, seed: s.seed, structure: s.structure, cohesion: s.cohesion, extra: s.extra
       ).project()
-    for v in pins {
+    for v in pins where v.option == nil {
       let ch: Int? =
         if let target { v.roles.lazy.compactMap { Self.channel(of: $0, in: target) }.first } else {
           v.channel
         }
       if let ch { setInstrument(&s, v.instrument, channel: ch) }
     }
+  }
+
+  /// Does the spec's `tracks` override name `kit` on a channel?
+  private static func specNamesKit(_ s: TrackSpec, _ kit: String?) -> Bool {
+    guard let kit else { return true }
+    return (s.layers["tracks"]?.object?.entries ?? []).contains { $0.1["kit"]?.string == kit }
   }
 
   private static func setInstrument(_ s: inout TrackSpec, _ instrument: String, channel: Int) {
@@ -561,10 +625,14 @@ extension Deck {
       for id in sets.keys.sorted() where id != genre {
         for i in sets[id]?[role] ?? [] where !options.contains(i) { options.append(i) }
       }
+      // a palette's synth voice is not an instrument the user chose: the composer's is
+      let t = net.track
       out.append(
         WanderVoice(
-          roles: [role], channel: net.track.channel, instrument: net.track.instrument,
-          options: options))
+          roles: [role], channel: t.channel,
+          instrument: t.picked ? t.instrument : t.sound.composed ?? t.instrument,
+          options: options, overridden: t.sound.override != nil,
+          option: t.picked ? nil : t.sound.option))
     }
     return out
   }
@@ -587,7 +655,8 @@ extension Deck {
       deck: name, spec: spec, isLoop: isNetLoop, roles: rs, rolesOn: Set(rs.filter(isRoleOn)),
       disabledRoles: disabledRoles, stemsMuted: Set(stemsMuted.keys),
       lockedActions: lockedActions, locks: wander.locks, voices: wanderVoices,
-      anchorBPM: wander.anchorBPM, key: wander.key, palette: palette, kit: kit)
+      anchorBPM: wander.anchorBPM, key: wander.key, palette: palette, kit: kit,
+      channels: netProject?.channels ?? [])
   }
 
   /// Wander on or off (`DeckAction.wander`). On, it waits for the next phrase end; the bar it

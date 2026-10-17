@@ -21,7 +21,7 @@ public struct MCPBridge {
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
-    "dj_notes": "notes", "dj_journal": "journal",
+    "dj_notes": "notes", "dj_journal": "journal", "dj_palettes": "palettes",
     "dj_view": "view",
   ]
 
@@ -183,7 +183,13 @@ public struct MCPBridge {
       (dj_state.voices[].sampled) plays its synth voice (on) or its sample · clipMove {id, \
       before: id or null}: move a clip on the row to just before another (null: the end) · \
       lock {key, on}: lock an action like right-click ▸ Disable (key e.g. "A.play"; locked \
-      controller bindings do nothing). Deck "L" also takes param volume / mute (1 = muted).
+      controller bindings do nothing) · setPalette {deck, palette: id from dj_palettes or \
+      null = the default}: the track's whole sound from a palette, at the next bar, kept for \
+      every new track on the deck · setRoleVoice {deck, role: kit|bass|melody|harmony|arp|\
+      stinger, voice: an option from dj_palettes / dj_state.decks.X.sound[].options (gm:4, \
+      synth:pwm-lead, cat:keys.epiano, inst:piano, a kit id…) or null = back to the palette}: \
+      one role's sound, kept through new tracks until reset · setKit {deck, kit: a kit id or \
+      null}. Deck "L" also takes param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,
@@ -200,6 +206,9 @@ public struct MCPBridge {
         "structure": prop(
           "string",
           "minimal | standard | extended for a song with sections; omit for an endless loop"),
+        "palette": prop(
+          "string",
+          "A sound palette id from dj_palettes; omit to keep the deck's (it carries to new tracks)"),
         "options": prop(
           "object",
           """
@@ -217,6 +226,17 @@ public struct MCPBridge {
     tool(
       "dj_catalog", "Genres, song structures, macro ids and deck names the other tools accept.",
       [:]),
+    tool(
+      "dj_palettes",
+      """
+      The sound palettes a track can play from (Studio = each instrument's own sound, Synth, \
+      Synthwave, 8-bit, Acoustic band, Orchestral, Lo-fi tape, Jazz club, Club, Ambient, …): \
+      id, label, description, whether it plays on this Mac (`unavailable` says why not), \
+      local-only ones (never published), Wander's neighbours and each role's options. With \
+      `deck`, also what each of that deck's roles plays (`sound`). Set one with dj_perform \
+      setPalette, one role with setRoleVoice.
+      """,
+      ["deck": prop("string", "A or B (optional)")]),
     tool(
       "dj_load_file", "Load an audio file from this Mac onto a deck as a sample.",
       [

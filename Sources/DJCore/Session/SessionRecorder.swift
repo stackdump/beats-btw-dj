@@ -282,6 +282,7 @@ extension DJEngine {
     case .wanderLock(let n, let dimension, let on): deck(n)?.setWanderLock(dimension, on)
     case .setKit(let n, let kit): deck(n)?.setKit(kit)
     case .setPalette(let n, let palette): deck(n)?.setPalette(palette)
+    case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
     }
     return nil
   }

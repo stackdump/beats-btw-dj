@@ -1,0 +1,197 @@
+{
+  "comment": "Sound palettes (SoundPalette): a named sound world for a whole track — what a deck plays its track with, chosen per track (the `tracks` override `palette`, the poke DeckAction.setPalette) and carried into every new track the deck makes (Next, auto-next, the seed wheel, Wander). For each role (bass, melody, harmony, arp, stinger; `*` = any other tonal role; `kit` = the drums) a pool of options; a track plays one, picked by the track seed + role (`Project.applySound`); a role missing from `roles` plays its instrument's own sound, as Studio. Options: `own` (the instrument's own sound: its installed sampled instrument, else its synth voice) · `synth` (its synth voice, no sample) · `synth:<instrument>` (beats' synth voice of another instrument, Resources/voices/instruments.json; for `kit`, one of beats' synth kits: drums, drums-808, drums-cr78, drums-lofi, drums-v8, drums-breakbeat) · `cat:<category>` (an installed sound of a categories.json category, seeded, then the category's GM programs from the SoundFonts) · `gm:<program>` (a General MIDI program, 0-based, from the SoundFont folder: MuseScore_General.sf2 is the floor) · `dls:<program>` (Apple's gs_instruments.dls: local only, never published) · `bank:<bankCategory>` (categories.json bankCategories: the Minecraft bank, local only) · `inst:<instrument>` (play as if that instrument were picked) · for `kit` also a DrumKits id (`file#bank:program`). Options whose sound isn't installed are left out of the pick; a role with none left makes the palette unavailable, with the reason. `hints`: `room` / `echo` borrow another genre's reverb and echo (SpaceSpec / EchoSpec.forGenre; `none` = dry). `neighbours`: where Wander's palette hop may go. `default` is the palette a track without one plays (no override written).",
+  "default": "studio",
+  "palettes": {
+    "studio": {
+      "label": "Studio",
+      "icon": "🎛️",
+      "color": "#8E8E93",
+      "description": "Each instrument's own sound: the sampled instrument this Mac has for it, else beats' synth voice — how tracks sounded before palettes.",
+      "neighbours": ["synth", "acoustic", "club"],
+      "roles": {}
+    },
+    "synth": {
+      "label": "Synth",
+      "icon": "⚡",
+      "color": "#5AC8FA",
+      "description": "Beats' own synth voices on every part and its synth kits: no samples at all, the sound of the browser.",
+      "neighbours": ["studio", "synthwave", "chiptune"],
+      "roles": { "*": ["synth"], "kit": ["synth"] }
+    },
+    "synthwave": {
+      "label": "Synthwave",
+      "icon": "🌆",
+      "color": "#FF2D95",
+      "description": "Analog polysynths: PWM and sync leads, warm pads, rubbery FM bass, an 808 or CR-78 under a long bright hall.",
+      "neighbours": ["synth", "club", "chiptune", "ambient"],
+      "hints": { "room": "synthwave", "echo": "synthwave" },
+      "roles": {
+        "bass": ["synth:fm-bass", "synth:rubber-bass", "cat:bass.synth"],
+        "melody": ["synth:pwm-lead", "synth:sync-lead", "synth:tape-lead", "synth:big-saw", "cat:synth.lead"],
+        "harmony": ["synth:warm-pad", "synth:glass-pad", "cat:pad", "gm:90"],
+        "arp": ["synth:bright-pluck", "synth:pluck", "cat:synth.pluck"],
+        "stinger": ["synth:laser", "synth:edm-stab"],
+        "kit": ["synth:drums-808", "synth:drums-cr78", "MuseScore_General.sf2#128:25"]
+      }
+    },
+    "chiptune": {
+      "label": "8-bit",
+      "icon": "👾",
+      "color": "#34C759",
+      "description": "Square and pulse waves like a game console's sound chip, a tight dry room and a little machine kit.",
+      "neighbours": ["synth", "synthwave", "minecraft", "retro"],
+      "hints": { "room": "techno", "echo": "none" },
+      "roles": {
+        "bass": ["synth:chiptune", "gm:80"],
+        "melody": ["synth:chiptune", "synth:square-lead", "gm:80"],
+        "harmony": ["synth:square-lead", "synth:pwm-lead", "gm:80"],
+        "arp": ["synth:chiptune", "synth:square-lead"],
+        "stinger": ["synth:laser"],
+        "kit": ["synth:drums-v8", "synth:drums-808"]
+      }
+    },
+    "acoustic": {
+      "label": "Acoustic band",
+      "icon": "🎸",
+      "color": "#C8A165",
+      "description": "A band in a room: piano and guitars, electric or upright bass, organ chords and a real drum kit.",
+      "neighbours": ["studio", "jazz", "lofi", "world"],
+      "hints": { "room": "funk", "echo": "none" },
+      "roles": {
+        "bass": ["cat:bass.electric", "cat:bass.acoustic", "gm:33", "gm:32"],
+        "melody": ["cat:guitar.acoustic", "cat:keys.piano", "cat:guitar.electric", "gm:25"],
+        "harmony": ["cat:keys.piano", "gm:16", "cat:guitar.acoustic", "gm:0"],
+        "arp": ["cat:guitar.acoustic", "gm:24", "gm:25"],
+        "stinger": ["cat:brass", "gm:61"],
+        "kit": ["MuseScore_General.sf2#128:0", "MuseScore_General.sf2#128:8", "MuseScore_General.sf2#128:16"]
+      }
+    },
+    "orchestral": {
+      "label": "Orchestral",
+      "icon": "🎻",
+      "color": "#AF52DE",
+      "description": "Cinematic: strings and brass, contrabass and cellos underneath, harp and pizzicato figures, timpani hits in a big hall.",
+      "neighbours": ["ambient", "acoustic", "jazz"],
+      "hints": { "room": "trance", "echo": "none" },
+      "roles": {
+        "bass": ["gm:43", "gm:42", "cat:bass.acoustic"],
+        "melody": ["cat:strings", "cat:brass", "cat:woodwind.flute", "cat:woodwind.reed"],
+        "harmony": ["cat:strings", "gm:49", "cat:vocal", "gm:48"],
+        "arp": ["gm:45", "gm:46", "cat:mallet"],
+        "stinger": ["gm:55", "gm:47"],
+        "kit": ["MuseScore_General.sf2#128:48"]
+      }
+    },
+    "lofi": {
+      "label": "Lo-fi tape",
+      "icon": "📼",
+      "color": "#FF9F0A",
+      "description": "Dusty keys: Rhodes and Wurli, mellow bass, tape flutes and mallets over a soft kit, in a small dark room with a short echo.",
+      "neighbours": ["jazz", "ambient", "acoustic", "studio"],
+      "hints": { "room": "lofi", "echo": "lofi" },
+      "roles": {
+        "bass": ["gm:33", "gm:35", "cat:bass.electric"],
+        "melody": ["cat:keys.epiano", "cat:woodwind.flute", "synth:tape-lead", "gm:4"],
+        "harmony": ["cat:keys.epiano", "cat:keys.piano", "gm:4", "gm:5"],
+        "arp": ["cat:mallet", "synth:muted-pluck", "gm:11"],
+        "stinger": ["cat:synth.bell", "gm:14"],
+        "kit": ["synth:drums-lofi", "MuseScore_General.sf2#128:40", "MuseScore_General.sf2#128:32"]
+      }
+    },
+    "jazz": {
+      "label": "Jazz club",
+      "icon": "🎷",
+      "color": "#FFD60A",
+      "description": "A small group late at night: upright bass, piano or Rhodes comping, sax, muted trumpet or jazz guitar on top, brushes on the kit.",
+      "neighbours": ["lofi", "acoustic", "orchestral"],
+      "hints": { "room": "jazz", "echo": "none" },
+      "roles": {
+        "bass": ["cat:bass.acoustic", "gm:32"],
+        "melody": ["gm:66", "gm:65", "cat:woodwind.reed", "gm:59", "gm:26"],
+        "harmony": ["cat:keys.piano", "cat:keys.epiano", "gm:0", "gm:4"],
+        "arp": ["gm:11", "gm:26", "cat:mallet"],
+        "stinger": ["gm:61", "gm:57"],
+        "kit": ["MuseScore_General.sf2#128:32", "MuseScore_General.sf2#128:40"]
+      }
+    },
+    "club": {
+      "label": "Club",
+      "icon": "🪩",
+      "color": "#0A84FF",
+      "description": "House and techno: acid and reese basses, rave stabs and organ chords, plucks, on 909-style or 808 drum machines in a tight room.",
+      "neighbours": ["synthwave", "studio", "synth"],
+      "hints": { "room": "house", "echo": "edm" },
+      "roles": {
+        "bass": ["synth:acid", "synth:reese", "cat:bass.synth", "cat:bass.sub"],
+        "melody": ["synth:rave-stab", "synth:edm-stab", "cat:synth.lead", "gm:62", "synth:supersaw"],
+        "harmony": ["gm:16", "gm:17", "cat:keys.piano", "synth:rave-organ", "cat:pad"],
+        "arp": ["synth:edm-pluck", "cat:synth.pluck", "synth:bright-pluck"],
+        "stinger": ["synth:rave-stab", "gm:55"],
+        "kit": ["MuseScore_General.sf2#128:24", "MuseScore_General.sf2#128:25", "synth:drums-808"]
+      }
+    },
+    "ambient": {
+      "label": "Ambient",
+      "icon": "🌌",
+      "color": "#64D2FF",
+      "description": "Slow and wide: evolving pads and choirs, bells and mallets, a sub bass, soft drums, a long room and a slow echo.",
+      "neighbours": ["orchestral", "lofi", "synthwave"],
+      "hints": { "room": "ambient", "echo": "ambient" },
+      "roles": {
+        "bass": ["synth:sub-bass", "cat:bass.sub", "synth:dark-pad"],
+        "melody": ["cat:synth.bell", "cat:mallet", "gm:98", "synth:glass-pad"],
+        "harmony": ["cat:pad", "gm:89", "gm:94", "gm:95", "synth:warm-pad", "cat:vocal"],
+        "arp": ["cat:mallet", "gm:96", "synth:am-bell", "gm:8"],
+        "stinger": ["gm:99", "gm:102", "synth:am-bell"],
+        "kit": ["synth:drums-lofi", "MuseScore_General.sf2#128:40"]
+      }
+    },
+    "world": {
+      "label": "World strings",
+      "icon": "🏮",
+      "color": "#FF453A",
+      "description": "Plucked and bowed strings from around the world: guzheng, koto, pipa, erhu, sitar and banjo, with flutes, harp and a room kit.",
+      "neighbours": ["acoustic", "orchestral", "ambient"],
+      "hints": { "room": "jazz", "echo": "none" },
+      "roles": {
+        "bass": ["cat:bass.acoustic", "gm:32", "gm:33"],
+        "melody": ["cat:ethnic", "gm:104", "gm:107", "gm:77", "gm:75", "gm:105"],
+        "harmony": ["gm:46", "gm:49", "cat:strings"],
+        "arp": ["gm:107", "gm:105", "gm:15", "gm:108"],
+        "stinger": ["gm:116", "gm:112"],
+        "kit": ["MuseScore_General.sf2#128:8"]
+      }
+    },
+    "retro": {
+      "label": "90s sound card",
+      "icon": "💾",
+      "color": "#98989D",
+      "description": "General MIDI the way a computer played it: every part and the kit from Apple's own GM bank (gs_instruments.dls). Local only: never published.",
+      "neighbours": ["chiptune", "studio", "minecraft"],
+      "roles": {
+        "bass": ["dls:33", "dls:38", "dls:34"],
+        "melody": ["dls:80", "dls:81", "dls:0", "dls:56", "dls:73", "dls:11"],
+        "harmony": ["dls:48", "dls:89", "dls:16", "dls:0"],
+        "arp": ["dls:24", "dls:11", "dls:46"],
+        "stinger": ["dls:55", "dls:62"],
+        "kit": ["gs_instruments.dls#128:0", "gs_instruments.dls#128:24", "gs_instruments.dls#128:25"]
+      }
+    },
+    "minecraft": {
+      "label": "Minecraft",
+      "icon": "⛏️",
+      "color": "#5D8C3E",
+      "description": "The game's note blocks, bells and goat horns, built on this Mac from your own installed game (make minecraft). Local only: never published.",
+      "neighbours": ["chiptune", "retro"],
+      "roles": {
+        "kit": ["bank:minecraft.kit"],
+        "bass": ["bank:minecraft.bass"],
+        "melody": ["bank:minecraft.lead"],
+        "harmony": ["bank:minecraft.pad"],
+        "pad": ["bank:minecraft.pad"],
+        "arp": ["bank:minecraft.mallet"],
+        "stinger": ["bank:minecraft.fx"]
+      }
+    }
+  }
+}
