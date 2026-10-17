@@ -121,6 +121,16 @@ public enum DeckAction: Equatable, Sendable {
   case clipCrop(id: String, from: Int, to: Int)
   /// Join clips into a sequence (`DJEngine.makeSequence`), or rewrite the one `replacing` names.
   case clipSequence(steps: [SequenceStep], replacing: String?)
+  /// Take a clip off the row; it can be put back (`DJEngine.removeClip`).
+  case clipRemove(id: String)
+  /// Put a removed clip back on the row, at `at` or where it was (`DJEngine.restoreClip`).
+  case clipRestore(id: String, at: Int?)
+  /// A removed clip deleted for good: it can no longer be restored (`forgetRemovedClip`).
+  case clipForget(id: String)
+  /// Rename a clip (`DJEngine.renameClip`).
+  case clipRename(id: String, title: String)
+  /// Give a clip a colour from `LoopClip.palette`, or none (`DJEngine.setClipColor`).
+  case clipColor(id: String, color: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -343,6 +353,14 @@ extension DeckAction {
           ("steps", steps.json),
           ("replacing", replacing.map { .string($0) } ?? .null),
         ])
+    case .clipRemove(let id): return o("clipRemove", [("id", .string(id))])
+    case .clipRestore(let id, let at):
+      return o("clipRestore", [("id", .string(id)), ("at", at.map { .int($0) } ?? .null)])
+    case .clipForget(let id): return o("clipForget", [("id", .string(id))])
+    case .clipRename(let id, let title):
+      return o("clipRename", [("id", .string(id)), ("title", .string(title))])
+    case .clipColor(let id, let color):
+      return o("clipColor", [("id", .string(id)), ("color", color.map { .string($0) } ?? .null)])
     }
   }
 
@@ -386,6 +404,12 @@ extension DeckAction {
         steps: [SequenceStep](json: v["steps"]), replacing: v["replacing"]?.string)
     case "clipCrop":
       self = .clipCrop(id: v["id"]?.string ?? "", from: v["from"]?.int ?? 0, to: v["to"]?.int ?? 0)
+    case "clipRemove": self = .clipRemove(id: v["id"]?.string ?? "")
+    case "clipRestore": self = .clipRestore(id: v["id"]?.string ?? "", at: v["at"]?.int)
+    case "clipForget": self = .clipForget(id: v["id"]?.string ?? "")
+    case "clipRename":
+      self = .clipRename(id: v["id"]?.string ?? "", title: v["title"]?.string ?? "")
+    case "clipColor": self = .clipColor(id: v["id"]?.string ?? "", color: v["color"]?.string)
     default: return nil
     }
   }

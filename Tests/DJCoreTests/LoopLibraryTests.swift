@@ -26,13 +26,14 @@ struct LoopLibraryTests {
     #expect(back.allSatisfy { $0.bpm == 120 })
   }
 
-  @Test func takingAClipOffTheRowDeletesItsAudio() throws {
+  @Test func takingAClipOffTheRowMovesItsAudioToRemoved() throws {
     let lib = tempLoopLibrary()
     defer { removeLoopLibrary(lib) }
     let (a, b) = (clip(1), clip(2))
     try lib.save([a, b])
     try lib.save([b])
-    #expect(loopLibraryFiles(lib) == ["\(b.id).wav", "library.json"].sorted())
+    #expect(loopLibraryFiles(lib) == ["\(b.id).wav", "library.json", "removed"].sorted())
+    #expect(removedLoopFiles(lib) == ["\(a.id).wav", "removed.json"].sorted())
     #expect(lib.load(sampleRate: 48_000).map(\.id) == [b.id])
   }
 

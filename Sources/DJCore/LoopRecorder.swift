@@ -28,7 +28,10 @@ public struct SequenceStep: Sendable, Equatable {
 public struct LoopClip: Sendable, Identifiable, Equatable {
   /// Content id of the audio (`SampleBuffer.contentID`); also its key in `sampleLibrary`.
   public let id: String
-  public let title: String
+  /// Its name on the row ("A loop 3" until renamed, `DJEngine.renameClip`).
+  public internal(set) var title: String
+  /// Its colour on the row, one of `LoopClip.palette` (nil: none picked).
+  public internal(set) var color: String?
   /// The deck it was taken from.
   public let source: String
   /// Its length in beats: whole bars from LOOP record, any number of beats once cropped.
@@ -54,10 +57,11 @@ public struct LoopClip: Sendable, Identifiable, Equatable {
   init(
     id: String, title: String, source: String, beats: Int, bpm: Double, startBeat: Double,
     buffer: SampleBuffer, waveform: WaveformOverview, steps: [SequenceStep]? = nil,
-    provenance: JSONValue? = nil
+    provenance: JSONValue? = nil, color: String? = nil
   ) {
     self.steps = steps
     self.provenance = provenance
+    self.color = color
     self.id = id
     self.title = title
     self.source = source
@@ -76,6 +80,9 @@ public struct LoopClip: Sendable, Identifiable, Equatable {
       id: id, title: title, source: source, beats: bars * 4, bpm: bpm, startBeat: startBeat,
       buffer: buffer, waveform: waveform, provenance: provenance)
   }
+
+  /// The colours a clip can be given, by name (the views pick the shades).
+  public static let palette = ["red", "orange", "yellow", "green", "teal", "blue", "violet", "pink"]
 
   /// "2 bars", "6 beats".
   public var lengthLabel: String {
@@ -254,9 +261,11 @@ extension DJEngine {
   public func clip(_ id: String) -> LoopClip? { clips.first { $0.id == id } }
 
   /// Take a clip off the row (the audio stays in `sampleLibrary`: a recorded session may name it).
+  /// It is kept in `removedClips` with its place, so `restoreClip` can put it back.
   public func removeClip(_ id: String) {
+    guard let i = clips.firstIndex(where: { $0.id == id }) else { return }
     stopLoop(id, now: true)
-    clips.removeAll { $0.id == id }
+    rememberRemovedClip(clips.remove(at: i), at: i)
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
   }
 
@@ -298,7 +307,7 @@ extension DJEngine {
       id: buffer.contentID, title: c.title, source: c.source, beats: to - from, bpm: c.bpm,
       startBeat: c.startBeat + Double(from), buffer: buffer,
       waveform: WaveformOverview(buffer: buffer, columns: 400),
-      provenance: LoopProvenance.crop(c, from: from, to: to))
+      provenance: LoopProvenance.crop(c, from: from, to: to), color: c.color)
     replace(at: i, with: cropped)
     // sequences that used the original use the crop from now on (when they are next rendered)
     for k in clips.indices {
@@ -309,9 +318,11 @@ extension DJEngine {
     return cropped.id
   }
 
-  /// Put `new` where the clip at `i` is: its level carries over, and if it was looping under
-  /// the mixer the new one carries on in phase.
+  /// Put `new` where the clip at `i` is: its level and colour carry over, and if it was looping
+  /// under the mixer the new one carries on in phase.
   private func replace(at i: Int, with new: LoopClip) {
+    var new = new
+    if new.color == nil { new.color = clips[i].color }
     let id = clips[i].id
     let wasLooping = loopState(id) == .on || loopState(id) == .starting
     stopLoop(id, now: true)

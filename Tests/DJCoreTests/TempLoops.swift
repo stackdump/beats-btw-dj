@@ -17,3 +17,9 @@ func removeLoopLibrary(_ lib: LoopLibrary) { try? FileManager.default.removeItem
 func loopLibraryFiles(_ lib: LoopLibrary) -> [String] {
   ((try? FileManager.default.contentsOfDirectory(atPath: lib.dir.path)) ?? []).sorted()
 }
+
+/// The files in a library's `removed/`, sorted.
+func removedLoopFiles(_ lib: LoopLibrary) -> [String] {
+  let removed = lib.dir.appendingPathComponent("removed").path
+  return ((try? FileManager.default.contentsOfDirectory(atPath: removed)) ?? []).sorted()
+}

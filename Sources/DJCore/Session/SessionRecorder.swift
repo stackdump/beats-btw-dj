@@ -233,6 +233,11 @@ extension DJEngine {
     case .clipGain(let id, let v): setClipGain(id, v)
     case .clipCrop(let id, let from, let to): cropClip(id, from: from, to: to)
     case .clipSequence(let steps, let replacing): makeSequence(steps, replacing: replacing)
+    case .clipRemove(let id): removeClip(id)
+    case .clipRestore(let id, let at): restoreClip(id, at: at)
+    case .clipForget(let id): forgetRemovedClip(id)
+    case .clipRename(let id, let title): renameClip(id, title)
+    case .clipColor(let id, let color): setClipColor(id, color)
     }
     return nil
   }

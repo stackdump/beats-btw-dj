@@ -34,6 +34,9 @@ public final class DJEngine {
   var loopVoices = [LoopVoice](repeating: LoopVoice(), count: LoopBank.voiceCount)
   var clipGains: [String: Double] = [:]
   var loopCount = 0
+  /// Clips taken off the row, newest first, each with the place it had (`removeClip`,
+  /// `restoreClip`).
+  public internal(set) var removedClips: [RemovedClip] = []
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]
