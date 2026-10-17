@@ -51,12 +51,12 @@ struct ScopeAppModelTests {
     // (about x 470...630 at this width), so the count leaves out x 400...700 and the panel, which
     // spans the window, is still counted where it is wide.
     func background(_ view: some View) throws -> Int {
-      let px = try #require(renderPixels(view, width: 1100, height: 1500))
+      let px = try #require(renderPixels(view, width: 1100, height: 2000))
       let isBackground: (Int, Int, Int) -> Bool = { r, g, b in
         abs(r - bg.0) <= 2 && abs(g - bg.1) <= 2 && abs(b - bg.2) <= 2
       }
-      return px.count(inX: 0..<400, y: 0..<1500, where: isBackground)
-        + px.count(inX: 700..<1100, y: 0..<1500, where: isBackground)
+      return px.count(inX: 0..<400, y: 0..<2000, where: isBackground)
+        + px.count(inX: 700..<1100, y: 0..<2000, where: isBackground)
     }
     let off = try background(ContentView(model: m))
     m.showScopes = true
@@ -66,6 +66,6 @@ struct ScopeAppModelTests {
     #expect(off < 200, "no scope background without the panel (\(off))")
     #expect(live > 200_000, "the live panel is ~440 pt of scope background (\(live))")
     #expect(bands > 50_000 && bands < live / 2, "bands is 124 pt tall (\(bands))")
-    savePNG(ContentView(model: m), width: 1100, height: 1500, name: "app-scopes")
+    savePNG(ContentView(model: m), width: 1100, height: 2000, name: "app-scopes")
   }
 }
