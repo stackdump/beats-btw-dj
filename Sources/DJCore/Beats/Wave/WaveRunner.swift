@@ -1917,6 +1917,7 @@ public final class WaveRunner {
     let d = min(Double(lane.dmax - 2), lane.dlen[k] / rate)
     var rp = Double(lane.dw[k]) - d
     if rp < 0 { rp += Double(lane.dmax) }
+    if rp >= Double(lane.dmax) { rp -= Double(lane.dmax) }  // -ε + dmax rounds to dmax
     let i0 = Int(rp)
     let fr = rp - Double(i0)
     let i1 = i0 + 1 == lane.dmax ? 0 : i0 + 1

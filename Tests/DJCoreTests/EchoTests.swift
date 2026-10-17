@@ -102,6 +102,20 @@ struct EchoTests {
       spec: TrackSpec(genre: "jazz", seed: 42, structure: "minimal"), sampleRate: 22_050)
     #expect(jazz.prepared.echo == nil)
   }
+
+  /// A delay a hair over a whole sample (120 bpm one ulp down: 18000.000000000004 samples) put
+  /// the read at exactly the buffer's length when the write head reached that sample: `-ε +
+  /// count` rounds to `count`. It crashed the live app on the audio thread (index out of range).
+  @Test func aDelayAHairOverAWholeSampleReadsInsideTheLine() {
+    let echo = PingPong(sampleRate: 48_000)
+    echo.tune(EchoSpec.forGenre("trance"), bpm: 120.0.nextDown)
+    var peak = 0.0
+    for i in 0..<60_000 {
+      let (l, r) = echo.process(i < 480 ? 0.5 : 0)
+      peak = max(peak, abs(l), abs(r))
+    }
+    #expect(peak > 0 && peak.isFinite)
+  }
 }
 
 #if DEBUG

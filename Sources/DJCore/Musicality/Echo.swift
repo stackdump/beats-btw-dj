@@ -120,6 +120,9 @@ final class PingPong {
     hpY = hp
     var rp = Double(pos) - delay
     if rp < 0 { rp += Double(left.count) }
+    // a read a hair behind the write head (`delay` settling onto a whole sample from above)
+    // wraps to exactly `count` in floating point: fold it back onto sample 0
+    if rp >= Double(left.count) { rp -= Double(left.count) }
     let i0 = Int(rp)
     let fr = rp - Double(i0)
     let i1 = i0 + 1 == left.count ? 0 : i0 + 1
