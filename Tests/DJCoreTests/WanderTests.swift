@@ -15,7 +15,8 @@ private func context(
     WanderVoice(
       roles: ["kick", "snare", "hihat"], channel: 10, instrument: "drums",
       options: ["drums", "drums-909"]),
-    WanderVoice(roles: ["bass"], channel: 2, instrument: "sub-bass", options: ["sub-bass", "acid"]),
+    WanderVoice(
+      roles: ["bass"], channel: 2, instrument: "sub-bass", options: ["sub-bass", "acid"]),
     WanderVoice(roles: ["melody"], channel: 1, instrument: "lead", options: ["lead", "pluck"]),
     WanderVoice(roles: ["arp"], channel: 4, instrument: "arp", options: ["arp", "bell"]),
   ]
@@ -76,7 +77,9 @@ struct WanderPlannerTests {
       locks: [WanderLock.keep("melody")], lockedActions: ["A.roleMute.kick"], disabled: ["bass"])
     for p in walk(c, steps: 400) {
       if case .role(let r, _) = p.action { #expect(!["bass", "melody", "kick"].contains(r)) }
-      if case .stem(let s) = p.action { #expect(s != "music" && s != "mic", "both hold the melody") }
+      if case .stem(let s) = p.action {
+        #expect(s != "music" && s != "mic", "both hold the melody")
+      }
       if p.kind == .instrument { #expect(!p.detail.contains("melody")) }
       if case .swap(let spec) = p.action {
         // the kept melody's instrument comes with every new track (on the channel the melody
@@ -252,6 +255,23 @@ struct WanderDeckTests {
     #expect(d.wander.log.map(\.bar) == [4, 8, 12, 16])
   }
 
+  @Test func aTempoLockSetBeforeAnyTrackHoldsTheFirstOneWalkedFrom() throws {
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: rate)
+    dj.deterministic = true
+    let d = dj["A"]!
+    d.setWanderLock("tempo", true)  // as the app restores it at launch: nothing loaded yet
+    d.setWanderLock("key", true)
+    #expect(d.wander.anchorBPM == nil && d.wander.key == nil)
+    let spec = TrackSpec(genre: "house", seed: 5, structure: "minimal")
+    d.loadNet(PreparedTrack(spec: spec, sampleRate: rate, opts: d.waveOptions))
+    for r in d.roles { d.setWanderLock(WanderLock.keep(r), true) }  // no recompose
+    d.setWanderPace(4)
+    d.setWander(true)
+    for bar in 1...3 { d.advanceWander(toBar: bar, lockedActions: []) }
+    #expect(d.wander.anchorBPM == 124 && d.wander.key?.scale == "MinorScale")
+    #expect(d.wander.log.count == 1)
+  }
+
   @Test func offOrOnASampleDeckNothingMoves() throws {
     let (dj, d) = try make()
     dj.perform(.wanderPace(deck: "A", bars: 4))
@@ -260,7 +280,8 @@ struct WanderDeckTests {
     let b = dj["B"]!
     dj.perform(.wander(deck: "B", on: true))
     for bar in 0..<40 { b.advanceWander(toBar: bar, lockedActions: []) }
-    #expect(b.wander.log.isEmpty && b.wanderIdleReason(lockedActions: [])?.contains("sample") == true)
+    #expect(
+      b.wander.log.isEmpty && b.wanderIdleReason(lockedActions: [])?.contains("sample") == true)
   }
 
   @Test func theWheelGrabsTheWalkAndAQuietPhraseGivesItBack() throws {
@@ -400,17 +421,20 @@ struct WanderReplayTests {
       l += bl
       r += br
     }
-    return (recorder.finish(), dj["A"]!.wander.log, RenderedAudio(sampleRate: rate, left: l, right: r))
+    return (
+      recorder.finish(), dj["A"]!.wander.log, RenderedAudio(sampleRate: rate, left: l, right: r)
+    )
   }
 
   @Test func aReplayWalksTheSamePath() throws {
     let (session, log, live) = try Self.perform(blocks: 1400)
     #expect(log.count >= 2, "\(log.map(\.detail))")
     #expect(session.params["A"]?.wander.locks == ["genre", "instruments"])
-    #expect(!session.events.contains { e in
-      if case .action(.macro) = e.kind { return true }
-      return false
-    }, "the moves are derived, not recorded")
+    #expect(
+      !session.events.contains { e in
+        if case .action(.macro) = e.kind { return true }
+        return false
+      }, "the moves are derived, not recorded")
     let player = SessionPlayer(session: session)
     let replay = try player.render()
     #expect(player.wanderLogs["A"] == log)

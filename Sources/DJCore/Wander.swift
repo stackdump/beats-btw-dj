@@ -231,13 +231,20 @@ struct WanderPlan: Equatable, Sendable {
 struct WanderRandom {
   private var state: UInt64
 
-  init(spec: TrackSpec, step: Int) {
+  init(spec: TrackSpec, step: Int) { self.init(base: Self.base(spec), step: step) }
+
+  init(base: UInt64, step: Int) {
+    state = base ^ (UInt64(truncatingIfNeeded: step) &* 0x9E37_79B9_7F4A_7C15)
+  }
+
+  /// FNV-1a of the spec's share CID: what every draw on this configuration starts from.
+  static func base(_ spec: TrackSpec) -> UInt64 {
     var h: UInt64 = 0xcbf2_9ce4_8422_2325
     for b in BeatsCID.shareCID(spec.payload).utf8 {
       h ^= UInt64(b)
       h = h &* 0x100_0000_01b3
     }
-    state = h ^ (UInt64(truncatingIfNeeded: step) &* 0x9E37_79B9_7F4A_7C15)
+    return h
   }
 
   mutating func next() -> UInt64 {
@@ -324,9 +331,10 @@ public enum Wander {
   static func canMove(_ c: WanderContext) -> Bool {
     // trying each kind with a throwaway draw tells whether any could be built (a genre move
     // by its options alone: building one composes the new genre when instruments are pinned)
-    kinds(c).contains { k in
+    let base = WanderRandom.base(c.spec)
+    return kinds(c).contains { k in
       if k == .genre { return !genreOptions(c).isEmpty }
-      var rng = WanderRandom(spec: c.spec, step: 0)
+      var rng = WanderRandom(base: base, step: 0)
       return build(k, c, &rng) != nil
     }
   }
@@ -386,7 +394,8 @@ public enum Wander {
       var s = nearbySeed(c, &rng)
       carry(c, &s, sameGenre: true)
       return WanderPlan(
-        kind: .seed, action: .swap(s), detail: "seed \(seedText(c.spec.seed)) → \(seedText(s.seed))")
+        kind: .seed, action: .swap(s), detail: "seed \(seedText(c.spec.seed)) → \(seedText(s.seed))"
+      )
 
     case .instrument:
       let voices = c.voices.filter { v in
@@ -469,11 +478,16 @@ public enum Wander {
   ) {
     if !keepLayers { s.layers = JSONObject() }
     if let key = c.key, c.locked("key") { s.extra["keyOffset"] = .number(Double(key.offset)) }
-    let pins = c.voices.filter { v in c.locked("instruments") || v.roles.contains(where: c.kept.contains) }
+    let pins = c.voices.filter { v in
+      c.locked("instruments") || v.roles.contains(where: c.kept.contains)
+    }
     guard !pins.isEmpty else { return }
-    let target = sameGenre ? nil : TrackSpec(
-      genre: s.genre, seed: s.seed, structure: s.structure, cohesion: s.cohesion, extra: s.extra
-    ).project()
+    let target =
+      sameGenre
+      ? nil
+      : TrackSpec(
+        genre: s.genre, seed: s.seed, structure: s.structure, cohesion: s.cohesion, extra: s.extra
+      ).project()
     for v in pins {
       let ch: Int? =
         if let target { v.roles.lazy.compactMap { Self.channel(of: $0, in: target) }.first } else {
@@ -646,6 +660,11 @@ extension Deck {
       return
     }
     guard (bar + 1) % wander.pace == 0 else { return }
+    // a tempo or key lock restored at launch (no track then) holds what plays at its first move
+    if wander.isLocked("tempo"), wander.anchorBPM == nil {
+      wander.anchorBPM = currentSpec.map(Wander.bpm(of:))
+    }
+    if wander.isLocked("key"), wander.key == nil { wander.key = wanderKey }
     takeWanderMove(bar: bar, lockedActions: lockedActions)
   }
 
