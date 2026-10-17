@@ -187,7 +187,9 @@ public struct MCPBridge {
       (dj_state.voices[].sampled) plays its synth voice (on) or its sample · clipMove {id, \
       before: id or null}: move a clip on the row to just before another (null: the end) · \
       lock {key, on}: lock an action like right-click ▸ Disable (key e.g. "A.play"; locked \
-      controller bindings do nothing). Deck "L" also takes param volume / mute (1 = muted).
+      controller bindings do nothing). Deck "L" also takes param volume / mute (1 = muted), \
+      and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
+      loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,

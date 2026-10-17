@@ -139,13 +139,18 @@ public final class SurfaceController {
       deck?.pitch = abs(p) < Self.pitchDeadZone ? 0 : p
     case .masterFx:
       // a slider position on its own range, as beats' FX panel sends it
-      if let d = deck, d.mode == .net, let k = b.macro.flatMap(MasterFxKey.init(id:)) {
-        d.wave.setMasterFx(k, Int((Double(k.min) + e.value * Double(k.max - k.min)).rounded()))
+      if let d = deck, let k = b.macro.flatMap(MasterFxKey.init(id:)) {
+        let v = Int((Double(k.min) + e.value * Double(k.max - k.min)).rounded())
+        if let bus = d.bank?.master {
+          bus.setSlider(k, v)  // aimed at the loops: their master bus
+        } else if d.mode == .net {
+          d.wave.setMasterFx(k, v)
+        }
       }
     case .reverbWet: deck?.reverb.wet = e.value
     case .reverbSize: deck?.reverb.size = e.value
     case .focusDeck:
-      if press { dj.focus = b.slot == 1 ? "B" : "A" }
+      if press { dj.focus = Self.aim(b.slot) }
     case .regenerate:
       if press, let d = deck, let spec = d.currentSpec {
         if let i = b.index { flashed[Self.key(b.group, i)] = now }
@@ -360,7 +365,11 @@ public final class SurfaceController {
     case .hotcue: return d?.hotCues[b.slot ?? 0] != nil ? leds.singleOn : leds.singleOff
     case .loopOut: return d?.looping == true ? leds.singleOn : leds.singleOff
     case .loopIn: return d?.loopStart != nil ? leds.singleOn : leds.singleOff
-    case .focusDeck: return dj.focus == (b.slot == 1 ? "B" : "A") ? leds.singleOn : leds.singleOff
+    case .focusDeck:
+      let aim = Self.aim(b.slot)
+      if dj.focus == aim { return leds.singleOn }
+      // aimed at the loops: the deck aim buttons blink (SHIFT shows the loops' own, lit)
+      return dj.focus == "L" && aim != "L" ? leds.singleBlink : leds.singleOff
     case .autoNext: return target(b)?.autoAdvance == true ? leds.singleOn : leds.singleOff
     case .clipToggle:
       // lit while its loop plays, blinking on its way in or out (dark: no loop in that slot)
@@ -409,6 +418,13 @@ public final class SurfaceController {
     }
     // the FX surface (aimed at a deck): beats' colour per macro group, lit while it runs
     if b.deck == "*", b.action == .macro || b.action == .stinger {
+      if let bus = d.bank?.master {
+        // aimed at the loops: only the master macros play there
+        guard let m = MasterMacro.allCases.first(where: { $0.id == b.macro }) else {
+          return (Color.off, false)
+        }
+        return (Self.color(m), bus.isActive(m))
+      }
       guard d.mode == .net else { return (Color.off, false) }
       let id = b.macro ?? ""
       if let m = NetMacro.allCases.first(where: { $0.id == id }) {
@@ -416,8 +432,7 @@ public final class SurfaceController {
         return (tempo ? Color.yellow : Color.red, d.wave.activeMacros.contains(m))
       }
       if let m = MasterMacro.allCases.first(where: { $0.id == id }) {
-        let c = m.group == "Pitch" ? Color.magenta : (m.group == "Feel" ? Color.green : Color.cyan)
-        return (c, d.wave.activeMasterMacros.contains(m))
+        return (Self.color(m), d.wave.activeMasterMacros.contains(m))
       }
       return (Color.white, false)  // a hit (stinger)
     }
@@ -429,7 +444,9 @@ public final class SurfaceController {
       guard secs.indices.contains(b.slot ?? 0) else { return (Color.off, false) }
       return (deckColor, d.currentSectionIndex == b.slot)
     case .macro, .panic, .stinger:
-      guard d.mode == .net else { return (Color.off, false) }
+      guard d.mode == .net || (d.bank != nil && b.action == .panic) else {
+        return (Color.off, false)
+      }
       return (b.action == .panic ? Color.red : deckColor, false)
     case .hotcue: return (deckColor, isSet)
     case .clearcue: return (isSet ? Color.red : Color.off, false)
@@ -438,6 +455,20 @@ public final class SurfaceController {
   }
 
   static func key(_ group: String, _ index: Int) -> String { "\(group)#\(index)" }
+
+  /// beats' APC colour for a master macro's group.
+  static func color(_ m: MasterMacro) -> UInt8 {
+    m.group == "Pitch" ? Color.magenta : (m.group == "Feel" ? Color.green : Color.cyan)
+  }
+
+  /// What a `focusDeck` binding aims at: slot 0 deck A, 1 deck B, 2 the loop channel.
+  static func aim(_ slot: Int?) -> String {
+    switch slot {
+    case 1: "B"
+    case 2: "L"
+    default: "A"
+    }
+  }
 
   /// The deck a binding acts on: its own, or for "*" the aimed one (`DJEngine.focus`).
   func target(_ b: SurfaceProfile.Binding) -> Deck? {

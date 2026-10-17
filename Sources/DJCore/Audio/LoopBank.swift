@@ -38,6 +38,14 @@ final class LoopBank: @unchecked Sendable {
   /// channel's safety limiter (only while some voice has FX on: `LoopFx.swift`).
   let fx: [LoopFxVoice]
   let limiter: LoopFxLimiter
+  /// The loops' master bus ("Loops master FX", LoopMasterBus.swift): the net decks' master chain
+  /// and macros on the summed voices, before the limiter.
+  public let master: LoopMasterBus
+  /// Frames each voice fell behind under the bus's vinyl brake (made up at its release).
+  private var brakeLag: [Double]
+  /// The voices' render state for this block (`process` may run several times in one block).
+  private var blockBits: UInt64 = 0
+  private var blockFx = false
   /// Frames a level change takes: ~5 ms.
   let rampFrames: Int
   private let commands = SPSCRing<LoopBankCommand>(capacity: 256)
@@ -72,6 +80,8 @@ final class LoopBank: @unchecked Sendable {
     voices = (0..<Self.voiceCount).map { _ in Turntable(sampleRate: sampleRate) }
     fx = (0..<Self.voiceCount).map { _ in LoopFxVoice(sampleRate: sampleRate) }
     limiter = LoopFxLimiter(sampleRate: sampleRate)
+    master = LoopMasterBus(sampleRate: sampleRate)
+    brakeLag = Array(repeating: 0, count: Self.voiceCount)
     rampFrames = max(1, Int(sampleRate * 0.005))
     let n = Self.voiceCount
     active = Array(repeating: false, count: n)
@@ -110,12 +120,25 @@ final class LoopBank: @unchecked Sendable {
 
   // MARK: audio thread
 
-  /// Render `frames` samples starting at deck frame `startFrame`, replacing `left`/`right`.
+  /// Render `frames` samples starting at deck frame `startFrame`, replacing `left`/`right`: the
+  /// voices summed, the loops' master bus, the limiter.
   func render(
     frames n: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
     startFrame s: Int
   ) {
     while let c = commands.pop() { apply(c) }
+    blockFx = false
+    master.render(self, frames: n, left: left, right: right, startFrame: s)
+    if blockFx || master.engaged || !limiter.idle { limiter.process(left, right, n) }
+    activeBits.store(blockBits, ordering: .relaxed)
+  }
+
+  /// The voices' frames `s..<s + n` summed into `left` / `right` (replacing them): the dry side of
+  /// the master bus (several calls a block while its brake runs, each the next source frames).
+  private func mixVoices(
+    frames n: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
+    startFrame s: Int
+  ) {
     left.update(repeating: 0, count: n)
     right?.update(repeating: 0, count: n)
     var bits: UInt64 = 0
@@ -161,8 +184,8 @@ final class LoopBank: @unchecked Sendable {
       }
       if fx[v].running { anyFx = true }
     }
-    if anyFx || !limiter.idle { limiter.process(left, right, n) }
-    activeBits.store(bits, ordering: .relaxed)
+    blockBits = bits
+    if anyFx { blockFx = true }
   }
 
   private func apply(_ c: LoopBankCommand) {
@@ -282,5 +305,33 @@ final class LoopBank: @unchecked Sendable {
     envelopeStep[v] = es
     envelopeLeft[v] = en
     return ended
+  }
+}
+
+// The master bus's vinyl brake slows the summed voices (TurntableBrake.swift). Its lag is counted
+// in frames, per voice that sounded through it, and each such voice skips on by its own lag at
+// the release, so a loop lands where an unbraked one would be.
+extension LoopBank: BrakeSource {
+  var playing: Bool { true }
+
+  func process(
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int,
+    startFrame: Int
+  ) {
+    mixVoices(frames: frames, left: left, right: right, startFrame: startFrame)
+  }
+
+  func brakeLag(sampleRate: Double) -> Double { 1 }
+
+  func brakeChunk(output: Int, pulled: Int) {
+    let lag = Double(output - pulled)
+    for v in 0..<Self.voiceCount where active[v] { brakeLag[v] += lag }
+  }
+
+  func catchUp(ticks _: Double) {
+    for v in 0..<Self.voiceCount where brakeLag[v] > 0 {
+      if active[v] { voices[v].skip(frames: brakeLag[v]) }
+      brakeLag[v] = 0
+    }
   }
 }

@@ -66,7 +66,7 @@ extension DJEngine {
       .loopQuantize(beats: loopQuantum), .loopFade(mode: loopFade.rawValue),
       .loopKeyLock(on: loopKeyLock), .tapBars(bars: tapTakeBars),
       .loopFollow(mode: loopFollow.rawValue),
-    ]
+    ] + (loopFxLink ? [.loopFxLink(on: true)] : [])
   }
 
   /// `loopSettings` of a fresh engine.

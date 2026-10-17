@@ -196,6 +196,21 @@ public final class Turntable: @unchecked Sendable {
     lengthAtomic.store(buffer._withUnsafeGuaranteedRef { $0.length }, ordering: .relaxed)
   }
 
+  /// Audio thread: move the playhead on by `frames` output frames at the current rate, wrapped
+  /// inside the loop region (a loop voice catching up after the loops' vinyl brake, as an
+  /// unbraked voice would have played on). Nothing else changes.
+  func skip(frames: Double) {
+    guard buffer != nil, !scrubbing, frames > 0 else { return }
+    pos += rate * frames
+    if looping {
+      let len = loopEnd - loopStart
+      if len > 0, pos >= loopEnd {
+        pos = loopStart + (pos - loopStart).truncatingRemainder(dividingBy: len)
+      }
+    }
+    posBits.store(pos.bitPattern, ordering: .relaxed)
+  }
+
   private func apply(_ c: TurntableCommand) {
     switch c {
     case .load(let p):

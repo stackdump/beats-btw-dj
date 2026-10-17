@@ -229,9 +229,15 @@ extension Deck {
   }
 
   /// A master-chain macro (FX, pitch, feel) for `duration` bars (nil: its default; 0: permanent).
+  /// On the loop channel ("L") it goes to the loops' master bus (LoopMasterFx.swift).
   public func fire(_ macro: MasterMacro, duration: Int? = nil) {
+    if bank != nil {
+      onMasterMacro?(macro, duration)
+      return
+    }
     guard mode == .net else { return }
     wave.fire(macro, bars: duration)
+    onMasterMacro?(macro, duration)
   }
 
   /// Fire a catalog macro by its beats id (`drop`, `sweep-lp`, `feel-build`...), whichever kind
@@ -253,7 +259,15 @@ extension Deck {
     NetMacro(id: id) != nil || MasterMacro(id: id) != nil
   }
 
-  public func panic() { if mode == .net { wave.panic() } }
+  public func panic() {
+    if let bank {
+      bank.master.panic()
+      return
+    }
+    guard mode == .net else { return }
+    wave.panic()
+    onMasterMacro?(nil, nil)
+  }
 
   /// Stinger `n` (0…3 → `hit1`…`hit4`): unmute its ring for `bars` bars.
   public func stinger(_ n: Int, bars: Int = 1) {

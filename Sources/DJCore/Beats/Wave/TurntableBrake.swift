@@ -31,6 +31,29 @@
 // (`turntableBrakeDoesNotAllocate`). A chunk takes at most `maxChunk` output frames, so the runner
 // never gets a block bigger than its scratch (4096, as the sampler bank's).
 
+/// What a `TurntableBrake` slows down: a net deck's `WaveRunner`, or the loop channel's bank
+/// (`LoopBank`, under the loops' master bus). Audio thread only; nothing here may allocate.
+protocol BrakeSource: AnyObject {
+  /// Is its clock running (the brake's elapsed time only counts while it is)?
+  var playing: Bool { get }
+  /// Render `frames` source frames into `left` (`right`), stamping events from `startFrame`.
+  func process(
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int,
+    startFrame: Int)
+  /// How far an unbraked source runs ahead per output frame, in the units `catchUp` takes
+  /// (the runner: ticks at its tempo; the bank: frames). Read before each braked chunk.
+  func brakeLag(sampleRate: Double) -> Double
+  /// A braked chunk played `output` frames from `pulled` source frames (while running).
+  func brakeChunk(output: Int, pulled: Int)
+  /// The release: put the clock where an unbraked source would be, `ticks` (lag units) on.
+  func catchUp(ticks: Double)
+}
+
+extension WaveRunner: BrakeSource {
+  func brakeLag(sampleRate: Double) -> Double { tempo * 4 / (60 * sampleRate) }
+  func brakeChunk(output: Int, pulled: Int) {}
+}
+
 final class TurntableBrake {
   /// Output frames per braked chunk: with the onset's three look-ahead pulls the runner is
   /// asked for at most 4095 source frames (its own scratch and the samplers' hold 4096).
@@ -125,8 +148,8 @@ final class TurntableBrake {
   /// Render `frames` of the deck's runner into `left` (`right`), braked while a brake runs.
   /// Real-time safe. `startFrame` stamps the runner's events (braked chunks stamp theirs from the
   /// chunk's first output frame).
-  func render(
-    _ runner: WaveRunner, _ left: UnsafeMutablePointer<Float>,
+  func render<S: BrakeSource>(
+    _ runner: S, _ left: UnsafeMutablePointer<Float>,
     _ right: UnsafeMutablePointer<Float>?, frames: Int, startFrame: Int
   ) {
     var off = 0
@@ -199,8 +222,8 @@ final class TurntableBrake {
   }
 
   /// `n` braked output frames.
-  private func braked(
-    _ runner: WaveRunner, _ left: UnsafeMutablePointer<Float>,
+  private func braked<S: BrakeSource>(
+    _ runner: S, _ left: UnsafeMutablePointer<Float>,
     _ right: UnsafeMutablePointer<Float>?, _ n: Int, _ startFrame: Int, _ playing: Bool
   ) {
     // how many source frames the head reaches (the same arithmetic as the loop below)
@@ -215,7 +238,7 @@ final class TurntableBrake {
       }  // r ≤ 1 and ph < 1: at most one a frame
       if playing { e += 1 }
     }
-    let ticksPerFrame = runner.tempo * 4 / (60 * sampleRate)  // before a bar's hand-over
+    let ticksPerFrame = runner.brakeLag(sampleRate: sampleRate)  // before a bar's hand-over
     if pulls > 0 {
       runner.process(srcL, right == nil ? nil : srcR, frames: pulls, startFrame: startFrame)
       if right == nil { srcR.update(from: srcL, count: pulls) }
@@ -223,6 +246,7 @@ final class TurntableBrake {
     if playing {
       // the shadow deck ran n frames, this one's clock `pulls`
       deficitTicks += Double(n - pulls) * ticksPerFrame
+      runner.brakeChunk(output: n, pulled: pulls)
     }
     var k = 0
     while fill > 0 {

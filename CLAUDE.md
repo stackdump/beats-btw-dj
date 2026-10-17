@@ -154,7 +154,22 @@ its copy; the two are now independent. Rules inherited from that split:
   chain (the chain is the mixer's insert and keeps real time), r = 1 − t / (¾ D), silent for the
   last quarter, then `WaveRunner.catchUp` puts the tick clock where an unbraked deck would be
   and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. Master macros are
-  net-only (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake.
+  net-only on A/B (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake;
+  on "L" they go to the loops' master bus (below).
+- **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
+  FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
+  voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
+  the bus is engaged). Clocked by the loop channel's frames; each fire carries the loop clock's
+  BPM (`loopClock(for: nil)`) and lands on its next launch line (launch quantum, at most a bar;
+  `loopMasterFireFrame`), so N bars are N loop bars. Pokes are the decks' own:
+  `.macro(deck: "L", id:)` (master ids only; net macros do nothing), `.panic(deck: "L")`, the
+  APC aimed at L (SHIFT + either aim scene button, `focusDeck` slot 2 [UNVERIFIED]; the A/B aim
+  LEDs blink while aimed at L), and `.loopFxLink(on:)` (a net deck's master macro also fires on
+  L at once, its panic releases L; in `loopSettings` when on). Feel macros keep only their
+  filter on L (tempo events dropped). `vinyl-brake` on L is `TurntableBrake` with the bank as
+  its `BrakeSource`: the summed voices varispeed together, then each voice `Turntable.skip`s
+  its own lag, so loops land back to the byte where unbraked ones would be. At rest the bus is
+  bit-transparent. UI: the Loops row's "Master FX" fold (`LoopMasterFxStrip`).
 - A neutral chain is bypassed and bit-transparent (decks without FX render the runner's exact
   bytes). `restBypass = false` / `solo` exist only for `MasterChainChromeTests`.
 - Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs

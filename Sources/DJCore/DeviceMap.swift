@@ -53,7 +53,8 @@ extension SurfaceProfile.Binding {
     case .masterFx: return "FX \(macro ?? "?")\(on)"
     case .reverbWet: return "reverb wet\(on)"
     case .reverbSize: return "reverb size\(on)"
-    case .focusDeck: return "aim at deck \(slot == 1 ? "B" : "A")"
+    case .focusDeck:
+      return slot == 2 ? "aim at the loops (L)" : "aim at deck \(slot == 1 ? "B" : "A")"
     case .regenerate: return "regenerate (next seed)\(on)"
     case .autoNext: return "auto-next\(on)"
     case .eqLow: return "EQ low\(on)"

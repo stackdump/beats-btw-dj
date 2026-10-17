@@ -198,6 +198,9 @@ public enum DeckAction: Equatable, Sendable {
   /// the whole value at once; `LoopFX()` is off (`DJEngine.setClipFx`). Non-destructive: the
   /// clip's audio stays dry.
   case clipFx(id: String, fx: LoopFX)
+  /// Link the loops' master FX to the decks' (`DJEngine.setLoopFxLink`): a master macro fired
+  /// on a net deck fires on the loop channel too, and a deck's panic releases it.
+  case loopFxLink(on: Bool)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -469,6 +472,7 @@ extension DeckAction {
     case .setPalette(let deck, let palette):
       return o("setPalette", [d(deck), ("palette", palette.map { .string($0) } ?? .null)])
     case .clipFx(let id, let fx): return o("clipFx", [("id", .string(id)), ("fx", fx.json)])
+    case .loopFxLink(let on): return o("loopFxLink", [("on", .bool(on))])
     }
   }
 
@@ -562,6 +566,7 @@ extension DeckAction {
     case "clipFx":
       guard let id = v["id"]?.string else { return nil }
       self = .clipFx(id: id, fx: LoopFX(json: v["fx"]))
+    case "loopFxLink": self = .loopFxLink(on: v["on"]?.bool ?? false)
     default: return nil
     }
   }
