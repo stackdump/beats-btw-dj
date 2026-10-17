@@ -54,6 +54,10 @@ public final class DJEngine {
   public internal(set) var tapTakeBars: Int? = DJEngine.defaultTapTakeBars
   /// What loops start and stop on, in beats: 4 (the next bar) unless set (`setLoopQuantum`).
   public internal(set) var loopQuantum = DJEngine.defaultLoopQuantum
+  /// Whose tempo the loops follow (`setLoopFollow`): the louder deck unless set.
+  public internal(set) var loopFollow = LoopFollow.louder
+  /// The deck the loops follow now under `.louder` (`updateDominantDeck`).
+  public internal(set) var dominantDeck: String?
   /// Saved sets of loops (`LoopScene`), in the order they were made.
   public internal(set) var scenes: [LoopScene] = []
   /// Actions the user locked (right-click ▸ Disable): a controller binding with one of these

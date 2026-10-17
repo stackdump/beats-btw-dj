@@ -141,6 +141,8 @@ public enum DeckAction: Equatable, Sendable {
   /// What loops start and stop on, in beats: 1 | 4 (a bar) | 8 | 16 | 32
   /// (`DJEngine.setLoopQuantum`).
   case loopQuantize(beats: Int)
+  /// Whose tempo the loops follow: "louder" (the louder deck) or "source" (each loop's own).
+  case loopFollow(mode: String)
   /// Save the loops playing now as scene `name` (overwriting one of that name).
   case sceneSave(name: String)
   /// Launch a scene: its clips in, every other loop out, on the next launch boundary. Recorded
@@ -400,6 +402,7 @@ extension DeckAction {
     case .clipColor(let id, let color):
       return o("clipColor", [("id", .string(id)), ("color", color.map { .string($0) } ?? .null)])
     case .loopQuantize(let beats): return o("loopQuantize", [("beats", .int(beats))])
+    case .loopFollow(let mode): return o("loopFollow", [("mode", .string(mode))])
     case .sceneSave(let name): return o("sceneSave", [("name", .string(name))])
     case .sceneLaunch(let name, let clips):
       return o("sceneLaunch", [("name", .string(name)), ("clips", clips?.json ?? .null)])
@@ -467,10 +470,12 @@ extension DeckAction {
       self = .clipRename(id: v["id"]?.string ?? "", title: v["title"]?.string ?? "")
     case "clipColor": self = .clipColor(id: v["id"]?.string ?? "", color: v["color"]?.string)
     case "loopQuantize": self = .loopQuantize(beats: v["beats"]?.int ?? DJEngine.defaultLoopQuantum)
+    case "loopFollow": self = .loopFollow(mode: v["mode"]?.string ?? LoopFollow.louder.rawValue)
     case "sceneSave": self = .sceneSave(name: v["name"]?.string ?? "")
     case "sceneLaunch":
       self = .sceneLaunch(
-        name: v["name"]?.string ?? "", clips: v["clips"]?.array.map { [SceneClip](json: .array($0)) })
+        name: v["name"]?.string ?? "",
+        clips: v["clips"]?.array.map { [SceneClip](json: .array($0)) })
     case "sceneRename":
       self = .sceneRename(name: v["name"]?.string ?? "", to: v["to"]?.string ?? "")
     case "sceneDelete": self = .sceneDelete(name: v["name"]?.string ?? "")

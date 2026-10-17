@@ -104,6 +104,11 @@ public final class AppModel {
   /// as `loopQuantize`.
   var loopQuantum = DJEngine.defaultLoopQuantum
   static let loopQuantizeKey = "loopQuantize"
+  /// Whose tempo the loops follow (the row's "Tempo"), and the deck that is now; saved as
+  /// `loopFollow`.
+  var loopFollow = LoopFollow.louder
+  var followingDeck: String?
+  static let loopFollowKey = "loopFollow"
   /// The saved scenes, as chips.
   var scenes: [SceneState] = []
   var crossfader = 0.5
@@ -247,6 +252,10 @@ public final class AppModel {
       if dj.tapTakeBars != tapBars { dj.perform(.tapBars(bars: tapBars)) }
       if let q = defaults.object(forKey: Self.loopQuantizeKey) as? Int { dj.setLoopQuantum(q) }
       loopQuantum = dj.loopQuantum
+      if let f = defaults.string(forKey: Self.loopFollowKey).flatMap(LoopFollow.init) {
+        dj.setLoopFollow(f)
+      }
+      loopFollow = dj.loopFollow
       dj.master = master
       try dj.start()
       let hub = ControllerHub(engine: dj)
@@ -454,6 +463,12 @@ public final class AppModel {
       loopQuantum = dj.loopQuantum
       defaults.set(loopQuantum, forKey: Self.loopQuantizeKey)
     }
+    if dj.loopFollow != loopFollow {
+      loopFollow = dj.loopFollow
+      defaults.set(loopFollow.rawValue, forKey: Self.loopFollowKey)
+    }
+    let following = dj.loopFollow == .louder ? dj.dominantDeck : nil
+    if following != followingDeck { followingDeck = following }
     let sceneRow = SceneState.row(dj)
     if sceneRow != scenes { scenes = sceneRow }
     let l = dj.loopChannel
@@ -596,6 +611,11 @@ public final class AppModel {
   func stopAllLoops() {
     guard let dj else { return }
     for id in dj.loopingClips { dj.perform(.clipLoop(id: id, on: false)) }
+  }
+  /// The row's "Tempo": loops follow the louder deck, or each its own.
+  func setLoopFollow(_ mode: LoopFollow) {
+    dj?.perform(.loopFollow(mode: mode.rawValue))
+    if let dj { pollLoops(dj) }
   }
   /// The row's "Launch on": what loops (and scenes) start and stop on, in beats.
   func setLoopQuantum(_ beats: Int) {

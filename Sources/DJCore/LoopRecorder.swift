@@ -91,7 +91,9 @@ public struct LoopClip: Sendable, Identifiable, Equatable {
   }
 
   /// The colours a clip can be given, by name (the views pick the shades).
-  public static let palette = ["red", "orange", "yellow", "green", "teal", "blue", "violet", "pink"]
+  public static let palette = [
+    "red", "orange", "yellow", "green", "teal", "blue", "violet", "pink",
+  ]
 
   /// "2 bars", "6 beats".
   public var lengthLabel: String {
@@ -648,6 +650,7 @@ extension DJEngine {
   func serviceLoops() {
     guard let bank = loopChannel.bank else { return }
     let now = loopChannel.renderedFrames
+    let louder = loopFollow == .louder ? updateDominantDeck() : nil
     for v in loopVoices.indices {
       guard let id = loopVoices[v].clipID else { continue }
       if let stop = loopVoices[v].stopFrame {
@@ -664,6 +667,15 @@ extension DJEngine {
         for d in decks.values where d.clipID == id && d.playing { d.setPlaying(false) }
       }
       guard let clip = clip(id) else { continue }
+      // following the louder deck, a playing loop takes its tempo from whichever that is now;
+      // following its own deck, back to that one when it plays
+      if let louder, louder.clipID != id, bank.isActive(v) {
+        loopVoices[v].ref = louder.name
+      } else if loopFollow == .source, let own = decks[clip.source], own.playing, own.clipID != id,
+        bank.isActive(v)
+      {
+        loopVoices[v].ref = own.name
+      }
       if let ref = loopVoices[v].ref.flatMap({ decks[$0] }), ref.playing,
         let bpm = ref.effectiveBPM
       {
@@ -736,8 +748,10 @@ extension DJEngine {
   /// deck, else a loop already going under the mixer, else nothing (it starts on its own).
   func loopClock(for clip: LoopClip?) -> LoopClock {
     let sr = sampleRate
+    // following the louder deck, that one first; else the clip's own deck first
+    let first = loopFollow == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] }
     let candidates =
-      ([clip.flatMap { decks[$0.source] }] + decks.values.sorted { $0.name < $1.name })
+      ([first, clip.flatMap { decks[$0.source] }] + decks.values.sorted { $0.name < $1.name })
       .compactMap { $0 }
     if let ref = candidates.first(where: {
       $0.playing && $0.clipID != clip?.id && $0.beatState != nil

@@ -252,6 +252,7 @@ extension DJEngine {
     case .clipRename(let id, let title): renameClip(id, title)
     case .clipColor(let id, let color): setClipColor(id, color)
     case .loopQuantize(let beats): setLoopQuantum(beats)
+    case .loopFollow(let mode): if let m = LoopFollow(rawValue: mode) { setLoopFollow(m) }
     case .sceneSave(let name): saveScene(name)
     case .sceneLaunch(let name, let clips):
       if let clips { launchScene(clips: clips) } else { launchScene(name) }

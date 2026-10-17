@@ -664,6 +664,25 @@ struct LaunchBar: View {
         }
       }
       Divider().frame(height: 18)
+      HStack(spacing: 3) {
+        Text("Tempo").font(.caption).foregroundStyle(.secondary).fixedSize()
+        ChoiceButton(
+          label: "louder deck", selected: model.loopFollow == .louder, tint: LoopRowView.tint
+        ) { model.setLoopFollow(.louder) }
+        .help("Every loop follows the tempo of whichever playing deck is louder in the mix")
+        ChoiceButton(
+          label: "own deck", selected: model.loopFollow == .source, tint: LoopRowView.tint
+        ) { model.setLoopFollow(.source) }
+        .help("Each loop follows the deck it was taken from")
+        if let d = model.followingDeck {
+          Text("→ \(d)").font(.caption.bold()).foregroundStyle(deckTint(d))
+            .help("The loops follow deck \(d) now")
+        }
+      }
+      .arrowKeys([LoopFollow.louder, .source], current: model.loopFollow) {
+        model.setLoopFollow($0)
+      }
+      Divider().frame(height: 18)
       Button("Save scene") { model.saveScene() }
         .controlSize(.small).disabled(model.loopChannel.looping == 0)
         .help("Keep the loops playing now (and their levels) as a scene")

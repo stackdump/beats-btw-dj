@@ -65,6 +65,7 @@ extension DJEngine {
     [
       .loopQuantize(beats: loopQuantum), .loopFade(mode: loopFade.rawValue),
       .loopKeyLock(on: loopKeyLock), .tapBars(bars: tapTakeBars),
+      .loopFollow(mode: loopFollow.rawValue),
     ]
   }
 
@@ -72,6 +73,7 @@ extension DJEngine {
   static let defaultLoopSettings: [DeckAction] = [
     .loopQuantize(beats: defaultLoopQuantum), .loopFade(mode: LoopFade.declick.rawValue),
     .loopKeyLock(on: false), .tapBars(bars: defaultTapTakeBars),
+    .loopFollow(mode: LoopFollow.louder.rawValue),
   ]
 
   // MARK: countdown

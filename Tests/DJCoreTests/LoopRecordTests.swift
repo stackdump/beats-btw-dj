@@ -452,6 +452,37 @@ struct LoopRecordTests {
     #expect(a.turntable.position > Double(bar), "past the old loop's end: \(a.turntable.position)")
   }
 
+  @Test func loopsFollowTheLouderDeck() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, _) = try await twoTakes(rig)  // taken from A at 120
+    let b = try #require(rig.dj["B"])
+    await b.generate(TrackSpec(genre: "house", seed: 3, extra: JSONObject([("bpm", .number(126))])))
+    b.volume = 1
+    b.setPlaying(true)
+    func tempo() -> Double? {
+      rig.dj.loopVoices.first { $0.clipID == one.id }?.targetBPM
+    }
+    #expect(rig.dj.loopFollow == .louder, "the default")
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.dominantDeck == "A" && abs((tempo() ?? 0) - 120) < 1e-6, "A is up")
+    rig.dj.perform(.crossfader(1))  // all B
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.dominantDeck == "B" && abs((tempo() ?? 0) - 126) < 1e-6, "B took over")
+    rig.dj.perform(.crossfader(0.5))  // equal: no flapping back
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.dominantDeck == "B")
+    rig.dj.perform(.loopFollow(mode: "source"))
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(abs((tempo() ?? 0) - 120) < 1e-6, "its own deck again")
+    rig.dj.perform(.loopFollow(mode: "louder"))
+    b.mute = true  // a silent deck is not the louder one
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.dominantDeck == "A")
+    let action = DeckAction.loopFollow(mode: "source")
+    #expect(DeckAction(json: action.json) == action)
+  }
+
   @Test func theLoopChannelHasItsOwnMute() throws {
     let rig = try Rig()
     let l = rig.dj.loopChannel
