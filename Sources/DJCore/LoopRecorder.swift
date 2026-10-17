@@ -58,6 +58,9 @@ public struct LoopClip: Sendable, Identifiable, Equatable {
   /// Where it came from (`LoopProvenance`): the deck, its track and settings when LOOP went
   /// down; for a crop or a sequence, what it was made from.
   public internal(set) var provenance: JSONValue?
+  /// Its after effects under the mixer (`LoopFx.swift`): played on top of the dry audio, never
+  /// rendered into it. Off by default.
+  public internal(set) var fx = LoopFX()
 
   public var grid: BeatGrid { BeatGrid(bpm: bpm, offset: 0, confidence: 1) }
 
@@ -66,8 +69,9 @@ public struct LoopClip: Sendable, Identifiable, Equatable {
   init(
     id: String, title: String, source: String, beats: Int, bpm: Double, startBeat: Double,
     buffer: SampleBuffer, waveform: WaveformOverview, steps: [SequenceStep]? = nil,
-    provenance: JSONValue? = nil, color: String? = nil
+    provenance: JSONValue? = nil, color: String? = nil, fx: LoopFX = LoopFX()
   ) {
+    self.fx = fx
     self.steps = steps
     self.provenance = provenance
     self.color = color
@@ -419,7 +423,7 @@ extension DJEngine {
       id: buffer.contentID, title: c.title, source: c.source, beats: to - from, bpm: c.bpm,
       startBeat: c.startBeat + Double(from), buffer: buffer,
       waveform: WaveformOverview(buffer: buffer, columns: 400),
-      provenance: LoopProvenance.crop(c, from: from, to: to), color: c.color)
+      provenance: LoopProvenance.crop(c, from: from, to: to), color: c.color, fx: c.fx)
     replace(at: i, with: cropped)
     // sequences that used the original use the crop from now on (when they are next rendered)
     for k in clips.indices {
@@ -430,11 +434,12 @@ extension DJEngine {
     return cropped.id
   }
 
-  /// Put `new` where the clip at `i` is: its level and colour carry over, and if it was looping
-  /// under the mixer the new one carries on in phase.
+  /// Put `new` where the clip at `i` is: its level, colour and FX carry over, and if it was
+  /// looping under the mixer the new one carries on in phase.
   private func replace(at i: Int, with new: LoopClip) {
     var new = new
     if new.color == nil { new.color = clips[i].color }
+    if new.fx == LoopFX() { new.fx = clips[i].fx }
     let id = clips[i].id
     let wasLooping = loopState(id) == .on || loopState(id) == .starting
     stopLoop(id, now: true)
@@ -614,6 +619,7 @@ extension DJEngine {
     tt.send(.seek(sample: b * length / beats))
     tt.send(.start)
     bank.send(.gain(voice: v, Float(audibleClipGain(id))))
+    bank.send(.fx(voice: v, LoopFxParams(clip.fx, sampleRate: sampleRate)))
     bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(bpm: target, short: atOnce)))
     loopVoices[v] = LoopVoice(
       clipID: id, ref: clock.ref?.name, ratio: ratio, bufferBPM: audio.bpm, targetBPM: target,

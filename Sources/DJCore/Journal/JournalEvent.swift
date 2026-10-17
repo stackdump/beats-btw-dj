@@ -207,6 +207,7 @@ public enum JournalEvent: Equatable, Sendable {
     case .action(.crossfader): "crossfader"
     case .action(.master): "master"
     case .action(.clipGain(let id, _)): "gain.\(id)"
+    case .action(.clipFx(let id, _)): "fx.\(id)"
     case .action(.voiceTweak(let deck, let ch, _)): "voice.\(deck).\(ch)"
     case .midi(let port, let bytes) where bytes.count == 3 && bytes[0] & 0xF0 == 0xB0:
       "cc.\(port).\(bytes[0]).\(bytes[1])"  // a knob turned

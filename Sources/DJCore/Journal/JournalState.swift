@@ -42,11 +42,14 @@ public struct ClipCheckpoint: Equatable, Sendable {
   public var keyLock: Bool?
   /// Looping (or on its way in) under the mixer.
   public var looping: Bool
+  /// Its after effects (`LoopClip.fx`).
+  public var fx: LoopFX
 
   public init(
     id: String, title: String, color: String? = nil, gain: Double = 1, muted: Bool = false,
-    soloed: Bool = false, keyLock: Bool? = nil, looping: Bool = false
+    soloed: Bool = false, keyLock: Bool? = nil, looping: Bool = false, fx: LoopFX = LoopFX()
   ) {
+    self.fx = fx
     self.id = id
     self.title = title
     self.color = color
@@ -199,7 +202,7 @@ public struct JournalState: Equatable, Sendable {
       ClipCheckpoint(
         id: c.id, title: c.title, color: c.color, gain: dj.clipGain(c.id),
         muted: dj.isClipMuted(c.id), soloed: dj.isClipSoloed(c.id),
-        keyLock: dj.clipKeyLocks[c.id], looping: looping.contains(c.id))
+        keyLock: dj.clipKeyLocks[c.id], looping: looping.contains(c.id), fx: c.fx)
     }
     scenes = dj.scenes
     removed = dj.removedClips.map { ($0.clip.id, $0.index) }
@@ -251,6 +254,7 @@ public struct JournalState: Equatable, Sendable {
               ])
               if let color = c.color { o["color"] = .string(color) }
               if let k = c.keyLock { o["keyLock"] = .bool(k) }
+              if c.fx != LoopFX() { o["fx"] = c.fx.json }
               return .object(o)
             })
         ),
@@ -296,7 +300,7 @@ public struct JournalState: Equatable, Sendable {
         id: id, title: c["title"]?.string ?? "loop", color: c["color"]?.string,
         gain: c["gain"]?.double ?? 1, muted: c["muted"]?.bool ?? false,
         soloed: c["soloed"]?.bool ?? false, keyLock: c["keyLock"]?.bool,
-        looping: c["looping"]?.bool ?? false)
+        looping: c["looping"]?.bool ?? false, fx: LoopFX(json: c["fx"]))
     }
     scenes = (v["scenes"]?.array ?? []).compactMap(LoopScene.init(json:))
     removed = (v["removed"]?.array ?? []).compactMap { e in
@@ -336,6 +340,7 @@ public struct JournalState: Equatable, Sendable {
       if c.muted { dj.setClipMute(c.id, true) }
       if c.soloed { dj.setClipSolo(c.id, true) }
       if let k = c.keyLock { dj.setClipKeyLock(c.id, k) }
+      if dj.clipFx(c.id) != c.fx { dj.setClipFx(c.id, c.fx) }  // the run's, not the library's
     }
     dj.restoreScenes(scenes)
     for r in removed.reversed() {

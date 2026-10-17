@@ -2,7 +2,7 @@ import Foundation
 
 /// The LOOP-record clips on disk, so the row under the mixer comes back on the next launch:
 /// one float WAV per clip, named by its content id, and an index (`library.json`) that keeps
-/// the row's order and each clip's bars, tempo, source, name and colour, and the saved scenes
+/// the row's order and each clip's bars, tempo, source, name, colour and FX, and the saved scenes
 /// (`scenes`, by clip id).
 ///
 /// Nothing is deleted by taking a clip off the row: its WAV moves into `removed/` with its
@@ -50,7 +50,7 @@ public struct LoopLibrary: Sendable {
       source: e["source"]?.string ?? "A", beats: beats, bpm: bpm,
       startBeat: e["startBeat"]?.double ?? 0, buffer: buffer,
       waveform: WaveformOverview(buffer: buffer, columns: 400), steps: steps,
-      provenance: e["provenance"], color: e["color"]?.string)
+      provenance: e["provenance"], color: e["color"]?.string, fx: LoopFX(json: e["fx"]))
   }
 
   /// A clip's index entry.
@@ -63,6 +63,7 @@ public struct LoopLibrary: Sendable {
     if let color = c.color { o["color"] = .string(color) }
     if let steps = c.steps { o["steps"] = steps.json }
     if let p = c.provenance { o["provenance"] = p }
+    if c.fx != LoopFX() { o["fx"] = c.fx.json }  // only when set: older indexes read the same
     return o
   }
 

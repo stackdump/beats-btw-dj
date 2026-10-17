@@ -169,6 +169,10 @@ public struct MCPBridge {
       {id, on}: silent but still looping, in phase · clipSolo {id, on}: while any clip is soloed \
       only soloed ones are heard · clipKeyLock {id, on}: at another tempo it keeps its pitch (a \
       time-stretched copy, made in the background; dj_state.loops.clips[].stretched) · \
+      clipFx {id, fx: {drive 0…24 dB, mode clean|soft|hard|tube|fold|crush, amount 0…1, \
+      bits 1…16, downsample 1…32, tone 0…1 (1 open), mix 0…1, trim −24…12 dB, autoLevel, \
+      bypass}}: after effects on a loop under the mixer, on top of its dry audio (missing fields \
+      default; {} is off; dj_state.loops.clips[].fx) · \
       loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
       off|10ms|beat|bar}: how loops come in and go out (default 10ms) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
