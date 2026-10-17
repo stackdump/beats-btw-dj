@@ -109,8 +109,11 @@ public enum DeckAction: Equatable, Sendable {
   case follow(deck: String, leader: String?)
   /// The tempo analysis (or a tap) put a beat grid on a sample deck.
   case grid(deck: String, bpm: Double, offset: Double)
-  /// LOOP record held (`on`) or let go on a deck (`DJEngine.loopRecord`).
-  case loopRecord(deck: String, on: Bool)
+  /// LOOP record held (`on`) or let go on a deck (`DJEngine.loopRecord`). `bars` (on the
+  /// press): a tap records exactly that many bars; nil, or a hold, records to the release.
+  case loopRecord(deck: String, on: Bool, bars: Int? = nil)
+  /// Take the last `bars` whole bars a deck has already played (`DJEngine.grabLastBars`).
+  case grabBars(deck: String, bars: Int)
   /// Put a LOOP-record clip on a deck or the loop channel ("L") (`DJEngine.playClip`).
   case clip(deck: String, id: String)
   /// Start (`on`) or stop a clip looping under the mixer, at the next downbeat.
@@ -329,7 +332,11 @@ extension DeckAction {
       return o("follow", [d(deck), ("leader", leader.map { .string($0) } ?? .null)])
     case .grid(let deck, let bpm, let offset):
       return o("grid", [d(deck), ("bpm", .number(bpm)), ("offset", .number(offset))])
-    case .loopRecord(let deck, let on): return o("loopRecord", [d(deck), ("on", .bool(on))])
+    case .loopRecord(let deck, let on, let bars):
+      // `bars` only when set: a hold-only take encodes as it always has
+      return o(
+        "loopRecord", [d(deck), ("on", .bool(on))] + (bars.map { [("bars", .int($0))] } ?? []))
+    case .grabBars(let deck, let bars): return o("grabBars", [d(deck), ("bars", .int(bars))])
     case .clip(let deck, let id): return o("clip", [d(deck), ("id", .string(id))])
     case .clipLoop(let id, let on): return o("clipLoop", [("id", .string(id)), ("on", .bool(on))])
     case .clipGain(let id, let v):
@@ -377,7 +384,9 @@ extension DeckAction {
     case "follow": self = .follow(deck: deck, leader: v["leader"]?.string)
     case "grid":
       self = .grid(deck: deck, bpm: v["bpm"]?.double ?? 120, offset: v["offset"]?.double ?? 0)
-    case "loopRecord": self = .loopRecord(deck: deck, on: v["on"]?.bool ?? false)
+    case "loopRecord":
+      self = .loopRecord(deck: deck, on: v["on"]?.bool ?? false, bars: v["bars"]?.int)
+    case "grabBars": self = .grabBars(deck: deck, bars: v["bars"]?.int ?? 1)
     case "clip": self = .clip(deck: deck, id: v["id"]?.string ?? "")
     case "clipLoop": self = .clipLoop(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
     case "clipGain": self = .clipGain(id: v["id"]?.string ?? "", value: v["value"]?.double ?? 1)

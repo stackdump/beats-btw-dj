@@ -34,6 +34,11 @@ public final class DJEngine {
   var loopVoices = [LoopVoice](repeating: LoopVoice(), count: LoopBank.voiceCount)
   var clipGains: [String: Double] = [:]
   var loopCount = 0
+  /// How many bars a tap of LOOP records (let go within `DJEngine.loopTapFrames` of the
+  /// press), when the press does not say: what a controller's LOOP button uses. The app sets it
+  /// from its own setting; nil turns fixed-length takes off (a tap records to the next downbeat,
+  /// like a hold).
+  public var tapTakeBars: Int? = 2
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]
