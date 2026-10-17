@@ -226,11 +226,21 @@ public final class Journal: @unchecked Sendable {
   public static func latestStores(in directory: URL = Journal.defaultDirectory)
     -> JournalStoreState?
   {
+    // Only the checkpoint and the store lines are parsed: a long set is mostly knobs.
+    let storeKinds = ["favorite.", "crate.", "variation.", "note."].map { #""k":""# + $0 }
     for url in list(in: directory) {
-      guard let c = try? read(url), var s = c.checkpoint?.stores else { continue }
-      for e in c.entries.dropFirst() { s.apply(e.event) }
+      guard let data = try? Data(contentsOf: url) else { continue }
+      let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")
+      guard let head = lines.first.flatMap({ JournalEntry(line: String($0)) }),
+        case .checkpoint(let state) = head.event
+      else { continue }
+      var s = state.stores
+      for line in lines.dropFirst() where storeKinds.contains(where: { line.contains($0) }) {
+        if let e = JournalEntry(line: String(line)) { s.apply(e.event) }
+      }
       return s
     }
     return nil
   }
+
 }

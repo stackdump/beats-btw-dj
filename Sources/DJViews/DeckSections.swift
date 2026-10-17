@@ -29,7 +29,7 @@ struct DeckSections: View {
   }
 
   enum Section: String, CaseIterable {
-    case perform, masterfx, reverb, track, favorites, generate, load
+    case perform, masterfx, reverb, track, favorites, generate, load, notes, history
     var netOnly: Bool { [.perform, .masterfx, .track].contains(self) }
   }
 
@@ -53,6 +53,10 @@ struct DeckSections: View {
     case .favorites: return model.favorites.isEmpty ? "★ Favorites" : "★ \(model.favorites.count)"
     case .generate: return "Generate"
     case .load: return "Load"
+    case .notes:
+      let n = model.deckNotes(name).count
+      return n == 0 ? "✎ Notes" : "✎ \(n)"
+    case .history: return "History"
     }
   }
 
@@ -86,6 +90,8 @@ struct DeckSections: View {
     case .favorites: FavoritesPanel(name: name, model: model, current: state.sourceCID)
     case .generate: GeneratePanel(name: name, model: model, tint: tint)
     case .load: LoadPanel(name: name, model: model, tint: tint, importFile: importFile)
+    case .notes: NotesPanel(name: name, model: model, tint: tint)
+    case .history: HistoryPanel(model: model)
     }
   }
 }
@@ -482,6 +488,17 @@ struct FavoriteChip: View {
   let model: AppModel
   let isCurrent: Bool
   @State private var tagging = false
+  private var notes: [TrackNote] { model.favoriteNotes(favorite) }
+
+  private var helpText: String {
+    let kind = favorite.isSample ? "Sample: \(favorite.file ?? "")" : "Net track"
+    var text = kind + " — load onto deck \(deck) (right-click: tags, remove)"
+    for n in notes {
+      let at = n.position.map { "\($0.label): " } ?? ""
+      text += "\n✎ " + at + n.text
+    }
+    return text
+  }
 
   var body: some View {
     Button {
@@ -494,6 +511,8 @@ struct FavoriteChip: View {
         ForEach(favorite.tags, id: \.self) { t in
           Text("#\(t)").font(.caption2).foregroundStyle(.secondary)
         }
+        // its notes travel with it (the same track, by CID)
+        if !notes.isEmpty { Text("✎\(notes.count)").font(.caption2).foregroundStyle(.yellow) }
       }
     }
     .controlSize(.small)
@@ -507,9 +526,7 @@ struct FavoriteChip: View {
         model.setFavoriteTags(favorite.cid, $0)
       }
     }
-    .help(
-      (favorite.isSample ? "Sample: \(favorite.file ?? "")" : "Net track")
-        + " — load onto deck \(deck) (right-click: tags, remove)")
+    .help(helpText)
   }
 }
 

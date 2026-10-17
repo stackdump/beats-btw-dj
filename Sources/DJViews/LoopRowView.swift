@@ -330,6 +330,7 @@ struct ClipTile: View {
         )
         .font(.caption).monospacedDigit()
         Spacer(minLength: 0)
+        ClipNoteMarker(clipID: clip.id, model: model)
         if let slot = model.padSlot(clip.id) {
           // the Inpulse pad (LOOP pad mode) that switches it, by its place on the whole row
           Text(slot).font(.caption2.monospaced())
