@@ -192,6 +192,9 @@ struct LoopChannelState: Equatable {
   var fade = LoopFade.declick
   /// The row's key lock, for clips without their own.
   var keyLock = false
+  /// The loops' master macros running (or waiting for their bar), and the link to the decks'.
+  var masterRunning: Set<MasterMacro> = []
+  var fxLink = false
 }
 
 /// The row under the decks: every LOOP-record take as a clip, and the loop channel that plays
@@ -239,12 +242,14 @@ struct LoopRowView: View {
         )
         .toggleStyle(.button).controlSize(.small)
         .help("Key lock for every loop without its own: at another tempo a loop keeps its pitch")
+        LoopMasterFxToggle(model: model)
         Spacer(minLength: 0)
         Text(
           "tap a loop to bring it in or out on the next \(DJEngine.quantumLabel(model.loopQuantum))"
         )
         .font(.caption).foregroundStyle(.secondary)
       }
+      if model.showLoopMasterFx { LoopMasterFxStrip(model: model) }
       LaunchBar(model: model)
       if !model.clips.isEmpty || !model.removedLoops.isEmpty { LoopLibraryBar(model: model) }
       let shown = model.visibleClips

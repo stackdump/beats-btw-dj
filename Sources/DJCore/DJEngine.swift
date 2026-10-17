@@ -56,6 +56,9 @@ public final class DJEngine {
   public internal(set) var loopQuantum = DJEngine.defaultLoopQuantum
   /// Whose tempo the loops follow (`setLoopFollow`): the louder deck unless set.
   public internal(set) var loopFollow = LoopFollow.louder
+  /// Loops master FX linked to the decks (`setLoopFxLink`): a master macro fired on a net deck
+  /// fires on the loops' master bus too, at once, and a deck's panic releases it. Off unless set.
+  public internal(set) var loopFxLink = false
   /// The deck the loops follow now under `.louder` (`updateDominantDeck`).
   public internal(set) var dominantDeck: String?
   /// Saved sets of loops (`LoopScene`), in the order they were made.
@@ -164,9 +167,13 @@ public final class DJEngine {
         self?.journal?.record(.action(.grid(deck: name, bpm: g.bpm, offset: g.offset)))
       }
       deck.onSourceFile = { [weak self, unowned deck] url in self?.journalSampleFile(deck, url) }
+      deck.onMasterMacro = { [weak self] m, bars in self?.linkedLoopMaster(m, bars: bars) }
       decks[name] = deck
     }
     wire(loopChannel)
+    loopChannel.onMasterMacro = { [weak self] m, bars in
+      if let m { self?.fireLoopMaster(m, bars: bars) }
+    }
     applyGains()
     masterProbe.attach(to: engine)
   }
@@ -336,6 +343,9 @@ public final class Deck: JogClock {
   var isDemo = false
   /// Told when a sample deck's beat grid changes (analysis finished, tapped, moved).
   var onGrid: ((BeatGrid) -> Void)?
+  /// A master macro fired on this deck (nil: its panic): the loops' master bus takes it from
+  /// here (on the loop channel itself, or linked: LoopMasterFx.swift).
+  var onMasterMacro: ((MasterMacro?, Int?) -> Void)?
   var netNudge = 0.0
   var ringShapes: [String: RingShape] = [:]
   /// Tempo and first-beat position of a sample deck (analysed, tapped or known).

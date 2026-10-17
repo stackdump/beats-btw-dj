@@ -633,6 +633,22 @@
   },
   {
    "group": "scene",
+   "index": 3,
+   "action": "focusDeck",
+   "slot": 2,
+   "shift": true,
+   "comment": "SHIFT + aim A: aim at the loops (the loop channel L: faders and macro pads act on the loops' master FX; the A / B aim LEDs blink while it is aimed). [UNVERIFIED] that the mk2 passes this scene note through with SHIFT held in session mode"
+  },
+  {
+   "group": "scene",
+   "index": 4,
+   "action": "focusDeck",
+   "slot": 2,
+   "shift": true,
+   "comment": "SHIFT + aim B: aim at the loops, as SHIFT + aim A. [UNVERIFIED] as that one"
+  },
+  {
+   "group": "scene",
    "index": 5,
    "action": "macro",
    "deck": "*",
@@ -1168,5 +1184,5 @@
    "reason": "APC drum mode — Phase 3 instrument (session mode is the DJ layout)"
   }
  ],
- "layoutComment": "An FX surface beside the Inpulse, as beats.bitwrap.io maps the APC (lib/backend/apc-mini-mk2.js): the grid is the macro catalog in beats' rows (bottom: mutes; FX; FX; pan; pitch + tempo; feel; —; hits + shape), lit in beats' group colours, bright while a macro runs; the red track buttons mute the aimed deck's parts; the green scene buttons are play, regenerate, auto-next, aim at A, aim at B, FX reset (feel-reset), next track, panic; the faders are FX amounts (phaser wet, distortion, the deck's reverb wet and size, LP, HP, master pitch, crush) and master volume. Everything with deck \\\"*\\\" acts on the aimed deck (DJEngine.focus: the scene buttons, or whichever deck a controller touched last). SHIFT + pad: the loop page (loops 1-64). beats' delay and pan macros are not in dj."
+ "layoutComment": "An FX surface beside the Inpulse, as beats.bitwrap.io maps the APC (lib/backend/apc-mini-mk2.js): the grid is the macro catalog in beats' rows (bottom: mutes; FX; FX; pan; pitch + tempo; feel; —; hits + shape), lit in beats' group colours, bright while a macro runs; the red track buttons mute the aimed deck's parts; the green scene buttons are play, regenerate, auto-next, aim at A, aim at B (SHIFT + either: aim at the loops, L), FX reset (feel-reset), next track, panic; the faders are FX amounts (phaser wet, distortion, the deck's reverb wet and size, LP, HP, master pitch, crush) and master volume. Everything with deck \\\"*\\\" acts on the aimed deck (DJEngine.focus: the scene buttons, or whichever deck a controller touched last). SHIFT + pad: the loop page (loops 1-64). beats' delay and pan macros are not in dj."
 }

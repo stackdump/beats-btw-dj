@@ -51,7 +51,14 @@ extension AppModel {
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
           "setPalette",
         ]
-        if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net {
+        // the loop channel takes the master macros and panic (its master FX bus)
+        let loopMaster: Bool = {
+          guard deck == "L" else { return false }
+          if case .panic = action { return true }
+          if case .macro(_, let id) = action { return MasterMacro(id: id) != nil }
+          return false
+        }()
+        if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net, !loopMaster {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
         }
         switch action {
@@ -504,6 +511,20 @@ extension AppModel {
               if let p = engine?.clip($0.id)?.provenance { c["provenance"] = p }
               return .object(c)
             })
+        ),
+        (
+          "masterFx",
+          .object(
+            JSONObject([
+              (
+                "running",
+                .array(
+                  MasterMacro.allCases.filter { loopChannel.masterRunning.contains($0) }.map {
+                    .string($0.id)
+                  })
+              ),
+              ("link", .bool(loopChannel.fxLink)),
+            ]))
         ),
         (
           "removed",

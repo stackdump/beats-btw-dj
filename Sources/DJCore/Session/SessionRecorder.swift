@@ -283,6 +283,7 @@ extension DJEngine {
     case .setKit(let n, let kit): deck(n)?.setKit(kit)
     case .setPalette(let n, let palette): deck(n)?.setPalette(palette)
     case .clipFx(let id, let fx): setClipFx(id, fx)
+    case .loopFxLink(let on): setLoopFxLink(on)
     }
     return nil
   }

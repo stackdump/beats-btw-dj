@@ -144,6 +144,8 @@ public final class AppModel {
   var showControllers = false
   /// The Soundboard panel (SoundboardView.swift): every loop as one big pad.
   var showSoundboard = false
+  /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
+  var showLoopMasterFx = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
   /// in the app's defaults as `keepScreenAwake`; off until turned on.
   private(set) var keepScreenAwake = false
@@ -528,7 +530,8 @@ public final class AppModel {
     let l = dj.loopChannel
     let strip = LoopChannelState(
       looping: dj.loopingClips.count, volume: l.volume, mute: l.mute, reverb: ReverbState(l.reverb),
-      fade: dj.loopFade, keyLock: dj.loopKeyLock)
+      fade: dj.loopFade, keyLock: dj.loopKeyLock,
+      masterRunning: Set(dj.loopMaster?.activeMasterMacros ?? []), fxLink: dj.loopFxLink)
     if strip != loopChannel { loopChannel = strip }
     // the deck holding a clip: the one playing it, else one holding it paused
     let holders = dj.decks.values.filter { $0.clipID != nil }.sorted { $0.playing && !$1.playing }
@@ -635,6 +638,7 @@ public final class AppModel {
   func setClipFx(_ id: String, _ fx: LoopFX) { soundAction(.clipFx(id: id, fx: fx)) }
   func setLoopKeyLock(_ on: Bool) { soundAction(.loopKeyLock(on: on)) }
   func setLoopFade(_ f: LoopFade) { soundAction(.loopFade(mode: f.rawValue)) }
+  func setLoopFxLink(_ on: Bool) { soundAction(.loopFxLink(on: on)) }
   private func soundAction(_ a: DeckAction) {
     guard let dj else { return }
     dj.perform(a)
