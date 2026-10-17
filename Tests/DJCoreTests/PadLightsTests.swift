@@ -15,30 +15,26 @@ struct PadLightsTests {
   }
 
   @Test func theMirrorSaysWhatTheLEDsSay() async throws {
-    let (_, router, s, _) = try await make()
+    let (_, _, s, _) = try await make()
     let lights = s.lights(now: 1_000)
     #expect(
       lights["pads"]?.count == 64 && lights["track"]?.count == 8 && lights["scene"]?.count == 8)
-    // deck A's section pads (16…31) are lit orange; the current section is full, the rest dim
-    let secs = router.dj["A"]!.sections.count
-    #expect(secs >= 5)
+    // the macro grid in beats' group colours, aimed at deck A (a net)
     let pads = lights["pads"]!
-    #expect(pads[16] == PadLight(colorIndex: 9, level: .full), "section 0 is current")
-    #expect(pads[17] == PadLight(colorIndex: 9, level: .dim))
-    #expect(pads[16 + secs] == PadLight(colorIndex: 0, level: .dim), "past the song's end: dark")
-    // deck B (sample) has no sections: its launcher rows are dark
-    #expect(pads[32].colorIndex == 0)
+    #expect(pads[0] == PadLight(colorIndex: 5, level: .dim), "drop: red")
+    #expect(pads[8] == PadLight(colorIndex: 37, level: .dim), "sweep-lp: cyan")
+    #expect(pads[11].colorIndex == 0, "a macro dj doesn't have: dark")
     // and it agrees with what ledFrame would send for the same state
     let frame = s.ledFrame(now: 1_000)
-    #expect(frame.contains([0x96, 16, 9]) && frame.contains([0x92, 17, 9]))
+    #expect(frame.contains([0x92, 0, 5]) && frame.contains([0x92, 8, 37]))
   }
 
   @Test func singleLEDsReportOnOffBlink() async throws {
     let (dj, _, s, _) = try await make()
-    #expect(s.lights()["track"]![0].level == .full, "play button is lit")
+    #expect(s.lights()["scene"]![0].level == .full, "play button is lit")
     dj["A"]!.setPlaying(true)
-    #expect(s.lights()["track"]![0].level == .blink, "a playing deck's button blinks")
-    #expect(s.lights()["track"]![1].level == .full, "kick role is on")
+    #expect(s.lights()["scene"]![0].level == .blink, "a playing deck's button blinks")
+    #expect(s.lights()["track"]![0].level == .full, "kick role is on")
     dj["A"]!.setRole("kick", on: false)
     // (the mirror of a role lives on the mute mirror: nothing rendered yet, so it still shows on)
     #expect(s.lights()["scene"] != nil)
@@ -46,10 +42,10 @@ struct PadLightsTests {
 
   @Test func pressingOnScreenIsPressingTheHardware() async throws {
     let (dj, router, _, port) = try await make()
-    #expect(router.press(port: port, group: "scene", index: 1))  // deck B play
+    #expect(router.press(port: port, group: "scene", index: 4))  // aim at deck B
+    #expect(router.press(port: port, group: "scene", index: 0))  // play: deck B
     #expect(dj["B"]!.playing)
-    #expect(router.press(port: port, group: "pads", index: 4))  // deck B hot cue 0
-    #expect(dj["B"]!.hotCues[0] != nil)
+    #expect(router.press(port: port, group: "pads", index: 0))  // drop on B (a sample): nothing
     #expect(!router.press(port: port, group: "pads", index: 99))
     #expect(
       !router.press(port: port, group: "faders", index: 0), "continuous controls aren't clickable")

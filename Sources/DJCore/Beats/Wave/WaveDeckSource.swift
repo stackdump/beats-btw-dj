@@ -267,7 +267,12 @@ public final class WaveDeckSource: @unchecked Sendable {
   }
 
   /// Move one of the master FX sliders by hand (its own units: 0...100, pitch -12...12).
+  /// The last value each master FX slider was set to directly (`setMasterFx`: a fader, the
+  /// APC), main-thread; a macro's own moves are not in it.
+  public private(set) var masterFxSet: [MasterFxKey: Int] = [:]
+
   public func setMasterFx(_ key: MasterFxKey, _ value: Int) {
+    masterFxSet[key] = value
     send(.masterFx(key: UInt8(key.rawValue), value: Int16(clamping: value)))
   }
 

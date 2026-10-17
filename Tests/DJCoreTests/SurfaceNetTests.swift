@@ -24,7 +24,7 @@ struct SurfaceNetTests {
     return (dj, SurfaceController(profile: p, engine: dj), a)
   }
 
-  @Test func apcRoleButtonsToggleRolesAndShiftAimsAtDeckB() async throws {
+  @Test func apcTrackButtonsMuteTheAimedDecksParts() async throws {
     let (dj, s, a) = try await make(.apcMiniMK2)
     await dj["B"]!.generate(TrackSpec(genre: "house", seed: 3, structure: "standard"))
     let b = dj["B"]!
@@ -34,17 +34,15 @@ struct SurfaceNetTests {
     defer { dj.stop() }
     _ = try renderOffline(dj, frames: 2048)
     #expect(a.isRoleOn("kick") && b.isRoleOn("kick"))
-    // track button 1 = kick: plain press → deck A
-    s.handle(bytes: [0x90, UInt8(100 + 1), 0x7F])
+    // track button 1 = kick, on the aimed deck (A to start with)
+    s.handle(bytes: [0x90, 100, 0x7F])
     _ = try renderOffline(dj, frames: 2048)
     #expect(!a.isRoleOn("kick") && b.isRoleOn("kick"))
-    // hold SHIFT, press again → deck B
-    s.handle(bytes: [0x90, 122, 0x7F])
-    s.handle(bytes: [0x90, UInt8(100 + 1), 0x7F])
-    s.handle(bytes: [0x80, 122, 0x00])
+    // aim at B (scene 5), press again
+    s.handle(bytes: [0x90, 0x74, 0x7F])
+    s.handle(bytes: [0x90, 100, 0x7F])
     _ = try renderOffline(dj, frames: 2048)
-    #expect(!b.isRoleOn("kick"))
-    #expect(dj.focus == "B")
+    #expect(!b.isRoleOn("kick") && dj.focus == "B")
   }
 
   @Test func inpulseStemsButtonsMuteTheMusicOrTheLead() async throws {
@@ -98,33 +96,42 @@ struct SurfaceNetTests {
     #expect(!a.isStemMuted("music") && silent.allSatisfy { !a.isRoleOn($0) })
   }
 
-  @Test func apcSectionPadsLaunchSectionsAndLightTheCurrentOne() async throws {
-    let (dj, s, a) = try await make(.apcMiniMK2)
-    let secs = a.sections
-    #expect(secs.count >= 5)
-    a.wave.setTempo(600)
+  /// The grid is beats' macro layout (lib/backend/apc-mini-mk2.js), in beats' group colours,
+  /// bright while a macro runs; beats' macros dj doesn't have stay dark.
+  @Test func apcPadsAreBeatsMacroGridInGroupColours() async throws {
+    let (dj, s, a) = try await make(.apcMiniMK2, structure: nil)
     a.setPlaying(true)
     try dj.start()
     defer { dj.stop() }
-    // pad 16 + 3 = deck A, section 3
-    s.handle(bytes: [0x90, UInt8(16 + 3), 0x7F])
-    let landed = await eventually {
-      _ = try? renderOffline(dj, frames: 4096)
-      return a.currentSectionIndex == 3
-    }
-    #expect(landed, "section 3 launched (tick \(a.wave.tick))")
-    // LEDs: current section pad is solid bright (status 0x96), others dim (0x92)
+    _ = try renderOffline(dj, frames: 2048)
     let frame = s.ledFrame()
-    #expect(frame.contains([0x96, 19, 9]))  // deck A orange, bright
-    #expect(frame.contains([0x92, 18, 9]))
-    #expect(!frame.contains { $0[1] == 16 + 15 && $0[2] != 0 }, "pad past the song's end is dark")
-    // next-section button (scene 3) steps forward
-    s.handle(bytes: [0x90, UInt8(112 + 3), 0x7F])
-    let stepped = await eventually {
-      _ = try? renderOffline(dj, frames: 4096)
-      return a.currentSectionIndex == 4
-    }
-    #expect(stepped)
+    #expect(frame.contains([0x92, 0, 5]), "drop: Mute red")
+    #expect(frame.contains([0x92, 8, 37]), "sweep-lp: FX cyan")
+    #expect(frame.contains([0x92, 11, 0]), "delay-throw: not in dj, dark")
+    #expect(frame.contains([0x92, 32, 53]), "octave-up: Pitch magenta")
+    #expect(frame.contains([0x92, 36, 13]), "half-time: Tempo yellow")
+    #expect(frame.contains([0x92, 40, 21]), "feel-chill: Feel green")
+    #expect(frame.contains([0x92, 56, 3]), "hit 1: white")
+    s.handle(bytes: [0x90, 0, 0x7F])  // drop
+    _ = try renderOffline(dj, frames: 4096)
+    #expect(a.wave.activeMacros.contains(.drop))
+    #expect(s.ledFrame(now: 1_000_000).contains([0x96, 0, 5]), "bright while it runs")
+  }
+
+  @Test func apcFadersSetTheAimedDecksFX() async throws {
+    let (dj, s, a) = try await make(.apcMiniMK2, structure: nil)
+    s.handle(bytes: [0xB0, 0x34, 0])  // fader 5: LP fully closed
+    s.handle(bytes: [0xB0, 0x37, 127])  // fader 8: crush all the way
+    s.handle(bytes: [0xB0, 0x36, 127])  // fader 7: master pitch +12
+    s.handle(bytes: [0xB0, 0x32, 127])  // fader 3: reverb wet
+    s.handle(bytes: [0xB0, 0x33, 0])  // fader 4: reverb size
+    #expect(a.wave.masterFxSet[.lpFreq] == 0 && a.wave.masterFxSet[.crushBits] == 100)
+    #expect(a.wave.masterFxSet[.masterPitch] == 12)
+    #expect(a.reverb.wet == 1 && a.reverb.size == 0)
+    // aimed at B: the same faders move B's
+    s.handle(bytes: [0x90, 0x74, 0x7F])
+    s.handle(bytes: [0xB0, 0x32, 64])
+    #expect(abs(dj["B"]!.reverb.wet - 64.0 / 127) < 1e-9 && a.reverb.wet == 1)
   }
 
   @Test func apcMacroPadsFireMacrosAndPanicRestores() async throws {
@@ -134,13 +141,13 @@ struct SurfaceNetTests {
     defer { dj.stop() }
     _ = try renderOffline(dj, frames: 2048)
     #expect(a.isRoleOn("bass") && a.isRoleOn("kick"))
-    s.handle(bytes: [0x90, UInt8(48 + 0), 0x7F])  // row 6, col 0: deck A drop
+    s.handle(bytes: [0x90, 0, 0x7F])  // bottom row, col 0: drop (aimed deck A)
     _ = try renderOffline(dj, frames: 2048)
     #expect(!a.isRoleOn("bass") && a.isRoleOn("kick"), "drop mutes the non-drums")
-    s.handle(bytes: [0x90, UInt8(56 + 3), 0x7F])  // row 7, col 3: deck A panic
+    s.handle(bytes: [0x90, 0x77, 0x7F])  // scene 8: panic
     _ = try renderOffline(dj, frames: 2048)
     #expect(a.isRoleOn("bass"))
-    s.handle(bytes: [0x90, UInt8(48 + 1), 0x7F])  // breakdown mutes the drums
+    s.handle(bytes: [0x90, 1, 0x7F])  // breakdown mutes the drums
     _ = try renderOffline(dj, frames: 2048)
     #expect(!a.isRoleOn("kick") && a.isRoleOn("bass"))
   }
@@ -149,10 +156,10 @@ struct SurfaceNetTests {
     let (dj, s, _) = try await make(.apcMiniMK2)
     let b = dj["B"]!
     #expect(b.mode == .sample)
-    // deck B's drop pad (col 4): must not crash or change anything
-    s.handle(bytes: [0x90, UInt8(48 + 4), 0x7F])
-    s.handle(bytes: [0x90, UInt8(100 + 1), 0x7F])
-    s.handle(bytes: [0x90, UInt8(112 + 4), 0x7F])
+    // aimed at B (a sample): its drop pad, a part mute: must not crash or change anything
+    s.handle(bytes: [0x90, 0x74, 0x7F])
+    s.handle(bytes: [0x90, 0, 0x7F])
+    s.handle(bytes: [0x90, 100, 0x7F])
     #expect(b.mode == .sample && b.roles.isEmpty)
   }
 
@@ -267,20 +274,20 @@ struct SurfaceBeatTests {
     #expect(b.turntable.position < 1000)
   }
 
-  @Test func apcShiftedPlayButtonCyclesQuantize() throws {
+  @Test func apcScenesAimPlayAndAutoNext() throws {
     let dj = try DJEngine(offline: true)
     let s = SurfaceController(profile: .apcMiniMK2, engine: dj)
-    let a = dj["A"]!
-    #expect(a.quantize == .off)
-    s.handle(bytes: [0x90, 122, 0x7F])  // hold SHIFT
-    s.handle(bytes: [0x90, 100, 0x7F])  // track 0 = deck A
-    #expect(a.quantize == .beat)
-    s.handle(bytes: [0x90, 100, 0x7F])
-    #expect(a.quantize == .bar)
-    s.handle(bytes: [0x90, 100, 0x7F])
-    #expect(a.quantize == .off)
-    s.handle(bytes: [0x80, 122, 0x00])
-    s.handle(bytes: [0x90, 100, 0x7F])  // plain press still plays
-    #expect(a.playing)
+    let (a, b) = (dj["A"]!, dj["B"]!)
+    a.loadDemo()
+    b.loadDemo()
+    s.handle(bytes: [0x90, 0x70, 0x7F])  // play: the aimed deck, A
+    #expect(a.playing && !b.playing)
+    s.handle(bytes: [0x90, 0x74, 0x7F])  // aim at B
+    s.handle(bytes: [0x90, 0x70, 0x7F])
+    #expect(b.playing)
+    s.handle(bytes: [0x90, 0x72, 0x7F])  // auto-next on B
+    #expect(b.autoAdvance && !a.autoAdvance)
+    #expect(s.ledFrame().contains([0x90, 0x72, 1]))
   }
+
 }
