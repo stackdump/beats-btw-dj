@@ -121,6 +121,9 @@ public final class WaveDeckSource: @unchecked Sendable {
   // macro automation that drives it, on the deck's transport clock (see MasterFx/).
   private let fx: FxAutomation
   private let chain: MasterChain
+  /// `vinyl-brake` on a project prepared with `WaveOptions.turntableBrake` (TurntableBrake.swift):
+  /// varispeed on the runner's whole output, before the master chain.
+  private let brake: TurntableBrake
   /// Frames the transport has run (it stops while the deck is paused or stopped).
   private var transportFrames: Int64 = 0
   /// The block being rendered: its transport time and length (for the automation's events).
@@ -160,6 +163,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     runner.anchorRing = anchors
     fx = FxAutomation()
     chain = MasterChain(sampleRate: sampleRate)
+    brake = TurntableBrake(sampleRate: sampleRate)
     opIndex = .allocate(capacity: Self.opCapacity)
     opTime = .allocate(capacity: Self.opCapacity)
     opKey = .allocate(capacity: Self.opCapacity)
@@ -543,7 +547,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     } else {
       fx.flush { handle($0) }
     }
-    runner.process(left, right, frames: frames, startFrame: startFrame)
+    brake.render(runner, left, right, frames: frames, startFrame: startFrame)
     var s = 0
     for i in 0..<opCount {
       let k = opIndex[i]
@@ -555,7 +559,8 @@ public final class WaveDeckSource: @unchecked Sendable {
     }
     chain.process(left, right, from: s, to: frames)
     chain.finish(frames: frames)
-    masterMaskAtomic.store(fx.activeMask, ordering: .relaxed)
+    masterMaskAtomic.store(
+      fx.activeMask | (brake.isOn ? MasterMacro.vinylBrake.bit : 0), ordering: .relaxed)
     let corners = chain.filterCorners()
     hpCornerBits.store(corners.hp.bitPattern, ordering: .relaxed)
     lpCornerBits.store(corners.lp.bitPattern, ordering: .relaxed)
@@ -604,6 +609,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .pause: runner.pause()
     case .stop:
       runner.stop()
+      brake.cancel()
       fx.panic { handle($0) }  // beats: transport stop cancels and restores every animation
     case .tempo(let bpm): runner.setTempo(bpm)
     case .mute(let hash, let muted): runner.setMute(hash: hash, muted)
@@ -614,18 +620,25 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .stinger(let hash, let ticks): runner.fireStinger(hash: hash, ticks: Int(ticks))
     case .panic:
       runner.panic()
+      brake.panic()
       syncFx()
       fx.panic { handle($0) }
     case .noteOn(let note, let velocity): runner.noteOn(Int(note), velocity: Int(velocity))
     case .noteOff(let note): runner.noteOff(Int(note))
     case .allNotesOff: runner.allNotesOff()
     case .align(let ticks): runner.align(ticks: ticks)
-    case .freeze: runner.freeze()
+    case .freeze:
+      brake.cancel()  // a hand on the platter takes it from wherever the brake left it
+      runner.freeze()
     case .scrub(let ticks): runner.scrub(ticks: ticks)
     case .release: runner.release()
     case .chase(let seconds): runner.setChase(seconds: seconds)
     case .masterMacro(let id, let bars):
       guard let m = MasterMacro(rawValue: id) else { return }
+      if m == .vinylBrake && runner.turntableBrake {
+        fireBrake(bars: Int(bars))
+        return
+      }
       syncFx()
       let ticks = fx.fire(m, duration: bars < 0 ? nil : Int(bars)) { handle($0) }
       runner.markMacroRunning(ticks: ticks)
@@ -633,6 +646,15 @@ public final class WaveDeckSource: @unchecked Sendable {
       if let k = MasterFxKey(rawValue: Int(key)) { fx.setSlider(k, Double(value)) }
     case .voice(let p): runner.setVoice(p)
     }
+  }
+
+  /// The turntable brake: `bars` < 0 its default (1), 0 (permanent) the default too, as beats'
+  /// compound takes it. A fire while one runs does nothing.
+  private func fireBrake(bars: Int) {
+    let b = bars <= 0 ? MasterMacro.vinylBrake.defaultDuration : bars
+    let ticks = b * 16
+    let frames = Double(ticks) * sampleRate * 60 / (runner.tempo * 4)
+    if brake.start(durationFrames: Int(frames.rounded())) { runner.markMacroRunning(ticks: ticks) }
   }
 
   /// `el._tempo` is the deck's tempo; the genre's BPM is the project's (as `tempo-anchor` reads

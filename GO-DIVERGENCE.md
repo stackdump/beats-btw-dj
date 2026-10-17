@@ -130,7 +130,19 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
      seeded from the seed (`.variety`, `TrackVariety.swift`). In beats it would change what a
      seed composes, so a new cohesion version (`v3`) rather than an edit to v2.
 
+5. **vinyl-brake is a turntable brake** (`TurntableBrake.swift`, `WaveOptions.turntableBrake`, on
+   in `.extended`). beats' catalog makes it a compound of tape-stop (0 ms) and octave-down
+   (60 ms), but `runCompound` fires only mute and FX sub-macros, so the tape-stop step does
+   nothing and all that plays is an octave-down hold for a bar: an instant, grainy octave drop
+   (the pitch shifter), not a brake. dj plays it as a platter spinning down: varispeed on the
+   deck's whole output (the net renders in source time at rate r ≤ 1, resampled, so pitch and
+   tempo fall together), r falling linearly to 0 over three quarters of the duration, silence
+   for the last quarter, then the deck drops back in where it would have been had it kept
+   playing (the tick clock caught up silently), so it stays on the other deck's beat and bar.
+   The parity path (`WaveOptions()`, the fixtures) keeps beats' compound. For beats: run the
+   step through `Tone.Transport` / the worker's tempo and a playback-rate ramp on the master
+   (or, simplest, make the tape-stop step fire `tempo-sweep` in `runCompound`, then resync the
+   transport at the end instead of snapping the tempo back mid-bar).
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
-- `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX
-  sub-macros), so it is just octave-down for a bar.
 - `scope-model.js` models Tone's `rolloff: -48` as four biquads; Tone cascades three.

@@ -264,7 +264,8 @@ final class FxAutomation {
       // `mute` and `fx-sweep` / `fx-hold` sub-macros: the tape-stop step (a tempo-sweep) does
       // nothing in beats, so here neither. Octave-down runs for ITS default duration (1 bar, as
       // `step.durationTicks || sub.defaultDuration * 16`) and with fxHold's default tail (0.6:
-      // runCompound passes no tailFrac).
+      // runCompound passes no tailFrac). The parity path only: on a project prepared with
+      // `WaveOptions.turntableBrake` (the app) the deck brakes instead (TurntableBrake.swift).
       seq += 1  // the tape-stop step's timer
       addCompound(at: now + 60.0 / 1000, subMs: Double(1 * 16) * msPerTick, macro: macro.rawValue)
     case 3:

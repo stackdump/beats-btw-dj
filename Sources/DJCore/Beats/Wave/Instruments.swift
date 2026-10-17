@@ -89,6 +89,7 @@ extension WaveOptions {
     o.musicality = .all
     o.samplers = samplers
     o.voicingSeed = seed
+    o.turntableBrake = true
     return o
   }
 
