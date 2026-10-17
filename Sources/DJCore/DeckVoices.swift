@@ -89,3 +89,59 @@ extension DeckSourceDescriptor {
     }
   }
 }
+
+// MARK: - the sound panel (voice tweaks)
+
+extension Deck {
+  /// What channel `channel` plays now (the latest project loaded), for the sound panel.
+  public func channelVoice(_ channel: Int) -> ChannelVoice? {
+    guard mode == .net else { return nil }
+    return wave.latest?.channelVoice(channel)
+  }
+
+  /// The channel's voice settings this session (default: the instrument's own voice).
+  public func voiceSetting(_ channel: Int) -> VoiceSetting? { wave.voiceSettings[channel] }
+  public func voiceTweak(_ channel: Int) -> VoiceTweak {
+    wave.voiceSettings[channel]?.tweak ?? VoiceTweak()
+  }
+  public func usesSynthVoice(_ channel: Int) -> Bool {
+    wave.voiceSettings[channel]?.useSynth ?? false
+  }
+
+  /// Shape channel `channel`'s voice (`DeckAction.voiceTweak`): live, on the song playing, from
+  /// the next block — no reload. An empty tweak is the instrument's own voice (Reset).
+  public func setVoiceTweak(_ tweak: VoiceTweak, channel: Int) {
+    guard mode == .net else { return }
+    wave.setVoice(channel: channel, tweak: tweak, useSynth: usesSynthVoice(channel))
+  }
+
+  /// A sampled channel plays its synth voice instead of the sample (`on`), or the sample again
+  /// (`DeckAction.voiceSynth`). Live, like a tweak.
+  public func setSynthVoice(_ on: Bool, channel: Int) {
+    guard mode == .net else { return }
+    wave.setVoice(channel: channel, tweak: voiceTweak(channel), useSynth: on)
+  }
+
+  /// Does loading `source` keep this deck's voice settings? Only when it is the song playing
+  /// with another instrument picked (the same share but for its `tracks` override): the
+  /// settings belong to the song, and to the instrument they were made on (a channel whose
+  /// instrument changed starts afresh, `WaveDeckSource.load`). A new song, a favorite or the
+  /// same song loaded again start from the instruments' own voices.
+  func keepsVoiceSettings(loading source: DeckSourceDescriptor) -> Bool {
+    guard let now = netSource, now != source else { return false }
+    func song(_ d: DeckSourceDescriptor) -> JSONValue? {
+      switch d {
+      case .net(var spec):
+        spec.layers["tracks"] = nil
+        return spec.payload
+      case .rawNets(let payload):
+        guard var o = payload.object else { return nil }
+        o["tracks"] = nil
+        return .object(o)
+      case .none, .sample: return nil
+      }
+    }
+    guard let a = song(now), let b = song(source) else { return false }
+    return a.canonicalJS == b.canonicalJS
+  }
+}

@@ -163,6 +163,12 @@ public enum DeckAction: Equatable, Sendable {
   /// How many bars a quick tap of a controller's LOOP button records (1…64), or nil for none
   /// (a tap records to the next downbeat) (`DJEngine.setTapTakeBars`).
   case tapBars(bars: Int?)
+  /// Shape the voice of a net deck's channel (the sound panel): `params` on the instrument's own
+  /// voice, live, no reload; empty = the instrument's own (`Deck.setVoiceTweak`). Session-only:
+  /// it lasts for the song on the deck, never in a share or favorite.
+  case voiceTweak(deck: String, channel: Int, params: VoiceTweak)
+  /// A sampled channel plays its synth voice (`on`) or the sample again (`Deck.setSynthVoice`).
+  case voiceSynth(deck: String, channel: Int, on: Bool)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -416,6 +422,10 @@ extension DeckAction {
     case .loopKeyLock(let on): return o("loopKeyLock", [("on", .bool(on))])
     case .loopFade(let mode): return o("loopFade", [("fade", .string(mode))])
     case .tapBars(let bars): return o("tapBars", [("bars", bars.map { .int($0) } ?? .null)])
+    case .voiceTweak(let deck, let channel, let params):
+      return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
+    case .voiceSynth(let deck, let channel, let on):
+      return o("voiceSynth", [d(deck), ("channel", .int(channel)), ("on", .bool(on))])
     }
   }
 
@@ -485,6 +495,12 @@ extension DeckAction {
     case "loopKeyLock": self = .loopKeyLock(on: v["on"]?.bool ?? false)
     case "loopFade": self = .loopFade(mode: v["fade"]?.string ?? LoopFade.declick.rawValue)
     case "tapBars": self = .tapBars(bars: v["bars"]?.int)
+    case "voiceTweak":
+      guard let ch = v["channel"]?.int else { return nil }
+      self = .voiceTweak(deck: deck, channel: ch, params: VoiceTweak(json: v["params"]))
+    case "voiceSynth":
+      guard let ch = v["channel"]?.int else { return nil }
+      self = .voiceSynth(deck: deck, channel: ch, on: v["on"]?.bool ?? false)
     default: return nil
     }
   }

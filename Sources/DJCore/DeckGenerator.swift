@@ -254,7 +254,9 @@ extension Deck {
 
   /// Load a track composed elsewhere.
   public func loadNet(_ track: PreparedTrack) {
-    loadNet(track.prepared, project: track.played)
+    loadNet(
+      track.prepared, project: track.played,
+      keepVoices: keepsVoiceSettings(loading: track.source))
     currentSpec = track.spec
     if case .rawNets(let payload) = track.source { currentRawNets = payload }
   }

@@ -47,9 +47,17 @@ extension AppModel {
       }
       if let deck = a["deck"]?.string {
         let d = try requireDeck(deck)
-        let netOnly = ["section", "role", "macro", "stinger", "panic"]
+        let netOnly = ["section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth"]
         if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
+        }
+        switch action {
+        case .voiceTweak(_, let ch, _), .voiceSynth(_, let ch, _):
+          guard d.channelVoice(ch) != nil else {
+            let chs = d.roleVoices.map { "\($0.channel) (\($0.role))" }.joined(separator: ", ")
+            throw ControlRequestError.bad("deck \(deck) has nothing on channel \(ch) (channels: \(chs))")
+          }
+        default: break
         }
         if case .macro(_, let id) = action, !Deck.isMacro(id: id) {
           throw ControlRequestError.bad("unknown macro \(id) (see dj_catalog)")
@@ -603,6 +611,25 @@ extension AppModel {
       }
       if !s.voices.isEmpty {
         o["instruments"] = .object(JSONObject(s.voices.map { ($0.role, .string($0.instrument)) }))
+        // each channel's voice: what plays it and the sound panel's settings (session-only)
+        o["voices"] = .array(
+          s.voices.map { v in
+            let setting = s.voiceSettings[v.channel]
+            var e = JSONObject([
+              ("role", .string(v.role)), ("channel", .int(v.channel)),
+              ("instrument", .string(v.instrument)),
+              ("sampled", .bool(s.channelVoices[v.channel]?.sampled ?? false)),
+              ("useSynth", .bool(setting?.useSynth ?? false)),
+              ("tweak", setting?.tweak.json ?? .object(JSONObject())),
+            ])
+            if let name = currentVariation(v.instrument, setting)?.name {
+              e["variation"] = .string(name)
+            }
+            if let saved = variations[v.instrument], !saved.isEmpty {
+              e["variations"] = .array(saved.map { .string($0.name) })
+            }
+            return .object(e)
+          })
       }
       if let spec = d.currentSpec {
         let options = ComposeOptions.describe(spec)

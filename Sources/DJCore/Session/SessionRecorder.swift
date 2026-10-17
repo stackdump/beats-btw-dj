@@ -264,6 +264,9 @@ extension DJEngine {
     case .loopKeyLock(let on): setLoopKeyLock(on)
     case .loopFade(let mode): if let f = LoopFade(rawValue: mode) { setLoopFade(f) }
     case .tapBars(let bars): setTapTakeBars(bars)
+    case .voiceTweak(let n, let channel, let params):
+      deck(n)?.setVoiceTweak(params, channel: channel)
+    case .voiceSynth(let n, let channel, let on): deck(n)?.setSynthVoice(on, channel: channel)
     }
     return nil
   }

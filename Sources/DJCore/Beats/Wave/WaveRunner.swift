@@ -232,10 +232,39 @@ final class Lane {
   var uniHP: [Double] = []
   var uz1 = 0.0
   var uz2 = 0.0
-  // post chain on the voice sum: lowpass biquad, then distortion
+  // post chain on the voice sum: lowpass biquad (`post`, 5 coefficients on every tonal lane,
+  // used while `postOn`), then distortion
   var post: [Double] = []
+  var postOn = false
   var pz1 = 0.0
   var pz2 = 0.0
+  /// `.subtractive` / a pitch sweep on a saw or square: voices read `mip` (else `table`).
+  var mipOn = false
+  /// `.stereo`: the voices spread (`voiceSpread`) and nothing on the voice sum is in the way.
+  var spreadOn = false
+  // What the sound panel can change live (`VoiceTweak`, `setVoice`): the voice's values the
+  // audio thread reads, starting as the instrument's own (`voice`).
+  var decayScale: Double
+  var maxDecay: Double
+  var vibDepth: Double
+  var distortion: Double
+  var pitchFrom: Double
+  var pitchTo: Double
+  /// The MIDI channel of the net this lane plays (the share's `tracks` key; -1 for live keys).
+  var channel = -1
+  var instrument = ""
+  /// The sampler slot this lane was bound to at prepare (-1: none): what `samplerSlot` goes back
+  /// to after "Use synth voice" is turned off, and what the project gives back on `deinit`.
+  var sampledSlot = -1
+  // The prepared values `setVoice` restores for a field the tweak leaves alone (`captureBase`).
+  var baseLevel = 0.0
+  var baseAttMul = 0.0
+  var basePost: [Double] = []
+  var basePostOn = false
+  var baseVibInc = 0.0
+  var basePmOn = false
+  var basePmMul = 1.0
+  var baseSpread = false
 
   init(voice: VoiceSpec, sr: Double, tonal: Bool) {
     self.voice = voice
@@ -243,6 +272,106 @@ final class Lane {
     st = [Double](repeating: 0, count: stateSize)
     st[slotLevel] = voice.level
     st[slotInvSr] = 1 / sr
+    decayScale = voice.decayScale
+    maxDecay = voice.maxDecay
+    vibDepth = voice.vibratoDepth
+    distortion = voice.distortion
+    pitchFrom = voice.pitchFrom
+    pitchTo = voice.pitchTo
+  }
+
+  /// Every value `setVoice` writes, in one array (tests compare lanes bit for bit).
+  var voiceState: [Double] {
+    [
+      st[slotLevel], st[slotAttMul], decayScale, maxDecay, postOn ? 1 : 0, distortion, vibInc,
+      vibDepth, pmOn ? 1 : 0, pitchFrom, pitchTo, pmMul, mipOn ? 1 : 0, spreadOn ? 1 : 0,
+      Double(samplerSlot),
+    ] + (postOn ? post : [])
+  }
+
+  /// Remember what prepare made of the voice (the end of `buildLanes`).
+  func captureBase() {
+    sampledSlot = samplerSlot
+    spreadOn = !voiceSpread.isEmpty
+    baseLevel = st[slotLevel]
+    baseAttMul = st[slotAttMul]
+    // its own storage: sharing `post`'s, the first live write would copy it on the audio thread
+    basePost = post.map { $0 }
+    basePostOn = postOn
+    baseVibInc = vibInc
+    basePmOn = pmOn
+    basePmMul = pmMul
+    baseSpread = spreadOn
+  }
+
+  /// Install a channel's voice settings (`VoiceLaneParams`): each field the params set, else
+  /// the lane's own prepared value. Allocation-free (the audio thread calls it, through
+  /// `WaveRunner.setVoice`; a project not yet handed over is set on the main thread). A
+  /// sampled lane's pending note-offs must be sent before it switches to its synth voice
+  /// (`WaveRunner.applyVoice`).
+  func setVoice(_ p: VoiceLaneParams) {
+    st[slotLevel] = p.has(VoiceLaneParams.level) ? baseLevel * p.levelMul : baseLevel
+    guard isTonal else { return }
+    st[slotAttMul] = p.has(VoiceLaneParams.attack) ? p.attMul : baseAttMul
+    decayScale = p.has(VoiceLaneParams.decayScale) ? p.decayScale : voice.decayScale
+    maxDecay = p.has(VoiceLaneParams.maxDecay) ? p.maxDecay : voice.maxDecay
+    if p.has(VoiceLaneParams.lowpass) {
+      postOn = p.postOn
+      if postOn && post.count == 5 {
+        post[0] = p.b0
+        post[1] = p.b1
+        post[2] = p.b2
+        post[3] = p.b3
+        post[4] = p.b4
+      }
+    } else {
+      postOn = basePostOn
+      for i in 0..<min(post.count, basePost.count) { post[i] = basePost[i] }
+    }
+    if !postOn {
+      pz1 = 0
+      pz2 = 0
+    }
+    distortion = p.has(VoiceLaneParams.drive) ? p.distortion : voice.distortion
+    vibInc = p.has(VoiceLaneParams.vibRate) ? p.vibInc : baseVibInc
+    vibDepth = p.has(VoiceLaneParams.vibDepth) ? p.vibDepth : voice.vibratoDepth
+    // A pitch sweep needs its per-voice multipliers (every wavetable lane has them, from
+    // prepare); a string has none.
+    if !isPluck && pm.count == poly {
+      if p.has(VoiceLaneParams.pitch) {
+        pmOn = p.pmOn
+        pitchFrom = p.pitchFrom
+        pitchTo = p.pitchTo
+        pmMul = p.pmMul
+      } else {
+        pmOn = basePmOn
+        pitchFrom = voice.pitchFrom
+        pitchTo = voice.pitchTo
+        pmMul = basePmMul
+      }
+      let wantMip = fAmount > 0 || (pmOn && !mip.isEmpty)
+      if wantMip && !mipOn {
+        // voices already sounding read the plainest table until their next strike
+        let top = (mipTop.count - 1) * (waveTableSize + 1)
+        for k in 0..<mipBase.count { mipBase[k] = top }
+      }
+      mipOn = wantMip
+      if !pmOn { for k in 0..<pm.count { pm[k] = 1 } }
+    }
+    // a post chain on the voice sum takes the voices' spread away (one pan for all)
+    spreadOn = baseSpread && !postOn && distortion == 0
+    guard sampledSlot >= 0 else { return }
+    let synth = p.has(VoiceLaneParams.synth) && p.useSynth
+    if synth {
+      samplerSlot = -1
+    } else if samplerSlot < 0 {
+      // back to the sample: the synth voices stop
+      for k in 0..<poly {
+        sd[k] = 0
+        sa[k] = 0
+      }
+      samplerSlot = sampledSlot
+    }
   }
 }
 
@@ -289,19 +418,29 @@ private func tonalLane(
     lane.pluckA = 1 - exp(-2 * Double.pi * min(voice.dampening, sr * 0.45) / sr)
   }
   lane.vibInc = voice.vibratoRate / sr
-  if voice.pitchTime > 0 && voice.pitchFrom != voice.pitchTo && !lane.isPluck {
-    lane.pmOn = true
+  if !lane.isPluck {
+    // every wavetable lane can sweep (the sound panel turns it on live): its multipliers, and
+    // for a saw or square the band-limited tables a swept note crosses octaves on (shared, built
+    // once per rate), re-chosen as it falls
     lane.pm = [Double](repeating: 1, count: poly)
-    lane.pmMul = pow(voice.pitchTo / voice.pitchFrom, 1 / (voice.pitchTime * sr))
     if voice.wave == "saw" || voice.wave == "square" {
-      // a swept note crosses octaves: band-limited tables, re-chosen as it falls
       let t = MipTables.shared(voice.wave, sampleRate: sr)
       lane.mip = t.samples
       lane.mipTop = t.top
       lane.mipBase = [Int](repeating: 0, count: poly)
     }
   }
-  if voice.lowpass > 0 { lane.post = biquad(type: "lowpass", fc: voice.lowpass, q: 1, sr: sr) }
+  if voice.pitchTime > 0 && voice.pitchFrom != voice.pitchTo && !lane.isPluck {
+    lane.pmOn = true
+    lane.pmMul = pow(voice.pitchTo / voice.pitchFrom, 1 / (voice.pitchTime * sr))
+    lane.mipOn = !lane.mip.isEmpty
+  }
+  // the lowpass's coefficients are there on every tonal lane, so it can be turned on live
+  lane.post = [Double](repeating: 0, count: 5)
+  if voice.lowpass > 0 {
+    lane.post = biquad(type: "lowpass", fc: voice.lowpass, q: 1, sr: sr)
+    lane.postOn = true
+  }
   lane.st[slotAttMul] = exp(-1 / (voice.attack * sr))
   if tables[voice.wave] == nil { tables[voice.wave] = buildTable(voice.wave) }
   lane.table = tables[voice.wave]!
@@ -323,6 +462,7 @@ private func shapeVoice(_ lane: Lane, group: String, _ sr: Double) {
   lane.mip = tables.samples
   lane.mipTop = tables.top
   lane.mipBase = [Int](repeating: 0, count: lane.poly)
+  lane.mipOn = true
   lane.fAmount = f.amount
   lane.fBase = f.base
   lane.fMul = exp(-1 / (f.seconds * sr))
@@ -435,7 +575,7 @@ public final class WaveProject: @unchecked Sendable {
 
   deinit {
     guard let samplers else { return }
-    for lane in lanes where lane.samplerSlot >= 0 { samplers.release(lane.samplerSlot) }
+    for lane in lanes where lane.sampledSlot >= 0 { samplers.release(lane.sampledSlot) }
   }
 
   /// Is `step` inside a drop gap? Allocation-free.
@@ -443,6 +583,33 @@ public final class WaveProject: @unchecked Sendable {
   func inGap(_ step: Int) -> Bool {
     for s in gaps where step >= s && step < s + DJMusicality.dropGapSteps { return true }
     return false
+  }
+
+  // MARK: voice settings (the sound panel)
+
+  /// What channel `channel` plays in this project: its instrument and that instrument's voice
+  /// as prepared, before any tweak. nil when no net of the project is on that channel. Reads
+  /// only what prepare wrote: safe on the main thread while the audio thread plays it.
+  public func channelVoice(_ channel: Int) -> ChannelVoice? {
+    let on = lanes.filter { $0.channel == channel }
+    guard let first = on.first(where: \.isTonal) ?? on.first else { return nil }
+    return ChannelVoice(
+      channel: channel, instrument: first.instrument, voice: first.voice, tonal: first.isTonal,
+      sampled: on.contains { $0.sampledSlot >= 0 }, pluck: first.isPluck)
+  }
+
+  /// `setting` made concrete for this project's lanes on `channel` (main thread).
+  func voiceParams(channel: Int, _ setting: VoiceSetting, sampleRate: Double) -> VoiceLaneParams {
+    VoiceLaneParams(
+      channel: channel, tweak: setting.tweak, useSynth: setting.useSynth,
+      voice: channelVoice(channel)?.voice, sampleRate: sampleRate)
+  }
+
+  /// Set the voice of every lane on `p.channel`. For a project the audio thread does not have
+  /// yet (`WaveDeckSource.load`, before the hand-over); the one it plays is set through
+  /// `WaveCommand.voice`.
+  func applyVoice(_ p: VoiceLaneParams) {
+    for lane in lanes where lane.channel == Int(p.channel) { lane.setVoice(p) }
   }
 }
 
@@ -509,12 +676,14 @@ private func buildLanes(
           lane = gateLane(voice, sr, lanes.count)
         }
         lane.netId = n.id
+        lane.channel = tr.channel
+        lane.instrument = tr.instrument
         if stereo {
           let at = DJMusicality.stereoPlacement(
             kind: key, group: tr.group ?? n.bundle.riffGroup)
           lane.pan = at.pan
           // (a voice post chain — lowpass, distortion — runs on the voice sum: one pan for all)
-          if at.spread > 0 && lane.isTonal && lane.post.isEmpty && lane.voice.distortion == 0 {
+          if at.spread > 0 && lane.isTonal && !lane.postOn && lane.voice.distortion == 0 {
             lane.voiceSpread = (0..<lane.poly).map { $0 % 2 == 0 ? at.spread : -at.spread }
             lane.voicePan = [Double](repeating: at.pan, count: lane.poly)
           }
@@ -526,7 +695,8 @@ private func buildLanes(
         if space {
           lane.send = SpaceSpec.send(kind: key, group: tr.group ?? n.bundle.riffGroup)
         }
-        if echo && lane.samplerSlot < 0 {
+        // (a sampled lane's too: it is used if the lane plays its synth voice instead)
+        if echo {
           lane.echoSend = EchoSpec.send(kind: key, group: tr.group ?? n.bundle.riffGroup)
         }
         // `.balance`: the part's trim (fills and crashes are no part's: as composed)
@@ -582,9 +752,10 @@ private func buildLanes(
   if unison { detune(live, group: "melody", wide: stereo, sr) }
   live.netId = "<live>"
   if space { live.send = SpaceSpec.send(kind: "tonal", group: "melody") }
-  if echo && live.samplerSlot < 0 { live.echoSend = EchoSpec.send(kind: "tonal", group: "melody") }
+  if echo { live.echoSend = EchoSpec.send(kind: "tonal", group: "melody") }
   let liveIndex = lanes.count
   lanes.append(live)
+  for lane in lanes { lane.captureBase() }
   return WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
@@ -879,6 +1050,25 @@ public final class WaveRunner {
   public var tickPhase: Double { clock[clkSpt] > 0 ? clock[clkTickPos] / clock[clkSpt] : 0 }
 
   public func setRoleMuted(hash: Int32, _ muted: Bool) { graph?.setRoleMuted(hash: hash, muted) }
+
+  /// A channel's voice settings (the sound panel), on the project playing and the one queued
+  /// for the next bar, from the next sample on. Allocation-free.
+  public func setVoice(_ p: VoiceLaneParams) {
+    if let c = current { applyVoice(p, c) }
+    if let n = pending { applyVoice(p, n) }
+  }
+
+  private func applyVoice(_ p: VoiceLaneParams, _ proj: WaveProject) {
+    for lane in proj.lanes where lane.channel == Int(p.channel) {
+      if lane.samplerSlot >= 0 && p.has(VoiceLaneParams.synth) && p.useSynth {
+        // to the synth voice: the sampler's notes end now
+        for k in 0..<lane.offCount { queue(lane.samplerSlot, 0x80, lane.offNote[k], 0) }
+        lane.offCount = 0
+        lane.nextOff = .infinity
+      }
+      lane.setVoice(p)
+    }
+  }
   public func activateSlot(hash: Int32) { graph?.activateSlot(hash: hash) }
   public func fireStinger(hash: Int32, ticks: Int) {
     graph?.fireStinger(hash: hash, ticks: ticks)
@@ -1180,8 +1370,8 @@ public final class WaveRunner {
     let cur = lane.sd[v] + lane.sa[v]
     strike(lane, v, note: note)
     if lane.fAmount > 0 { lane.fVel[v] = w * w }
-    var tau = (durMs > 0 ? durMs : 100) / 1000 * lane.voice.decayScale
-    tau = tau < 0.03 ? 0.03 : (tau > lane.voice.maxDecay ? lane.voice.maxDecay : tau)
+    var tau = (durMs > 0 ? durMs : 100) / 1000 * lane.decayScale
+    tau = tau < 0.03 ? 0.03 : (tau > lane.maxDecay ? lane.maxDecay : tau)
     lane.md[v] = exp(-lane.st[slotInvSr] / tau)
     lane.sd[v] = w
     lane.sa[v] = cur - w
@@ -1411,9 +1601,9 @@ public final class WaveRunner {
       let width = min(1, max(0, Double(note - 52) / 15))
       lane.voicePan[v] = lane.pan + lane.voiceSpread[v] * width
     }
-    if lane.pmOn { lane.pm[v] = lane.voice.pitchFrom }
-    if !lane.mip.isEmpty {
-      let hz = lane.inc[v] * sampleRate * (lane.pmOn ? lane.voice.pitchFrom : 1)
+    if lane.pmOn { lane.pm[v] = lane.pitchFrom }
+    if lane.mipOn {
+      let hz = lane.inc[v] * sampleRate * (lane.pmOn ? lane.pitchFrom : 1)
       var k = 0
       while k < lane.mipTop.count - 1 && lane.mipTop[k] < hz * 1.06 { k += 1 }
       lane.mipBase[v] = k * (waveTableSize + 1)
@@ -1568,7 +1758,7 @@ public final class WaveRunner {
     var out = 0.0
     var side = 0.0  // per-voice pan (`voicePan`), summed alongside `out`
     var uside = 0.0  // `.unison`: the detuned pairs' difference, either side
-    let spread = !lane.voicePan.isEmpty
+    let spread = lane.spreadOn
     var envSum = 0.0
     var live = false
     let fmk = lane.fm != nil ? 1 + lane.st[slotFmDepth] * lane.fm!.st[slotPrev] : 1
@@ -1578,7 +1768,7 @@ public final class WaveRunner {
       var vp = lane.vibPhase + lane.vibInc
       vp -= vp.rounded(.down)
       lane.vibPhase = vp
-      vib = 1 + lane.voice.vibratoDepth * sin(2 * Double.pi * vp)
+      vib = 1 + lane.vibDepth * sin(2 * Double.pi * vp)
     }
     for k in 0..<lane.poly {
       let sd = lane.sd[k]
@@ -1600,9 +1790,9 @@ public final class WaveRunner {
         let p = lane.pm[k]
         rate *= p
         let next = p * lane.pmMul
-        let to = lane.voice.pitchTo
+        let to = lane.pitchTo
         lane.pm[k] = lane.pmMul < 1 ? (next < to ? to : next) : (next > to ? to : next)
-        if !lane.mip.isEmpty {
+        if lane.mipOn {
           // falling: step down to the richest table that still fits under Nyquist
           let hz = rate * sampleRate
           var b = lane.mipBase[k] / (waveTableSize + 1)
@@ -1636,14 +1826,14 @@ public final class WaveRunner {
     }
     lane.st[slotEnv] = envSum
     if !live { lane.active = false }
-    if !lane.post.isEmpty {
+    if lane.postOn {
       let b = lane.post
       let y = b[0] * out + lane.pz1
       lane.pz1 = b[1] * out - b[3] * y + lane.pz2
       lane.pz2 = b[2] * out - b[4] * y
       out = y
     }
-    if lane.voice.distortion > 0 { out = toneDistortion(out, amount: lane.voice.distortion) }
+    if lane.distortion > 0 { out = toneDistortion(out, amount: lane.distortion) }
     out *= lane.st[slotLevel]
     if spread { side *= lane.st[slotLevel] }
     if lane.uniWide {
@@ -1714,7 +1904,7 @@ public final class WaveRunner {
     let x = ph * Double(waveTableSize)
     let i = Int(x)
     let fr = x - Double(i)
-    if lane.mip.isEmpty {
+    if !lane.mipOn {
       let a = Double(lane.table[i])
       let b = Double(lane.table[i + 1])
       return a + (b - a) * fr

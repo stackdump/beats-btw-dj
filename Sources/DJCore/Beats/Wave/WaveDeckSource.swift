@@ -33,6 +33,8 @@ public enum WaveCommand: BitwiseCopyable {
   case masterMacro(id: UInt8, bars: Int16)
   /// A hand on a master FX slider (`MasterFxKey.rawValue`, the slider's own units).
   case masterFx(key: UInt8, value: Int16)
+  /// A channel's voice settings, from the sound panel (`WaveRunner.setVoice`).
+  case voice(VoiceLaneParams)
 }
 
 /// A `WaveRunner` that a deck can play: the Petri-net executor and the wave synthesis
@@ -96,6 +98,10 @@ public final class WaveDeckSource: @unchecked Sendable {
 
   /// Main-thread only: the last project handed over, to resolve net ids.
   public private(set) var latest: WaveProject?
+  /// Main-thread only: each channel's voice settings (the sound panel), set on every project
+  /// handed over from now on (`load`) as well as the one playing. Session state: never in a
+  /// share or a favorite. The deck clears it when another song loads (`Deck.loadNet`).
+  public private(set) var voiceSettings: [Int: VoiceSetting] = [:]
   /// `WaveProject.generation` of the project the audio thread is running (0: none yet).
   private let activeGenerationAtomic = Atomic<Int32>(0)
   /// The project queued behind it, waiting for a bar (0: none).
@@ -192,6 +198,16 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// Hand a compiled project to the audio thread: immediately when stopped, at the next
   /// bar when playing.
   public func load(_ prepared: WaveProject) {
+    // the channels' voice settings go with it (it is not the audio thread's yet); a channel
+    // whose instrument changed starts from that instrument's own voice
+    for (ch, setting) in voiceSettings {
+      guard let v = prepared.channelVoice(ch) else { continue }
+      if v.instrument != setting.instrument {
+        voiceSettings[ch] = nil
+        continue
+      }
+      prepared.applyVoice(prepared.voiceParams(channel: ch, setting, sampleRate: sampleRate))
+    }
     let p = Unmanaged.passRetained(prepared).toOpaque()
     drainRetired()
     if commands.push(.load(p)) {
@@ -204,6 +220,24 @@ public final class WaveDeckSource: @unchecked Sendable {
       Unmanaged<WaveProject>.fromOpaque(p).release()
     }
   }
+
+  /// Set channel `channel`'s voice: `tweak` on the instrument's own, and (a sampled channel)
+  /// its synth voice instead of the sample. Takes effect at the next block on the project
+  /// playing and any queued, and on every project loaded after (`load`). A default setting
+  /// (empty tweak, sample) is the instrument exactly. False when the latest project has no net
+  /// on that channel.
+  @discardableResult
+  public func setVoice(channel: Int, tweak: VoiceTweak, useSynth: Bool) -> Bool {
+    guard let project = latest, let v = project.channelVoice(channel) else { return false }
+    let setting = VoiceSetting(tweak: tweak, useSynth: useSynth, instrument: v.instrument)
+    voiceSettings[channel] = setting.isDefault ? nil : setting
+    send(.voice(project.voiceParams(channel: channel, setting, sampleRate: sampleRate)))
+    return true
+  }
+
+  /// Forget every channel's voice settings for the projects loaded from now on (another song).
+  /// The one playing keeps its sound until it is replaced.
+  public func clearVoiceSettings() { voiceSettings = [:] }
 
   public func play() { send(.play) }
   public func pause() { send(.pause) }
@@ -592,6 +626,7 @@ public final class WaveDeckSource: @unchecked Sendable {
       runner.markMacroRunning(ticks: ticks)
     case .masterFx(let key, let value):
       if let k = MasterFxKey(rawValue: Int(key)) { fx.setSlider(k, Double(value)) }
+    case .voice(let p): runner.setVoice(p)
     }
   }
 

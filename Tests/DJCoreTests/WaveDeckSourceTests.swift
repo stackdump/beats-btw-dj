@@ -394,6 +394,75 @@ struct WaveDeckSourceTests {
 
 extension WaveDeckSourceTests {
   @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func voiceTweaksDoNotAllocate() {
+    // the sound panel while the song plays: every parameter, a pitch sweep switched on (a saw
+    // takes up its band-limited tables), Reset, and a sampled channel to its synth voice and back
+    let sr = 48_000.0
+    let src = WaveDeckSource(sampleRate: sr)
+    let p = TrackSpec(genre: "country", seed: 7, structure: "minimal").project()
+    let prepared = WaveRunner.prepare(p, sampleRate: sr, opts: .extended(samplers: src.samplers))
+    src.load(prepared)
+    src.setTempo(480)
+    src.play()
+    let tonal = Set(prepared.lanes.filter { $0.isTonal && $0.channel >= 0 }.map(\.channel))
+    let sampled = prepared.lanes.first { $0.sampledSlot >= 0 && $0.channel >= 0 }?.channel
+    #expect(!tonal.isEmpty && sampled != nil, "tonal and sampled channels to tweak")
+    // made on the main thread (they are what `setVoice` sends)
+    let full = VoiceTweak(
+      gainDB: 6, attack: 0.03, decayScale: 2, maxDecay: 2, lowpass: 1500, distortion: 0.5,
+      vibratoRate: 5, vibratoDepth: 0.01, pitchFrom: 4, pitchTo: 1, pitchTime: 0.1)
+    var cmds: [WaveCommand] = []
+    for ch in tonal.sorted() {
+      let v = prepared.channelVoice(ch)?.voice
+      cmds.append(
+        .voice(VoiceLaneParams(channel: ch, tweak: full, useSynth: false, voice: v, sampleRate: sr)))
+      cmds.append(
+        .voice(
+          VoiceLaneParams(
+            channel: ch, tweak: VoiceTweak(lowpass: 0, pitchTime: 0), useSynth: false, voice: v,
+            sampleRate: sr)))
+    }
+    var synth: [WaveCommand] = []
+    if let ch = sampled {
+      synth.append(
+        .voice(
+          VoiceLaneParams(channel: ch, tweak: full, useSynth: true, voice: nil, sampleRate: sr)))
+      synth.append(
+        .voice(
+          VoiceLaneParams(channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr)
+        ))
+    }
+    let reset = tonal.sorted().map {
+      WaveCommand.voice(
+        VoiceLaneParams(channel: $0, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
+    }
+    var l = [Float](repeating: 0, count: 512)
+    var r = [Float](repeating: 0, count: 512)
+    func run(_ n: Int) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n { src.render(frames: 512, left: lp.baseAddress!, right: rp.baseAddress!) }
+        }
+      }
+    }
+    run(100)
+    let report = countAllocations {
+      for c in cmds {
+        src.send(c)
+        run(20)
+      }
+      for c in synth {
+        src.send(c)
+        run(200)
+      }
+      for c in reset { src.send(c) }
+      run(200)
+    }
+    #expect(report.allocations == 0, "render allocated \(report.allocations) times")
+    #expect(report.frees == 0, "render freed \(report.frees) times")
+  }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
   func laserSweepsDoNotAllocate() {
     let sr = 48_000.0
     let runner = WaveRunner(sampleRate: sr, opts: .extended)
