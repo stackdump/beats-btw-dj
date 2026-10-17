@@ -441,6 +441,10 @@ extension AppModel {
               ])
               c["loop"] = .string("\($0.loop)")
               c["gain"] = .number($0.gain)
+              c["muted"] = .bool($0.muted)
+              c["soloed"] = .bool($0.soloed)
+              c["keyLock"] = .bool($0.keyLock)
+              c["stretched"] = .bool($0.stretched)
               if let on = $0.onDeck { c["onDeck"] = .string(on) }
               if let p = engine?.clip($0.id)?.provenance { c["provenance"] = p }
               return .object(c)
@@ -451,7 +455,8 @@ extension AppModel {
           .object(
             JSONObject([
               ("looping", .int(loopChannel.looping)), ("volume", .number(loopChannel.volume)),
-              ("mute", .bool(loopChannel.mute)),
+              ("mute", .bool(loopChannel.mute)), ("fade", .string(loopChannel.fade.rawValue)),
+              ("keyLock", .bool(loopChannel.keyLock)),
             ]))
         ),
         (

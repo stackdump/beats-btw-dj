@@ -33,6 +33,9 @@ there. In short:
   clip. Any number of clips loop under the mixer at once, each in or out on the downbeat, in
   time with its deck; drag a tile's edge to crop it to the beat, join tiles into sequences,
   move one onto A or B. The row is saved (`~/Library/Application Support/dj-vevr-se/loops`).
+  Each loop has mute (silent, still in phase), solo and 🔒 key (key lock: at another tempo it
+  plays a WSOLA time-stretched copy, made in the background, instead of going sharp or flat);
+  loops come in and go out with a fade (off, 10 ms de-click, 1 beat, 1 bar).
   Every channel has a reverb (Apple's AUReverb2: wet, size, tone) in its Reverb section.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com

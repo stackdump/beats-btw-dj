@@ -102,4 +102,51 @@ struct LoopRowViewTests {
     m.cropClip(c.id, from: 0, to: 4)
     #expect(m.clips.first?.provenance.first == "Cropped to beats 1–4 of:")
   }
+
+  @Test func aTileMutesSolosAndKeyLocksItsLoop() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let clip = try #require(m.clips.first)
+    #expect(!clip.muted && !clip.soloed && !clip.keyLock && !clip.stretched)
+    #expect(m.loopChannel.fade == .declick && !m.loopChannel.keyLock)
+    m.setClipMute(clip.id, true)
+    m.setClipSolo(clip.id, true)
+    m.setClipKeyLock(clip.id, true)
+    let after = try #require(m.clips.first)
+    #expect(after.muted && after.soloed && after.keyLock)
+    #expect(dj.isClipMuted(clip.id) && dj.isClipSoloed(clip.id) && dj.isKeyLocked(clip.id))
+    #expect(after.loop == .on, "muted, it is still looping")
+    m.setLoopFade(.beat)
+    m.setLoopKeyLock(true)
+    #expect(m.loopChannel.fade == .beat && m.loopChannel.keyLock && dj.loopFade == .beat)
+    m.setClipKeyLock(clip.id, false)
+    #expect(m.clips.first?.keyLock == false, "its own setting wins over the row's")
+
+    let view = LoopRowView(model: m).padding().background(Color.black)
+      .environment(\.colorScheme, .dark)
+    savePNG(view, width: 900, height: 200, name: "loop-row-sound")
+    #expect(renderPixels(view, width: 900, height: 200) != nil)
+  }
+
+  @Test func theSoundControlsAreRecordedInASession() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    for d in dj.decks.values { d.loadDemo() }
+    let rec = try SessionRecorder.start(on: dj)
+    let m = AppModel(engine: dj)
+    m.start()
+    m.setClipMute("abc", true)
+    m.setClipSolo("abc", true)
+    m.setClipKeyLock("abc", true)
+    m.setLoopKeyLock(true)
+    m.setLoopFade(.bar)
+    let actions = rec.finish().events.compactMap { e -> DeckAction? in
+      if case .action(let a) = e.kind { return a }
+      return nil
+    }
+    #expect(
+      actions == [
+        .clipMute(id: "abc", on: true), .clipSolo(id: "abc", on: true),
+        .clipKeyLock(id: "abc", on: true), .loopKeyLock(on: true), .loopFade(mode: "bar"),
+      ])
+  }
 }
