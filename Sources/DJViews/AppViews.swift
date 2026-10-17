@@ -508,9 +508,10 @@ public final class AppModel {
       (hub?.router ?? injectedRouter)?.attach(port: "APC mini mk2 Control (on screen)")
     }
   }
-  func pressPad(_ group: String, _ index: Int) {
+  /// `shift`: with the APC's SHIFT held around the press (shift-click: the loop page).
+  func pressPad(_ group: String, _ index: Int, shift: Bool = false) {
     guard let port = padPort else { return }
-    (hub?.router ?? injectedRouter)?.press(port: port, group: group, index: index)
+    (hub?.router ?? injectedRouter)?.press(port: port, group: group, index: index, shift: shift)
   }
 
   func setPFL(_ deck: String, _ on: Bool) { dj?[deck]?.pfl = on }
@@ -1005,7 +1006,7 @@ public struct ContentView: View {
       if model.showPads, let pads = model.padLights["pads"] {
         PadGridView(
           pads: pads, tracks: model.padLights["track"] ?? [], scenes: model.padLights["scene"] ?? []
-        ) { model.pressPad($0, $1) }
+        ) { model.pressPad($0, $1, shift: NSEvent.modifierFlags.contains(.shift)) }
         .frame(width: 300, height: 300)
       }
       if model.showScopes, let scopes = model.scopeHub {

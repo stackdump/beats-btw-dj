@@ -134,7 +134,9 @@ extension AppModel {
       }
       if !showPads { setShowPads(true) }
       poll()
-      guard let port = padPort, router?.press(port: port, group: group, index: index) == true
+      let shift = p["shift"]?.bool ?? false
+      guard let port = padPort,
+        router?.press(port: port, group: group, index: index, shift: shift) == true
       else {
         throw ControlRequestError.bad("no pad \(group)[\(index)] on the APC mini")
       }

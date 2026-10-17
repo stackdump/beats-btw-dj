@@ -89,19 +89,37 @@ public final class ControllerRouter {
 
   /// Press and release a control on screen, as if it had been touched on the hardware:
   /// the same MIDI bytes through `route`, so it is recorded like any controller input.
+  /// `shift`: with the surface's software SHIFT held around it (the APC's loop page); false
+  /// when the surface has no SHIFT control.
   @discardableResult
   public func press(
-    port: String, group: String, index: Int,
+    port: String, group: String, index: Int, shift: Bool = false,
     now: TimeInterval = ProcessInfo.processInfo.systemUptime
   ) -> Bool {
-    guard let s = surfaces[port], let g = s.profile.group(group), g.type == .note,
-      g.controlNumbers.indices.contains(index)
+    guard let s = surfaces[port], let (ch, note) = Self.noteControl(s.profile, group, index)
     else { return false }
-    let note = g.controlNumbers[index]
-    let ch = g.channel ?? 0
+    var held: (UInt8, UInt8)?
+    if shift {
+      guard
+        let b = s.profile.layout.first(where: { $0.action == .shift && $0.index != nil }),
+        let sh = Self.noteControl(s.profile, b.group, b.index!)
+      else { return false }
+      held = sh
+      route(port: port, bytes: [0x90 | sh.0, sh.1, 127], now: now)
+    }
     route(port: port, bytes: [0x90 | ch, note, 127], now: now)
     route(port: port, bytes: [0x80 | ch, note, 0], now: now)
+    if let (sc, sn) = held { route(port: port, bytes: [0x80 | sc, sn, 0], now: now) }
     return true
+  }
+
+  /// (channel, note) of a note control, or nil for anything else.
+  private static func noteControl(_ p: SurfaceProfile, _ group: String, _ index: Int) -> (
+    UInt8, UInt8
+  )? {
+    guard let g = p.group(group), g.type == .note, g.controlNumbers.indices.contains(index)
+    else { return nil }
+    return (g.channel ?? 0, g.controlNumbers[index])
   }
 
   /// LED updates for every attached surface, by port.

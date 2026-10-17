@@ -72,6 +72,28 @@ struct PadLightsTests {
       ])
   }
 
+  @Test func aShiftedPressHoldsShiftAroundThePadAndIsRecorded() async throws {
+    let dj = try DJEngine(offline: true, sampleRate: 22_050)
+    let router = ControllerRouter(engine: dj)
+    let port = "APC mini mk2 Control"
+    router.attach(port: port)
+    let rec = try SessionRecorder.start(on: dj)
+    #expect(router.press(port: port, group: "pads", index: 56, shift: true))  // loop 1
+    let s = rec.finish()
+    #expect(
+      s.events.map(\.kind) == [
+        .midi(port: port, bytes: [0x90, 122, 127]), .midi(port: port, bytes: [0x90, 56, 127]),
+        .midi(port: port, bytes: [0x80, 56, 0]), .midi(port: port, bytes: [0x80, 122, 0]),
+      ])
+    #expect(router.surfaces[port]?.shiftHeld == false, "SHIFT is let go again")
+    // a surface without a SHIFT control cannot press shifted
+    let mpk = "MPK mini"
+    router.attach(port: mpk)
+    #expect(router.surfaces[mpk] != nil)
+    #expect(!router.press(port: mpk, group: "padNotes", index: 8, shift: true))
+    #expect(router.press(port: mpk, group: "padNotes", index: 8))
+  }
+
   @Test func routerFindsASurfaceByProfileName() async throws {
     let (_, router, _, port) = try await make()
     let found = try #require(router.lights(profileName: "APC mini mk2"))
