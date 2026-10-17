@@ -478,31 +478,7 @@ struct ClipTile: View {
       ClipNameEditor(clip: clip, model: model)
       ClipColorSwatches(current: clip.color) { model.setClipColor(clip.id, $0) }
         .padding(.bottom, 4)
-      if clip.provenance.isEmpty {
-        Text("No record of where it came from").foregroundStyle(.secondary)
-      }
-      ForEach(Array(clip.provenance.enumerated()), id: \.offset) { _, line in
-        Text(line).font(.caption).monospacedDigit()
-      }
-      HStack(spacing: DJStyle.s) {
-        Button("Load source on A") { Task { await model.loadOrigin(clip.id, on: "A") } }
-        Button("on B") { Task { await model.loadOrigin(clip.id, on: "B") } }
-      }
-      .controlSize(.small).padding(.top, 4).disabled(!clip.canLoadOrigin)
-      .help(
-        clip.canLoadOrigin
-          ? "Load the track it was taken from, at the section it was in"
-          : "Its source can't be loaded again (a sample not in memory)")
-      HStack(spacing: DJStyle.s) {
-        Button("Export WAV…") { model.exportClip(clip.id) }
-        if let json = clip.provenanceJSON {
-          Button("Copy as JSON") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(json, forType: .string)
-          }
-        }
-      }
-      .controlSize(.small)
+      ClipProvenanceDetails(clip: clip, model: model)
     }
     .padding(12).frame(minWidth: 280, alignment: .leading)
   }
@@ -648,9 +624,6 @@ struct GrabBarsControl: View {
 /// "Save scene" keeps the loops playing now; a scene's chip brings exactly those back.
 struct LaunchBar: View {
   let model: AppModel
-  /// The scene being renamed, and the name typed so far.
-  @State private var renaming: String?
-  @State private var newName = ""
 
   var body: some View {
     HStack(alignment: .top, spacing: DJStyle.m) {
@@ -684,30 +657,9 @@ struct LaunchBar: View {
         model.setLoopFollow($0)
       }
       Divider().frame(height: 18)
-      Button("Save scene") { model.saveScene() }
-        .controlSize(.small).disabled(model.loopChannel.looping == 0)
-        .help("Keep the loops playing now (and their levels) as a scene")
-      FlowRow(spacing: 4) {
-        ForEach(model.scenes) { scene in SceneChip(scene: scene, model: model, rename: rename) }
-      }
+      SceneStrip(model: model)
       Spacer(minLength: 0)
     }
-    .alert(
-      "Rename scene",
-      isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
-    ) {
-      TextField("Name", text: $newName)
-      Button("Rename") {
-        if let r = renaming { model.renameScene(r, to: newName) }
-        renaming = nil
-      }
-      Button("Cancel", role: .cancel) { renaming = nil }
-    }
-  }
-
-  private func rename(_ name: String) {
-    newName = name
-    renaming = name
   }
 }
 

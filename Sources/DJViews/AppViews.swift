@@ -138,6 +138,8 @@ public final class AppModel {
   var showMap = false
   /// The Controllers panel: every device drawn with its bindings.
   var showControllers = false
+  /// The Soundboard panel (SoundboardView.swift): every loop as one big pad.
+  var showSoundboard = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
   /// in the app's defaults as `keepScreenAwake`; off until turned on.
   private(set) var keepScreenAwake = false
@@ -1462,6 +1464,7 @@ public struct ContentView: View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
       deckRow(wide: wide)
+      if model.showSoundboard { SoundboardView(model: model).djCard(tint: LoopRowView.tint) }
       // the row appears with the first take (and stays while there are clips)
       if !model.clips.isEmpty || !model.recording.isEmpty {
         LoopRowView(model: model).djCard(tint: LoopRowView.tint)
@@ -1522,6 +1525,11 @@ public struct ContentView: View {
         .help("Every controller drawn as it looks, each control labelled with what it does")
         Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
           .toggleStyle(.button)
+        Toggle(
+          SoundboardView.title,
+          isOn: Binding(get: { model.showSoundboard }, set: { model.setShowSoundboard($0) })
+        )
+        .toggleStyle(.button).help(SoundboardView.help)
         // one button per attached controller: walk through its controls
         ForEach(model.devices, id: \.port) { d in
           Button("Check \(d.profile)") { model.startWalk(device: d.profile) }

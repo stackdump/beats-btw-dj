@@ -265,6 +265,9 @@ extension AppModel {
       poll()
       return deckJSON(deck) ?? .null
 
+    case "view":
+      return controlView(p)
+
     case "screenshot":
       return try screenshot(to: p["path"]?.string)
 
@@ -563,6 +566,7 @@ extension AppModel {
       })
     if !lastMessage.isEmpty { o["lastMidi"] = .string(lastMessage) }
     o["padsOnScreen"] = .bool(showPads)
+    o["view"] = viewJSON
     o["keepScreenAwake"] = .bool(keepScreenAwake)
     let b = BuildInfo.current
     var build = JSONObject([

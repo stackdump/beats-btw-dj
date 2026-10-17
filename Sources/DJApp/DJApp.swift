@@ -43,6 +43,13 @@ struct DJApp: App {
     // size that shows two decks with their section columns (the wide layout) and the bottom bar,
     // and resize freely down to the minimum above (narrower stacks each deck's sections).
     .defaultSize(width: 1440, height: 900)
+    // View ▸ Soundboard (⇧⌘B): the loops as big pads, a panel under the decks.
+    .commands {
+      CommandGroup(after: .toolbar) {
+        Button("Soundboard") { model.toggleSoundboard() }
+          .keyboardShortcut("b", modifiers: [.command, .shift])
+      }
+    }
     // The Stage (SPEC modes 7…21): a full-window visualization of the decks' nets, opened by the
     // "Stage" button next to "Scopes".
     Window(StageWindow.title, id: StageWindow.id) {

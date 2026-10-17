@@ -22,6 +22,7 @@ public struct MCPBridge {
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
     "dj_notes": "notes", "dj_journal": "journal",
+    "dj_view": "view",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -339,6 +340,18 @@ public struct MCPBridge {
       [
         "path": prop(
           "string", "Where to save the PNG (default: ~/Library/Application Support/DJApp/shots/)")
+      ]),
+    tool(
+      "dj_view",
+      "Show or hide the main window's panels: the Soundboard (every loop as a big pad), "
+        + "Controllers, Map, Scopes and the on-screen APC pads. Leave a panel out to keep it as "
+        + "it is; returns what shows now.",
+      [
+        "soundboard": prop("boolean", "The Soundboard: one pad per loop, scenes on top"),
+        "controllers": prop("boolean", "Every controller drawn with its bindings"),
+        "map": prop("boolean", "The device map"),
+        "scopes": prop("boolean", "The scope panel"),
+        "pads": prop("boolean", "The on-screen APC mini grid"),
       ]),
     tool(
       "dj_record",
