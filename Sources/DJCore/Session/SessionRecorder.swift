@@ -280,6 +280,8 @@ extension DJEngine {
     case .wander(let n, let on): deck(n)?.setWander(on)
     case .wanderPace(let n, let bars): deck(n)?.setWanderPace(bars)
     case .wanderLock(let n, let dimension, let on): deck(n)?.setWanderLock(dimension, on)
+    case .setKit(let n, let kit): deck(n)?.setKit(kit)
+    case .setPalette(let n, let palette): deck(n)?.setPalette(palette)
     }
     return nil
   }

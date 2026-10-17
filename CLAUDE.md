@@ -234,8 +234,37 @@ its copy; the two are now independent. Rules inherited from that split:
   referenced does an instrument fall back to its synth voice. Anything else that calls
   `slot(for:)` (auditions, tests) must `release`. `sampledInstrumentsDoNotAllocate` measures
   an eviction landing mid-render.
+- **Sampled drum kits** (`DrumKits.swift`, `SamplerSource.kit`, GO-DIVERGENCE.md §5.6):
+  drums default to beats' synth kits; a track may pick a kit (`Track.kit`, the `tracks`
+  override `kit` on every drum channel, the poke `DeckAction.setKit` → `Deck.setKit`: same
+  song, rebuilt from the next bar's tick, swapped at the bar). Kits are every bank-128 preset
+  and every melodic preset named "… Kit" in the SoundFont folder, plus Apple's
+  `gs_instruments.dls` kits; ids are `file#bank:program` (resolved by file name, so a share
+  names the same kit on any Mac with the bank). The drum lanes stay gate lanes with their
+  synth voice as fallback, and send their kind's GM key (`DrumKits.gmNote`) to one kit slot,
+  held `holdMs` (cymbals ring); a closed hat ends the open hat's notes (`.choke`). Kits load
+  through `normalizeKit` (level to `kitTargetRMSdB` = the synth kit on `kitPhrase`; kick, snare
+  and hat must sound; no tuning check) and follow `.balance`'s kick trim as a velocity scale.
+  dj-only track fields (`picked`, `kit`, `palette`) are lost in the JSON a `WaveGraph` compiles
+  from: `buildLanes` reads them from the project itself (`geometry`). `SampledKitTests` (levels,
+  parity, deck swap), `SampledKitRealTimeTests` (a mid-render switch allocates nothing).
 - Sampled content never enters the repo or the CDN: Apple's licence covers playing it in
   your music, not redistributing the samples. `SamplerTests` re-measure pitch and level.
+- **Minecraft palette — local only.** `make minecraft` (`djctl minecraft import`) builds
+  `minecraft-local.sf2` + `minecraft-local.json` (asset index, per-sample SHA-1) in the SoundFont
+  folder from the user's own PrismLauncher assets (`MinecraftAssets`: newest index,
+  `$DJ_MINECRAFT_ASSETS` overrides; `MinecraftBank` fixed programs, kit at 0:127; decoded,
+  44.1 kHz/16-bit, tuned, steady tones crossfade-looped). Personal use only: the .ogg files and
+  the .sf2 never enter the repo, a release or the CDN (`*.sf2`, `minecraft-local.*` ignored), it
+  never joins the GM pools (`localOnlyBanks`), and `music/*` / `records/*` are never read.
+  Publishing refuses any set that plays it (`Session.localOnlySounds`; `djctl publish
+  --allow-local-sounds` / the Publish… checkbox override); local renders are fine.
+- **Palettes** (`SoundPalette`, `categories.json` `palettes` + `bankCategories`): a whole-track
+  role → category map, the `tracks` override `palette` (recorded with its asset version,
+  `minecraft@32`), the poke `DeckAction.setPalette` (next bar, same song). Picked instruments
+  and a picked kit keep theirs; picks seeded by track seed + role. Local-only banks skip the
+  tuning check on load (their importer tuned them). Unavailable palettes grey out with their
+  reason; tests skip without the assets. Wander's `palette` lock carries the palette and kit into each new track (`Wander.carry`).
 
 ## Musicality (docs/musicality-notes.md)
 

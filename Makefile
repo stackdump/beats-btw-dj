@@ -4,7 +4,7 @@ PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test swift-test-filter swift-shots swift-rt-test app run-app app-release run-app-release djctl \
-        mcp-install sampler-sweep soundfonts fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check
+        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -101,6 +101,13 @@ soundfonts:
 	  curl -fsSL -o "$$f" "$(MUSESCORE_SF2_URL)/$$f" || exit 1; \
 	done && \
 	echo "MuseScore_General $$(cat VERSION) in $(SOUNDFONT_DIR)"
+
+# The Minecraft palette's bank, built on this Mac from the user's own installed game sounds
+# (PrismLauncher's assets; DJ_MINECRAFT_ASSETS overrides; newest asset index): writes
+# minecraft-local.sf2 + minecraft-local.json into the SoundFont folder. Personal local use only:
+# never commit, ship or publish it (publish refuses sets that play it).
+minecraft:
+	swift run djctl minecraft import
 
 # MCP server for the running app (`djctl mcp`), registered for every claude on this Mac.
 # Installed as a copy so `swift build -c release` (e.g. swift-rt-test) can't swap it mid-session.

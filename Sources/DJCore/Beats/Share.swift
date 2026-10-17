@@ -196,6 +196,9 @@ extension Project {
             net.track.instrument = inst
             net.track.picked = true
           }
+          // dj's sound choices (never read by beats): a drum kit, a palette ("" = none)
+          if let kit = o["kit"]?.string { net.track.kit = kit.isEmpty ? nil : kit }
+          if let pal = o["palette"]?.string { net.track.palette = pal.isEmpty ? nil : pal }
           if let set = o["instrumentSet"], set.isTruthy, let arr = set.array {
             net.track.instrumentSet = arr
           }

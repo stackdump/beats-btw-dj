@@ -56,6 +56,9 @@ enum LoopProvenance {
       if !d.stemsMuted.isEmpty {
         o["stemsMuted"] = .array(d.stemsMuted.keys.sorted().map { .string($0) })
       }
+      // the sounds it played from (a palette with its asset version, a sampled kit)
+      if let p = d.palette { o["palette"] = .string(p) }
+      if let k = d.kit { o["kit"] = .string(k) }
       let macros = d.wave.activeMacros.map { "\($0)" } + d.wave.activeMasterMacros.map(\.id)
       if !macros.isEmpty { o["macros"] = .array(macros.map { .string($0) }) }
     }

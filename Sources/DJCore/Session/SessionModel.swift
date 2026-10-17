@@ -184,8 +184,16 @@ public enum DeckAction: Equatable, Sendable {
   /// Bars per wander move: 4 | 8 | 16 | 32 (`Deck.setWanderPace`).
   case wanderPace(deck: String, bars: Int)
   /// Lock a dimension the walk must not change, or free it (`Deck.setWanderLock`): genre |
-  /// tempo | key | structure | instruments | arrangement | fx | keep:<role>.
+  /// tempo | key | structure | instruments | arrangement | fx | palette | keep:<role>.
   case wanderLock(deck: String, dimension: String, on: Bool)
+  /// Play a net deck's drums on a sampled kit (`DrumKit.id`) or, nil, beats' synth kit
+  /// (`Deck.setKit`): the same song, swapped at the next bar; a `tracks` override, so it stars
+  /// and shares.
+  case setKit(deck: String, kit: String?)
+  /// Play a net deck's track from a sound palette (`SoundPalette`, recorded with its asset
+  /// version: `minecraft@32`) or, nil, none (`Deck.setPalette`): every role's category from the
+  /// palette, picked instruments and kits keeping theirs; the same song, at the next bar.
+  case setPalette(deck: String, palette: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -452,6 +460,10 @@ extension DeckAction {
     case .wanderPace(let deck, let bars): return o("wanderPace", [d(deck), ("bars", .int(bars))])
     case .wanderLock(let deck, let dimension, let on):
       return o("wanderLock", [d(deck), ("dimension", .string(dimension)), ("on", .bool(on))])
+    case .setKit(let deck, let kit):
+      return o("setKit", [d(deck), ("kit", kit.map { .string($0) } ?? .null)])
+    case .setPalette(let deck, let palette):
+      return o("setPalette", [d(deck), ("palette", palette.map { .string($0) } ?? .null)])
     }
   }
 
@@ -540,6 +552,8 @@ extension DeckAction {
     case "wanderLock":
       guard let dim = v["dimension"]?.string else { return nil }
       self = .wanderLock(deck: deck, dimension: dim, on: v["on"]?.bool ?? true)
+    case "setKit": self = .setKit(deck: deck, kit: v["kit"]?.string)
+    case "setPalette": self = .setPalette(deck: deck, palette: v["palette"]?.string)
     default: return nil
     }
   }

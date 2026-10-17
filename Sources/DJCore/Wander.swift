@@ -19,7 +19,7 @@ import Foundation
 public enum WanderLock {
   /// The dimensions, in the order the UI shows their chips.
   public static let dimensions = [
-    "genre", "tempo", "key", "structure", "instruments", "arrangement", "fx",
+    "genre", "tempo", "key", "structure", "instruments", "arrangement", "fx", "palette",
   ]
   public static let keepPrefix = "keep:"
   /// How far (either way, as a fraction) a tempo-locked walk may move from the tempo the lock
@@ -201,6 +201,10 @@ struct WanderContext: Sendable {
   var voices: [WanderVoice]
   var anchorBPM: Double?
   var key: WanderKey?
+  /// The sound palette and drum kit the deck plays (`Deck.palette` / `kit`): what the palette
+  /// lock carries into every new track.
+  var palette: String? = nil
+  var kit: String? = nil
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -478,6 +482,16 @@ public enum Wander {
   ) {
     if !keepLayers { s.layers = JSONObject() }
     if let key = c.key, c.locked("key") { s.extra["keyOffset"] = .number(Double(key.offset)) }
+    // the palette lock: the palette and the kit go with every new track, on its own channels
+    if c.locked("palette"), c.palette != nil || c.kit != nil {
+      let p = TrackSpec(
+        genre: s.genre, seed: s.seed, structure: s.structure, cohesion: s.cohesion, extra: s.extra
+      ).project()
+      var d = DeckSourceDescriptor.net(s)
+      if let pal = c.palette { d = d.withPalette(pal, channels: p.channels) ?? d }
+      if let kit = c.kit { d = d.withKit(kit, channels: p.drumChannels) ?? d }
+      if case .net(let next) = d { s = next }
+    }
     let pins = c.voices.filter { v in
       c.locked("instruments") || v.roles.contains(where: c.kept.contains)
     }
@@ -573,7 +587,7 @@ extension Deck {
       deck: name, spec: spec, isLoop: isNetLoop, roles: rs, rolesOn: Set(rs.filter(isRoleOn)),
       disabledRoles: disabledRoles, stemsMuted: Set(stemsMuted.keys),
       lockedActions: lockedActions, locks: wander.locks, voices: wanderVoices,
-      anchorBPM: wander.anchorBPM, key: wander.key)
+      anchorBPM: wander.anchorBPM, key: wander.key, palette: palette, kit: kit)
   }
 
   /// Wander on or off (`DeckAction.wander`). On, it waits for the next phrase end; the bar it

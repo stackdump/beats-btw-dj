@@ -40,6 +40,10 @@ struct DeckState: Equatable {
   var channelVoices: [Int: ChannelVoice] = [:]
   /// The channels' voice settings this session (the sound panel), by channel.
   var voiceSettings: [Int: VoiceSetting] = [:]
+  /// The drum kit the net's drums play (`Deck.kit`), nil = beats' synth kit.
+  var kit: String?
+  /// The sound palette the track plays from (`Deck.palette`), nil = none.
+  var palette: String?
   var quantize = "off"
   var scrubbing = false
   var pfl = false
@@ -437,6 +441,8 @@ public final class AppModel {
         for v in state.voices { state.channelVoices[v.channel] = d.channelVoice(v.channel) }
       }
       state.voiceSettings = d.mode == .net ? d.wave.voiceSettings : [:]
+      state.kit = d.kit
+      state.palette = d.palette
       if d.mode == .net {
         var spin = ringSpins[name] ?? RingSpin()
         spin.observe(advances: d.advances, at: now)
@@ -1238,6 +1244,8 @@ public final class AppModel {
     var title: String?
     var draft = false
     var includeAudio = true
+    /// Publish a set that plays local-only sounds (the Minecraft bank) anyway.
+    var allowLocalOnly = false
   }
 
   func toggleRecording() {
@@ -1286,12 +1294,29 @@ public final class AppModel {
     let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 56))
     box.addSubview(title)
     box.addSubview(draft)
+    // a set that plays sounds built from this Mac's game assets is refused unless ticked
+    let local = session.localOnlySounds
+    let allow = NSButton(
+      checkboxWithTitle: "Publish anyway (plays this Mac's Minecraft sounds)", target: nil,
+      action: nil)
+    if !local.isEmpty {
+      box.frame.size.height = 84
+      title.frame.origin.y = 56
+      draft.frame.origin.y = 28
+      allow.frame = NSRect(x: 0, y: 0, width: 300, height: 22)
+      box.addSubview(allow)
+      alert.informativeText +=
+        "\n\nThis set plays sounds built from your own Minecraft install, for this Mac only: "
+        + "it is not published unless you tick the box."
+    }
     alert.accessoryView = box
     alert.addButton(withTitle: "Publish")
     alert.addButton(withTitle: "Cancel")
     guard alert.runModal() == .alertFirstButtonReturn else { return }
     let name = title.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-    let options = PublishOptions(title: name.isEmpty ? nil : name, draft: draft.state == .on)
+    let options = PublishOptions(
+      title: name.isEmpty ? nil : name, draft: draft.state == .on,
+      allowLocalOnly: !local.isEmpty && allow.state == .on)
     Task { @MainActor in await publish(options: options) }
   }
 
@@ -1322,7 +1347,7 @@ public final class AppModel {
         }
         let bundle = try SessionBundle(
           session: session, title: options.title, audioWAV: wav, renderedAt: stamp,
-          draft: options.draft)
+          draft: options.draft, allowLocalOnly: options.allowLocalOnly)
         let r = try publishSession(bundle, via: transport, mirror: mirror) { step in
           switch step {
           case .staging(let file, let i, let n): report("uploading \(file) (\(i)/\(n))…")

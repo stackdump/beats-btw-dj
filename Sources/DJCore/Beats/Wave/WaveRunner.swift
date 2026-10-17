@@ -186,6 +186,12 @@ final class Lane {
   // sampled instrument: a slot in the deck's SamplerBank (-1 = synth voice); notes sound
   // there and this lane only keeps their note-offs (sample time, fixed capacity)
   var samplerSlot = -1
+  /// A drum lane on a sampled kit (`Track.kit`): the GM key it plays and how long each hit is
+  /// held (`DrumKits.gmNote` / `holdMs`).
+  var kitNote = 36
+  var kitHoldMs = 400.0
+  /// …and its hits' velocity scale: `.balance`'s kick trim as a velocity (`DrumKits.velocityScale`).
+  var kitVelocity = 1.0
   var offNote = [Int](repeating: 0, count: 64)
   var offAt = [Double](repeating: 0, count: 64)
   var offCount = 0
@@ -640,9 +646,17 @@ private func buildLanes(
   let kickHz =
     opts.musicality.contains(.kickTune) ? KickTuning.hz(root: g.project.rootNote) : nil
   let trims = opts.musicality.contains(.balance) ? opts.trackBalance ?? [:] : [:]
+  // A sampled drum kit the track picked (dj's, never the parity path: it needs the deck's bank
+  // and the instrument table, `.extended`); nil = beats' synth kits.
+  // (dj-only track fields — `picked`, `kit` — are not in the JSON the graph is compiled from:
+  // they are read from the project itself, `geometry`)
+  let kit =
+    opts.samplers != nil && opts.instruments != nil ? drumKitSource(geometry ?? g.project) : nil
   for n in g.nets {
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
+    let picked = geometry?.nets[n.id]?.track.picked ?? tr.picked
+    let palette = geometry?.nets[n.id]?.track.palette ?? tr.palette
     let override = opts.voices[n.id]
     var kindOrder: [String] = []
     var kindLane: [String: Int] = [:]
@@ -670,7 +684,9 @@ private func buildLanes(
             ?? tonalVoice(instrument: tr.instrument, group: tr.group)
           lane = tonalLane(
             voice, sr, tr.group == "harmony" ? 6 : 4, tables: &tables, seed: lanes.count)
-          bindSampler(lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: tr.picked)
+          bindSampler(
+            lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: picked,
+            palette: palette)
           if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
           if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
         } else {
@@ -681,6 +697,14 @@ private func buildLanes(
             voice.f1 = hz
           }
           lane = gateLane(voice, sr, lanes.count)
+          if let kit {
+            bindKit(lane, kind: key, kit, opts)
+            // `.balance`: the kit was matched to the synth kit before its trims; the kick's
+            // trim moves the whole kit (its own balance is the kit's)
+            if !trims.isEmpty, let db = trims["kick"] {
+              lane.kitVelocity = DrumKits.velocityScale(db)
+            }
+          }
         }
         lane.netId = n.id
         lane.channel = tr.channel
@@ -754,7 +778,8 @@ private func buildLanes(
     opts.instruments?.voice(instrument: liveInstrument, group: "melody")
     ?? tonalVoice(instrument: liveInstrument, group: "melody")
   let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
-  bindSampler(live, liveInstrument, "melody", opts)
+  let livePalette = melody.flatMap { geometry?.nets[$0.id]?.track.palette }
+  bindSampler(live, liveInstrument, "melody", opts, palette: livePalette)
   if subtractive { shapeVoice(live, group: "melody", sr) }
   if unison { detune(live, group: "melody", wide: stereo, sr) }
   live.netId = "<live>"
@@ -775,16 +800,45 @@ private func buildLanes(
 /// role and one loads (off the audio thread: this may load an EXS from disk, or evict an
 /// unused one). The reference taken on the slot is the project's, given back in
 /// `WaveProject.deinit`.
+///
+/// `palette` (`Track.palette`): the role plays from the palette's category first, unless the
+/// user picked its instrument; the instrument's own chain follows as the fallback.
 private func bindSampler(
-  _ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions, picked: Bool = false
+  _ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions, picked: Bool = false,
+  palette: String? = nil
 ) {
-  guard let bank = opts.samplers, opts.instruments != nil,
-    let sources = VoiceCatalog.shared.sources(
-      instrument: instrument, role: role.isEmpty ? "melody" : role, seed: opts.voicingSeed,
-      picked: picked),
+  guard let bank = opts.samplers, opts.instruments != nil else { return }
+  let role = role.isEmpty ? "melody" : role
+  let own = VoiceCatalog.shared.sources(
+    instrument: instrument, role: role, seed: opts.voicingSeed, picked: picked)
+  let fromPalette =
+    picked ? nil : SoundPalette.named(palette)?.sources(role: role, seed: opts.voicingSeed)
+  guard let sources = fromPalette.map({ $0 + (own ?? []) }) ?? own,
     let slot = bank.slot(for: sources)
   else { return }
   lane.samplerSlot = slot
+}
+
+/// The kit a project's drums play: the first drum-channel net's `Track.kit` (a share `tracks`
+/// override on the drum channels), resolved to an installed bank; nil = the synth kit.
+func drumKitSource(_ project: Project) -> SamplerSource? {
+  for id in project.nets.keys {
+    guard let nb = project.nets[id], nb.role != "control", isDrumChannel(nb.track.channel)
+    else { continue }
+    if let k = nb.track.kit ?? SoundPalette.kit(for: nb.track.palette) {
+      return DrumKits.source(for: k)
+    }
+  }
+  return nil
+}
+
+/// Play a drum lane's hits on the kit (its kind's GM key), when the kit loads in the deck's
+/// bank; else the lane keeps beats' synth voice. Its reference is the project's (`deinit`).
+private func bindKit(_ lane: Lane, kind: String, _ kit: SamplerSource, _ opts: WaveOptions) {
+  guard let bank = opts.samplers, let slot = bank.slot(for: [kit]) else { return }
+  lane.samplerSlot = slot
+  lane.kitNote = DrumKits.gmNote(kind: kind)
+  lane.kitHoldMs = DrumKits.holdMs(kind: kind)
 }
 
 // clock slots
@@ -1380,6 +1434,13 @@ public final class WaveRunner {
     let w = Double(velocity ?? n.vel[t]) / 127
     if lane.isKick { duckHold = 1 }
     if !lane.isTonal {
+      if lane.samplerSlot >= 0 {
+        // a sampled kit: the hit is its GM key; a closed hat ends the open hat's ring
+        if let open = lane.choke, open.samplerSlot >= 0 { endSamplerNotes(open) }
+        samplerNote(
+          lane, note: lane.kitNote, w: min(1, w * lane.kitVelocity), durMs: lane.kitHoldMs)
+        return
+      }
       if let open = lane.choke, open.active { open.choking = true }
       lane.choking = false
       for e in 0..<lane.numExp { lane.s[e] += lane.alpha[e] * w }
@@ -1534,6 +1595,13 @@ public final class WaveRunner {
     lane.offAt[lane.offCount] = at
     lane.offCount += 1
     if at < lane.nextOff { lane.nextOff = at }
+  }
+
+  /// End every note a sampled lane holds, now (a choke).
+  private func endSamplerNotes(_ lane: Lane) {
+    for k in 0..<lane.offCount { queue(lane.samplerSlot, 0x80, lane.offNote[k], 0) }
+    lane.offCount = 0
+    lane.nextOff = .infinity
   }
 
   /// Send the note-offs that are due; the lane goes quiet once none are left.

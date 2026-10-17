@@ -47,7 +47,10 @@ extension AppModel {
       }
       if let deck = a["deck"]?.string {
         let d = try requireDeck(deck)
-        let netOnly = ["section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth"]
+        let netOnly = [
+          "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
+          "setPalette",
+        ]
         if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
         }

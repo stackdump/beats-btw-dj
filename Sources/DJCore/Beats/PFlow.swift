@@ -130,6 +130,12 @@ public struct Track {
   /// sampled sound is picked by the name (`VoiceCatalog.sources(picked:)`). dj-only, never
   /// encoded: the project's canonical text and CID are beats'.
   public var picked = false
+  /// The drum kit this net's drum lanes play (`DrumKits`, a share `tracks` override's `kit`),
+  /// nil = beats' synth kit. dj-only, never encoded, like `picked`.
+  public var kit: String?
+  /// The sound palette this net's role plays from (`SoundPalette`, a `tracks` override's
+  /// `palette`), nil = its instrument's category. dj-only, never encoded.
+  public var palette: String?
   public var instrumentSet: [JSONValue] = []
   public var mix: JSONValue?
   public var group: String?

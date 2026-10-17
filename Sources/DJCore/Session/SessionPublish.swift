@@ -32,10 +32,14 @@ public struct SessionBundle: Sendable {
   }
 
   /// `renderedAt` is passed in (not read from the clock) so bundles are reproducible.
+  /// A session that plays local-only sounds (`Session.localOnlySounds`: the Minecraft bank) is
+  /// refused — draft or not, a CID on the CDN is public — unless `allowLocalOnly`.
   public init(
     session: Session, title: String? = nil, audioWAV: [UInt8]? = nil, renderedAt: String,
-    draft: Bool = false
+    draft: Bool = false, allowLocalOnly: Bool = false
   ) throws {
+    let local = session.localOnlySounds
+    guard local.isEmpty || allowLocalOnly else { throw PublishError.localOnlySounds(local) }
     let cid = session.cid
     guard Self.isSafeCID(cid) else { throw PublishError.unsafeCID(cid) }
     self.cid = cid
@@ -97,10 +101,15 @@ public struct SessionBundle: Sendable {
 public enum PublishError: Error, Equatable, CustomStringConvertible {
   case unsafeCID(String)
   case commandFailed(String, Int32, String)
+  /// The session plays sounds that may only be played on this Mac (what, where).
+  case localOnlySounds([String])
 
   public var description: String {
     switch self {
     case .unsafeCID(let c): "refusing to publish unsafe CID \(c)"
+    case .localOnlySounds(let what):
+      "refusing to publish: the set plays sounds built from local game assets, for this Mac only ("
+        + what.joined(separator: "; ") + "); pass the override to publish anyway"
     case .commandFailed(let c, let s, let e): "\(c) exited \(s): \(e)"
     }
   }
@@ -334,4 +343,49 @@ public struct PublicProbe: Sendable {
   }
 
   private final class StatusBox: @unchecked Sendable { var status: Int? }
+}
+
+extension Session {
+  /// What in the session plays local-only sounds (`SamplerSource.localOnlyBanks`): a palette
+  /// or kit from the Minecraft bank, on a deck at the start, in a load, or as a poke. Empty for
+  /// a set that may be published.
+  public var localOnlySounds: [String] {
+    var out: [String] = []
+    func check(_ d: DeckSourceDescriptor, _ at: String) {
+      let tracks: JSONValue?
+      switch d {
+      case .net(let spec): tracks = spec.layers["tracks"]
+      case .rawNets(let payload): tracks = payload["tracks"]
+      case .none, .sample: tracks = nil
+      }
+      for (ch, o) in tracks?.object?.entries ?? [] {
+        if let k = o["kit"]?.string, Self.isLocalOnly(kit: k) {
+          out.append("\(at) ch \(ch) kit \(k)")
+        }
+        if let p = o["palette"]?.string, SoundPalette.named(p)?.isLocalOnly == true {
+          out.append("\(at) ch \(ch) palette \(p)")
+        }
+      }
+    }
+    for name in decks.keys.sorted() { if let d = decks[name] { check(d, "deck \(name)") } }
+    for e in events {
+      guard case .action(let a) = e.kind else { continue }
+      switch a {
+      case .load(let deck, let source): check(source, "load \(deck) @\(e.frame)")
+      case .queueNext(let deck, let spec): check(.net(spec), "next \(deck) @\(e.frame)")
+      case .setKit(let deck, let kit?) where Self.isLocalOnly(kit: kit):
+        out.append("setKit \(deck) @\(e.frame) \(kit)")
+      case .setPalette(let deck, let p?) where SoundPalette.named(p)?.isLocalOnly == true:
+        out.append("setPalette \(deck) @\(e.frame) \(p)")
+      default: break
+      }
+    }
+    // one line per place is plenty
+    var seen: Set<String> = []
+    return out.filter { seen.insert($0).inserted }
+  }
+
+  static func isLocalOnly(kit: String) -> Bool {
+    DrumKits.parse(kit).map { SamplerSource.localOnlyBanks.contains($0.file) } ?? false
+  }
 }

@@ -595,6 +595,7 @@ struct TrackPanel: View {
       Button("Copy to deck \(other)") { Task { await model.copyDeck(from: name, to: other) } }
         .controlSize(.small)
         .help("Load this track, with its instrument changes, onto deck \(other)")
+      SoundChoices(name: name, state: state, model: model, tint: tint)
       ForEach(state.voices, id: \.channel) { v in
         VStack(alignment: .leading, spacing: 3) {
           Text(v.role).font(.caption2).foregroundStyle(.secondary)
@@ -838,6 +839,7 @@ struct WanderPanel: View {
     case "instruments": return "No instrument changes: every new seed keeps these instruments"
     case "arrangement": return "No mutes or STEMS changes"
     case "fx": return "No macros, FX or stingers"
+    case "palette": return "Keep the sound palette and drum kit: every new track plays from them"
     default: return WanderLock.label(d)
     }
   }
