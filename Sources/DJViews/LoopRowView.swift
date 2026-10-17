@@ -147,7 +147,8 @@ struct SceneState: Equatable, Identifiable {
   /// Its clips still on the row, of all it was saved with.
   var count: Int
   var missing: Int
-  /// Exactly its clips are looping now (and none waiting to switch).
+  /// Exactly its clips are looping now (and none waiting to switch). Never a scene with none
+  /// on the row: nothing looping is not that scene playing.
   var active: Bool
 
   /// The engine's scenes, in order.
@@ -158,7 +159,7 @@ struct SceneState: Equatable, Identifiable {
       let ids = s.clips.map(\.clipID).filter { dj.clip($0) != nil }
       return SceneState(
         name: s.name, count: ids.count, missing: s.clips.count - ids.count,
-        active: settled && Set(ids) == looping)
+        active: settled && !ids.isEmpty && Set(ids) == looping)
     }
   }
 }
@@ -711,6 +712,7 @@ struct SceneChip: View {
     .contextMenu {
       Button("Rename…") { rename(scene.name) }
       Button("Overwrite with the loops playing now") { model.saveScene(scene.name) }
+        .disabled(model.loopChannel.looping == 0)
       Button("Delete", role: .destructive) { model.deleteScene(scene.name) }
     }
     .help(

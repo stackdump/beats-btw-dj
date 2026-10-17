@@ -50,6 +50,8 @@ struct DeckState: Equatable {
   var masterRunning: Set<MasterMacro> = []
   /// The LOOP-record clip the deck is playing, if it is playing one.
   var clipID: String?
+  /// Roles disabled on the deck (they stay off through new tracks).
+  var disabledRoles: Set<String> = []
   var reverb = ReverbState()
 }
 
@@ -88,8 +90,13 @@ public final class AppModel {
   var lastRemoval: LoopRemoval?
   /// What the Loops row shows (its header's chips, search and tempo filter).
   var loopFilter = LoopFilter()
+  /// The first playing deck's tempo (`decksPlayingTempo`), for the row's tempo filter.
+  private(set) var playingTempo: Double?
   /// The library's `removed/` as last read (after each save).
   @ObservationIgnored var diskRemoved: [RemovedLoop] = []
+  /// Bumped by every change to `diskRemoved` made on the main thread (`deleteForever`): a list
+  /// read on `saveQueue` before it is stale and is dropped (`publishRemoved`).
+  @ObservationIgnored var diskRemovedEpoch = 0
   /// Per clip, whether its source can be loaded again; dropped when `sampleLibrary` changes.
   @ObservationIgnored var originCache: [String: Bool] = [:]
   @ObservationIgnored var originCacheSamples = -1
@@ -121,7 +128,7 @@ public final class AppModel {
   static let keepScreenAwakeKey = "keepScreenAwake"
   /// How many bars a quick tap of LOOP records (1, 2, 4 or 8; 2 until changed). Saved in the
   /// app's defaults as `loopTapBars`; sent with each press, and given to the engine for the
-  /// controllers' LOOP buttons (`DJEngine.tapTakeBars`).
+  /// controllers' LOOP buttons (`DJEngine.tapTakeBars`, through `perform(.tapBars)`).
   private(set) var tapBars = 2
   static let tapBarsKey = "loopTapBars"
   static let tapBarChoices = [1, 2, 4, 8]
@@ -138,8 +145,16 @@ public final class AppModel {
   /// The Stage window's model (SPEC modes 7…21); made with the hub.
   public private(set) var stageModel: StageModel?
   var walk: ControlWalk?
-  /// Starred tracks, newest first (`FavoritesStore`).
+  /// Starred tracks and samples, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
+  /// The tag the Favorites panels show (nil: all).
+  var favoriteTag: String?
+  /// Buttons the user locked (right-click ▸ Disable), by `DJActionKind.lockKey`; mirrored to
+  /// the engine so the controllers' buttons for the same actions are locked too. Saved in the
+  /// app's defaults (`lockedButtons`).
+  var lockedButtons: Set<String> = []
+  static let lockedButtonsKey = "lockedButtons"
+  static func disabledRolesKey(_ deck: String) -> String { "disabledRoles.\(deck)" }
   @ObservationIgnored let favoritesStore: FavoritesStore
   /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
   var stockLoops: [StockLoop] = []
@@ -174,6 +189,9 @@ public final class AppModel {
   var engine: DJEngine? { dj }
   var router: ControllerRouter? { hub?.router ?? injectedRouter }
 
+  /// Is the Shift key down? The on-screen APC shows its SHIFT layer (the loop page) meanwhile.
+  /// Tests inject their own.
+  @ObservationIgnored var shiftKeyHeld: () -> Bool = { NSEvent.modifierFlags.contains(.shift) }
   /// Seconds on a steadily increasing clock: the time base of display animations (the ring
   /// swing). Tests inject their own.
   @ObservationIgnored var uptime: () -> Double = { ProcessInfo.processInfo.systemUptime }
@@ -213,8 +231,9 @@ public final class AppModel {
       stageModel = scopeHub.map { StageModel(hub: $0) }
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
+      restoreLocks(injected)
       restoreLoops(injected)
-      injected.tapTakeBars = tapBars
+      if injected.tapTakeBars != tapBars { injected.perform(.tapBars(bars: tapBars)) }
       poll()
       return
     }
@@ -222,9 +241,10 @@ public final class AppModel {
     do {
       let dj = try DJEngine()
       for d in dj.decks.values { d.loadDemo() }
+      restoreLocks(dj)
       if takeStore == nil { takeStore = LoopLibrary() }
       restoreLoops(dj)
-      dj.tapTakeBars = tapBars
+      if dj.tapTakeBars != tapBars { dj.perform(.tapBars(bars: tapBars)) }
       if let q = defaults.object(forKey: Self.loopQuantizeKey) as? Int { dj.setLoopQuantum(q) }
       loopQuantum = dj.loopQuantum
       dj.master = master
@@ -324,7 +344,9 @@ public final class AppModel {
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
     inpulseOutput = AudioDevices.inpulse()
-    if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name) {
+    // with Shift down the mirror shows the loop page a shift-click reaches
+    let shiftLayer: Bool? = showPads && shiftKeyHeld() ? true : nil
+    if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name, shift: shiftLayer) {
       padPort = apc.port
       padLights = apc.groups
     } else {
@@ -382,9 +404,12 @@ public final class AppModel {
         state.bar = d.wave.tick / 16 + 1
       }
       state.clipID = d.clipID
+      state.disabledRoles = d.disabledRoles
       state.reverb = ReverbState(d.reverb)
       decks[name] = state
     }
+    let tempo = decksPlayingTempo
+    if tempo != playingTempo { playingTempo = tempo }
     pollLoops(dj)
   }
 
@@ -418,10 +443,10 @@ public final class AppModel {
       savedScenes = dj.scenes
       let row = dj.clips
       let scenes = dj.scenes
+      let epoch = diskRemovedEpoch
       saveQueue.async {
         do { try store.save(row, scenes: scenes) } catch { print("loop library: \(error)") }
-        let gone = store.removed()
-        Task { @MainActor in self.diskRemoved = gone }
+        self.publishRemoved(store.removed(), epoch: epoch)
       }
     }
     pollRemoved(dj)
@@ -502,7 +527,9 @@ public final class AppModel {
   func setTapBars(_ n: Int) {
     guard Self.tapBarChoices.contains(n) else { return }
     tapBars = n
-    dj?.tapTakeBars = n
+    // through `perform`: a controller's LOOP tap is recorded as MIDI, so a session needs the
+    // length it was made with
+    dj?.perform(.tapBars(bars: n))
     defaults.set(n, forKey: Self.tapBarsKey)
   }
   /// The tap-length chip's click: the next of 1, 2, 4, 8 (round to 1).
@@ -685,8 +712,10 @@ public final class AppModel {
     guard let dj else { return false }
     let sr = dj.sampleRate
     let bank = dj[deck]?.wave.samplers
+    let filter = dj[deck]?.roleFilter
     let track = await Task.detached(priority: .userInitiated) {
-      PreparedTrack(source: source, sampleRate: sr, opts: .extended(samplers: bank))
+      PreparedTrack(
+        source: source, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter))
     }.value
     guard let track else {
       status = "nothing to play in that source"
@@ -708,6 +737,7 @@ public final class AppModel {
   }
   // Favorites
   private func sourceCID(_ name: String, _ d: Deck) -> String? {
+    if d.mode == .sample { return d.sourceFile.map { Favorite.fileCID($0.path) } }
     guard let source = d.netSource else { return nil }
     if let (s, cid) = sourceCIDs[name], s == source { return cid }
     guard let cid = source.favoriteCID else { return nil }
@@ -718,11 +748,20 @@ public final class AppModel {
     guard let cid = decks[deck]?.sourceCID else { return false }
     return favorites.contains { $0.cid == cid }
   }
-  /// Star the net on the deck (a sample can't be one); returns the favorite, nil if none.
+  /// Star what the deck plays: its net, or the sample's file (a sample with no file — a clip,
+  /// the demo loop — can't be one). Returns the favorite, nil if none.
   @discardableResult
   func addFavorite(_ deck: String) -> Favorite? {
-    guard let d = dj?[deck], let source = d.netSource else { return nil }
-    let f = Favorite(title: d.title, source: source)
+    guard let d = dj?[deck] else { return nil }
+    let f: Favorite
+    if let source = d.netSource {
+      f = Favorite(title: d.title, source: source)
+    } else if d.mode == .sample, let file = d.sourceFile {
+      f = Favorite(
+        title: d.title, source: .sample(id: "", title: d.title, grid: d.beatGrid), file: file.path)
+    } else {
+      return nil
+    }
     do {
       favorites = try favoritesStore.add(f)
       return f
@@ -744,10 +783,41 @@ public final class AppModel {
       addFavorite(deck)
     }
   }
-  /// Load a favorite onto a deck, through `perform` like any other load.
+  /// Load a favorite onto a deck, through `perform` like any other load: a net is prepared off
+  /// the main thread, a sample decoded from its file (with the grid it was starred with).
   func loadFavorite(_ deck: String, _ f: Favorite) {
     status = "loading \(f.title)…"
-    Task { @MainActor in await prepareAndLoad(deck, f.source) }
+    Task { @MainActor in await loadFavoriteNow(deck, f) }
+  }
+
+  @discardableResult
+  func loadFavoriteNow(_ deck: String, _ f: Favorite) async -> Bool {
+    guard let file = f.file, f.isSample else { return await prepareAndLoad(deck, f.source) }
+    guard let dj else { return false }
+    let url = URL(fileURLWithPath: file)
+    let sr = dj.sampleRate
+    do {
+      let buffer = try await Task.detached(priority: .userInitiated) {
+        try Deck.decode(url, sampleRate: sr)
+      }.value
+      var grid: BeatGrid?
+      if case .sample(_, _, let g) = f.source { grid = g }
+      dj.perform(
+        .load(deck: deck, source: .sample(id: "", title: f.title, grid: grid)), buffer: buffer)
+      dj[deck]?.sourceFile = url
+      status = "\(Int(dj.sampleRate)) Hz"
+      return true
+    } catch {
+      status = "\(f.title): \(error)"
+      return false
+    }
+  }
+
+  /// A favorite's tags, replaced (the editor's add / remove).
+  func setFavoriteTags(_ cid: String, _ tags: [String]) {
+    do { favorites = try favoritesStore.setTags(cid: cid, tags) } catch {
+      status = "favorites: \(error)"
+    }
   }
 
   /// Read the stock loop index (or scan, the first time: a few seconds) off the main thread.
@@ -773,6 +843,7 @@ public final class AppModel {
       let grid = BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)
       dj.perform(
         .load(deck: deck, source: .sample(id: "", title: loop.name, grid: grid)), buffer: buffer)
+      dj[deck]?.sourceFile = loop.url
       status = "\(Int(dj.sampleRate)) Hz"
       return true
     } catch {
@@ -814,8 +885,35 @@ public final class AppModel {
   func setAutoAdvance(_ deck: String, _ on: Bool) { dj?.perform(.autoAdvance(deck: deck, on: on)) }
   func launchSection(_ deck: String, _ i: Int) { dj?.perform(.section(deck: deck, index: i)) }
   func toggleRole(_ deck: String, _ role: String) {
-    guard let d = dj?[deck] else { return }
+    guard let d = dj?[deck], !d.disabledRoles.contains(role) else { return }
     dj?.perform(.role(deck: deck, role: role, on: !d.isRoleOn(role)))
+  }
+
+  /// Disable a role on a deck through every new track (right-click on its button), or enable it.
+  func setRoleDisabled(_ deck: String, _ role: String, _ disabled: Bool) {
+    dj?.perform(.roleDisable(deck: deck, role: role, on: disabled))
+    defaults.set(dj?[deck]?.disabledRoles.sorted() ?? [], forKey: Self.disabledRolesKey(deck))
+    poll()
+  }
+
+  func isLocked(_ key: String) -> Bool { lockedButtons.contains(key) }
+
+  /// Lock a button (and the controller buttons bound to the same action), or unlock it.
+  func setLocked(_ key: String, _ locked: Bool) {
+    if locked { lockedButtons.insert(key) } else { lockedButtons.remove(key) }
+    dj?.lockedActions = lockedButtons
+    defaults.set(lockedButtons.sorted(), forKey: Self.lockedButtonsKey)
+  }
+
+  /// Bring back the locks and disabled roles of the last run.
+  private func restoreLocks(_ dj: DJEngine) {
+    lockedButtons = Set(defaults.stringArray(forKey: Self.lockedButtonsKey) ?? [])
+    dj.lockedActions = lockedButtons
+    for (name, d) in dj.decks {
+      for r in defaults.stringArray(forKey: Self.disabledRolesKey(name)) ?? [] {
+        d.setRoleDisabled(r, true)
+      }
+    }
   }
   func fire(_ deck: String, _ macro: NetMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
   func fire(_ deck: String, _ macro: MasterMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
@@ -841,6 +939,7 @@ public final class AppModel {
           source: .sample(
             id: "", title: url.deletingPathExtension().lastPathComponent, grid: nil)),
         buffer: buffer)
+      dj?[deck]?.sourceFile = url
       return true
     } catch {
       status = "\(error)"
@@ -1046,6 +1145,8 @@ public struct ContentView: View {
     }
     // the rings and the small animations pace themselves by the hub's visual level
     .environment(\.scopeHub, model.scopeHub)
+    // arrow keys step through whatever list of choices the mouse is over
+    .onAppear { HoverKeys.shared.install() }
     // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
     // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
     // bar, which are full at the window's minimum width
@@ -1427,16 +1528,25 @@ struct DeckView: View {
       .keyboardShortcut(name == "A" ? "a" : "b", modifiers: [])
       .help(state.playing ? "Pause" : "Play")
       .accessibilityLabel(state.playing ? "Pause" : "Play")
+      .lockable(DJActionKind.lockKey(deck: name, .play), model)
       Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
         .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
+        .lockable(DJActionKind.lockKey(deck: name, .pfl), model)
       LoopRecordButton(name: name, model: model)
       Spacer(minLength: 0)
       HStack(spacing: DJStyle.xs) {
         ForEach(0..<4, id: \.self) { slot in
+          let key = DJActionKind.lockKey(deck: name, .hotcue, param: "\(slot)")
+          let locked = model.isLocked(key)
           Button("\(slot + 1)") { model.hotCue(name, slot) }
             .tint(state.cues.contains(slot) ? tint : nil)
             .buttonStyle(.borderedProminent).controlSize(.small)
-            .contextMenu { Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) } }
+            .environment(\.isEnabled, !locked).opacity(locked ? 0.4 : 1)
+            .contextMenu {
+              Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) }
+              Button(locked ? "Enable" : "Disable") { model.setLocked(key, !locked) }
+                .environment(\.isEnabled, true)
+            }
             .help(
               state.cues.contains(slot)
                 ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
@@ -1532,32 +1642,54 @@ struct NetPanel: View {
     VStack(alignment: .leading, spacing: 6) {
       FlowRow(spacing: 4) {
         ForEach(state.roles, id: \.self) { r in
+          let off = state.disabledRoles.contains(r)
           Toggle(
-            r,
             isOn: Binding(
               get: { state.rolesOn.contains(r) }, set: { _ in model.toggleRole(name, r) })
-          )
+          ) {
+            Text(off ? "⊘ \(r)" : r).strikethrough(off)
+          }
           .toggleStyle(.button).controlSize(.small).tint(tint)
+          .opacity(off ? 0.45 : 1)
           .macroPulseGlow(state.macroPulse.level(of: r))
+          .contextMenu {
+            if off {
+              Button("Enable \(r)") { model.setRoleDisabled(name, r, false) }
+            } else {
+              Button("Disable \(r) (stays off through new tracks)") {
+                model.setRoleDisabled(name, r, true)
+              }
+            }
+          }
+          .help(
+            off
+              ? "Disabled: off through new tracks (right-click to enable)"
+              : "Mute / unmute (right-click: disable through new tracks)")
         }
       }
       FlowRow(spacing: 4) {
         ForEach(NetMacro.allCases, id: \.rawValue) { m in
           MacroButton(macro: m, running: state.macroPulse.isRunning(m)) { model.fire(name, m) }
+            .lockable(DJActionKind.lockKey(deck: name, .macro, param: m.id), model)
         }
         Button("Panic") { model.panic(name) }.controlSize(.small).tint(.red)
+          .lockable(DJActionKind.lockKey(deck: name, .panic), model)
       }
       HStack(spacing: 4) {
         ForEach(0..<4, id: \.self) { n in
           Button("Hit \(n + 1)") { model.stinger(name, n) }.controlSize(.small)
+            .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         Spacer()
         Button("Sync") { model.sync(name) }.controlSize(.small)
+          .lockable(DJActionKind.lockKey(deck: name, .sync), model)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)
+          .lockable(DJActionKind.lockKey(deck: name, .quantize), model)
         Button(state.nextReady ? "Next ▶︎" : (state.nextComposing ? "…" : "Next")) {
           model.skipToNext(name)
         }
         .controlSize(.small).disabled(!state.nextReady)
+        .lockable(DJActionKind.lockKey(deck: name, .nextTrack), model)
       }
     }
   }
@@ -1629,4 +1761,29 @@ struct FlowRow<Content: View>: View {
   let spacing: CGFloat
   @ViewBuilder let content: Content
   var body: some View { FlowLayout(spacing: spacing) { content } }
+}
+
+/// Right-click ▸ Disable on a button: greyed out and inert, and the controller buttons bound to
+/// the same action (`DJActionKind.lockKey`) ignore presses too, until right-click ▸ Enable.
+private struct Lockable: ViewModifier {
+  let key: String
+  let model: AppModel
+
+  func body(content: Content) -> some View {
+    let locked = model.isLocked(key)
+    content
+      // the button itself, not its menu: Enable has to stay clickable
+      .environment(\.isEnabled, !locked)
+      .opacity(locked ? 0.4 : 1)
+      .contextMenu {
+        Button(locked ? "Enable" : "Disable") { model.setLocked(key, !locked) }
+          .environment(\.isEnabled, true)
+      }
+  }
+}
+
+extension View {
+  func lockable(_ key: String, _ model: AppModel) -> some View {
+    modifier(Lockable(key: key, model: model))
+  }
 }

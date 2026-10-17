@@ -191,6 +191,9 @@ public final class Turntable: @unchecked Sendable {
     }
     posBits.store(pos.bitPattern, ordering: .relaxed)
     rateBits.store(rate.bitPattern, ordering: .relaxed)
+    // with the playhead, not when a swap is applied mid-render: a reader then never sees the
+    // new audio's length beside the old audio's position (the loop clock divides one by the other)
+    lengthAtomic.store(buffer._withUnsafeGuaranteedRef { $0.length }, ordering: .relaxed)
   }
 
   private func apply(_ c: TurntableCommand) {
@@ -227,8 +230,7 @@ public final class Turntable: @unchecked Sendable {
         pos = 0
         target = 0
       }
-      buffer = b
-      lengthAtomic.store(Int(newLength), ordering: .relaxed)
+      buffer = b  // its length is published with the playhead, at the end of the render
       if playing && !scrubbing { rate = (1 + pitch) * (1 + nudge) }
     case .transport(let on): playing = on
     case .start:

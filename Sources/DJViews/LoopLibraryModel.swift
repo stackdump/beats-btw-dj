@@ -44,8 +44,10 @@ struct LoopFilter: Equatable {
 }
 
 extension AppModel {
-  /// The tempo the row's tempo filter works from: the first playing deck's.
-  var playingTempo: Double? {
+  /// The tempo the row's tempo filter works from: the first playing deck's. Worked out from the
+  /// decks by `poll` and stored (`playingTempo`) only when it changes, so the row and its bar
+  /// are not redrawn by every deck position update.
+  var decksPlayingTempo: Double? {
     decks.keys.sorted().compactMap { n in decks[n].flatMap { $0.playing ? $0.bpm : nil } }.first
   }
 
@@ -116,13 +118,26 @@ extension AppModel {
     guard let dj = engine else { return }
     dj.perform(.clipForget(id: id))
     diskRemoved.removeAll { $0.id == id }
+    // a save already queued read removed/ before this: its list would bring the loop back
+    diskRemovedEpoch += 1
     if lastRemoval?.id == id { lastRemoval = nil }
     if let store = takeStore {
+      let epoch = diskRemovedEpoch
       saveQueue.async {
         do { try store.deleteForever(id) } catch { print("loop library: \(error)") }
+        self.publishRemoved(store.removed(), epoch: epoch)
       }
     }
     pollLoops(dj)
+  }
+
+  /// From `saveQueue`: the library's `removed/` as just read, unless the main thread changed
+  /// the list since the read was queued (`epoch`, `diskRemovedEpoch` then).
+  nonisolated func publishRemoved(_ gone: [RemovedLoop], epoch: Int) {
+    Task { @MainActor in
+      guard self.diskRemovedEpoch == epoch else { return }
+      self.diskRemoved = gone
+    }
   }
 
   /// This launch's removed loops, then the library's, newest first; "Undo" expires.

@@ -18,10 +18,10 @@ public final class SessionRecorder {
   public static func start(on engine: DJEngine) throws -> SessionRecorder {
     let r = try SessionRecorder(engine)
     engine.recorder = r
-    // not part of a session's starting state: a replay starts at the default, so say so first
-    if engine.loopQuantum != DJEngine.defaultLoopQuantum {
-      r.record(.loopQuantize(beats: engine.loopQuantum))
-    }
+    // Row-wide settings that are not part of a session's starting state: a replay starts at
+    // the defaults, so say so first. The tap length matters too: a controller's LOOP tap is
+    // recorded as raw MIDI, and its length comes from the replaying engine.
+    for a in engine.loopSettings where !DJEngine.defaultLoopSettings.contains(a) { r.record(a) }
     return r
   }
 
@@ -100,6 +100,7 @@ extension Deck {
     p.reverbWet = reverb.wet
     p.reverbSize = reverb.size
     p.reverbTone = reverb.tone
+    p.disabledRoles = disabledRoles.sorted()
     return p
   }
 
@@ -116,6 +117,7 @@ extension Deck {
     reverb.wet = p.reverbWet
     reverb.size = p.reverbSize
     reverb.tone = p.reverbTone
+    for r in p.disabledRoles { setRoleDisabled(r, true) }
   }
 }
 
@@ -220,7 +222,9 @@ extension DJEngine {
     case .nextTrack(let n): deck(n)?.skipToNextTrack()
     case .autoAdvance(let n, let on): deck(n)?.autoAdvance = on
     case .section(let n, let i): deck(n)?.launchSection(i)
-    case .role(let n, let role, let on): deck(n)?.setRole(role, on: on)
+    case .role(let n, let role, let on):
+      if let d = deck(n), !d.disabledRoles.contains(role) { d.setRole(role, on: on) }
+    case .roleDisable(let n, let role, let on): deck(n)?.setRoleDisabled(role, on)
     case .macro(let n, let id): deck(n)?.fireMacro(id: id)
     case .panic(let n): deck(n)?.panic()
     case .stinger(let n, let k): deck(n)?.stinger(k)
@@ -258,6 +262,7 @@ extension DJEngine {
     case .clipKeyLock(let id, let on): setClipKeyLock(id, on)
     case .loopKeyLock(let on): setLoopKeyLock(on)
     case .loopFade(let mode): if let f = LoopFade(rawValue: mode) { setLoopFade(f) }
+    case .tapBars(let bars): setTapTakeBars(bars)
     }
     return nil
   }

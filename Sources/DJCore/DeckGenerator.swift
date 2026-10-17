@@ -310,6 +310,7 @@ extension Deck {
   /// thread let go of, notice a song that ended, and keep the next track coming.
   public func service() {
     wave.drainRetired()
+    enforceDisabledRoles()
     if let leader, let target = leader.effectiveBPM, let base = baseBPM {
       // Follow tempo changes of the deck we are locked to (same multiplier rule as sync).
       let p = (Self.tempoMatch(base: base, target: target).ratio - 1) / Self.pitchRange

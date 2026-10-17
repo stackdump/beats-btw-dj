@@ -71,17 +71,20 @@ public final class SurfaceController {
     layer(exact[Self.key(e.group, e.index)] ?? groupWide[e.group] ?? [])
   }
 
-  /// The binding a control answers to under the current shift state: one made for this layer
-  /// (`shift` equal to `shiftHeld`) wins over one for either layer (`shift` nil), so a
-  /// `"shift": true` entry beside a plain one is that control's SHIFT layer (the APC's loop
-  /// page over its grid).
-  private func layer(_ candidates: [SurfaceProfile.Binding]) -> SurfaceProfile.Binding? {
-    candidates.first { $0.shift == shiftHeld } ?? candidates.first { $0.shift == nil }
+  /// The binding a control answers to under the current shift state (or `shift`, when given):
+  /// one made for this layer (`shift` equal to `shiftHeld`) wins over one for either layer
+  /// (`shift` nil), so a `"shift": true` entry beside a plain one is that control's SHIFT layer
+  /// (the APC's loop page over its grid).
+  private func layer(_ candidates: [SurfaceProfile.Binding], shift: Bool? = nil)
+    -> SurfaceProfile.Binding?
+  {
+    let held = shift ?? shiftHeld
+    return candidates.first { $0.shift == held } ?? candidates.first { $0.shift == nil }
   }
 
   /// The binding a control's LED shows: the same layer its press would reach.
-  private func lit(_ group: String, _ index: Int) -> SurfaceProfile.Binding? {
-    layer(exact[Self.key(group, index)] ?? [])
+  private func lit(_ group: String, _ index: Int, shift: Bool? = nil) -> SurfaceProfile.Binding? {
+    layer(exact[Self.key(group, index)] ?? [], shift: shift)
   }
 
   public func outcome(for e: ControlEvent) -> SurfaceOutcome {
@@ -106,6 +109,8 @@ public final class SurfaceController {
   {
     let result = outcome(for: e)
     guard case .bound(let b) = result else { return result }
+    // locked by the user (right-click ▸ Disable on its button): the press does nothing
+    if dj.lockedActions.contains(b.lockKey) { return result }
     let deck = b.deck.flatMap { dj[$0] }
     let press = e.pressed && (!e.isCC || e.value > 0.5)
     if let param = Self.parameter(b),
@@ -256,17 +261,20 @@ public final class SurfaceController {
   }
 
   /// What each LED of the surface is showing right now — the same state `ledFrame` sends,
-  /// as data, for a mirror on screen. Keyed by group id, one entry per control.
-  public func lights(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> [String:
-    [PadLight]]
-  {
+  /// as data, for a mirror on screen. Keyed by group id, one entry per control. `shift`: the
+  /// layer to show instead of the one `shiftHeld` picks (an on-screen mirror with the Shift key
+  /// down shows the SHIFT layer, which a shift-click reaches, though SHIFT is held only for the
+  /// click itself).
+  public func lights(
+    now: TimeInterval = ProcessInfo.processInfo.systemUptime, shift: Bool? = nil
+  ) -> [String: [PadLight]] {
     guard let leds = profile.leds else { return [:] }
     var out: [String: [PadLight]] = [:]
     for g in profile.groups where leds.rgbGroups.contains(g.id) {
       out[g.id] = g.controlNumbers.indices.map { i in
         let k = Self.key(g.id, i)
         let full = now - (flashed[k] ?? -1) < Self.flashSeconds
-        let (color, level) = rgbState(lit(g.id, i))
+        let (color, level) = rgbState(lit(g.id, i, shift: shift))
         if full { return PadLight(colorIndex: color, level: .full) }
         // a surface that cannot blink a pad shows it dim, and so does its mirror
         let shown: PadLight.Level = level == .blink && leds.rgbBlinkStatus == nil ? .dim : level
@@ -275,7 +283,7 @@ public final class SurfaceController {
     }
     for g in profile.groups where leds.singleGroups.contains(g.id) {
       out[g.id] = g.controlNumbers.indices.map { i in
-        let v = singleState(lit(g.id, i), leds)
+        let v = singleState(lit(g.id, i, shift: shift), leds, shift: shift)
         let level: PadLight.Level =
           v == leds.singleBlink ? .blink : (v == leds.singleOn ? .full : .off)
         return PadLight(colorIndex: 0, level: level)
@@ -297,7 +305,9 @@ public final class SurfaceController {
     }
   }
 
-  private func singleState(_ b: SurfaceProfile.Binding?, _ leds: SurfaceProfile.LEDs) -> UInt8 {
+  private func singleState(
+    _ b: SurfaceProfile.Binding?, _ leds: SurfaceProfile.LEDs, shift: Bool? = nil
+  ) -> UInt8 {
     guard let b, b.action != .unbound else { return leds.singleOff }
     let d = b.deck.flatMap { dj[$0] }
     switch b.action {
@@ -331,7 +341,7 @@ public final class SurfaceController {
       // lit while held, blinking while the last bar finishes
       guard let d, let t = dj.loopTakeProgress(d.name) else { return leds.singleOff }
       return t.released ? leds.singleBlink : leds.singleOn
-    case .shift: return shiftHeld ? leds.singleOn : leds.singleOff
+    case .shift: return (shift ?? shiftHeld) ? leds.singleOn : leds.singleOff
     default: return leds.singleOn
     }
   }

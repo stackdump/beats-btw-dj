@@ -9,6 +9,28 @@ public struct RemovedClip: Sendable, Equatable {
   public let clip: LoopClip
   /// Its index on the row when it was taken off.
   public let index: Int
+  /// How it sounded then (mute, solo, key lock), so putting it back undoes the removal whole.
+  public let sound: ClipSound
+
+  init(clip: LoopClip, index: Int, sound: ClipSound = ClipSound()) {
+    self.clip = clip
+    self.index = index
+    self.sound = sound
+  }
+}
+
+/// A clip's own sound settings under the mixer (LoopSound.swift); its level is kept apart, in
+/// `clipGains`, and survives a removal anyway.
+public struct ClipSound: Sendable, Equatable {
+  public var muted = false
+  public var soloed = false
+  /// Its own key lock; nil follows the row's.
+  public var keyLock: Bool?
+  public init(muted: Bool = false, soloed: Bool = false, keyLock: Bool? = nil) {
+    self.muted = muted
+    self.soloed = soloed
+    self.keyLock = keyLock
+  }
 }
 
 /// What a clip was taken from, ready to load again: the deck's source as LOOP went down, the
@@ -77,13 +99,18 @@ extension DJEngine {
   /// can put it back. The library calls it for clips removed in an earlier launch; the
   /// audio joins `sampleLibrary`.
   public func rememberRemovedClip(_ clip: LoopClip, at index: Int) {
+    rememberRemovedClip(clip, at: index, sound: ClipSound())
+  }
+
+  func rememberRemovedClip(_ clip: LoopClip, at index: Int, sound: ClipSound) {
     removedClips.removeAll { $0.clip.id == clip.id }
-    removedClips.insert(RemovedClip(clip: clip, index: index), at: 0)
-    sampleLibrary[clip.id] = clip.buffer
+    removedClips.insert(RemovedClip(clip: clip, index: index, sound: sound), at: 0)
+    registerClipAudio(clip)
   }
 
   /// Put a removed clip back on the row: at `at`, or where it was (clamped to the row's end).
-  /// Its level carries on as it was. Returns false if it is not a removed clip.
+  /// Its level carries on as it was, and so do its mute, solo and key lock. Returns false if it
+  /// is not a removed clip.
   @discardableResult
   public func restoreClip(_ id: String, at: Int? = nil) -> Bool {
     guard let k = removedClips.firstIndex(where: { $0.clip.id == id }) else { return false }
@@ -92,6 +119,12 @@ extension DJEngine {
     sampleLibrary[id] = r.clip.buffer
     clips.insert(r.clip, at: min(max(0, at ?? r.index), clips.count))
     loopCount = max(loopCount, clips.count)
+    if r.sound.muted { clipMutes.insert(id) }
+    if let k = r.sound.keyLock { clipKeyLocks[id] = k }
+    if r.sound.soloed {
+      clipSolos.insert(id)
+      pushClipLevels()  // the others go quiet again
+    }
     return true
   }
 
@@ -119,7 +152,8 @@ extension DJEngine {
     if let k = removedClips.firstIndex(where: { $0.clip.id == id }) {
       var c = removedClips[k].clip
       change(&c)
-      removedClips[k] = RemovedClip(clip: c, index: removedClips[k].index)
+      removedClips[k] = RemovedClip(
+        clip: c, index: removedClips[k].index, sound: removedClips[k].sound)
     }
   }
 

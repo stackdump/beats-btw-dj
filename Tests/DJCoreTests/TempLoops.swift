@@ -23,3 +23,20 @@ func removedLoopFiles(_ lib: LoopLibrary) -> [String] {
   let removed = lib.dir.appendingPathComponent("removed").path
   return ((try? FileManager.default.contentsOfDirectory(atPath: removed)) ?? []).sorted()
 }
+
+/// Make moving clip `id`'s audio into `removed/` fail: a folder in its place there that cannot
+/// be cleared (it holds a read-only folder with a file in it). `unblockRemovedAudio` undoes it.
+func blockRemovedAudio(_ lib: LoopLibrary, _ id: String) throws {
+  let fm = FileManager.default
+  let inner = lib.dir.appendingPathComponent("removed/\(id).wav/locked", isDirectory: true)
+  try fm.createDirectory(at: inner, withIntermediateDirectories: true)
+  try Data("x".utf8).write(to: inner.appendingPathComponent("f"))
+  try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: inner.path)
+}
+
+func unblockRemovedAudio(_ lib: LoopLibrary, _ id: String) {
+  let inner = lib.dir.appendingPathComponent("removed/\(id).wav/locked", isDirectory: true)
+  try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: inner.path)
+  try? FileManager.default.removeItem(
+    at: lib.dir.appendingPathComponent("removed/\(id).wav", isDirectory: true))
+}

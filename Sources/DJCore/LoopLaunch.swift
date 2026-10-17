@@ -49,6 +49,31 @@ extension DJEngine {
     loopQuantum = beats
   }
 
+  public static let defaultTapTakeBars = 2
+
+  /// How many bars a quick tap of a controller's LOOP records (1…64; nil: none, a tap is a short
+  /// hold). Anything else is refused.
+  public func setTapTakeBars(_ bars: Int?) {
+    if let bars, !(1...64).contains(bars) { return }
+    tapTakeBars = bars
+  }
+
+  /// The row-wide settings, as the actions that set them: what a session recording has to say
+  /// first when they are not the defaults (`SessionRecorder.start`), since a replay starts from
+  /// a fresh engine.
+  var loopSettings: [DeckAction] {
+    [
+      .loopQuantize(beats: loopQuantum), .loopFade(mode: loopFade.rawValue),
+      .loopKeyLock(on: loopKeyLock), .tapBars(bars: tapTakeBars),
+    ]
+  }
+
+  /// `loopSettings` of a fresh engine.
+  static let defaultLoopSettings: [DeckAction] = [
+    .loopQuantize(beats: defaultLoopQuantum), .loopFade(mode: LoopFade.declick.rawValue),
+    .loopKeyLock(on: false), .tapBars(bars: defaultTapTakeBars),
+  ]
+
   // MARK: countdown
 
   /// The deck frame a waiting clip switches at: comes in (`.starting`) or goes out

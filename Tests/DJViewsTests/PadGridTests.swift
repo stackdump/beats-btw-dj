@@ -66,3 +66,26 @@ struct PadGridRenderTests {
     #expect(s5.g > 120 && s5.r < 80, "\(s5)")
   }
 }
+
+@MainActor
+struct PadMirrorShiftTests {
+  @Test func holdingShiftShowsTheLoopPageOnTheOnScreenAPC() throws {
+    let (m, dj) = try LoopRowViewTests().model()
+    defer { dj.stop() }
+    #expect(dj.loopState(m.clips[0].id) == .on, "loop 1 plays")
+    m.setShowPads(true)
+    var shift = false
+    m.shiftKeyHeld = { shift }
+    m.poll()
+    let plain = try #require(m.padLights["pads"])
+    #expect(plain[56].colorIndex != 48, "the plain layer: not the loop page")
+    shift = true
+    m.poll()
+    let page = try #require(m.padLights["pads"])
+    #expect(page[56] == PadLight(colorIndex: 48, level: .full), "loop 1, violet: playing")
+    #expect(page[57].colorIndex == 0 && page[58].colorIndex == 0, "no loops 2 and 3 yet")
+    shift = false
+    m.poll()
+    #expect(m.padLights["pads"]?[56] == plain[56], "back to the plain layer on release")
+  }
+}

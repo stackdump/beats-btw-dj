@@ -334,6 +334,48 @@ struct LoopSoundTests {
     #expect(!rig.dj.isClipStretched(one.id))
   }
 
+  @Test func theRowsFadeAndKeyLockStartARecordedSession() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let quiet = try SessionRecorder.start(on: dj)
+    #expect(quiet.finish().events.isEmpty, "at the defaults there is nothing to say")
+    dj.perform(.loopFade(mode: "bar"))
+    dj.perform(.loopKeyLock(on: true))
+    let rec = try SessionRecorder.start(on: dj)
+    let events = rec.finish().events.map(\.kind)
+    #expect(events == [.action(.loopFade(mode: "bar")), .action(.loopKeyLock(on: true))])
+    // so a replay, from a fresh engine, fades and locks as the set did
+    let fresh = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    for case .action(let a) in events { fresh.perform(a) }
+    #expect(fresh.loopFade == .bar && fresh.loopKeyLock)
+  }
+
+  @Test func theLoopClockKeepsAVoicesTempoThroughASwap() async throws {
+    let rig = try SoundRig()
+    defer { rig.dj.stop() }
+    rig.dj.deterministic = true  // the stretch renders inline
+    let one = try await rig.oneTake()
+    let a = try #require(rig.dj["A"])
+    a.pitch = 0.625  // +5 %: 126 bpm
+    rig.dj.perform(.clipKeyLock(id: one.id, on: true))
+    try rig.run(Int(DJEngine.stretchDebounce * 48_000) + 8192)
+    #expect(rig.dj.isClipStretched(one.id))
+    // nothing plays: the loop is the clock, at the tempo it was left at
+    a.setPlaying(false)
+    try rig.run(4096)
+    let v = try rig.voice(one.id)
+    #expect(abs(rig.dj.loopVoices[v].targetBPM - 126) < 0.01)
+    #expect(abs((rig.dj.loopClock(for: nil).bpm ?? 0) - 126) < 0.05)
+    // unlock: the voice swaps back to its own 120 bpm audio at speed 1.05, from the next block.
+    // Until that block, the clock still says 126 (not the new audio's 120 × the old rate 1).
+    rig.dj.perform(.clipKeyLock(id: one.id, on: false))
+    #expect(rig.dj.loopVoices[v].bufferBPM == one.bpm, "the swap is queued")
+    let clock = rig.dj.loopClock(for: nil)
+    #expect(abs((clock.bpm ?? 0) - 126) < 0.05, "\(clock.bpm ?? 0)")
+    #expect(abs(clock.framesPerBeat - 60 / 126 * 48_000) < 1)
+    try rig.run(2048)
+    #expect(abs((rig.dj.loopClock(for: nil).bpm ?? 0) - 126) < 0.05, "and after it")
+  }
+
   @Test func theSoundActionsRoundTrip() {
     for a in [
       DeckAction.clipMute(id: "abc", on: true), .clipMute(id: "abc", on: false),

@@ -209,7 +209,7 @@ struct LoopCaptureTests {
     let rig = try CaptureRig(decks: ["A", "B"])
     _ = try await netDeck(rig.dj)
     let s = SurfaceController(profile: .inpulse200MK3, engine: rig.dj)
-    rig.dj.tapTakeBars = 4
+    rig.dj.perform(.tapBars(bars: 4))
     try rig.dj.start()
     defer { rig.dj.stop() }
     try rig.run(to: bar + bar / 3)
@@ -221,13 +221,52 @@ struct LoopCaptureTests {
     #expect(clip.bars == 4 && clip.buffer.length == 4 * bar && clip.startBeat == 4)
   }
 
+  @Test func aReplayedControllerTapTakesTheLengthItWasRecordedWith() async throws {
+    // live: the app's tap length is 4, set before the recording starts
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    dj.perform(.tapBars(bars: 4))
+    let rec = try SessionRecorder.start(on: dj)
+    dj.perform(.tapBars(bars: 8))  // and changed during the set
+    let events = rec.finish().events.map(\.kind)
+    #expect(events == [.action(.tapBars(bars: 4)), .action(.tapBars(bars: 8))])
+    // a replay starts from a fresh engine (tap length 2): the events set it as it was live
+    let fresh = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    #expect(fresh.tapTakeBars == 2)
+    for case .action(let a) in events.prefix(1) { fresh.perform(a) }
+    #expect(fresh.tapTakeBars == 4, "the controller's tap at the start records 4 bars")
+    for case .action(let a) in events.dropFirst() { fresh.perform(a) }
+    #expect(fresh.tapTakeBars == 8)
+    // and the replayed MIDI tap uses it
+    let rig = try CaptureRig(decks: ["A", "B"])
+    _ = try await netDeck(rig.dj)
+    for case .action(let a) in events.prefix(1) { rig.dj.perform(a) }
+    let s = SurfaceController(profile: .inpulse200MK3, engine: rig.dj)
+    try rig.dj.start()
+    defer { rig.dj.stop() }
+    try rig.run(to: bar + bar / 3)
+    s.handle(bytes: [0x91, 0x03, 0x7F])
+    try rig.run(to: rig.dj.frame + 2048)
+    s.handle(bytes: [0x91, 0x03, 0x00])
+    let clip = try #require(try rig.runUntilClip())
+    #expect(clip.bars == 4)
+  }
+
+  @Test func aTapLengthOutOfRangeIsRefused() throws {
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 48_000)
+    dj.perform(.tapBars(bars: 0))
+    dj.perform(.tapBars(bars: 65))
+    #expect(dj.tapTakeBars == 2)
+    dj.perform(.tapBars(bars: nil))
+    #expect(dj.tapTakeBars == nil, "taps off")
+  }
+
   // MARK: actions
 
   @Test func theCaptureActionsRoundTrip() {
     for a in [
       DeckAction.loopRecord(deck: "A", on: true), .loopRecord(deck: "A", on: true, bars: 4),
       .loopRecord(deck: "B", on: false), .grabBars(deck: "A", bars: 2),
-      .grabBars(deck: "B", bars: 1),
+      .grabBars(deck: "B", bars: 1), .tapBars(bars: 4), .tapBars(bars: nil),
     ] {
       #expect(DeckAction(json: a.json) == a)
     }

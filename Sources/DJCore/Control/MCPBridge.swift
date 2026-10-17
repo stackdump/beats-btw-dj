@@ -130,7 +130,8 @@ public struct MCPBridge {
       reverbTone, value} (0…1, 0.5 = centre for filter/gain/eq; pitch is -1…1 = ±8%, 0 = none; \
       reverb: wet 0 = off, size 0…1 = 0.25…8 s decay, tone 0 dark … 1 bright) · crossfader {value 0…1, \
       0 = A} · master {value} · nextTrack {deck} · autoAdvance {deck, on} · \
-      section {deck, index} · role {deck, role, on} · macro {deck, macro: id from \
+      section {deck, index} · role {deck, role, on} · roleDisable {deck, role, on}: on = the \
+      role stays off through new tracks too, until disabled again with on false · macro {deck, macro: id from \
       dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
@@ -159,7 +160,9 @@ public struct MCPBridge {
       only soloed ones are heard · clipKeyLock {id, on}: at another tempo it keeps its pitch (a \
       time-stretched copy, made in the background; dj_state.loops.clips[].stretched) · \
       loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
-      off|10ms|beat|bar}: how loops come in and go out (default 10ms). Deck "L" also takes \
+      off|10ms|beat|bar}: how loops come in and go out (default 10ms) · tapBars {bars: 1-64 or \
+      null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
+      app's). Deck "L" also takes \
       param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
@@ -224,13 +227,17 @@ public struct MCPBridge {
     tool(
       "dj_favorites",
       """
-      The starred tracks (also the star by a deck's title and Load ▸ Favorites in the app). \
-      action list (default) returns them, newest first, with title, cid, genre, seed; add \
-      {deck} stars the net on a deck (instrument changes included); remove {cid | deck}; \
-      load {deck, cid} puts one on a deck (does not start playback).
+      The starred tracks and samples (also the star by a deck's title and Load ▸ Favorites in \
+      the app). action list (default) returns them, newest first, with title, cid, genre, seed \
+      (nets) or kind sample + file, and tags; add {deck} stars what a deck plays: its net \
+      (instrument changes included) or a sample loaded from a file (Apple Loop or audio file); \
+      remove {cid | deck}; load {deck, cid} puts one on a deck (does not start playback); \
+      tags {cid | deck, tags} replaces a favorite's tags. A net's cid is its share CID, a \
+      sample's "file:" + its path.
       """,
       [
-        "action": prop("string", "list | add | remove | load"),
+        "action": prop("string", "list | add | remove | load | tags"),
+        "tags": prop("array", "tags: the favorite's tags (they replace the old ones)"),
         "deck": prop("string", "A or B"),
         "cid": prop("string", "A favorite's cid, from list"),
       ]),

@@ -48,13 +48,17 @@ public final class DJEngine {
   public internal(set) var removedClips: [RemovedClip] = []
   /// How many bars a tap of LOOP records (let go within `DJEngine.loopTapFrames` of the
   /// press), when the press does not say: what a controller's LOOP button uses. The app sets it
-  /// from its own setting; nil turns fixed-length takes off (a tap records to the next downbeat,
-  /// like a hold).
-  public var tapTakeBars: Int? = 2
+  /// from its own setting through `perform(.tapBars)`, so a session records it (a controller's
+  /// tap is recorded as MIDI, and a replay would otherwise take the default); nil turns
+  /// fixed-length takes off (a tap records to the next downbeat, like a hold).
+  public internal(set) var tapTakeBars: Int? = DJEngine.defaultTapTakeBars
   /// What loops start and stop on, in beats: 4 (the next bar) unless set (`setLoopQuantum`).
   public internal(set) var loopQuantum = DJEngine.defaultLoopQuantum
   /// Saved sets of loops (`LoopScene`), in the order they were made.
   public internal(set) var scenes: [LoopScene] = []
+  /// Actions the user locked (right-click ▸ Disable): a controller binding with one of these
+  /// keys does nothing (`SurfaceProfile.Binding.lockKey`; the UI greys its button the same way).
+  public var lockedActions: Set<String> = []
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]
@@ -243,6 +247,12 @@ public final class Deck: JogClock {
   let capture: CaptureTap
   /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads.
   public internal(set) var clipID: String?
+  /// The audio file the sample on the deck was loaded from (set by the app after a file or
+  /// stock-loop load; nil for nets, clips and the demo loop): what a favorite of it reloads.
+  public var sourceFile: URL?
+  /// Roles the user disabled: left out of every net this deck compiles, kept muted in the one
+  /// playing (`setRoleDisabled`).
+  public internal(set) var disabledRoles: Set<String> = []
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
@@ -437,6 +447,7 @@ public final class Deck: JogClock {
   public func load(_ buffer: SampleBuffer, title: String) {
     leaveNetMode()
     clipID = nil
+    sourceFile = nil
     waveform = nil
     loaded = buffer
     beatGrid = nil
@@ -584,6 +595,7 @@ public final class Deck: JogClock {
     currentRawNets = nil
     seedTarget = nil
     clipID = nil
+    sourceFile = nil
     stemsMuted = [:]
     if mode != .net {
       turntable.send(.transport(playing: false))
