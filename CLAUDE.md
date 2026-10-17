@@ -264,7 +264,7 @@ its copy; the two are now independent. Rules inherited from that split:
   `minecraft@32`), the poke `DeckAction.setPalette` (next bar, same song). Picked instruments
   and a picked kit keep theirs; picks seeded by track seed + role. Local-only banks skip the
   tuning check on load (their importer tuned them). Unavailable palettes grey out with their
-  reason; tests skip without the assets. Wander palette lock: TODO in `Deck.setPalette`.
+  reason; tests skip without the assets. Wander's `palette` lock carries the palette and kit into each new track (`Wander.carry`).
 
 ## Musicality (docs/musicality-notes.md)
 

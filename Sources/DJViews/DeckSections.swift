@@ -839,6 +839,7 @@ struct WanderPanel: View {
     case "instruments": return "No instrument changes: every new seed keeps these instruments"
     case "arrangement": return "No mutes or STEMS changes"
     case "fx": return "No macros, FX or stingers"
+    case "palette": return "Keep the sound palette and drum kit: every new track plays from them"
     default: return WanderLock.label(d)
     }
   }

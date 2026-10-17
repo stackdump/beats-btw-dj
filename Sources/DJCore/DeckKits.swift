@@ -174,10 +174,9 @@ extension Deck {
   /// was voiced. The id is recorded with the asset version it plays here (`recorded`) when it
   /// comes without one.
   ///
-  /// TODO(wander): Wander is not on main yet. When it lands, a palette lock belongs here: while
-  /// the deck's palette is locked, Wander's moves keep `palette` (carry it into each new
-  /// configuration, as `roleFilter` is carried) instead of dropping it with the song's
-  /// `tracks` overrides (`TrackSpec.nextVersion`).
+  /// Wander's "palette" lock (`WanderLock.dimensions`, `Wander.carry`) takes the palette and
+  /// the kit into every new track the walk swaps in; without it a swap starts from the new
+  /// track's own instruments, as it drops instrument picks.
   public func setPalette(_ palette: String?) {
     guard mode == .net, var project = netProject else { return }
     var id = palette.flatMap { $0.isEmpty ? nil : $0 }

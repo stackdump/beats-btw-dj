@@ -184,7 +184,7 @@ public enum DeckAction: Equatable, Sendable {
   /// Bars per wander move: 4 | 8 | 16 | 32 (`Deck.setWanderPace`).
   case wanderPace(deck: String, bars: Int)
   /// Lock a dimension the walk must not change, or free it (`Deck.setWanderLock`): genre |
-  /// tempo | key | structure | instruments | arrangement | fx | keep:<role>.
+  /// tempo | key | structure | instruments | arrangement | fx | palette | keep:<role>.
   case wanderLock(deck: String, dimension: String, on: Bool)
   /// Play a net deck's drums on a sampled kit (`DrumKit.id`) or, nil, beats' synth kit
   /// (`Deck.setKit`): the same song, swapped at the next bar; a `tracks` override, so it stars
