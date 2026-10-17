@@ -120,6 +120,13 @@ its copy; the two are now independent. Rules inherited from that split:
 - Same audio-thread rules, measured (`MasterChainRealTimeTests`, `renderDoesNotAllocate`). The
   pitch shifter's Chrome wavetables (`PeriodicWave`) are built once per sample rate by whoever
   creates the chain: never make a `MasterChain` / `WaveDeckSource` on the audio thread.
+- `vinyl-brake` on a project prepared with `WaveOptions.turntableBrake` (`.extended`; off in
+  `WaveOptions()`, which keeps beats' octave-down compound) is a turntable brake
+  (`TurntableBrake.swift`, GO-DIVERGENCE.md §5): varispeed on the runner's output, *before* the
+  chain (the chain is the mixer's insert and keeps real time), r = 1 − t / (¾ D), silent for the
+  last quarter, then `WaveRunner.catchUp` puts the tick clock where an unbraked deck would be
+  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. Master macros are
+  net-only (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake.
 - A neutral chain is bypassed and bit-transparent (decks without FX render the runner's exact
   bytes). `restBypass = false` / `solo` exist only for `MasterChainChromeTests`.
 - Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs
