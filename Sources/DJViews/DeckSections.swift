@@ -351,7 +351,16 @@ struct GeneratePanel: View {
   @State private var structure = "standard"
   @State private var seed = String(Int.random(in: 1...999_999))
   @State private var cohesion = "v2"
+  /// Keep the seed after Generate / Queue next (regenerate the same track); off, the seed moves
+  /// on to the next version's, so pressing Generate again gives a new song.
+  @AppStorage("generate.lockSeed") private var lockSeed = false
   static let structures = ["loop", "minimal", "standard", "extended"]
+
+  /// After a Generate / Queue next: on to the next seed in the walk (`TrackSpec.nextVersion`,
+  /// the step auto-next takes too), unless the seed is locked.
+  private func advanceSeed() {
+    if !lockSeed { seed = String(Int(spec.nextVersion.seed)) }
+  }
 
   private var spec: TrackSpec {
     TrackSpec(
@@ -391,6 +400,13 @@ struct GeneratePanel: View {
         .arrowKeys(["v2", "v1"], current: cohesion) { cohesion = $0 }
         Spacer()
         TextField("Seed", text: $seed).frame(width: 70).controlSize(.small)
+        Toggle(isOn: $lockSeed) { Image(systemName: lockSeed ? "lock.fill" : "lock.open") }
+          .toggleStyle(.button).controlSize(.small)
+          .help(
+            lockSeed
+              ? "Seed locked: Generate makes this track again"
+              : "After Generate / Queue next the seed moves on to the next version; lock to keep it"
+          )
         Button("Roll") { seed = String(Int.random(in: 1...999_999)) }.controlSize(.small)
       }
       HStack(spacing: 4) {
@@ -404,9 +420,15 @@ struct GeneratePanel: View {
           "When the song ends, play the next version (same genre and structure, a new seed),"
             + " composed in the background — or the track Queue next queued")
         Spacer()
-        Button("Queue next") { model.queueNext(name, spec) }
-        Button("Generate now") { model.generate(name, spec) }
-          .buttonStyle(.borderedProminent).tint(tint)
+        Button("Queue next") {
+          model.queueNext(name, spec)
+          advanceSeed()
+        }
+        Button("Generate now") {
+          model.generate(name, spec)
+          advanceSeed()
+        }
+        .buttonStyle(.borderedProminent).tint(tint)
       }
       .controlSize(.small)
     }
