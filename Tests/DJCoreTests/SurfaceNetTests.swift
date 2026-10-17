@@ -180,17 +180,21 @@ struct SurfaceNetTests {
     #expect(a.heldKeys[61] == nil)
   }
 
-  @Test func mpkPadsRingStingersAndTheJoystickNudgesTempo() async throws {
+  @Test func mpkPadsTurnTheAimedDecksPartsOffAndOnAndTheJoystickNudgesTempo() async throws {
     let (dj, s, a) = try await make(.mpkMiniMK2, structure: nil)
     a.setPlaying(true)
     try dj.start()
     defer { dj.stop() }
     _ = try renderOffline(dj, frames: 2048)
-    s.handle(bytes: [0x99, 37, 100])  // pad 2 → deck A stinger 1 (hit2)
+    dj.focus = "A"
+    #expect(a.isRoleOn("kick") && a.isRoleOn("bass"))
+    s.handle(bytes: [0x99, 36, 100])  // pad 1: kick off
+    s.handle(bytes: [0x99, 40, 100])  // pad 5: bass off
     _ = try renderOffline(dj, frames: 2048)
-    #expect(a.isRoleOn("hit2"), "the stinger's ring is unmuted for its bar")
-    let g = try #require(a.wave.latest?.graph)
-    #expect(g.nets[g.byId["hit2"]!].id == "hit2")
+    #expect(!a.isRoleOn("kick") && !a.isRoleOn("bass") && a.isRoleOn("snare"))
+    s.handle(bytes: [0x99, 36, 100])  // pad 1 again: kick back
+    _ = try renderOffline(dj, frames: 2048)
+    #expect(a.isRoleOn("kick"))
     // joystick full right → +8 % on the focus deck
     dj.focus = "A"
     let base = a.netBaseBPM

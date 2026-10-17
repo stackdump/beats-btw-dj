@@ -392,8 +392,8 @@ struct LoopRecordTests {
     s.handle(bytes: [0x99, 0x33, 0x7F])
     try rig.run(to: rig.dj.frame + bar + 4096)
     #expect(Set(rig.dj.loopingClips) == [one.id, two.id])
-    // bank A keeps its stingers
-    #expect(s.binding(for: try #require(s.decode([0x99, 0x24, 0x7F])))?.action == .stinger)
+    // bank A is the aimed deck's parts on/off
+    #expect(s.binding(for: try #require(s.decode([0x99, 0x24, 0x7F])))?.action == .roleMute)
     let map = SurfaceProfile.mpkMiniMK2.deviceMap()
     #expect(map.first { $0.group == "padNotes" && $0.index == 8 }?.action == "loop 1 in/out")
     #expect(map.first { $0.group == "padNotes" && $0.index == 15 }?.action == "loop 8 in/out")

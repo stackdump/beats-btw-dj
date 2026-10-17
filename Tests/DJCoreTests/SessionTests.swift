@@ -179,7 +179,7 @@ private func performance(_ dj: DJEngine, _ router: ControllerRouter, block b: In
   case 330: dj.perform(.loop(deck: "B", op: "out"))
   case 350: dj.perform(.macro(deck: "A", id: "beat-repeat"))
   case 380:
-    midi(mpk, [0x99, 36, 100])  // stinger
+    midi(mpk, [0x99, 36, 100])  // pad 1: kick off on the aimed deck
     midi(mpk, [0x90, 61, 110])  // live key
   case 420: midi(mpk, [0x80, 61, 0])
   case 440: midi(apc, [0x90, 59, 0x7F])  // panic

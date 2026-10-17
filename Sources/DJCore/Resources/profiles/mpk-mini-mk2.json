@@ -79,7 +79,7 @@
    "channel": 9,
    "first": 36,
    "count": 16,
-   "comment": "[UNVERIFIED] pads in NOTE mode, bank A 36-43 / bank B 44-51 on MIDI channel 10. Bank B = loops 1-8 under the mixer (pad n = loop n: pads 1-4 the bottom row, 5-8 the top)"
+   "comment": "[UNVERIFIED] pads in NOTE mode, bank A 36-43 / bank B 44-51 on MIDI channel 10. Bank A = the aimed deck's parts on/off, as the APC track buttons: kick, snare, hihat, clap, bass, melody, harmony, arp (pads 1-8). Bank B = loops 1-8 under the mixer (pad n = loop n: pads 1-4 the bottom row, 5-8 the top)"
   }
  ],
  "layout": [
@@ -198,58 +198,58 @@
   {
    "group": "padNotes",
    "index": 0,
-   "action": "stinger",
-   "deck": "A",
-   "slot": 0
+   "action": "roleMute",
+   "deck": "*",
+   "role": "kick"
   },
   {
    "group": "padNotes",
    "index": 1,
-   "action": "stinger",
-   "deck": "A",
-   "slot": 1
+   "action": "roleMute",
+   "deck": "*",
+   "role": "snare"
   },
   {
    "group": "padNotes",
    "index": 2,
-   "action": "stinger",
-   "deck": "A",
-   "slot": 2
+   "action": "roleMute",
+   "deck": "*",
+   "role": "hihat"
   },
   {
    "group": "padNotes",
    "index": 3,
-   "action": "stinger",
-   "deck": "A",
-   "slot": 3
+   "action": "roleMute",
+   "deck": "*",
+   "role": "clap"
   },
   {
    "group": "padNotes",
    "index": 4,
-   "action": "stinger",
-   "deck": "B",
-   "slot": 0
+   "action": "roleMute",
+   "deck": "*",
+   "role": "bass"
   },
   {
    "group": "padNotes",
    "index": 5,
-   "action": "stinger",
-   "deck": "B",
-   "slot": 1
+   "action": "roleMute",
+   "deck": "*",
+   "role": "melody"
   },
   {
    "group": "padNotes",
    "index": 6,
-   "action": "stinger",
-   "deck": "B",
-   "slot": 2
+   "action": "roleMute",
+   "deck": "*",
+   "role": "harmony"
   },
   {
    "group": "padNotes",
    "index": 7,
-   "action": "stinger",
-   "deck": "B",
-   "slot": 3
+   "action": "roleMute",
+   "deck": "*",
+   "role": "arp"
   },
   {
    "group": "padNotes",
