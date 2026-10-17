@@ -8,6 +8,9 @@ enum LoopBankCommand: BitwiseCopyable {
   /// Stop voice `voice` at deck frame `frame` (at once if past).
   case stop(voice: Int, frame: Int)
   case gain(voice: Int, Float)
+  /// Set voice `voice`'s level at deck frame `frame` (a scene's level for a clip already
+  /// sounding, changed on the launch boundary). A plain `gain` cancels it.
+  case gainAt(voice: Int, Float, frame: Int)
 }
 
 /// The loop channel's source: several clips looping at once, each on its own voice (a
@@ -28,6 +31,9 @@ final class LoopBank: @unchecked Sendable {
   private var startAt: [Int]
   private var stopAt: [Int]
   private var gains: [Float]
+  /// A level change waiting for its frame (`gainAt`): the level, and the frame (-1: none).
+  private var pendingGains: [Float]
+  private var gainFrames: [Int]
   private let scratchL: UnsafeMutablePointer<Float>
   private let scratchR: UnsafeMutablePointer<Float>
   private static let chunk = 4096
@@ -38,6 +44,8 @@ final class LoopBank: @unchecked Sendable {
     startAt = Array(repeating: -1, count: Self.voiceCount)
     stopAt = Array(repeating: -1, count: Self.voiceCount)
     gains = Array(repeating: 1, count: Self.voiceCount)
+    pendingGains = Array(repeating: 1, count: Self.voiceCount)
+    gainFrames = Array(repeating: -1, count: Self.voiceCount)
     scratchL = .allocate(capacity: Self.chunk)
     scratchR = .allocate(capacity: Self.chunk)
     scratchL.initialize(repeating: 0, count: Self.chunk)
@@ -74,7 +82,12 @@ final class LoopBank: @unchecked Sendable {
       case .stop(let v, let f):
         startAt[v] = -1
         if active[v] { stopAt[v] = f }
-      case .gain(let v, let g): gains[v] = g
+      case .gain(let v, let g):
+        gains[v] = g
+        gainFrames[v] = -1
+      case .gainAt(let v, let g, let f):
+        pendingGains[v] = g
+        gainFrames[v] = f
       }
     }
     left.update(repeating: 0, count: n)
@@ -82,6 +95,8 @@ final class LoopBank: @unchecked Sendable {
     var bits: UInt64 = 0
     for v in 0..<Self.voiceCount {
       var from = 0
+      // a voice that is not sounding takes a level change due in this block at once
+      if !active[v], gainFrames[v] >= 0, gainFrames[v] < s + n { applyPendingGain(v) }
       if !active[v] {
         guard startAt[v] >= 0, startAt[v] < s + n else { continue }
         from = max(0, startAt[v] - s)
@@ -94,7 +109,16 @@ final class LoopBank: @unchecked Sendable {
         to = max(from, stopAt[v] - s)
         stops = true
       }
-      mix(v, from: from, to: to, left: left, right: right)
+      let g = gainFrames[v]
+      if g >= 0, g < s + n {
+        // the level changes inside the block: the part before it at the old level
+        let k = min(max(from, g - s), to)
+        mix(v, from: from, to: k, left: left, right: right)
+        applyPendingGain(v)
+        mix(v, from: k, to: to, left: left, right: right)
+      } else {
+        mix(v, from: from, to: to, left: left, right: right)
+      }
       if stops {
         active[v] = false
         stopAt[v] = -1
@@ -103,6 +127,11 @@ final class LoopBank: @unchecked Sendable {
       }
     }
     activeBits.store(bits, ordering: .relaxed)
+  }
+
+  private func applyPendingGain(_ v: Int) {
+    gains[v] = pendingGains[v]
+    gainFrames[v] = -1
   }
 
   private func mix(

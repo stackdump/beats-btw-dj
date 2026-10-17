@@ -2,8 +2,8 @@ import Foundation
 
 /// The LOOP-record clips on disk, so the row under the mixer comes back on the next launch:
 /// one float WAV per clip, named by its content id, and an index (`library.json`) that keeps
-/// the row's order and each clip's bars, tempo and source. Removing a clip from the row
-/// removes its file.
+/// the row's order and each clip's bars, tempo and source, and the saved scenes (`scenes`, by
+/// clip id). Removing a clip from the row removes its file.
 public struct LoopLibrary: Sendable {
   public static let schema = "dj-vevr-se/loops/v1"
   public let dir: URL
@@ -41,9 +41,19 @@ public struct LoopLibrary: Sendable {
     }
   }
 
+  /// The saved scenes, in order (none without an index).
+  public func loadScenes() -> [LoopScene] {
+    guard let text = try? String(contentsOf: indexFile, encoding: .utf8),
+      let doc = try? JSONValue.parse(text)
+    else { return [] }
+    return (doc["scenes"]?.array ?? []).compactMap(LoopScene.init(json:))
+  }
+
   /// Make the disk hold exactly `clips`, in this order: write the audio of any clip not saved
-  /// yet, the index, and delete the audio of clips no longer on the row.
-  public func save(_ clips: [LoopClip]) throws {
+  /// yet, the index, and delete the audio of clips no longer on the row. `scenes`: the scenes
+  /// to keep with them (nil keeps the ones already saved).
+  public func save(_ clips: [LoopClip], scenes: [LoopScene]? = nil) throws {
+    let scenes = scenes ?? loadScenes()
     let fm = FileManager.default
     try fm.createDirectory(at: dir, withIntermediateDirectories: true)
     for c in clips where !fm.fileExists(atPath: audioFile(c.id).path) {
@@ -53,7 +63,7 @@ public struct LoopLibrary: Sendable {
         right: Array(UnsafeBufferPointer(start: b.right, count: b.length)))
       try WAV.encode(audio, float32: true).write(to: audioFile(c.id), options: .atomic)
     }
-    let doc = JSONValue.object(
+    var doc = JSONValue.object(
       JSONObject([
         ("schema", .string(Self.schema)),
         (
@@ -71,6 +81,10 @@ public struct LoopLibrary: Sendable {
             })
         ),
       ]))
+    if !scenes.isEmpty, case .object(var o) = doc {
+      o["scenes"] = .array(scenes.map(\.json))
+      doc = .object(o)
+    }
     try Data((doc.canonicalJS + "\n").utf8).write(to: indexFile, options: .atomic)
     let keep = Set(clips.map { "\($0.id).wav" })
     for f in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
