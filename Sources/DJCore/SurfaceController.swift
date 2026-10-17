@@ -129,7 +129,7 @@ public final class SurfaceController {
     case .loopRecord:
       if let deck {
         if press { dj.focus = deck.name }
-        dj.loopRecord(deck.name, on: press)
+        dj.loopRecord(deck.name, on: press, bars: dj.tapTakeBars)
       }
     case .unbound: break
     case .nudge:

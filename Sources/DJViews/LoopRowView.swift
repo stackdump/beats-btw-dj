@@ -66,7 +66,9 @@ extension ClipState {
     } else if let src = p["source"], src["kind"]?.string == "sample" {
       lines.append("Sample: \(src["title"]?.string ?? "audio")")
     }
-    var at = "From bar \(p["bar"]?.int ?? 0)"
+    var at =
+      (p["grabbed"]?.bool == true ? "Grabbed after the fact, from bar " : "From bar ")
+      + "\(p["bar"]?.int ?? 0)"
     if let sec = p["section"]?["name"]?.string { at += ", in \(sec)" }
     if let bars = p["bars"]?.int { at += ", \(bars) bar\(bars == 1 ? "" : "s")" }
     lines.append(at)
@@ -462,7 +464,76 @@ struct ClipTile: View {
   }
 }
 
+/// A deck's ways to take a loop, in one group: LOOP record, the tap length beside it, and the
+/// grab buttons for what was just played.
+struct LoopCaptureControls: View {
+  let name: String
+  let model: AppModel
+
+  var body: some View {
+    HStack(spacing: 4) {
+      LoopRecordButton(name: name, model: model)
+      TapLengthChip(model: model)
+      GrabBarsControl(name: name, model: model)
+    }
+  }
+}
+
+/// How many bars a tap of LOOP records (`AppModel.tapBars`, kept in the app's defaults): a
+/// click steps through 1, 2, 4, 8; right-click picks one. No dropdowns on the deck.
+struct TapLengthChip: View {
+  let model: AppModel
+
+  var body: some View {
+    Text("tap \(model.tapBars)").monospacedDigit()
+      .font(.caption2.bold())
+      .padding(.horizontal, 5).padding(.vertical, 4)
+      .foregroundStyle(Color.red.opacity(0.9))
+      .background(Capsule().fill(Color.red.opacity(0.08)))
+      .overlay(Capsule().strokeBorder(Color.red.opacity(0.35)))
+      .contentShape(Capsule())
+      .onTapGesture { model.stepTapBars() }
+      .contextMenu {
+        ForEach(AppModel.tapBarChoices, id: \.self) { n in
+          Button("Tap records \(n) bar\(n == 1 ? "" : "s")") { model.setTapBars(n) }
+        }
+      }
+      .help(
+        "A quick tap of LOOP records exactly \(model.tapBars) bar\(model.tapBars == 1 ? "" : "s") "
+          + "from the downbeat. Click to change (1, 2, 4, 8); hold LOOP to record freely"
+      )
+      .accessibilityLabel("Tap length \(model.tapBars) bars")
+  }
+}
+
+/// "⟲ 1 2 4": take the last 1, 2 or 4 whole bars this deck already played, after the fact.
+struct GrabBarsControl: View {
+  let name: String
+  let model: AppModel
+  static let choices = [1, 2, 4]
+
+  var body: some View {
+    HStack(spacing: 2) {
+      Image(systemName: "arrow.counterclockwise").font(.caption2.bold())
+        .foregroundStyle(LoopRowView.tint.opacity(0.8))
+      ForEach(Self.choices, id: \.self) { n in
+        Text("\(n)").monospacedDigit()
+          .font(.caption2.bold())
+          .frame(minWidth: 14)
+          .padding(.vertical, 4)
+          .foregroundStyle(LoopRowView.tint)
+          .background(Capsule().fill(LoopRowView.tint.opacity(0.14)))
+          .contentShape(Capsule())
+          .onTapGesture { model.grabBars(name, bars: n) }
+          .help("Grab the last \(n) bar\(n == 1 ? "" : "s") deck \(name) played as a loop")
+          .accessibilityLabel("Grab last \(n) bars")
+      }
+    }
+  }
+}
+
 /// A deck's LOOP record button: hold to take the deck's bars, let go to drop them on the row.
+/// A quick tap records `AppModel.tapBars` bars instead.
 struct LoopRecordButton: View {
   let name: String
   let model: AppModel
@@ -496,7 +567,10 @@ struct LoopRecordButton: View {
           model.loopRecord(name, on: false)
         }
     )
-    .help("Hold to record this deck's bars; let go and they loop on the row under the mixer")
+    .help(
+      "Hold to record this deck's bars; let go and they loop on the row under the mixer. "
+        + "A quick tap records \(model.tapBars) bar\(model.tapBars == 1 ? "" : "s")"
+    )
     .accessibilityLabel("Loop record")
   }
 }

@@ -227,7 +227,8 @@ extension DJEngine {
     case .follow(let n, let leader): deck(n)?.follow(leader.flatMap { decks[$0] })
     case .grid(let n, let bpm, let offset):
       deck(n)?.setBeatGrid(BeatGrid(bpm: bpm, offset: offset, confidence: 1))
-    case .loopRecord(let n, let on): loopRecord(n, on: on)
+    case .loopRecord(let n, let on, let bars): loopRecord(n, on: on, bars: bars)
+    case .grabBars(let n, let bars): grabLastBars(n, bars: bars)
     case .clip(let n, let id): playClip(id, on: n)
     case .clipLoop(let id, let on): setLooping(id, on)
     case .clipGain(let id, let v): setClipGain(id, v)

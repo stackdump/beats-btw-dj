@@ -37,6 +37,11 @@ public final class DJEngine {
   /// Clips taken off the row, newest first, each with the place it had (`removeClip`,
   /// `restoreClip`).
   public internal(set) var removedClips: [RemovedClip] = []
+  /// How many bars a tap of LOOP records (let go within `DJEngine.loopTapFrames` of the
+  /// press), when the press does not say: what a controller's LOOP button uses. The app sets it
+  /// from its own setting; nil turns fixed-length takes off (a tap records to the next downbeat,
+  /// like a hold).
+  public var tapTakeBars: Int? = 2
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]

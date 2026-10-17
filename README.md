@@ -37,6 +37,9 @@ there. In short:
   restore it where it was, or delete it for good). Loops can be renamed (double-click) and
   coloured, filtered by deck / sequence / search / near the playing tempo, traced back (Load
   source on A/B reloads the track at its section), exported as WAV or dragged out to Finder.
+  A quick tap of LOOP (on screen or the Inpulse) records exactly N bars from the downbeat (the
+  "tap N" chip beside it: 1/2/4/8, default 2); ⟲ 1 2 4 grabs the last bars the deck already
+  played, after the fact, from its ~21 s history.
   Every channel has a reverb (Apple's AUReverb2: wet, size, tone) in its Reverb section.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com

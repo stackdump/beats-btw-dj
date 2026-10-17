@@ -476,6 +476,7 @@ extension AppModel {
               ("mute", .bool(loopChannel.mute)),
             ]))
         ),
+        ("tapBars", .int(tapBars)),
         (
           "taking",
           .object(

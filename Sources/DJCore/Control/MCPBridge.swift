@@ -135,9 +135,13 @@ public struct MCPBridge {
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       queueNext {deck, share: {genre, seed, structure?}} · \
-      loopRecord {deck, on}: LOOP record, held (on true) then let go (on false): the deck's \
-      bars from the downbeat before the press to the one after the release become a clip, \
-      looping under the mixer (dj_state.loops) · clipLoop {id, on}: a clip in or out under the \
+      loopRecord {deck, on, bars?}: LOOP record, held (on true) then let go (on false): the \
+      deck's bars from the downbeat before the press to the one after the release become a \
+      clip, looping under the mixer (dj_state.loops); with bars (1-64) on the press, a release \
+      within 250 ms records exactly that many bars from that downbeat instead (the app's tap \
+      length is dj_state.loops.tapBars) · grabBars {deck, bars}: the last bars whole bars the \
+      deck already played (up to ~21 s back), ending on the downbeat just gone, become a clip \
+      looping at once · clipLoop {id, on}: a clip in or out under the \
       mixer on the next downbeat (several loop at once) · clipGain {id, value 0…1} · \
       clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \
       replacing?}: join clips into a sequence (or rewrite one) · clip {deck: L|A|B, id}: move a \

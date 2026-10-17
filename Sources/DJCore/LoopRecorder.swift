@@ -9,6 +9,13 @@ import Foundation
 // within a sixteenth of one, which is taken as "on the one" and ends the take there. A net deck's
 // downbeats are its tick anchors (exact frames); a sample deck's come from its beat grid.
 //
+// A tap (let go within `loopTapFrames`, a quarter of a second of deck time, of the press) is a
+// fixed-length take when the press named a length: from the same downbeat, exactly that many
+// bars, ending by itself. A hold is as above.
+//
+// After the fact: `grabLastBars` takes the last whole bars a deck has already played straight
+// out of its capture history, ending on the downbeat just gone.
+//
 // Everything here is main-thread state, moved on by `serviceLoopTakes()` (the controller hub's
 // housekeeping tick and the session player's).
 
@@ -98,6 +105,12 @@ final class LoopTake {
   let start: Int
   /// The deck's beat there (a multiple of 4).
   let startBeat: Double
+  /// Deck frame of the press itself (a tap is measured from it).
+  let pressed: Int
+  /// Bars a tap records (from the press); nil: a tap is a short hold.
+  let fixedBars: Int?
+  /// Let go within `loopTapFrames` of the press, with `fixedBars` set: ends after them.
+  var tapped = false
   /// Frames per bar at the tempo when it was pressed (a sample deck's bar length; a net deck's
   /// estimate, for the release tolerance and the fallback).
   let barFrames: Double
@@ -118,10 +131,15 @@ final class LoopTake {
   var provenance = JSONObject()
   var sample: SampleBuffer?
 
-  init(deck: String, start: Int, startBeat: Double, barFrames: Double, anchorCursor: Int) {
+  init(
+    deck: String, start: Int, startBeat: Double, barFrames: Double, anchorCursor: Int,
+    pressed: Int, fixedBars: Int? = nil
+  ) {
     self.deck = deck
     self.start = start
     self.startBeat = startBeat
+    self.pressed = pressed
+    self.fixedBars = fixedBars
     self.barFrames = barFrames
     self.anchorCursor = anchorCursor
     cursor = start
@@ -140,19 +158,29 @@ extension DJEngine {
     guard let t = loopTakes[deck], let d = decks[deck] else { return nil }
     let now = t.released ?? d.renderedFrames
     let bars =
-      t.end != nil ? t.bars : max(1, Int((Double(now - t.start) / t.barFrames).rounded(.up)))
+      t.end != nil
+      ? t.bars
+      : t.tapped
+        ? t.fixedBars ?? 1 : max(1, Int((Double(now - t.start) / t.barFrames).rounded(.up)))
     return (bars, t.released != nil)
   }
 
+  /// How soon after the press a release counts as a tap: 250 ms of deck frames.
+  public var loopTapFrames: Int { Int((0.25 * sampleRate).rounded()) }
+
   /// LOOP pressed (`on`) or let go on `deck`. Pressing does nothing on a deck that is not
-  /// playing or has no beat grid, or while a take on it is still finishing. Returns whether the
-  /// press started (or the release ended) a take.
+  /// playing or has no beat grid, or while a take on it is still finishing. With `bars` on the
+  /// press, a release within `loopTapFrames` makes it a take of exactly that many bars (1…64)
+  /// from the downbeat the press snapped to; a later release ends it as a hold does. Returns
+  /// whether the press started (or the release ended) a take.
   @discardableResult
-  public func loopRecord(_ deck: String, on: Bool) -> Bool {
+  public func loopRecord(_ deck: String, on: Bool, bars: Int? = nil) -> Bool {
     guard let d = decks[deck] else { return false }
     if !on {
       guard let t = loopTakes[deck], t.released == nil else { return false }
-      t.released = d.renderedFrames
+      let r = d.renderedFrames
+      t.released = r
+      t.tapped = t.fixedBars != nil && r - t.pressed <= loopTapFrames
       serviceLoopTakes()
       return true
     }
@@ -171,7 +199,8 @@ extension DJEngine {
       }
     }
     let take = LoopTake(
-      deck: deck, start: start, startBeat: startBeat, barFrames: barFrames, anchorCursor: cursor)
+      deck: deck, start: start, startBeat: startBeat, barFrames: barFrames, anchorCursor: cursor,
+      pressed: now, fixedBars: bars.map { min(max($0, 1), 64) })
     take.provenance = LoopProvenance.capture(
       d, startBeat: startBeat, build: BuildInfo.current.build)
     take.sample = d.mode == .sample && !d.isDemo ? d.loaded : nil
@@ -205,6 +234,7 @@ extension DJEngine {
   }
 
   private func findEnd(_ t: LoopTake, deck d: Deck, released r: Int) {
+    if t.tapped, let n = t.fixedBars { return findFixedEnd(t, deck: d, bars: n) }
     let tolerance = t.barFrames / 16
     if d.mode == .net, d.playing {
       if let on = t.downs.last(where: { $0.frame <= r }), Double(r - on.frame) <= tolerance {
@@ -224,23 +254,97 @@ extension DJEngine {
     t.end = t.start + Int((Double(t.bars) * t.barFrames).rounded())
   }
 
+  /// A tapped take's end: `n` bars on from its first downbeat. A net deck waits for that
+  /// downbeat's anchor; a sample deck (or a net deck that stopped) counts bars at the pressed
+  /// tempo.
+  private func findFixedEnd(_ t: LoopTake, deck d: Deck, bars n: Int) {
+    if d.mode == .net, d.playing {
+      let target = t.startBeat + Double(4 * n)
+      if let down = t.downs.first(where: { $0.beat > target - 0.5 }) {
+        t.end = down.frame
+        t.bars = n
+      }
+      return  // that downbeat has not been played yet
+    }
+    t.bars = n
+    t.end = t.start + Int((Double(n) * t.barFrames).rounded())
+  }
+
   private func finish(_ t: LoopTake, from d: Deck) {
     guard let end = t.end else { return }
     let n = end - t.start
     guard n > 0, t.left.count >= n, t.right.count >= n else { return }
-    let buffer = SampleBuffer(
-      left: Array(t.left[0..<n]), right: Array(t.right[0..<n]), sampleRate: sampleRate)
+    addTake(
+      deck: t.deck, bars: t.bars, startBeat: t.startBeat, left: Array(t.left[0..<n]),
+      right: Array(t.right[0..<n]), provenance: t.provenance, sample: t.sample)
+  }
+
+  /// A finished take's audio onto the row, looping under the mixer at once, in phase (it ends
+  /// on a downbeat that has just gone by). Returns its id.
+  @discardableResult
+  private func addTake(
+    deck: String, bars: Int, startBeat: Double, left: [Float], right: [Float],
+    provenance: JSONObject, sample: SampleBuffer?
+  ) -> String {
+    let buffer = SampleBuffer(left: left, right: right, sampleRate: sampleRate)
     let id = buffer.contentID
-    let bpm = Double(t.bars) * 4 * 60 * sampleRate / Double(n)
+    let bpm = Double(bars) * 4 * 60 * sampleRate / Double(buffer.length)
     loopCount += 1
     let clip = LoopClip(
-      id: id, title: "\(t.deck) loop \(loopCount)", source: t.deck, bars: t.bars, bpm: bpm,
-      startBeat: t.startBeat, buffer: buffer,
+      id: id, title: "\(deck) loop \(loopCount)", source: deck, bars: bars, bpm: bpm,
+      startBeat: startBeat, buffer: buffer,
       waveform: WaveformOverview(buffer: buffer, columns: 400),
-      provenance: LoopProvenance.finish(t.provenance, bars: t.bars, bpm: bpm, sample: t.sample))
+      provenance: LoopProvenance.finish(provenance, bars: bars, bpm: bpm, sample: sample))
     sampleLibrary[id] = buffer
-    clips.append(clip)
+    if self.clip(id) == nil { clips.append(clip) }
     startLoop(id, atOnce: true)
+    return id
+  }
+
+  // MARK: grabbing what was played
+
+  /// Take the last `bars` whole bars `deck` has already played, out of its capture history:
+  /// from `bars` bars before the latest downbeat at or before the render head, to that downbeat.
+  /// A net deck's downbeats are its tick anchors; a sample deck's come from its beat grid. The
+  /// clip lands on the row and loops at once, like a fresh take; its provenance says
+  /// `"grabbed": true`. Refused (nil) on a deck that is not playing or has no beat clock, or
+  /// when the history does not reach back that far (`CaptureTap.defaultCapacity`, ~21 s).
+  @discardableResult
+  public func grabLastBars(_ deck: String, bars: Int) -> String? {
+    guard bars > 0, let d = decks[deck], d.playing, let s = d.beatState, s.bpm > 0,
+      let oldest = d.capture.startFrame, let captured = d.capture.endFrame
+    else { return nil }
+    let now = min(d.renderedFrames, captured)
+    let barFrames = 4 * 60 / s.bpm * sampleRate
+    var end = d.renderedFrames - Int((s.barPhase * barFrames).rounded())
+    var endBeat = Double(s.bar * 4)
+    var start = end - Int((Double(bars) * barFrames).rounded())
+    if d.mode == .net {
+      // the newest downbeat already played, and the one `bars` bars before it (exact frames)
+      let ring = d.wave.anchors
+      var cursor = max(0, ring.written - ring.capacity)
+      let downs = Self.downbeats(ring, from: &cursor).filter { $0.frame <= now }
+      guard let last = downs.last else { return nil }
+      end = last.frame
+      endBeat = last.beat
+      let first = endBeat - Double(4 * bars)
+      start =
+        downs.last(where: { abs($0.beat - first) < 0.5 && $0.frame < last.frame })?.frame
+        ?? end - Int((Double(bars) * barFrames).rounded())
+    }
+    guard start >= oldest, start < end, end <= captured else { return nil }
+    var l: [Float] = []
+    var r: [Float] = []
+    l.reserveCapacity(end - start)
+    r.reserveCapacity(end - start)
+    guard d.capture.copy(from: start, to: end, left: &l, right: &r) == end else { return nil }
+    let startBeat = endBeat - Double(4 * bars)
+    var provenance = LoopProvenance.capture(
+      d, startBeat: startBeat, build: BuildInfo.current.build)
+    provenance["grabbed"] = .bool(true)
+    return addTake(
+      deck: deck, bars: bars, startBeat: startBeat, left: l, right: r, provenance: provenance,
+      sample: d.mode == .sample && !d.isDemo ? d.loaded : nil)
   }
 
   /// Downbeats among the anchors from `cursor` on (moving it past them): (frame, beat).
