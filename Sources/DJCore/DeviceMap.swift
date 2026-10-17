@@ -30,7 +30,7 @@ public struct DeviceMapRow: Equatable, Sendable {
 extension SurfaceProfile.Binding {
   /// A human description: "volume · deck A", "section 3 · deck B", "unbound — needs BPM".
   public var summary: String {
-    let on = deck.map { " · deck \($0)" } ?? ""
+    let on = deck.map { $0 == "*" ? " · aimed deck" : " · deck \($0)" } ?? ""
     switch action {
     case .unbound: return "unbound" + (reason.map { " — \($0)" } ?? "")
     case .hotcue: return "hot cue \((slot ?? 0) + 1)\(on)"
@@ -50,6 +50,12 @@ extension SurfaceProfile.Binding {
     case .loopDouble: return "loop ×2\(on)"
     case .loopRecord: return "loop record (hold)\(on)"
     case .clipToggle: return "loop \((slot ?? 0) + 1) in/out"
+    case .masterFx: return "FX \(macro ?? "?")\(on)"
+    case .reverbWet: return "reverb wet\(on)"
+    case .reverbSize: return "reverb size\(on)"
+    case .focusDeck: return "aim at deck \(slot == 1 ? "B" : "A")"
+    case .regenerate: return "regenerate (next seed)\(on)"
+    case .autoNext: return "auto-next\(on)"
     case .eqLow: return "EQ low\(on)"
     case .eqMid: return "EQ mid\(on)"
     case .eqHigh: return "EQ high\(on)"

@@ -67,683 +67,647 @@
  },
  "layout": [
   {
+   "group": "pads",
+   "index": 0,
+   "action": "macro",
+   "deck": "*",
+   "macro": "drop",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 1,
+   "action": "macro",
+   "deck": "*",
+   "macro": "breakdown",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 2,
+   "action": "macro",
+   "deck": "*",
+   "macro": "solo-drums",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 3,
+   "action": "macro",
+   "deck": "*",
+   "macro": "cut",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 4,
+   "action": "macro",
+   "deck": "*",
+   "macro": "beat-repeat",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 5,
+   "action": "macro",
+   "deck": "*",
+   "macro": "double-drop",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 6,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 7,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 8,
+   "action": "macro",
+   "deck": "*",
+   "macro": "sweep-lp",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 9,
+   "action": "macro",
+   "deck": "*",
+   "macro": "sweep-hp",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 10,
+   "action": "macro",
+   "deck": "*",
+   "macro": "reverb-wash",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 11,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' delay-throw macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 12,
+   "action": "macro",
+   "deck": "*",
+   "macro": "riser",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 13,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 14,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 15,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 16,
+   "action": "macro",
+   "deck": "*",
+   "macro": "build-crush",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 17,
+   "action": "macro",
+   "deck": "*",
+   "macro": "phaser-drone",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 18,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' cathedral macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 19,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' dub-delay macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 20,
+   "action": "macro",
+   "deck": "*",
+   "macro": "filter-res",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 21,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 22,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 23,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 24,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' ping-pong macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 25,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' hard-left macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 26,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' hard-right macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 27,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' auto-pan macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 28,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' mono macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 29,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 30,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 31,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 32,
+   "action": "macro",
+   "deck": "*",
+   "macro": "octave-up",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 33,
+   "action": "macro",
+   "deck": "*",
+   "macro": "octave-down",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 34,
+   "action": "macro",
+   "deck": "*",
+   "macro": "pitch-bend",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 35,
+   "action": "macro",
+   "deck": "*",
+   "macro": "vinyl-brake",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 36,
+   "action": "macro",
+   "deck": "*",
+   "macro": "half-time",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 37,
+   "action": "macro",
+   "deck": "*",
+   "macro": "tape-stop",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 38,
+   "action": "macro",
+   "deck": "*",
+   "macro": "tempo-anchor",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 39,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 40,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-chill",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 41,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-drive",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 42,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-ambient",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 43,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-euphoric",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 44,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-build",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 45,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-wind-down",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 46,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-reset",
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 47,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 48,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 49,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 50,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 51,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 52,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 53,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 54,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 55,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "pads",
+   "index": 56,
+   "action": "stinger",
+   "deck": "*",
+   "slot": 0,
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 57,
+   "action": "stinger",
+   "deck": "*",
+   "slot": 1,
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 58,
+   "action": "stinger",
+   "deck": "*",
+   "slot": 2,
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 59,
+   "action": "stinger",
+   "deck": "*",
+   "slot": 3,
+   "shift": false
+  },
+  {
+   "group": "pads",
+   "index": 60,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' tighten macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 61,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' loosen macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 62,
+   "action": "unbound",
+   "shift": false,
+   "reason": "beats' pulse macro: not ported to dj's master chain (MasterMacro.swift: its effect does not reach wave audio in beats)"
+  },
+  {
+   "group": "pads",
+   "index": 63,
+   "action": "unbound",
+   "shift": false,
+   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+  },
+  {
+   "group": "track",
+   "index": 0,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "kick"
+  },
+  {
+   "group": "track",
+   "index": 1,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "snare"
+  },
+  {
+   "group": "track",
+   "index": 2,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "hihat"
+  },
+  {
+   "group": "track",
+   "index": 3,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "clap"
+  },
+  {
+   "group": "track",
+   "index": 4,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "bass"
+  },
+  {
+   "group": "track",
+   "index": 5,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "melody"
+  },
+  {
+   "group": "track",
+   "index": 6,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "harmony"
+  },
+  {
+   "group": "track",
+   "index": 7,
+   "action": "roleMute",
+   "deck": "*",
+   "role": "arp"
+  },
+  {
+   "group": "scene",
+   "index": 0,
+   "action": "play",
+   "deck": "*"
+  },
+  {
+   "group": "scene",
+   "index": 1,
+   "action": "regenerate",
+   "deck": "*"
+  },
+  {
+   "group": "scene",
+   "index": 2,
+   "action": "autoNext",
+   "deck": "*"
+  },
+  {
+   "group": "scene",
+   "index": 3,
+   "action": "focusDeck",
+   "slot": 0
+  },
+  {
+   "group": "scene",
+   "index": 4,
+   "action": "focusDeck",
+   "slot": 1
+  },
+  {
+   "group": "scene",
+   "index": 5,
+   "action": "macro",
+   "deck": "*",
+   "macro": "feel-reset"
+  },
+  {
+   "group": "scene",
+   "index": 6,
+   "action": "nextTrack",
+   "deck": "*"
+  },
+  {
+   "group": "scene",
+   "index": 7,
+   "action": "panic",
+   "deck": "*"
+  },
+  {
    "group": "faders",
    "index": 0,
-   "action": "volume",
-   "deck": "A"
+   "action": "masterFx",
+   "deck": "*",
+   "macro": "phaser-wet"
   },
   {
    "group": "faders",
    "index": 1,
-   "action": "filter",
-   "deck": "A"
+   "action": "masterFx",
+   "deck": "*",
+   "macro": "distortion"
   },
   {
    "group": "faders",
    "index": 2,
-   "action": "pitch",
-   "deck": "A"
+   "action": "reverbWet",
+   "deck": "*"
   },
   {
    "group": "faders",
    "index": 3,
-   "action": "crossfader"
+   "action": "reverbSize",
+   "deck": "*"
+  },
+  {
+   "group": "faders",
+   "index": 4,
+   "action": "masterFx",
+   "deck": "*",
+   "macro": "lp-freq"
   },
   {
    "group": "faders",
    "index": 5,
-   "action": "pitch",
-   "deck": "B"
+   "action": "masterFx",
+   "deck": "*",
+   "macro": "hp-freq"
   },
   {
    "group": "faders",
    "index": 6,
-   "action": "filter",
-   "deck": "B"
+   "action": "masterFx",
+   "deck": "*",
+   "macro": "master-pitch"
   },
   {
    "group": "faders",
    "index": 7,
-   "action": "volume",
-   "deck": "B"
+   "action": "masterFx",
+   "deck": "*",
+   "macro": "crush-bits"
   },
   {
    "group": "faders",
    "index": 8,
    "action": "master"
-  },
-  {
-   "group": "pads",
-   "index": 0,
-   "action": "hotcue",
-   "deck": "A",
-   "slot": 0
-  },
-  {
-   "group": "pads",
-   "index": 1,
-   "action": "hotcue",
-   "deck": "A",
-   "slot": 1
-  },
-  {
-   "group": "pads",
-   "index": 2,
-   "action": "hotcue",
-   "deck": "A",
-   "slot": 2
-  },
-  {
-   "group": "pads",
-   "index": 3,
-   "action": "hotcue",
-   "deck": "A",
-   "slot": 3
-  },
-  {
-   "group": "pads",
-   "index": 4,
-   "action": "hotcue",
-   "deck": "B",
-   "slot": 0
-  },
-  {
-   "group": "pads",
-   "index": 5,
-   "action": "hotcue",
-   "deck": "B",
-   "slot": 1
-  },
-  {
-   "group": "pads",
-   "index": 6,
-   "action": "hotcue",
-   "deck": "B",
-   "slot": 2
-  },
-  {
-   "group": "pads",
-   "index": 7,
-   "action": "hotcue",
-   "deck": "B",
-   "slot": 3
-  },
-  {
-   "group": "pads",
-   "index": 8,
-   "action": "clearcue",
-   "deck": "A",
-   "slot": 0
-  },
-  {
-   "group": "pads",
-   "index": 9,
-   "action": "clearcue",
-   "deck": "A",
-   "slot": 1
-  },
-  {
-   "group": "pads",
-   "index": 10,
-   "action": "clearcue",
-   "deck": "A",
-   "slot": 2
-  },
-  {
-   "group": "pads",
-   "index": 11,
-   "action": "clearcue",
-   "deck": "A",
-   "slot": 3
-  },
-  {
-   "group": "pads",
-   "index": 12,
-   "action": "clearcue",
-   "deck": "B",
-   "slot": 0
-  },
-  {
-   "group": "pads",
-   "index": 13,
-   "action": "clearcue",
-   "deck": "B",
-   "slot": 1
-  },
-  {
-   "group": "pads",
-   "index": 14,
-   "action": "clearcue",
-   "deck": "B",
-   "slot": 2
-  },
-  {
-   "group": "pads",
-   "index": 15,
-   "action": "clearcue",
-   "deck": "B",
-   "slot": 3
-  },
-  {
-   "group": "scene",
-   "index": 0,
-   "action": "play",
-   "deck": "A"
-  },
-  {
-   "group": "scene",
-   "index": 1,
-   "action": "play",
-   "deck": "B"
-  },
-  {
-   "group": "track",
-   "index": 0,
-   "action": "play",
-   "deck": "A",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 0,
-   "action": "quantize",
-   "deck": "A",
-   "shift": true
-  },
-  {
-   "group": "track",
-   "index": 7,
-   "action": "play",
-   "deck": "B",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 7,
-   "action": "quantize",
-   "deck": "B",
-   "shift": true
-  },
-  {
-   "group": "shift",
-   "index": 0,
-   "action": "shift"
-  },
-  {
-   "group": "faders",
-   "index": 4,
-   "action": "headphoneMix"
-  },
-  {
-   "group": "drumPads",
-   "action": "unbound",
-   "reason": "APC drum mode — Phase 3 instrument (session mode is the DJ layout)"
-  },
-  {
-   "group": "pads",
-   "index": 16,
-   "action": "section",
-   "deck": "A",
-   "slot": 0
-  },
-  {
-   "group": "pads",
-   "index": 17,
-   "action": "section",
-   "deck": "A",
-   "slot": 1
-  },
-  {
-   "group": "pads",
-   "index": 18,
-   "action": "section",
-   "deck": "A",
-   "slot": 2
-  },
-  {
-   "group": "pads",
-   "index": 19,
-   "action": "section",
-   "deck": "A",
-   "slot": 3
-  },
-  {
-   "group": "pads",
-   "index": 20,
-   "action": "section",
-   "deck": "A",
-   "slot": 4
-  },
-  {
-   "group": "pads",
-   "index": 21,
-   "action": "section",
-   "deck": "A",
-   "slot": 5
-  },
-  {
-   "group": "pads",
-   "index": 22,
-   "action": "section",
-   "deck": "A",
-   "slot": 6
-  },
-  {
-   "group": "pads",
-   "index": 23,
-   "action": "section",
-   "deck": "A",
-   "slot": 7
-  },
-  {
-   "group": "pads",
-   "index": 24,
-   "action": "section",
-   "deck": "A",
-   "slot": 8
-  },
-  {
-   "group": "pads",
-   "index": 25,
-   "action": "section",
-   "deck": "A",
-   "slot": 9
-  },
-  {
-   "group": "pads",
-   "index": 26,
-   "action": "section",
-   "deck": "A",
-   "slot": 10
-  },
-  {
-   "group": "pads",
-   "index": 27,
-   "action": "section",
-   "deck": "A",
-   "slot": 11
-  },
-  {
-   "group": "pads",
-   "index": 28,
-   "action": "section",
-   "deck": "A",
-   "slot": 12
-  },
-  {
-   "group": "pads",
-   "index": 29,
-   "action": "section",
-   "deck": "A",
-   "slot": 13
-  },
-  {
-   "group": "pads",
-   "index": 30,
-   "action": "section",
-   "deck": "A",
-   "slot": 14
-  },
-  {
-   "group": "pads",
-   "index": 31,
-   "action": "section",
-   "deck": "A",
-   "slot": 15
-  },
-  {
-   "group": "pads",
-   "index": 32,
-   "action": "section",
-   "deck": "B",
-   "slot": 0
-  },
-  {
-   "group": "pads",
-   "index": 33,
-   "action": "section",
-   "deck": "B",
-   "slot": 1
-  },
-  {
-   "group": "pads",
-   "index": 34,
-   "action": "section",
-   "deck": "B",
-   "slot": 2
-  },
-  {
-   "group": "pads",
-   "index": 35,
-   "action": "section",
-   "deck": "B",
-   "slot": 3
-  },
-  {
-   "group": "pads",
-   "index": 36,
-   "action": "section",
-   "deck": "B",
-   "slot": 4
-  },
-  {
-   "group": "pads",
-   "index": 37,
-   "action": "section",
-   "deck": "B",
-   "slot": 5
-  },
-  {
-   "group": "pads",
-   "index": 38,
-   "action": "section",
-   "deck": "B",
-   "slot": 6
-  },
-  {
-   "group": "pads",
-   "index": 39,
-   "action": "section",
-   "deck": "B",
-   "slot": 7
-  },
-  {
-   "group": "pads",
-   "index": 40,
-   "action": "section",
-   "deck": "B",
-   "slot": 8
-  },
-  {
-   "group": "pads",
-   "index": 41,
-   "action": "section",
-   "deck": "B",
-   "slot": 9
-  },
-  {
-   "group": "pads",
-   "index": 42,
-   "action": "section",
-   "deck": "B",
-   "slot": 10
-  },
-  {
-   "group": "pads",
-   "index": 43,
-   "action": "section",
-   "deck": "B",
-   "slot": 11
-  },
-  {
-   "group": "pads",
-   "index": 44,
-   "action": "section",
-   "deck": "B",
-   "slot": 12
-  },
-  {
-   "group": "pads",
-   "index": 45,
-   "action": "section",
-   "deck": "B",
-   "slot": 13
-  },
-  {
-   "group": "pads",
-   "index": 46,
-   "action": "section",
-   "deck": "B",
-   "slot": 14
-  },
-  {
-   "group": "pads",
-   "index": 47,
-   "action": "section",
-   "deck": "B",
-   "slot": 15
-  },
-  {
-   "group": "pads",
-   "index": 48,
-   "action": "macro",
-   "deck": "A",
-   "macro": "drop"
-  },
-  {
-   "group": "pads",
-   "index": 49,
-   "action": "macro",
-   "deck": "A",
-   "macro": "breakdown"
-  },
-  {
-   "group": "pads",
-   "index": 50,
-   "action": "macro",
-   "deck": "A",
-   "macro": "cut"
-  },
-  {
-   "group": "pads",
-   "index": 51,
-   "action": "macro",
-   "deck": "A",
-   "macro": "beat-repeat"
-  },
-  {
-   "group": "pads",
-   "index": 56,
-   "action": "macro",
-   "deck": "A",
-   "macro": "half-time"
-  },
-  {
-   "group": "pads",
-   "index": 57,
-   "action": "macro",
-   "deck": "A",
-   "macro": "tape-stop"
-  },
-  {
-   "group": "pads",
-   "index": 58,
-   "action": "macro",
-   "deck": "A",
-   "macro": "double-drop"
-  },
-  {
-   "group": "pads",
-   "index": 59,
-   "action": "panic",
-   "deck": "A"
-  },
-  {
-   "group": "pads",
-   "index": 52,
-   "action": "macro",
-   "deck": "B",
-   "macro": "drop"
-  },
-  {
-   "group": "pads",
-   "index": 53,
-   "action": "macro",
-   "deck": "B",
-   "macro": "breakdown"
-  },
-  {
-   "group": "pads",
-   "index": 54,
-   "action": "macro",
-   "deck": "B",
-   "macro": "cut"
-  },
-  {
-   "group": "pads",
-   "index": 55,
-   "action": "macro",
-   "deck": "B",
-   "macro": "beat-repeat"
-  },
-  {
-   "group": "pads",
-   "index": 60,
-   "action": "macro",
-   "deck": "B",
-   "macro": "half-time"
-  },
-  {
-   "group": "pads",
-   "index": 61,
-   "action": "macro",
-   "deck": "B",
-   "macro": "tape-stop"
-  },
-  {
-   "group": "pads",
-   "index": 62,
-   "action": "macro",
-   "deck": "B",
-   "macro": "double-drop"
-  },
-  {
-   "group": "pads",
-   "index": 63,
-   "action": "panic",
-   "deck": "B"
-  },
-  {
-   "group": "track",
-   "index": 1,
-   "action": "roleMute",
-   "deck": "A",
-   "role": "kick",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 1,
-   "action": "roleMute",
-   "deck": "B",
-   "role": "kick",
-   "shift": true
-  },
-  {
-   "group": "track",
-   "index": 2,
-   "action": "roleMute",
-   "deck": "A",
-   "role": "snare",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 2,
-   "action": "roleMute",
-   "deck": "B",
-   "role": "snare",
-   "shift": true
-  },
-  {
-   "group": "track",
-   "index": 3,
-   "action": "roleMute",
-   "deck": "A",
-   "role": "hihat",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 3,
-   "action": "roleMute",
-   "deck": "B",
-   "role": "hihat",
-   "shift": true
-  },
-  {
-   "group": "track",
-   "index": 4,
-   "action": "roleMute",
-   "deck": "A",
-   "role": "bass",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 4,
-   "action": "roleMute",
-   "deck": "B",
-   "role": "bass",
-   "shift": true
-  },
-  {
-   "group": "track",
-   "index": 5,
-   "action": "roleMute",
-   "deck": "A",
-   "role": "melody",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 5,
-   "action": "roleMute",
-   "deck": "B",
-   "role": "melody",
-   "shift": true
-  },
-  {
-   "group": "track",
-   "index": 6,
-   "action": "roleMute",
-   "deck": "A",
-   "role": "harmony",
-   "shift": false
-  },
-  {
-   "group": "track",
-   "index": 6,
-   "action": "roleMute",
-   "deck": "B",
-   "role": "harmony",
-   "shift": true
-  },
-  {
-   "group": "scene",
-   "index": 2,
-   "action": "sectionPrev",
-   "deck": "A"
-  },
-  {
-   "group": "scene",
-   "index": 3,
-   "action": "sectionNext",
-   "deck": "A"
-  },
-  {
-   "group": "scene",
-   "index": 4,
-   "action": "sectionPrev",
-   "deck": "B"
-  },
-  {
-   "group": "scene",
-   "index": 5,
-   "action": "sectionNext",
-   "deck": "B"
-  },
-  {
-   "group": "scene",
-   "index": 6,
-   "action": "nextTrack",
-   "deck": "A"
-  },
-  {
-   "group": "scene",
-   "index": 7,
-   "action": "nextTrack",
-   "deck": "B"
   },
   {
    "group": "pads",
@@ -1192,6 +1156,17 @@
    "action": "clipToggle",
    "slot": 63,
    "shift": true
+  },
+  {
+   "group": "shift",
+   "index": 0,
+   "action": "shift"
+  },
+  {
+   "group": "drumPads",
+   "action": "unbound",
+   "reason": "APC drum mode — Phase 3 instrument (session mode is the DJ layout)"
   }
- ]
+ ],
+ "layoutComment": "An FX surface beside the Inpulse, as beats.bitwrap.io maps the APC (lib/backend/apc-mini-mk2.js): the grid is the macro catalog in beats' rows (bottom: mutes; FX; FX; pan; pitch + tempo; feel; —; hits + shape), lit in beats' group colours, bright while a macro runs; the red track buttons mute the aimed deck's parts; the green scene buttons are play, regenerate, auto-next, aim at A, aim at B, FX reset (feel-reset), next track, panic; the faders are FX amounts (phaser wet, distortion, the deck's reverb wet and size, LP, HP, master pitch, crush) and master volume. Everything with deck \\\"*\\\" acts on the aimed deck (DJEngine.focus: the scene buttons, or whichever deck a controller touched last). SHIFT + pad: the loop page (loops 1-64). beats' delay and pan macros are not in dj."
 }

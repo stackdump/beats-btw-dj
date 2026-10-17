@@ -19,23 +19,21 @@ struct DeviceMapTests {
     func row(_ g: String, _ i: Int) -> DeviceMapRow {
       apc.first { $0.group == g && $0.index == i }!
     }
-    #expect(row("pads", 0).action == "hot cue 1 · deck A")
-    #expect(row("pads", 16 + 2).action == "section 3 · deck A")
-    #expect(row("pads", 32 + 15).action == "section 16 · deck B")
-    #expect(row("pads", 48).action == "macro drop · deck A")
-    #expect(row("pads", 56 + 3).action == "panic · deck A")
-    #expect(row("track", 1).action == "mute kick · deck A")
-    #expect(row("track", 1).shiftedAction == "mute kick · deck B", "SHIFT aims it at deck B")
-    #expect(
-      row("track", 0).action == "play · deck A" && row("track", 0).shiftedAction == "unbound"
-        || row("track", 0).shiftedAction?.hasPrefix("quantize") == true)
+    #expect(row("pads", 0).action == "macro drop · aimed deck")
+    #expect(row("pads", 8).action == "macro sweep-lp · aimed deck")
+    #expect(row("pads", 11).action.hasPrefix("unbound — beats' delay-throw"))
+    #expect(row("pads", 56).action == "stinger 1 · aimed deck")
+    #expect(row("track", 0).action == "mute kick · aimed deck")
+    #expect(row("scene", 3).action == "aim at deck A" && row("scene", 4).action == "aim at deck B")
+    #expect(row("scene", 7).action == "panic · aimed deck")
+    #expect(row("faders", 4).action == "FX lp-freq · aimed deck")
+    #expect(row("faders", 2).action == "reverb wet · aimed deck")
     // SHIFT turns the grid into the loop page, read like text from the top-left
     #expect(row("pads", 56).shiftedAction == "loop 1 in/out")
     #expect(row("pads", 63).shiftedAction == "loop 8 in/out")
     #expect(row("pads", 48).shiftedAction == "loop 9 in/out")
     #expect(row("pads", 0).shiftedAction == "loop 57 in/out")
     #expect(row("pads", 7).shiftedAction == "loop 64 in/out")
-    #expect(row("faders", 4).action == "headphone mix")
     #expect(row("shift", 0).action == "SHIFT")
     let mpk = SurfaceProfile.mpkMiniMK2.deviceMap()
     #expect(mpk.first { $0.group == "keys" && $0.index == 60 }?.action == "live keys (focus deck)")

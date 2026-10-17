@@ -42,6 +42,8 @@ public final class SurfaceController {
   /// Palette indices (APC mini mk2 velocity → colour chart).
   enum Color {
     static let off: UInt8 = 0, red: UInt8 = 5, orange: UInt8 = 9, cyan: UInt8 = 37
+    /// beats' APC macro-group colours (lib/backend/apc-mini-mk2.js `GROUP_COLOR`)
+    static let white: UInt8 = 3, yellow: UInt8 = 13, green: UInt8 = 21, magenta: UInt8 = 53
     /// The SHIFT loop page: Akai's chart index 48 (#B98CFF).
     static let violet: UInt8 = 48
   }
@@ -111,7 +113,7 @@ public final class SurfaceController {
     guard case .bound(let b) = result else { return result }
     // locked by the user (right-click ▸ Disable on its button): the press does nothing
     if dj.lockedActions.contains(b.lockKey) { return result }
-    let deck = b.deck.flatMap { dj[$0] }
+    let deck = target(b)
     let press = e.pressed && (!e.isCC || e.value > 0.5)
     if let param = Self.parameter(b),
       let me = b.index.map({ "\(profile.name)/\(Self.key(b.group, $0))" })
@@ -135,6 +137,22 @@ public final class SurfaceController {
     case .pitch:
       let p = e.value * 2 - 1
       deck?.pitch = abs(p) < Self.pitchDeadZone ? 0 : p
+    case .masterFx:
+      // a slider position on its own range, as beats' FX panel sends it
+      if let d = deck, d.mode == .net, let k = b.macro.flatMap(MasterFxKey.init(id:)) {
+        d.wave.setMasterFx(k, Int((Double(k.min) + e.value * Double(k.max - k.min)).rounded()))
+      }
+    case .reverbWet: deck?.reverb.wet = e.value
+    case .reverbSize: deck?.reverb.size = e.value
+    case .focusDeck:
+      if press { dj.focus = b.slot == 1 ? "B" : "A" }
+    case .regenerate:
+      if press, let d = deck, let spec = d.currentSpec {
+        if let i = b.index { flashed[Self.key(b.group, i)] = now }
+        Task { @MainActor in await d.generate(spec.nextVersion) }
+      }
+    case .autoNext:
+      if press { deck?.autoAdvance.toggle() }
     case .crossfader: dj.crossfader = e.value
     case .master: dj.master = e.value
     case .headphoneMix: dj.headphoneMix = e.value
@@ -309,7 +327,7 @@ public final class SurfaceController {
     _ b: SurfaceProfile.Binding?, _ leds: SurfaceProfile.LEDs, shift: Bool? = nil
   ) -> UInt8 {
     guard let b, b.action != .unbound else { return leds.singleOff }
-    let d = b.deck.flatMap { dj[$0] }
+    let d = target(b)
     switch b.action {
     case .roleMute: return d?.isRoleOn(b.role ?? "") == true ? leds.singleOn : leds.singleOff
     case .stemMute: return d?.isStemMuted(b.role ?? "") == true ? leds.singleOn : leds.singleOff
@@ -329,6 +347,8 @@ public final class SurfaceController {
     case .hotcue: return d?.hotCues[b.slot ?? 0] != nil ? leds.singleOn : leds.singleOff
     case .loopOut: return d?.looping == true ? leds.singleOn : leds.singleOff
     case .loopIn: return d?.loopStart != nil ? leds.singleOn : leds.singleOff
+    case .focusDeck: return dj.focus == (b.slot == 1 ? "B" : "A") ? leds.singleOn : leds.singleOff
+    case .autoNext: return target(b)?.autoAdvance == true ? leds.singleOn : leds.singleOff
     case .clipToggle:
       // lit while its loop plays, blinking on its way in or out (dark: no loop in that slot)
       guard let slot = b.slot, dj.clips.indices.contains(slot) else { return leds.singleOff }
@@ -367,8 +387,22 @@ public final class SurfaceController {
 
   /// (palette colour, solid-bright?) for a pad bound to a deck.
   private func deckPadState(_ b: SurfaceProfile.Binding?) -> (UInt8, Bool) {
-    guard let b, b.action != .unbound, let d = b.deck.flatMap({ dj[$0] }) else {
+    guard let b, b.action != .unbound, let d = target(b) else {
       return (Color.off, false)
+    }
+    // the FX surface (aimed at a deck): beats' colour per macro group, lit while it runs
+    if b.deck == "*", b.action == .macro || b.action == .stinger {
+      guard d.mode == .net else { return (Color.off, false) }
+      let id = b.macro ?? ""
+      if let m = NetMacro.allCases.first(where: { $0.id == id }) {
+        let tempo = [NetMacro.halfTime, .tapeStop, .tempoAnchor].contains(m)
+        return (tempo ? Color.yellow : Color.red, d.wave.activeMacros.contains(m))
+      }
+      if let m = MasterMacro.allCases.first(where: { $0.id == id }) {
+        let c = m.group == "Pitch" ? Color.magenta : (m.group == "Feel" ? Color.green : Color.cyan)
+        return (c, d.wave.activeMasterMacros.contains(m))
+      }
+      return (Color.white, false)  // a hit (stinger)
     }
     let deckColor = b.deck == "A" ? Color.orange : Color.cyan
     let isSet = d.hotCues[b.slot ?? 0] != nil
@@ -387,6 +421,11 @@ public final class SurfaceController {
   }
 
   static func key(_ group: String, _ index: Int) -> String { "\(group)#\(index)" }
+
+  /// The deck a binding acts on: its own, or for "*" the aimed one (`DJEngine.focus`).
+  func target(_ b: SurfaceProfile.Binding) -> Deck? {
+    b.deck == "*" ? dj[dj.focus] : b.deck.flatMap { dj[$0] }
+  }
 
   /// Engine parameter a continuous binding writes, for ownership.
   public static func parameter(_ b: SurfaceProfile.Binding) -> String? {

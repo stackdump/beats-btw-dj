@@ -88,7 +88,7 @@ struct SurfaceProfileTests {
         }
         let deckless: Set<DJActionKind> = [
           .crossfader, .master, .shift, .unbound, .keys, .nudge, .seedStep, .headphoneMix,
-          .headphoneLevel, .clipToggle,
+          .headphoneLevel, .clipToggle, .focusDeck,
         ]
         if !deckless.contains(b.action) { #expect(b.deck != nil, "\(p.name): \(b)") }
       }
@@ -198,37 +198,48 @@ struct SurfaceControllerTests {
   }
 
   @Test func fadersDriveTheMixer() throws {
-    let (dj, s) = try make()
-    send(s, [0xB0, 0x30, 0])  // fader 1: A volume
-    send(s, [0xB0, 0x37, 127])  // fader 8: B volume
-    send(s, [0xB0, 0x33, 127])  // fader 4: crossfader hard B
-    send(s, [0xB0, 0x38, 64])  // master
+    // The mixer lives on the Inpulse (the APC is an FX surface): 14-bit faders, MSB then LSB.
+    let (dj, s) = try make(.inpulse200MK3)
+    s.handle(bytes: [0xB1, 0x00, 0])  // deck A volume
+    s.handle(bytes: [0xB1, 0x20, 0])
+    s.handle(bytes: [0xB2, 0x00, 127])  // deck B volume
+    s.handle(bytes: [0xB2, 0x20, 127])
+    s.handle(bytes: [0xB0, 0x00, 127])  // crossfader hard B
+    s.handle(bytes: [0xB0, 0x20, 127])
     #expect(dj["A"]!.volume == 0)
     #expect(dj["B"]!.volume == 1)
     #expect(dj.crossfader == 1)
     #expect(abs(dj.crossfadeGain("A")) < 1e-9)
-    #expect(abs(dj.master - 64.0 / 127) < 1e-6)
-    #expect(dj["B"]!.strip.outputVolume == 1)
     #expect(dj["A"]!.strip.outputVolume == 0)
+    // and the APC's master fader is the master
+    let (dj2, apc) = try make()
+    send(apc, [0xB0, 0x38, 64])
+    #expect(abs(dj2.master - 64.0 / 127) < 1e-6)
   }
 
   @Test func pitchFaderHasCentreDetent() throws {
-    let (dj, s) = try make()
-    send(s, [0xB0, 0x32, 64])  // 64/127 is just off centre
+    let (dj, s) = try make(.inpulse200MK3)
+    s.handle(bytes: [0xB1, 0x08, 64])  // 64/127 is just off centre
+    s.handle(bytes: [0xB1, 0x28, 0])
     #expect(dj["A"]!.pitch == 0)
-    send(s, [0xB0, 0x32, 127])
+    s.handle(bytes: [0xB1, 0x08, 127])
+    s.handle(bytes: [0xB1, 0x28, 127])
     #expect(dj["A"]!.pitch == 1)
   }
 
   @Test func filterSweepsLowAndHighPass() throws {
-    let (dj, s) = try make()
+    let (dj, s) = try make(.inpulse200MK3)
     let eq = dj["A"]!.filterNode
-    send(s, [0xB0, 0x31, 0])
+    func filter(_ v: UInt8) {
+      s.handle(bytes: [0xB1, 0x01, v])
+      s.handle(bytes: [0xB1, 0x21, v == 127 ? 127 : 0])
+    }
+    filter(0)
     #expect(!eq.bands[0].bypass && eq.bands[1].bypass)
     #expect(abs(eq.bands[0].frequency - 200) < 1)
-    send(s, [0xB0, 0x31, 64])
+    filter(64)
     #expect(eq.bands[0].bypass && eq.bands[1].bypass)
-    send(s, [0xB0, 0x31, 127])
+    filter(127)
     #expect(eq.bands[0].bypass && !eq.bands[1].bypass)
     #expect(abs(eq.bands[1].frequency - 5000) < 1)
   }
@@ -243,11 +254,11 @@ struct SurfaceControllerTests {
   }
 
   @Test func hotCueSetsThenClears() throws {
-    let (dj, s) = try make()
-    send(s, [0x90, 4, 0x7F])  // pad 4: B cue 0 — empty, so set at playhead
-    #expect(dj["B"]!.hotCues[0] != nil)
-    send(s, [0x90, 12, 0x7F])  // pad 12: clear B cue 0
-    #expect(dj["B"]!.hotCues[0] == nil)
+    let (dj, s) = try make(.inpulse200MK3)
+    s.handle(bytes: [0x96, 0x00, 0x7F])  // deck A pad 1 (HOT CUE mode): empty, so set here
+    #expect(dj["A"]!.hotCues[0] != nil)
+    s.handle(bytes: [0x96, 0x08, 0x7F])  // SHIFT + pad 1: clear it
+    #expect(dj["A"]!.hotCues[0] == nil)
   }
 
   @Test func ledsReflectStateAndOnlySendChanges() throws {
@@ -255,16 +266,15 @@ struct SurfaceControllerTests {
     let first = s.ledFrame(now: 100)
     #expect(first.count == 64 + 8 + 8)  // every LED once
     #expect(s.ledFrame(now: 100).isEmpty)  // nothing changed
-    #expect(first.contains([0x92, 0, 9]))  // A cue pad: dim orange
+    #expect(
+      first.contains([0x92, 0, 0]), "a macro pad is dark while the aimed deck plays a sample")
     #expect(first.contains([0x92, 63, 0]))  // unbound pad: off
-    #expect(first.contains([0x90, 0x70, 1]))  // play A: on
-
-    dj["A"]!.setPlaying(true)
-    send(s, [0x90, 0, 0x7F], now: 100)  // set A cue 0
+    #expect(first.contains([0x90, 0x70, 1]))  // play (the aimed deck): on
+    #expect(first.contains([0x90, 0x73, 1]) && first.contains([0x90, 0x74, 0]), "aimed at A")
+    send(s, [0x90, 0x74, 0x7F], now: 100)  // aim at B
     let next = s.ledFrame(now: 100.01)
-    #expect(next.contains([0x96, 0, 9]))  // cue set: bright
-    #expect(next.contains([0x92, 8, 5]))  // its clear pad: red
-    #expect(next.contains([0x90, 0x70, 2]))  // playing: blink
+    #expect(next.contains([0x90, 0x73, 0]) && next.contains([0x90, 0x74, 1]))
+    #expect(dj.focus == "B")
     #expect(s.blackout().count == 80)
   }
 
@@ -338,9 +348,13 @@ struct Phase1ActionTests {
 
   @Test func softTakeoverBetweenDevices() throws {
     let dj = try DJEngine(offline: true)
-    let apc = SurfaceController(profile: .apcMiniMK2, engine: dj)
+    let ip = SurfaceController(profile: .inpulse200MK3, engine: dj)
     let mpk = SurfaceController(profile: .mpkMiniMK2, engine: dj)
-    apc.handle(bytes: [0xB0, 0x30, 0])  // APC fader 1 → A volume 0
+    func fader(_ v: UInt8) {  // the Inpulse's deck A volume, 14-bit
+      ip.handle(bytes: [0xB1, 0x00, v])
+      ip.handle(bytes: [0xB1, 0x20, 0])
+    }
+    fader(0)
     #expect(dj["A"]!.volume == 0)
     // MPK knob 2 (A volume) is physically at max: held back, not a jump.
     #expect(
@@ -355,13 +369,13 @@ struct Phase1ActionTests {
     // The MPK now owns it and turns it up to ~0.79.
     mpk.handle(bytes: [0xB0, 2, 100])
     #expect(abs(dj["A"]!.volume - 100.0 / 127) < 1e-9)
-    // The APC fader is still physically near the bottom: held back.
-    apc.handle(bytes: [0xB0, 0x30, 1])
+    // The Inpulse fader is still physically near the bottom: held back.
+    fader(1)
     #expect(abs(dj["A"]!.volume - 100.0 / 127) < 1e-9)
-    // Pushing it up past the current value (1 → 110 crosses 100) picks it up.
-    apc.handle(bytes: [0xB0, 0x30, 110])
-    #expect(abs(dj["A"]!.volume - 110.0 / 127) < 1e-9)
-    #expect(dj.owners["A.volume"] == "APC mini mk2/faders#0")
+    // Pushing it up past the current value picks it up.
+    fader(110)
+    #expect(abs(dj["A"]!.volume - 110.0 / 127) < 0.01)
+    #expect(dj.owners["A.volume"] == "DJControl Inpulse 200 Mk3/deckA.faders#0")
   }
 }
 

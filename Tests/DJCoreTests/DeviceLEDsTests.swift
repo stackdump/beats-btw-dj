@@ -105,18 +105,18 @@ struct DeviceLightsFromTheRouterTests {
     let l = try #require(router.deviceLights(profileName: "APC mini mk2"))
     #expect(l.rgbGroups == ["pads"])
     #expect(l.groups["pads"]?.count == 64 && l.groups["track"]?.count == 8)
-    // deck A's section pads are orange: pad 16 is the current section (full), 17 dim
-    let current = try #require(l.swatch(group: "pads", index: 16))
-    let other = try #require(l.swatch(group: "pads", index: 17))
-    #expect([current.color.rgb8.r, current.color.rgb8.g, current.color.rgb8.b] == [255, 140, 0])
-    #expect(current.opacity == 1 && other.opacity == 0.5)
-    // deck B has no sections: its launcher pads are dark
-    #expect(l.swatch(group: "pads", index: 32)?.lit == false)
-    // a playing deck's play button blinks, and the map is told
+    // the macro grid, aimed at deck A (a net): drop and sweep-lp lit dim in their group colours
+    let drop = try #require(l.swatch(group: "pads", index: 0))
+    let sweep = try #require(l.swatch(group: "pads", index: 8))
+    #expect(drop.lit && drop.opacity == 0.5 && sweep.lit)
+    #expect(drop.color != sweep.color, "Mute red vs FX cyan")
+    // a beats macro dj doesn't have: dark
+    #expect(l.swatch(group: "pads", index: 11)?.lit == false)
+    // the aimed deck's play button blinks while it plays, and the map is told
     #expect(!l.anyBlinking)
     dj["A"]!.setPlaying(true)
     let playing = try #require(router.deviceLights(profileName: "APC mini mk2"))
-    #expect(playing.anyBlinking, "deck A's play LED blinks while it plays")
+    #expect(playing.anyBlinking, "the play LED blinks while the aimed deck plays")
   }
 
   @Test func aControllerThatIsNotAttachedHasNoLights() async throws {
