@@ -42,6 +42,10 @@ public final class DJEngine {
   /// from its own setting; nil turns fixed-length takes off (a tap records to the next downbeat,
   /// like a hold).
   public var tapTakeBars: Int? = 2
+  /// What loops start and stop on, in beats: 4 (the next bar) unless set (`setLoopQuantum`).
+  public internal(set) var loopQuantum = DJEngine.defaultLoopQuantum
+  /// Saved sets of loops (`LoopScene`), in the order they were made.
+  public internal(set) var scenes: [LoopScene] = []
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]

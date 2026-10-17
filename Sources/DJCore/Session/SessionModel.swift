@@ -134,6 +134,16 @@ public enum DeckAction: Equatable, Sendable {
   case clipRename(id: String, title: String)
   /// Give a clip a colour from `LoopClip.palette`, or none (`DJEngine.setClipColor`).
   case clipColor(id: String, color: String?)
+  /// What loops start and stop on, in beats: 1 | 4 (a bar) | 8 | 16 | 32
+  /// (`DJEngine.setLoopQuantum`).
+  case loopQuantize(beats: Int)
+  /// Save the loops playing now as scene `name` (overwriting one of that name).
+  case sceneSave(name: String)
+  /// Launch a scene: its clips in, every other loop out, on the next launch boundary. Recorded
+  /// with the scene's `clips`, so a replay needs no saved scenes; nil launches the saved one.
+  case sceneLaunch(name: String, clips: [SceneClip]?)
+  case sceneRename(name: String, to: String)
+  case sceneDelete(name: String)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -368,6 +378,13 @@ extension DeckAction {
       return o("clipRename", [("id", .string(id)), ("title", .string(title))])
     case .clipColor(let id, let color):
       return o("clipColor", [("id", .string(id)), ("color", color.map { .string($0) } ?? .null)])
+    case .loopQuantize(let beats): return o("loopQuantize", [("beats", .int(beats))])
+    case .sceneSave(let name): return o("sceneSave", [("name", .string(name))])
+    case .sceneLaunch(let name, let clips):
+      return o("sceneLaunch", [("name", .string(name)), ("clips", clips?.json ?? .null)])
+    case .sceneRename(let name, let to):
+      return o("sceneRename", [("name", .string(name)), ("to", .string(to))])
+    case .sceneDelete(let name): return o("sceneDelete", [("name", .string(name))])
     }
   }
 
@@ -419,6 +436,14 @@ extension DeckAction {
     case "clipRename":
       self = .clipRename(id: v["id"]?.string ?? "", title: v["title"]?.string ?? "")
     case "clipColor": self = .clipColor(id: v["id"]?.string ?? "", color: v["color"]?.string)
+    case "loopQuantize": self = .loopQuantize(beats: v["beats"]?.int ?? DJEngine.defaultLoopQuantum)
+    case "sceneSave": self = .sceneSave(name: v["name"]?.string ?? "")
+    case "sceneLaunch":
+      self = .sceneLaunch(
+        name: v["name"]?.string ?? "", clips: v["clips"]?.array.map { [SceneClip](json: .array($0)) })
+    case "sceneRename":
+      self = .sceneRename(name: v["name"]?.string ?? "", to: v["to"]?.string ?? "")
+    case "sceneDelete": self = .sceneDelete(name: v["name"]?.string ?? "")
     default: return nil
     }
   }

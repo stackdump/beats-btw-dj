@@ -432,6 +432,7 @@ extension DJEngine {
     stopLoop(id, now: true)
     sampleLibrary[new.id] = new.buffer
     if let g = clipGains[id] { clipGains[new.id] = g }
+    replaceInScenes(id, with: new.id)
     if clip(new.id) == nil { clips[i] = new } else { clips.remove(at: i) }
     if wasLooping { startLoop(new.id, atOnce: true) }
   }
@@ -505,10 +506,10 @@ extension DJEngine {
   public enum LoopState: Sendable, Equatable {
     /// Not looping.
     case off
-    /// Comes in at the next downbeat.
+    /// Comes in at the next launch boundary (`loopQuantum`).
     case starting
     case on
-    /// Goes out at the next downbeat.
+    /// Goes out at the next launch boundary.
     case stopping
   }
 
@@ -541,27 +542,33 @@ extension DJEngine {
   /// A clip's level under the mixer, 0…1 (1 by default).
   public func clipGain(_ id: String) -> Double { clipGains[id] ?? 1 }
 
-  public func setClipGain(_ id: String, _ g: Double) {
+  /// `at`: change it at that deck frame instead of at once (a scene launch, on its boundary).
+  public func setClipGain(_ id: String, _ g: Double, at: Int? = nil) {
     clipGains[id] = g
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
-      loopChannel.bank?.send(.gain(voice: v, Float(g)))
+      if let at {
+        loopChannel.bank?.send(.gainAt(voice: v, Float(g), frame: at))
+      } else {
+        loopChannel.bank?.send(.gain(voice: v, Float(g)))
+      }
     }
   }
 
-  /// Start or stop clip `id` looping under the mixer, on the next downbeat. Starting a clip that
-  /// is on its way out keeps it in.
+  /// Start or stop clip `id` looping under the mixer, on the next launch boundary (a bar unless
+  /// `loopQuantum` says otherwise). Starting a clip that is on its way out keeps it in.
   public func setLooping(_ id: String, _ on: Bool) {
     if on { startLoop(id) } else { stopLoop(id, now: false) }
   }
 
-  /// Every loop out, on the next downbeat.
+  /// Every loop out, on the next launch boundary.
   public func stopAllLoops() {
     for id in loopingClips { stopLoop(id, now: false) }
   }
 
-  /// `atOnce`: start now, in phase, instead of waiting for the next downbeat (a fresh take,
-  /// which ends on a downbeat that has just gone by).
-  func startLoop(_ id: String, atOnce: Bool = false) {
+  /// `atOnce`: start now, in phase, instead of waiting for the next launch boundary (a fresh
+  /// take, which ends on a downbeat that has just gone by). `at`: start at that deck frame (a
+  /// scene, whose clips all switch on one boundary).
+  func startLoop(_ id: String, atOnce: Bool = false, at frame: Int? = nil) {
     guard let clip = clip(id), let bank = loopChannel.bank else { return }
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
       guard loopVoices[v].stopFrame != nil else { return }  // already in
@@ -572,7 +579,9 @@ extension DJEngine {
     guard let v = loopVoices.firstIndex(where: { $0.clipID == nil }) else { return }
     let clock = loopClock(for: clip)
     let earliest = loopChannel.renderedFrames + Self.loopLead
-    let at = atOnce ? earliest : clock.nextDownbeat(after: earliest)
+    let at =
+      frame.map { max($0, earliest) }
+      ?? (atOnce ? earliest : clock.nextBoundary(after: earliest, every: loopQuantum))
     let beats = Double(clip.beats)
     var b = (clock.beat(at) - (clock.ref?.name == clip.source ? clip.startBeat : 0))
       .truncatingRemainder(dividingBy: beats)
@@ -587,10 +596,13 @@ extension DJEngine {
     tt.send(.start)
     bank.send(.gain(voice: v, Float(clipGain(id))))
     bank.send(.start(voice: v, frame: at))
-    loopVoices[v] = LoopVoice(clipID: id, ref: clock.ref?.name, ratio: ratio)
+    loopVoices[v] = LoopVoice(
+      clipID: id, ref: clock.ref?.name, ratio: ratio, startFrame: at,
+      scheduledAt: loopChannel.renderedFrames)
   }
 
-  func stopLoop(_ id: String, now: Bool) {
+  /// `at`: stop at that deck frame (a scene launch) instead of the next launch boundary.
+  func stopLoop(_ id: String, now: Bool, at frame: Int? = nil) {
     guard let bank = loopChannel.bank, let v = loopVoices.firstIndex(where: { $0.clipID == id })
     else { return }
     if !bank.isActive(v) && loopVoices[v].stopFrame == nil {
@@ -600,9 +612,14 @@ extension DJEngine {
       return
     }
     let earliest = loopChannel.renderedFrames + (now ? 0 : Self.loopLead)
-    let at = now ? earliest : loopClock(for: clip(id)).nextDownbeat(after: earliest)
+    let at =
+      now
+      ? earliest
+      : frame.map { max($0, earliest) }
+        ?? loopClock(for: clip(id)).nextBoundary(after: earliest, every: loopQuantum)
     bank.send(.stop(voice: v, frame: at))
     loopVoices[v].stopFrame = at
+    loopVoices[v].scheduledAt = loopChannel.renderedFrames
   }
 
   /// Housekeeping (from `serviceLoopTakes`): free voices whose loop is out, and keep each loop
@@ -680,7 +697,8 @@ extension DJEngine {
   }
 }
 
-/// A beat clock for lining loops up: the beat at any deck frame, and the next downbeat.
+/// A beat clock for lining loops up: the beat at any deck frame, and the next downbeat (or
+/// launch boundary).
 struct LoopClock {
   let ref: Deck?
   let origin: (frame: Int, beat: Double)
@@ -693,11 +711,17 @@ struct LoopClock {
   }
 
   /// The first downbeat (a beat that is a multiple of 4) at or after `frame`.
-  func nextDownbeat(after frame: Int) -> Int {
+  func nextDownbeat(after frame: Int) -> Int { nextBoundary(after: frame, every: 4) }
+
+  /// The first beat at or after `frame` that is a multiple of `beats`, counted in the
+  /// reference's own numbering (beat 0 is its bar 1), so 4-bar phrases (16) land on bars 1, 5,
+  /// 9… of the deck, not 4 bars from whenever the button was pressed.
+  func nextBoundary(after frame: Int, every beats: Int) -> Int {
     guard framesPerBeat > 0 else { return frame }
+    let q = Double(max(1, beats))
     let b = beat(frame)
-    var toGo = (4 - b.truncatingRemainder(dividingBy: 4)).truncatingRemainder(dividingBy: 4)
-    if toGo < 0 { toGo += 4 }
+    var toGo = (q - b.truncatingRemainder(dividingBy: q)).truncatingRemainder(dividingBy: q)
+    if toGo < 0 { toGo += q }
     return frame + Int((toGo * framesPerBeat).rounded(.up))
   }
 }
@@ -710,6 +734,10 @@ struct LoopVoice {
   var ratio = 1.0
   /// Set once it is told to stop (it goes out at this frame).
   var stopFrame: Int?
+  /// The frame it was told to come in at.
+  var startFrame: Int?
+  /// When its pending start or stop was scheduled (the countdown's full length).
+  var scheduledAt: Int?
 }
 
 extension Deck {

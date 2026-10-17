@@ -450,6 +450,8 @@ extension AppModel {
               c["gain"] = .number($0.gain)
               if let color = $0.color { c["color"] = .string(color) }
               c["canLoadSource"] = .bool($0.canLoadOrigin)
+              // waiting to come in or go out: beats until it switches
+              if let cd = $0.countdown { c["switchIn"] = .number(cd.beatsLeft) }
               if let on = $0.onDeck { c["onDeck"] = .string(on) }
               if let p = engine?.clip($0.id)?.provenance { c["provenance"] = p }
               return .object(c)
@@ -477,6 +479,26 @@ extension AppModel {
             ]))
         ),
         ("tapBars", .int(tapBars)),
+        ("quantize", .int(loopQuantum)),
+        (
+          "scenes",
+          .array(
+            (engine?.scenes ?? []).map { s in
+              .object(
+                JSONObject([
+                  ("name", .string(s.name)),
+                  (
+                    "clips",
+                    .array(
+                      s.clips.map {
+                        .object(
+                          JSONObject([("id", .string($0.clipID)), ("gain", .number($0.gain))]))
+                      })
+                  ),
+                  ("active", .bool(scenes.first { $0.name == s.name }?.active ?? false)),
+                ]))
+            })
+        ),
         (
           "taking",
           .object(

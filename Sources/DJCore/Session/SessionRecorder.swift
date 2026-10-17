@@ -18,6 +18,10 @@ public final class SessionRecorder {
   public static func start(on engine: DJEngine) throws -> SessionRecorder {
     let r = try SessionRecorder(engine)
     engine.recorder = r
+    // not part of a session's starting state: a replay starts at the default, so say so first
+    if engine.loopQuantum != DJEngine.defaultLoopQuantum {
+      r.record(.loopQuantize(beats: engine.loopQuantum))
+    }
     return r
   }
 
@@ -131,6 +135,10 @@ extension DJEngine {
       sampleLibrary[id] = buffer
       recorded = .load(deck: deck, source: .sample(id: id, title: title, grid: nil))
     }
+    // A saved scene is named by what is in it, so a replay doesn't need the scene library.
+    if case .sceneLaunch(let name, nil) = action, let scene = scene(name) {
+      recorded = .sceneLaunch(name: name, clips: scene.clips)
+    }
     if let gridded = applyAction(action, prepared: prepared, buffer: buffer),
       case .load(let deck, .sample(let id, let title, _)) = recorded
     {
@@ -239,6 +247,12 @@ extension DJEngine {
     case .clipForget(let id): forgetRemovedClip(id)
     case .clipRename(let id, let title): renameClip(id, title)
     case .clipColor(let id, let color): setClipColor(id, color)
+    case .loopQuantize(let beats): setLoopQuantum(beats)
+    case .sceneSave(let name): saveScene(name)
+    case .sceneLaunch(let name, let clips):
+      if let clips { launchScene(clips: clips) } else { launchScene(name) }
+    case .sceneRename(let name, let to): renameScene(name, to: to)
+    case .sceneDelete(let name): deleteScene(name)
     }
     return nil
   }

@@ -2,7 +2,8 @@ import Foundation
 
 /// The LOOP-record clips on disk, so the row under the mixer comes back on the next launch:
 /// one float WAV per clip, named by its content id, and an index (`library.json`) that keeps
-/// the row's order and each clip's bars, tempo, source, name and colour.
+/// the row's order and each clip's bars, tempo, source, name and colour, and the saved scenes
+/// (`scenes`, by clip id).
 ///
 /// Nothing is deleted by taking a clip off the row: its WAV moves into `removed/` with its
 /// index entry (`removed/removed.json`, newest first, with the place it had and when), so it
@@ -70,15 +71,28 @@ public struct LoopLibrary: Sendable {
     return doc[key]?.array ?? []
   }
 
-  func write(_ file: URL, schema: String, key: String, _ list: [JSONValue]) throws {
-    let doc = JSONValue.object(JSONObject([("schema", .string(schema)), (key, .array(list))]))
+  func write(
+    _ file: URL, schema: String, key: String, _ list: [JSONValue],
+    extra: [(String, JSONValue)] = []
+  ) throws {
+    let doc = JSONValue.object(
+      JSONObject([("schema", .string(schema)), (key, .array(list))] + extra))
     try Data((doc.canonicalJS + "\n").utf8).write(to: file, options: .atomic)
+  }
+
+  /// The saved scenes, in order (none without an index).
+  public func loadScenes() -> [LoopScene] {
+    entries(indexFile, key: "scenes").compactMap(LoopScene.init(json:))
   }
 
   /// Make the row on disk exactly `clips`, in this order: write the audio of any clip not saved
   /// yet (or move it back out of `removed/`), the index, and move the audio of clips no longer
-  /// on the row into `removed/`, each with its entry, its place and when.
-  public func save(_ clips: [LoopClip], removedAt date: Date = Date()) throws {
+  /// on the row into `removed/`, each with its entry, its place and when. `scenes`: the scenes
+  /// to keep with them (nil keeps the ones already saved).
+  public func save(
+    _ clips: [LoopClip], scenes: [LoopScene]? = nil, removedAt date: Date = Date()
+  ) throws {
+    let scenes = scenes ?? loadScenes()
     let fm = FileManager.default
     try fm.createDirectory(at: dir, withIntermediateDirectories: true)
     let before = entries(indexFile, key: "loops")
@@ -89,7 +103,9 @@ public struct LoopLibrary: Sendable {
         try c.wavData().write(to: audioFile(c.id), options: .atomic)
       }
     }
-    try write(indexFile, schema: Self.schema, key: "loops", clips.map { .object(Self.entry($0)) })
+    try write(
+      indexFile, schema: Self.schema, key: "loops", clips.map { .object(Self.entry($0)) },
+      extra: scenes.isEmpty ? [] : [("scenes", .array(scenes.map(\.json)))])
     // what left the row goes to removed/, newest first
     let keep = Set(clips.map(\.id))
     let stamp = LoopProvenance.iso.string(from: date)
