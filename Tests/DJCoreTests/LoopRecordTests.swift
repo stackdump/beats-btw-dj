@@ -374,6 +374,66 @@ struct LoopRecordTests {
     #expect(rig.dj.loopingClips == [two.id])
   }
 
+  @Test func mpkBankBPadsAreLoopsOneToEight() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    let s = SurfaceController(profile: .mpkMiniMK2, engine: rig.dj)
+    rig.dj.stopAllLoops()
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopingClips.isEmpty)
+    // NOTE mode, bank B, channel 10: pad 1 (note 44) = loop 1, pad 2 (45) = loop 2
+    s.handle(bytes: [0x99, 0x2C, 0x7F])
+    s.handle(bytes: [0x89, 0x2C, 0x00])
+    #expect(rig.dj.loopState(one.id) == .starting && rig.dj.loopState(two.id) == .off)
+    s.handle(bytes: [0x99, 0x2D, 0x7F])
+    #expect(rig.dj.loopState(two.id) == .starting)
+    // pad 8 (note 51) is loop 8: no loop there, nothing happens
+    s.handle(bytes: [0x99, 0x33, 0x7F])
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(Set(rig.dj.loopingClips) == [one.id, two.id])
+    // bank A keeps its stingers
+    #expect(s.binding(for: try #require(s.decode([0x99, 0x24, 0x7F])))?.action == .stinger)
+    let map = SurfaceProfile.mpkMiniMK2.deviceMap()
+    #expect(map.first { $0.group == "padNotes" && $0.index == 8 }?.action == "loop 1 in/out")
+    #expect(map.first { $0.group == "padNotes" && $0.index == 15 }?.action == "loop 8 in/out")
+  }
+
+  @Test func apcShiftTurnsTheGridIntoTheLoopPage() async throws {
+    let rig = try Rig(decks: ["A", "B"])
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    let s = SurfaceController(profile: .apcMiniMK2, engine: rig.dj)
+    rig.dj.stopAllLoops()
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopingClips.isEmpty)
+    // the top-left pad (56) is deck A's half-time macro: orange, dim
+    #expect(s.ledFrame().contains([0x92, 56, 9]))
+    s.handle(bytes: [0x90, 0x7A, 0x7F])  // SHIFT down
+    // the loop page: loops are dark until they play (loop 1 is there but off)
+    #expect(s.ledFrame().contains([0x92, 56, 0]))
+    s.handle(bytes: [0x90, 56, 0x7F])  // SHIFT + top-left = loop 1
+    s.handle(bytes: [0x80, 56, 0x00])
+    #expect(rig.dj.loopState(one.id) == .starting && rig.dj.loopState(two.id) == .off)
+    #expect(s.ledFrame().contains([0x9E, 56, 48]), "violet, blinking on its way in")
+    #expect(s.lights()["pads"]?[56] == PadLight(colorIndex: 48, level: .blink))
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(rig.dj.loopState(one.id) == .on)
+    #expect(s.ledFrame().contains([0x96, 56, 48]), "violet, full while it plays")
+    // the pad right of it is loop 2
+    s.handle(bytes: [0x90, 57, 0x7F])
+    #expect(rig.dj.loopState(two.id) == .starting)
+    // SHIFT up: the grid's own colours come back, and the loops keep playing
+    s.handle(bytes: [0x80, 0x7A, 0x00])
+    let back = s.ledFrame()
+    #expect(back.contains([0x92, 56, 9]) && back.contains([0x92, 57, 9]))
+    #expect(s.lights()["pads"]?[56] == PadLight(colorIndex: 9, level: .dim))
+    try rig.run(to: rig.dj.frame + bar + 4096)
+    #expect(Set(rig.dj.loopingClips) == [one.id, two.id])
+    // without SHIFT the pad is its macro again, not the loop
+    #expect(s.binding(for: try #require(s.decode([0x90, 56, 0x7F])))?.action == .macro)
+  }
+
   @Test func aNewSampleForgetsTheOldLoopRegion() throws {
     // a deck that looped something (a clip moved onto it loops its whole length) and then
     // loads a longer sample plays that sample to its end

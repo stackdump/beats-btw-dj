@@ -79,7 +79,7 @@
    "channel": 9,
    "first": 36,
    "count": 16,
-   "comment": "[UNVERIFIED] pads in NOTE mode, bank A 36-43 / bank B 44-51 on MIDI channel 10"
+   "comment": "[UNVERIFIED] pads in NOTE mode, bank A 36-43 / bank B 44-51 on MIDI channel 10. Bank B = loops 1-8 under the mixer (pad n = loop n: pads 1-4 the bottom row, 5-8 the top)"
   }
  ],
  "layout": [
@@ -253,8 +253,51 @@
   },
   {
    "group": "padNotes",
-   "action": "unbound",
-   "reason": "bank B (notes 44-51) and pads 9-16 unused — [UNVERIFIED] numbering"
+   "index": 8,
+   "action": "clipToggle",
+   "slot": 0
+  },
+  {
+   "group": "padNotes",
+   "index": 9,
+   "action": "clipToggle",
+   "slot": 1
+  },
+  {
+   "group": "padNotes",
+   "index": 10,
+   "action": "clipToggle",
+   "slot": 2
+  },
+  {
+   "group": "padNotes",
+   "index": 11,
+   "action": "clipToggle",
+   "slot": 3
+  },
+  {
+   "group": "padNotes",
+   "index": 12,
+   "action": "clipToggle",
+   "slot": 4
+  },
+  {
+   "group": "padNotes",
+   "index": 13,
+   "action": "clipToggle",
+   "slot": 5
+  },
+  {
+   "group": "padNotes",
+   "index": 14,
+   "action": "clipToggle",
+   "slot": 6
+  },
+  {
+   "group": "padNotes",
+   "index": 15,
+   "action": "clipToggle",
+   "slot": 7
   }
  ]
 }

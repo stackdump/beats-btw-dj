@@ -88,7 +88,7 @@ struct SurfaceProfileTests {
         }
         let deckless: Set<DJActionKind> = [
           .crossfader, .master, .shift, .unbound, .keys, .nudge, .seedStep, .headphoneMix,
-          .headphoneLevel,
+          .headphoneLevel, .clipToggle,
         ]
         if !deckless.contains(b.action) { #expect(b.deck != nil, "\(p.name): \(b)") }
       }
