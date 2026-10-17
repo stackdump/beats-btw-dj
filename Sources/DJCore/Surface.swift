@@ -249,3 +249,22 @@ func profileURL(_ id: String) throws -> URL {
   }
   return url
 }
+
+extension SurfaceProfile.Binding {
+  /// The action this binding fires, as the lock list names it: "<deck>.<action>[.<param>]"
+  /// ("A.panic", "B.hotcue.2", "A.macro.drop", "-.crossfader"). The same key names the
+  /// on-screen button for that action, so locking either locks both.
+  public var lockKey: String {
+    // SYNC's slot is a variant (beat / bar) of the one button, not another button
+    DJActionKind.lockKey(
+      deck: deck, action, param: macro ?? role ?? (action == .sync ? nil : slot.map { String($0) }))
+  }
+}
+
+extension DJActionKind {
+  public static func lockKey(deck: String?, _ action: DJActionKind, param: String? = nil)
+    -> String
+  {
+    "\(deck ?? "-").\(action.rawValue)" + (param.map { ".\($0)" } ?? "")
+  }
+}

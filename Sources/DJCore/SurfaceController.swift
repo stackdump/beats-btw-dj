@@ -92,6 +92,8 @@ public final class SurfaceController {
   {
     let result = outcome(for: e)
     guard case .bound(let b) = result else { return result }
+    // locked by the user (right-click ▸ Disable on its button): the press does nothing
+    if dj.lockedActions.contains(b.lockKey) { return result }
     let deck = b.deck.flatMap { dj[$0] }
     let press = e.pressed && (!e.isCC || e.value > 0.5)
     if let param = Self.parameter(b),

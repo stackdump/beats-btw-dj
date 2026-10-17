@@ -96,6 +96,7 @@ extension Deck {
     p.reverbWet = reverb.wet
     p.reverbSize = reverb.size
     p.reverbTone = reverb.tone
+    p.disabledRoles = disabledRoles.sorted()
     return p
   }
 
@@ -112,6 +113,7 @@ extension Deck {
     reverb.wet = p.reverbWet
     reverb.size = p.reverbSize
     reverb.tone = p.reverbTone
+    for r in p.disabledRoles { setRoleDisabled(r, true) }
   }
 }
 
@@ -212,7 +214,9 @@ extension DJEngine {
     case .nextTrack(let n): deck(n)?.skipToNextTrack()
     case .autoAdvance(let n, let on): deck(n)?.autoAdvance = on
     case .section(let n, let i): deck(n)?.launchSection(i)
-    case .role(let n, let role, let on): deck(n)?.setRole(role, on: on)
+    case .role(let n, let role, let on):
+      if let d = deck(n), !d.disabledRoles.contains(role) { d.setRole(role, on: on) }
+    case .roleDisable(let n, let role, let on): deck(n)?.setRoleDisabled(role, on)
     case .macro(let n, let id): deck(n)?.fireMacro(id: id)
     case .panic(let n): deck(n)?.panic()
     case .stinger(let n, let k): deck(n)?.stinger(k)

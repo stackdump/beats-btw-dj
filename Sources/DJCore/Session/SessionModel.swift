@@ -79,6 +79,8 @@ public struct DeckParams: Equatable, Sendable {
   public var reverbWet = 0.0
   public var reverbSize = 0.5
   public var reverbTone = 0.5
+  /// Roles disabled on the deck (`Deck.disabledRoles`), sorted.
+  public var disabledRoles: [String] = []
   public init() {}
 }
 
@@ -101,6 +103,8 @@ public enum DeckAction: Equatable, Sendable {
   case autoAdvance(deck: String, on: Bool)
   case section(deck: String, index: Int)
   case role(deck: String, role: String, on: Bool)
+  /// Disable a role on a deck — through new tracks too — or enable it (`Deck.setRoleDisabled`).
+  case roleDisable(deck: String, role: String, on: Bool)
   case macro(deck: String, id: String)
   case panic(deck: String)
   case stinger(deck: String, n: Int)
@@ -272,6 +276,7 @@ extension DeckParams {
       ("autoAdvance", .bool(autoAdvance)),
     ])
     // only when touched, so sets from before the reverb keep their canonical text and CID
+    if !disabledRoles.isEmpty { o["disabledRoles"] = .array(disabledRoles.map { .string($0) }) }
     if reverbWet != 0 || reverbSize != 0.5 || reverbTone != 0.5 {
       o["reverbWet"] = .number(reverbWet)
       o["reverbSize"] = .number(reverbSize)
@@ -294,6 +299,7 @@ extension DeckParams {
     reverbWet = v["reverbWet"]?.double ?? reverbWet
     reverbSize = v["reverbSize"]?.double ?? reverbSize
     reverbTone = v["reverbTone"]?.double ?? reverbTone
+    disabledRoles = v["disabledRoles"]?.array?.compactMap(\.string) ?? []
   }
 }
 
@@ -320,6 +326,8 @@ extension DeckAction {
     case .section(let deck, let i): return o("section", [d(deck), ("index", .int(i))])
     case .role(let deck, let role, let on):
       return o("role", [d(deck), ("role", .string(role)), ("on", .bool(on))])
+    case .roleDisable(let deck, let role, let on):
+      return o("roleDisable", [d(deck), ("role", .string(role)), ("on", .bool(on))])
     case .macro(let deck, let id): return o("macro", [d(deck), ("macro", .string(id))])
     case .panic(let deck): return o("panic", [d(deck)])
     case .stinger(let deck, let n): return o("stinger", [d(deck), ("n", .int(n))])
@@ -369,6 +377,8 @@ extension DeckAction {
     case "autoAdvance": self = .autoAdvance(deck: deck, on: v["on"]?.bool ?? false)
     case "section": self = .section(deck: deck, index: v["index"]?.int ?? 0)
     case "role": self = .role(deck: deck, role: v["role"]?.string ?? "", on: v["on"]?.bool ?? true)
+    case "roleDisable":
+      self = .roleDisable(deck: deck, role: v["role"]?.string ?? "", on: v["on"]?.bool ?? true)
     case "macro": self = .macro(deck: deck, id: v["macro"]?.string ?? "")
     case "panic": self = .panic(deck: deck)
     case "stinger": self = .stinger(deck: deck, n: v["n"]?.int ?? 0)

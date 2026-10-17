@@ -129,7 +129,8 @@ public struct MCPBridge {
       reverbTone, value} (0…1, 0.5 = centre for filter/gain/eq; pitch is -1…1 = ±8%, 0 = none; \
       reverb: wet 0 = off, size 0…1 = 0.25…8 s decay, tone 0 dark … 1 bright) · crossfader {value 0…1, \
       0 = A} · master {value} · nextTrack {deck} · autoAdvance {deck, on} · \
-      section {deck, index} · role {deck, role, on} · macro {deck, macro: id from \
+      section {deck, index} · role {deck, role, on} · roleDisable {deck, role, on}: on = the \
+      role stays off through new tracks too, until disabled again with on false · macro {deck, macro: id from \
       dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \

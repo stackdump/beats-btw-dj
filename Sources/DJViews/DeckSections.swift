@@ -535,6 +535,7 @@ struct MasterFxPanel: View {
               ChoiceButton(label: m.label, selected: running.contains(m), tint: tint) {
                 model.fire(name, m)
               }
+              .lockable(DJActionKind.lockKey(deck: name, .macro, param: m.id), model)
             }
           }
         }

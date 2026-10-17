@@ -50,6 +50,8 @@ struct DeckState: Equatable {
   var masterRunning: Set<MasterMacro> = []
   /// The LOOP-record clip the deck is playing, if it is playing one.
   var clipID: String?
+  /// Roles disabled on the deck (they stay off through new tracks).
+  var disabledRoles: Set<String> = []
   var reverb = ReverbState()
 }
 
@@ -119,6 +121,12 @@ public final class AppModel {
   var favorites: [Favorite] = []
   /// The tag the Favorites panels show (nil: all).
   var favoriteTag: String?
+  /// Buttons the user locked (right-click ▸ Disable), by `DJActionKind.lockKey`; mirrored to
+  /// the engine so the controllers' buttons for the same actions are locked too. Saved in the
+  /// app's defaults (`lockedButtons`).
+  var lockedButtons: Set<String> = []
+  static let lockedButtonsKey = "lockedButtons"
+  static func disabledRolesKey(_ deck: String) -> String { "disabledRoles.\(deck)" }
   @ObservationIgnored let favoritesStore: FavoritesStore
   /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
   var stockLoops: [StockLoop] = []
@@ -187,6 +195,7 @@ public final class AppModel {
       stageModel = scopeHub.map { StageModel(hub: $0) }
       injectedRouter = ControllerRouter(engine: injected)
       status = "\(Int(injected.sampleRate)) Hz"
+      restoreLocks(injected)
       restoreLoops(injected)
       poll()
       return
@@ -195,6 +204,7 @@ public final class AppModel {
     do {
       let dj = try DJEngine()
       for d in dj.decks.values { d.loadDemo() }
+      restoreLocks(dj)
       if takeStore == nil { takeStore = LoopLibrary() }
       restoreLoops(dj)
       dj.master = master
@@ -352,6 +362,7 @@ public final class AppModel {
         state.bar = d.wave.tick / 16 + 1
       }
       state.clipID = d.clipID
+      state.disabledRoles = d.disabledRoles
       state.reverb = ReverbState(d.reverb)
       decks[name] = state
     }
@@ -573,8 +584,10 @@ public final class AppModel {
     guard let dj else { return false }
     let sr = dj.sampleRate
     let bank = dj[deck]?.wave.samplers
+    let filter = dj[deck]?.roleFilter
     let track = await Task.detached(priority: .userInitiated) {
-      PreparedTrack(source: source, sampleRate: sr, opts: .extended(samplers: bank))
+      PreparedTrack(
+        source: source, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter))
     }.value
     guard let track else {
       status = "nothing to play in that source"
@@ -744,8 +757,35 @@ public final class AppModel {
   func setAutoAdvance(_ deck: String, _ on: Bool) { dj?.perform(.autoAdvance(deck: deck, on: on)) }
   func launchSection(_ deck: String, _ i: Int) { dj?.perform(.section(deck: deck, index: i)) }
   func toggleRole(_ deck: String, _ role: String) {
-    guard let d = dj?[deck] else { return }
+    guard let d = dj?[deck], !d.disabledRoles.contains(role) else { return }
     dj?.perform(.role(deck: deck, role: role, on: !d.isRoleOn(role)))
+  }
+
+  /// Disable a role on a deck through every new track (right-click on its button), or enable it.
+  func setRoleDisabled(_ deck: String, _ role: String, _ disabled: Bool) {
+    dj?.perform(.roleDisable(deck: deck, role: role, on: disabled))
+    defaults.set(dj?[deck]?.disabledRoles.sorted() ?? [], forKey: Self.disabledRolesKey(deck))
+    poll()
+  }
+
+  func isLocked(_ key: String) -> Bool { lockedButtons.contains(key) }
+
+  /// Lock a button (and the controller buttons bound to the same action), or unlock it.
+  func setLocked(_ key: String, _ locked: Bool) {
+    if locked { lockedButtons.insert(key) } else { lockedButtons.remove(key) }
+    dj?.lockedActions = lockedButtons
+    defaults.set(lockedButtons.sorted(), forKey: Self.lockedButtonsKey)
+  }
+
+  /// Bring back the locks and disabled roles of the last run.
+  private func restoreLocks(_ dj: DJEngine) {
+    lockedButtons = Set(defaults.stringArray(forKey: Self.lockedButtonsKey) ?? [])
+    dj.lockedActions = lockedButtons
+    for (name, d) in dj.decks {
+      for r in defaults.stringArray(forKey: Self.disabledRolesKey(name)) ?? [] {
+        d.setRoleDisabled(r, true)
+      }
+    }
   }
   func fire(_ deck: String, _ macro: NetMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
   func fire(_ deck: String, _ macro: MasterMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
@@ -1342,16 +1382,25 @@ struct DeckView: View {
       .keyboardShortcut(name == "A" ? "a" : "b", modifiers: [])
       .help(state.playing ? "Pause" : "Play")
       .accessibilityLabel(state.playing ? "Pause" : "Play")
+      .lockable(DJActionKind.lockKey(deck: name, .play), model)
       Toggle("Cue", isOn: Binding(get: { state.pfl }, set: { model.setPFL(name, $0) }))
         .toggleStyle(.button).help("Pre-fade listen: this deck in the headphones")
+        .lockable(DJActionKind.lockKey(deck: name, .pfl), model)
       LoopRecordButton(name: name, model: model)
       Spacer(minLength: 0)
       HStack(spacing: DJStyle.xs) {
         ForEach(0..<4, id: \.self) { slot in
+          let key = DJActionKind.lockKey(deck: name, .hotcue, param: "\(slot)")
+          let locked = model.isLocked(key)
           Button("\(slot + 1)") { model.hotCue(name, slot) }
             .tint(state.cues.contains(slot) ? tint : nil)
             .buttonStyle(.borderedProminent).controlSize(.small)
-            .contextMenu { Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) } }
+            .environment(\.isEnabled, !locked).opacity(locked ? 0.4 : 1)
+            .contextMenu {
+              Button("Clear cue \(slot + 1)") { model.clearCue(name, slot) }
+              Button(locked ? "Enable" : "Disable") { model.setLocked(key, !locked) }
+                .environment(\.isEnabled, true)
+            }
             .help(
               state.cues.contains(slot)
                 ? "Jump to cue (right-click to clear)" : "Set cue at playhead")
@@ -1452,32 +1501,54 @@ struct NetPanel: View {
     VStack(alignment: .leading, spacing: 6) {
       FlowRow(spacing: 4) {
         ForEach(state.roles, id: \.self) { r in
+          let off = state.disabledRoles.contains(r)
           Toggle(
-            r,
             isOn: Binding(
               get: { state.rolesOn.contains(r) }, set: { _ in model.toggleRole(name, r) })
-          )
+          ) {
+            Text(off ? "⊘ \(r)" : r).strikethrough(off)
+          }
           .toggleStyle(.button).controlSize(.small).tint(tint)
+          .opacity(off ? 0.45 : 1)
           .macroPulseGlow(state.macroPulse.level(of: r))
+          .contextMenu {
+            if off {
+              Button("Enable \(r)") { model.setRoleDisabled(name, r, false) }
+            } else {
+              Button("Disable \(r) (stays off through new tracks)") {
+                model.setRoleDisabled(name, r, true)
+              }
+            }
+          }
+          .help(
+            off
+              ? "Disabled: off through new tracks (right-click to enable)"
+              : "Mute / unmute (right-click: disable through new tracks)")
         }
       }
       FlowRow(spacing: 4) {
         ForEach(NetMacro.allCases, id: \.rawValue) { m in
           MacroButton(macro: m, running: state.macroPulse.isRunning(m)) { model.fire(name, m) }
+            .lockable(DJActionKind.lockKey(deck: name, .macro, param: m.id), model)
         }
         Button("Panic") { model.panic(name) }.controlSize(.small).tint(.red)
+          .lockable(DJActionKind.lockKey(deck: name, .panic), model)
       }
       HStack(spacing: 4) {
         ForEach(0..<4, id: \.self) { n in
           Button("Hit \(n + 1)") { model.stinger(name, n) }.controlSize(.small)
+            .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         Spacer()
         Button("Sync") { model.sync(name) }.controlSize(.small)
+          .lockable(DJActionKind.lockKey(deck: name, .sync), model)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)
+          .lockable(DJActionKind.lockKey(deck: name, .quantize), model)
         Button(state.nextReady ? "Next ▶︎" : (state.nextComposing ? "…" : "Next")) {
           model.skipToNext(name)
         }
         .controlSize(.small).disabled(!state.nextReady)
+        .lockable(DJActionKind.lockKey(deck: name, .nextTrack), model)
       }
     }
   }
@@ -1549,4 +1620,29 @@ struct FlowRow<Content: View>: View {
   let spacing: CGFloat
   @ViewBuilder let content: Content
   var body: some View { FlowLayout(spacing: spacing) { content } }
+}
+
+/// Right-click ▸ Disable on a button: greyed out and inert, and the controller buttons bound to
+/// the same action (`DJActionKind.lockKey`) ignore presses too, until right-click ▸ Enable.
+private struct Lockable: ViewModifier {
+  let key: String
+  let model: AppModel
+
+  func body(content: Content) -> some View {
+    let locked = model.isLocked(key)
+    content
+      // the button itself, not its menu: Enable has to stay clickable
+      .environment(\.isEnabled, !locked)
+      .opacity(locked ? 0.4 : 1)
+      .contextMenu {
+        Button(locked ? "Enable" : "Disable") { model.setLocked(key, !locked) }
+          .environment(\.isEnabled, true)
+      }
+  }
+}
+
+extension View {
+  func lockable(_ key: String, _ model: AppModel) -> some View {
+    modifier(Lockable(key: key, model: model))
+  }
 }

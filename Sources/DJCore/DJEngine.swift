@@ -34,6 +34,9 @@ public final class DJEngine {
   var loopVoices = [LoopVoice](repeating: LoopVoice(), count: LoopBank.voiceCount)
   var clipGains: [String: Double] = [:]
   var loopCount = 0
+  /// Actions the user locked (right-click ▸ Disable): a controller binding with one of these
+  /// keys does nothing (`SurfaceProfile.Binding.lockKey`; the UI greys its button the same way).
+  public var lockedActions: Set<String> = []
   /// Last writer of each continuous parameter ("A.volume", "crossfader", …):
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]
@@ -225,6 +228,9 @@ public final class Deck: JogClock {
   /// The audio file the sample on the deck was loaded from (set by the app after a file or
   /// stock-loop load; nil for nets, clips and the demo loop): what a favorite of it reloads.
   public var sourceFile: URL?
+  /// Roles the user disabled: left out of every net this deck compiles, kept muted in the one
+  /// playing (`setRoleDisabled`).
+  public internal(set) var disabledRoles: Set<String> = []
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
