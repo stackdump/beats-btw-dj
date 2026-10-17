@@ -147,7 +147,7 @@ extension DJEngine {
     editClip(id) { $0.color = c }
   }
 
-  private func editClip(_ id: String, _ change: (inout LoopClip) -> Void) {
+  func editClip(_ id: String, _ change: (inout LoopClip) -> Void) {
     if let i = clips.firstIndex(where: { $0.id == id }) { change(&clips[i]) }
     if let k = removedClips.firstIndex(where: { $0.clip.id == id }) {
       var c = removedClips[k].clip

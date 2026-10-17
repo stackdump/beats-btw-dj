@@ -15,6 +15,9 @@ enum LoopBankCommand: BitwiseCopyable {
   /// Voice `voice`'s level from deck frame `frame` (a scene's level for a clip already
   /// sounding, changed on the launch boundary), ramped to like `gain`. A plain `gain` cancels it.
   case gainAt(voice: Int, Float, frame: Int)
+  /// The voice's after effects (`LoopFx.swift`): smoothed and crossfaded while it sounds, at
+  /// once while it is silent.
+  case fx(voice: Int, LoopFxParams)
 }
 
 /// The loop channel's source: several clips looping at once, each on its own voice (a
@@ -31,6 +34,10 @@ enum LoopBankCommand: BitwiseCopyable {
 final class LoopBank: @unchecked Sendable {
   static let voiceCount = 16
   let voices: [Turntable]
+  /// Each voice's FX insert (after its playback, before its level × envelope), and the
+  /// channel's safety limiter (only while some voice has FX on: `LoopFx.swift`).
+  let fx: [LoopFxVoice]
+  let limiter: LoopFxLimiter
   /// Frames a level change takes: ~5 ms.
   let rampFrames: Int
   private let commands = SPSCRing<LoopBankCommand>(capacity: 256)
@@ -63,6 +70,8 @@ final class LoopBank: @unchecked Sendable {
 
   init(sampleRate: Double) {
     voices = (0..<Self.voiceCount).map { _ in Turntable(sampleRate: sampleRate) }
+    fx = (0..<Self.voiceCount).map { _ in LoopFxVoice(sampleRate: sampleRate) }
+    limiter = LoopFxLimiter(sampleRate: sampleRate)
     rampFrames = max(1, Int(sampleRate * 0.005))
     let n = Self.voiceCount
     active = Array(repeating: false, count: n)
@@ -110,6 +119,7 @@ final class LoopBank: @unchecked Sendable {
     left.update(repeating: 0, count: n)
     right?.update(repeating: 0, count: n)
     var bits: UInt64 = 0
+    var anyFx = false
     for v in 0..<Self.voiceCount {
       var from = 0
       // a voice that is not sounding takes a level change due in this block at once
@@ -149,7 +159,9 @@ final class LoopBank: @unchecked Sendable {
       } else {
         bits |= 1 << UInt64(v)
       }
+      if fx[v].running { anyFx = true }
     }
+    if anyFx || !limiter.idle { limiter.process(left, right, n) }
     activeBits.store(bits, ordering: .relaxed)
   }
 
@@ -176,6 +188,8 @@ final class LoopBank: @unchecked Sendable {
     case .gainAt(let v, let g, let f):
       pendingGains[v] = g
       gainFrames[v] = f
+    case .fx(let v, let p):
+      fx[v].set(p, sounding: active[v])
     }
   }
 
@@ -238,6 +252,7 @@ final class LoopBank: @unchecked Sendable {
     while i < to && !ended {
       let k = min(Self.chunk, to - i)
       voices[v].render(frames: k, left: scratchL, right: scratchR)
+      fx[v].process(scratchL, scratchR, k)
       for j in 0..<k {
         let g = lv * e
         left[i + j] += scratchL[j] * g

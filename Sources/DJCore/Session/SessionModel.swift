@@ -194,6 +194,10 @@ public enum DeckAction: Equatable, Sendable {
   /// version: `minecraft@32`) or, nil, none (`Deck.setPalette`): every role's category from the
   /// palette, picked instruments and kits keeping theirs; the same song, at the next bar.
   case setPalette(deck: String, palette: String?)
+  /// A clip's after effects under the mixer (drive, distortion, tone, mix, trim, auto-level),
+  /// the whole value at once; `LoopFX()` is off (`DJEngine.setClipFx`). Non-destructive: the
+  /// clip's audio stays dry.
+  case clipFx(id: String, fx: LoopFX)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -464,6 +468,7 @@ extension DeckAction {
       return o("setKit", [d(deck), ("kit", kit.map { .string($0) } ?? .null)])
     case .setPalette(let deck, let palette):
       return o("setPalette", [d(deck), ("palette", palette.map { .string($0) } ?? .null)])
+    case .clipFx(let id, let fx): return o("clipFx", [("id", .string(id)), ("fx", fx.json)])
     }
   }
 
@@ -554,6 +559,9 @@ extension DeckAction {
       self = .wanderLock(deck: deck, dimension: dim, on: v["on"]?.bool ?? true)
     case "setKit": self = .setKit(deck: deck, kit: v["kit"]?.string)
     case "setPalette": self = .setPalette(deck: deck, palette: v["palette"]?.string)
+    case "clipFx":
+      guard let id = v["id"]?.string else { return nil }
+      self = .clipFx(id: id, fx: LoopFX(json: v["fx"]))
     default: return nil
     }
   }

@@ -368,6 +368,28 @@ its copy; the two are now independent. Rules inherited from that split:
   their instrument ("laser · short zap"); a chip is the same `voiceTweak` (picking the
   instrument first if needed), so sessions replay without the library.
 
+## Loop FX (after effects per clip)
+
+- `LoopFX` (`Audio/LoopFx.swift`) is a value on each clip (`LoopClip.fx`), set by one poke,
+  `DeckAction.clipFx(id:fx:)` (the whole value, so a replay needs nothing else). **Non-destructive**:
+  the clip's audio, id, WAV, crops and sequences stay dry; the loop-bank voice plays it through an
+  insert after the turntable, before level × fade: drive 0…+24 dB → shaper (clean | soft tanh |
+  hard | tube = Tone.Distortion's curve biased | fold | crush = the master chain's quantiser +
+  sample-and-hold, clipped at full scale first) with amount 0…1 → tone (TPT 2-pole lowpass, 1 =
+  open) → auto-level (1 / drive + slow RMS followers, on by default) → mix → trim −24…+12 dB.
+  The waveshapers run 2× oversampled (47-tap halfband, 23 samples late, the dry side delayed to
+  match). Then a safety limiter on the loop channel (−0.5 dBFS, instant attack, 120 ms release).
+- **Off is exact**: an inactive `LoopFX` (`isActive`: bypassed, or nothing set) never enters the
+  chain, and the limiter only runs while some voice has FX on (or its gain is still releasing), so
+  a row without FX renders the bank's old bytes (`noFxIsBitIdenticalToNoChain`). Params cross as
+  `LoopBankCommand.fx` (the clip-gain path), one-pole smoothed; on/off, mode and hold changes
+  crossfade through dry over 10 ms. Measured allocation-free (`LoopFxRealTimeTests`).
+- Persistence: library.json entries (`fx`, only when set), removed/, the journal checkpoint's
+  clips (the run's FX win over the library's on restore). A crop keeps its clip's FX; a new
+  sequence starts off (its steps' audio is dry), an edited one keeps its own; a clip on deck A/B
+  plays dry; scenes don't recall FX. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
+  Crunch, Fuzz, Crush, Loud), Settings… ▸ FX, the tile's FX popover; an FX badge when active.
+
 ## Control socket and MCP
 
 - The running app listens on `~/Library/Application Support/DJApp/control.sock` (0600;

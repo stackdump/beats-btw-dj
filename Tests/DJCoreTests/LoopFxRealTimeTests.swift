@@ -1,0 +1,58 @@
+import Testing
+
+@testable import DJCore
+
+// The audio-thread contract for per-loop FX: changing the FX of loops that are playing (mode
+// swaps through dry, smoothed drive / tone / mix, on and off, the limiter engaging and letting
+// go) allocates and frees nothing on the render thread. Release builds only
+// (`make swift-rt-test`).
+//
+// NAME COUPLING: the Makefile's real-time run selects suites by 'RealTime': keep it in the name.
+
+#if DEBUG
+  private let optimized = false
+#else
+  private let optimized = true
+#endif
+
+struct LoopFxRealTimeTests {
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  @MainActor
+  func changingFxOnPlayingLoopsDoesNotAllocate() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let clips = (0..<4).map { fxTestClip($0, amplitude: 0.3) }
+    dj.restoreClips(clips)
+    try dj.start()
+    defer { dj.stop() }
+    for c in clips { dj.startLoop(c.id, atOnce: true) }
+    let buffer = makeEngineRenderBuffer(dj, frames: 4096)
+    pullEngine(dj, buffer, cycles: 200, frames: 512)  // in, and warm
+    #expect(clips.allSatisfy { dj.loopState($0.id) == .on })
+    let settings: [LoopFX] =
+      LoopFX.presets.map(\.fx) + [
+        LoopFX(drive: 24, autoLevel: false),  // the limiter holds the channel
+        LoopFX(drive: 24, mode: .fold, amount: 1, tone: 0.1),
+        LoopFX(mode: .crush, amount: 1, bits: 3, downsample: 16),
+        LoopFX(drive: 12, mode: .tube, amount: 0.9, mix: 0.5, trim: -6),
+        LoopFX(bypass: true, drive: 24, mode: .hard),
+        LoopFX(),
+      ]
+    var allocs = 0
+    var frees = 0
+    for round in 0..<3 {
+      for (k, fx) in settings.enumerated() {
+        // the pokes are the main thread's; only the renders are measured
+        for (i, c) in clips.enumerated() where (i + k + round) % 2 == 0 || k == settings.count - 1 {
+          dj.perform(.clipFx(id: c.id, fx: fx))
+        }
+        let r = countAllocations { pullEngine(dj, buffer, cycles: 12, frames: 512) }
+        allocs += r.allocations
+        frees += r.frees
+        dj.serviceLoopTakes()
+      }
+    }
+    #expect(allocs == 0, "the render path allocated \(allocs) times")
+    #expect(frees == 0, "and freed \(frees) times")
+    #expect(clips.allSatisfy { dj.clipFx($0.id) == LoopFX() })
+  }
+}

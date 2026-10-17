@@ -580,8 +580,8 @@ final class MasterChain {
       for ch in 0..<channels {
         let buf = ch == 0 ? l : r!
         let x = Double(buf[k])
-        // the worklet's output is a Float32Array
-        let crushed = Double(Float(step * (x / step + 0.5).rounded(.down)))
+        // the worklet's output is a Float32Array (shared with the loops' crush: `LoopFx.swift`)
+        let crushed = crushQuantize(x, step: step)
         buf[k] = Float(x * gd + crushed * gw)
       }
     }

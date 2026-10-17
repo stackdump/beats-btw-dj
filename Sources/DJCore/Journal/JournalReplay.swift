@@ -195,7 +195,7 @@ extension DeckAction {
     switch self {
     case .clip(_, let id), .clipLoop(let id, _), .clipGain(let id, _), .clipCrop(let id, _, _),
       .clipRemove(let id), .clipRename(let id, _), .clipColor(let id, _), .clipMute(let id, _),
-      .clipSolo(let id, _), .clipKeyLock(let id, _):
+      .clipSolo(let id, _), .clipKeyLock(let id, _), .clipFx(let id, _):
       return [id]
     case .clipMove(let id, let before): return [id] + (before.map { [$0] } ?? [])
     case .clipSequence(let steps, let replacing):

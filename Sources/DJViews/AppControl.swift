@@ -499,6 +499,7 @@ extension AppModel {
               c["soloed"] = .bool($0.soloed)
               c["keyLock"] = .bool($0.keyLock)
               c["stretched"] = .bool($0.stretched)
+              if $0.fx != LoopFX() { c["fx"] = $0.fx.json }
               if let on = $0.onDeck { c["onDeck"] = .string(on) }
               if let p = engine?.clip($0.id)?.provenance { c["provenance"] = p }
               return .object(c)
