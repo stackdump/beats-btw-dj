@@ -21,6 +21,8 @@ public struct MCPBridge {
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
+    "dj_notes": "notes", "dj_journal": "journal",
+    "dj_view": "view",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -136,6 +138,14 @@ public struct MCPBridge {
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       queueNext {deck, share: {genre, seed, structure?}} · \
+      wander {deck, on}: the deck walks by itself, one move per phrase (a mute, a macro, a \
+      stinger, the next seed, another instrument, structure or genre, swapped in at the next \
+      bar), drawn from its configuration so a recording replays the same walk; \
+      dj_state.decks.X.wander shows on, pace, nextMoveInBars, paused (the browser wheel steers \
+      and pauses it for a phrase), locks and the log of moves · wanderPace {deck, bars: \
+      4|8|16|32} · wanderLock {deck, dimension: genre|tempo|key|structure|instruments|\
+      arrangement|fx|keep:<role>, on}: what the walk must not change (tempo: within 6 % of now; \
+      keep:bass keeps the bass's instrument and never mutes it) · \
       loopRecord {deck, on, bars?}: LOOP record, held (on true) then let go (on false): the \
       deck's bars from the downbeat before the press to the one after the release become a \
       clip, looping under the mixer (dj_state.loops); with bars (1-64) on the press, a release \
@@ -170,8 +180,10 @@ public struct MCPBridge {
       resets to the instrument's voice. Session-only: it lasts for the song on that deck (its \
       section jumps and other instrument picks), not a new track, a favorite or a relaunch; \
       dj_state.voices[].tweak shows it · voiceSynth {deck, channel, on}: a sampled channel \
-      (dj_state.voices[].sampled) plays its synth voice (on) or its sample. Deck "L" also takes \
-      param volume / mute (1 = muted).
+      (dj_state.voices[].sampled) plays its synth voice (on) or its sample · clipMove {id, \
+      before: id or null}: move a clip on the row to just before another (null: the end) · \
+      lock {key, on}: lock an action like right-click ▸ Disable (key e.g. "A.play"; locked \
+      controller bindings do nothing). Deck "L" also takes param volume / mute (1 = muted).
       Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,
@@ -330,11 +342,55 @@ public struct MCPBridge {
           "string", "Where to save the PNG (default: ~/Library/Application Support/DJApp/shots/)")
       ]),
     tool(
+      "dj_view",
+      "Show or hide the main window's panels: the Soundboard (every loop as a big pad), "
+        + "Controllers, Map, Scopes and the on-screen APC pads. Leave a panel out to keep it as "
+        + "it is; returns what shows now.",
+      [
+        "soundboard": prop("boolean", "The Soundboard: one pad per loop, scenes on top"),
+        "controllers": prop("boolean", "Every controller drawn with its bindings"),
+        "map": prop("boolean", "The device map"),
+        "scopes": prop("boolean", "The scope panel"),
+        "pads": prop("boolean", "The on-screen APC mini grid"),
+      ]),
+    tool(
       "dj_record",
       "Start (on: true) or stop (on: false) recording a session. Stopping saves it locally and "
         + "returns its CID. Publishing stays a button in the app: it is public.",
       ["on": prop("boolean", "true to start, false to stop and save")],
       required: ["on"]),
+    tool(
+      "dj_notes",
+      """
+      Notes on tracks. A note is text on what a deck plays — a net track by its share CID (the \
+      same genre, seed and settings is the same track, so its notes come back whenever it plays \
+      again), a sample by its content id, a loop clip by id — at the bar it was on. action list \
+      (default): every note, or {deck} the notes on what that deck plays now, or {target} those \
+      on a target key ("track:<cid>", "sample:<id>", "clip:<id>"); add {deck, text}: a note at \
+      the deck's current bar, or {clip, text} on a loop clip; edit {id, text}; delete {id}. \
+      Notes are journal events (dj_journal), so the History panel and `djctl journal show` list \
+      them.
+      """,
+      [
+        "action": prop("string", "list | add | edit | delete"),
+        "deck": prop("string", "A or B"),
+        "clip": prop("string", "A loop clip's id (dj_state.loops.clips[].id)"),
+        "target": prop("string", "A target key, e.g. track:z4EBG…"),
+        "text": prop("string", "The note"),
+        "id": prop("string", "A note's id, from list"),
+      ]),
+    tool(
+      "dj_journal",
+      """
+      The app's journal: the always-on log of every state change this run (deck actions, \
+      controller MIDI, favorites, crates, variations, locks, notes), the record a run is \
+      rebuilt from (`djctl journal replay`). Returns the file and its latest entries (seq, \
+      time, engine frame, kind, a summary, and the event as JSON), newest last.
+      """,
+      [
+        "limit": prop("integer", "How many entries (default 50, at most 400)"),
+        "kind": prop("string", "Only entries of this kind, e.g. act, midi, note.add (prefix: note.)"),
+      ]),
   ]
 
   static func tool(

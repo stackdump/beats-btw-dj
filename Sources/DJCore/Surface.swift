@@ -38,13 +38,15 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case rewind  // press: back to the start
   case keys  // note-on/off: play the live voice, scale-locked (focus deck)
   case nudge  // continuous, centred: momentary tempo nudge (focus deck)
-  case seedStep  // relative: the playing loop's seed +/- each click, recomposed (focus deck)
+  case seedStep  // relative: the playing net's seed +/- each click, recomposed; grabs wander
   // The aimed deck: a binding with deck "*" acts on `DJEngine.focus` (the APC as an FX surface)
   case masterFx  // continuous: master-chain FX slider `macro` (lp-freq, hp-freq, crush-bits…)
   case reverbWet, reverbSize  // continuous, per deck: the channel's reverb
   case focusDeck  // press: aim the deck-less ("*") bindings at deck A (`slot` 0) or B (1)
   case regenerate  // press: the deck's next version (new seed, same song settings), at the bar
   case autoNext  // press: toggle the deck's auto-next
+  case wander  // press: wander on/off (focus deck)
+  case wanderPace  // relative: wander's pace 4 → 8 → 16 → 32 bars and back (focus deck)
   case unbound  // parked on purpose; see `reason`
 }
 

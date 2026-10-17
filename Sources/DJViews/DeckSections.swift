@@ -29,8 +29,8 @@ struct DeckSections: View {
   }
 
   enum Section: String, CaseIterable {
-    case perform, masterfx, reverb, track, favorites, generate, load
-    var netOnly: Bool { [.perform, .masterfx, .track].contains(self) }
+    case perform, wander, masterfx, reverb, track, favorites, generate, load, notes, history
+    var netOnly: Bool { [.perform, .wander, .masterfx, .track].contains(self) }
   }
 
   private var open: Set<String> { Set(openList.split(separator: ",").map(String.init)) }
@@ -47,12 +47,18 @@ struct DeckSections: View {
   private func label(_ s: Section) -> String {
     switch s {
     case .perform: return "Perform"
+    case .wander:
+      return !state.wander.on ? "Wander" : (state.wander.paused ? "Wander ⏸" : "Wander ●")
     case .masterfx: return state.masterRunning.isEmpty ? "Master FX" : "Master FX ●"
     case .reverb: return state.reverb.isOn ? "Reverb ●" : "Reverb"
     case .track: return "Instruments"
     case .favorites: return model.favorites.isEmpty ? "★ Favorites" : "★ \(model.favorites.count)"
     case .generate: return "Generate"
     case .load: return "Load"
+    case .notes:
+      let n = model.deckNotes(name).count
+      return n == 0 ? "✎ Notes" : "✎ \(n)"
+    case .history: return "History"
     }
   }
 
@@ -79,6 +85,7 @@ struct DeckSections: View {
   @ViewBuilder private func panel(_ s: Section) -> some View {
     switch s {
     case .perform: NetPanel(name: name, state: state, model: model, tint: tint)
+    case .wander: WanderPanel(name: name, state: state, model: model, tint: tint)
     case .masterfx:
       MasterFxPanel(name: name, running: state.masterRunning, model: model, tint: tint)
     case .reverb: ReverbPanel(name: name, reverb: state.reverb, model: model, tint: tint)
@@ -86,6 +93,8 @@ struct DeckSections: View {
     case .favorites: FavoritesPanel(name: name, model: model, current: state.sourceCID)
     case .generate: GeneratePanel(name: name, model: model, tint: tint)
     case .load: LoadPanel(name: name, model: model, tint: tint, importFile: importFile)
+    case .notes: NotesPanel(name: name, model: model, tint: tint)
+    case .history: HistoryPanel(model: model)
     }
   }
 }
@@ -482,6 +491,17 @@ struct FavoriteChip: View {
   let model: AppModel
   let isCurrent: Bool
   @State private var tagging = false
+  private var notes: [TrackNote] { model.favoriteNotes(favorite) }
+
+  private var helpText: String {
+    let kind = favorite.isSample ? "Sample: \(favorite.file ?? "")" : "Net track"
+    var text = kind + " — load onto deck \(deck) (right-click: tags, remove)"
+    for n in notes {
+      let at = n.position.map { "\($0.label): " } ?? ""
+      text += "\n✎ " + at + n.text
+    }
+    return text
+  }
 
   var body: some View {
     Button {
@@ -494,6 +514,8 @@ struct FavoriteChip: View {
         ForEach(favorite.tags, id: \.self) { t in
           Text("#\(t)").font(.caption2).foregroundStyle(.secondary)
         }
+        // its notes travel with it (the same track, by CID)
+        if !notes.isEmpty { Text("✎\(notes.count)").font(.caption2).foregroundStyle(.yellow) }
       }
     }
     .controlSize(.small)
@@ -507,9 +529,7 @@ struct FavoriteChip: View {
         model.setFavoriteTags(favorite.cid, $0)
       }
     }
-    .help(
-      (favorite.isSample ? "Sample: \(favorite.file ?? "")" : "Net track")
-        + " — load onto deck \(deck) (right-click: tags, remove)")
+    .help(helpText)
   }
 }
 
@@ -713,5 +733,139 @@ struct MasterFxPanel: View {
         }
       }
     }
+  }
+}
+
+/// Wander on the deck's button, lockable like the rest (right-click ▸ Disable also locks the
+/// Inpulse's browser push for this deck).
+struct WanderButton: View {
+  let name: String
+  let on: Bool
+  let model: AppModel
+  let tint: Color
+
+  var body: some View {
+    Toggle("Wander", isOn: Binding(get: { on }, set: { model.setWander(name, $0) }))
+      .toggleStyle(.button).controlSize(.small).tint(tint)
+      .lockable(DJActionKind.lockKey(deck: name, .wander), model)
+      .help(
+        "The deck walks by itself: one move per phrase (a mute, a macro, the next seed, another "
+          + "instrument or genre). Turn the browser wheel to steer: it waits a phrase for you.")
+  }
+}
+
+/// The walk (Wander.swift): on/off, the pace, what it may not change, and the trail of moves
+/// it took, newest first, each with a ★ to keep the track it led to.
+struct WanderPanel: View {
+  let name: String
+  let state: DeckState
+  let model: AppModel
+  let tint: Color
+
+  private var w: WanderState { state.wander }
+
+  /// "next move in 3 bars", "paused — you're steering", or why it stands still.
+  var status: String {
+    guard w.on else { return "off" }
+    if let idle = state.wanderIdle { return idle }
+    let n = state.wanderCountdown ?? w.pace
+    let bars = n == 1 ? "1 bar" : "\(n) bars"
+    return w.paused ? "paused — you're steering (back in \(bars))" : "next move in \(bars)"
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 4) {
+        WanderButton(name: name, on: w.on, model: model, tint: tint)
+        HStack(spacing: 2) {
+          ForEach(WanderState.paces, id: \.self) { p in
+            ChoiceButton(label: "\(p)", selected: w.pace == p, tint: tint) {
+              model.setWanderPace(name, p)
+            }
+          }
+        }
+        .arrowKeys(WanderState.paces, current: w.pace) { model.setWanderPace(name, $0) }
+        .help("Bars per move (SHIFT + browser wheel on the Inpulse)")
+        Text("bars").font(.caption2).foregroundStyle(.secondary)
+        Spacer(minLength: DJStyle.xs)
+        Text(status).font(.caption).monospacedDigit().lineLimit(1)
+          .foregroundStyle(w.on && state.wanderIdle == nil ? (w.paused ? .orange : tint) : .secondary)
+      }
+      FlowRow(spacing: 4) {
+        Text("Lock").font(.caption2).foregroundStyle(.secondary)
+        ForEach(WanderLock.dimensions, id: \.self) { d in
+          ChoiceButton(label: WanderLock.label(d), selected: w.isLocked(d), tint: tint) {
+            model.setWanderLock(name, d, !w.isLocked(d))
+          }
+          .help(Self.help(d))
+        }
+      }
+      if !state.roles.isEmpty {
+        FlowRow(spacing: 4) {
+          Text("Keep").font(.caption2).foregroundStyle(.secondary)
+          ForEach(state.roles, id: \.self) { r in
+            let key = WanderLock.keep(r)
+            ChoiceButton(label: r, selected: w.isLocked(key), tint: tint) {
+              model.setWanderLock(name, key, !w.isLocked(key))
+            }
+            .help("Keep the \(r): its instrument comes with every new seed, and no move mutes it")
+          }
+        }
+      }
+      if w.log.isEmpty {
+        Text(w.on ? "No moves yet: the first comes at the end of the phrase." : "Moves show here.")
+          .font(.caption2).foregroundStyle(.secondary)
+      } else {
+        ScrollView(.vertical) {
+          LazyVStack(alignment: .leading, spacing: 1) {
+            ForEach(w.log.reversed(), id: \.step) { m in
+              WanderMoveRow(move: m, kept: model.isFavoriteSpec(m.spec), tint: tint) {
+                model.keepWanderMove(m)
+              }
+            }
+          }
+        }
+        .frame(height: 96)
+      }
+    }
+  }
+
+  static func help(_ d: String) -> String {
+    switch d {
+    case "genre": return "No genre hops: new seeds stay in this genre"
+    case "tempo": return "Stay within ±6 % of the tempo playing now"
+    case "key": return "Keep the scale and root playing now"
+    case "structure": return "Keep the structure (genre hops stay in its family)"
+    case "instruments": return "No instrument changes: every new seed keeps these instruments"
+    case "arrangement": return "No mutes or STEMS changes"
+    case "fx": return "No macros, FX or stingers"
+    default: return WanderLock.label(d)
+    }
+  }
+}
+
+/// One move of the walk: its number, bar and what it did; ★ keeps the track it led to.
+struct WanderMoveRow: View {
+  let move: WanderMove
+  let kept: Bool
+  let tint: Color
+  let keep: () -> Void
+
+  var body: some View {
+    HStack(spacing: DJStyle.s) {
+      Text("#\(move.step + 1)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+        .frame(width: 30, alignment: .leading)
+      Text("bar \(move.bar)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+        .frame(width: 44, alignment: .leading)
+      Text(move.detail).font(.caption).lineLimit(1).truncationMode(.tail)
+        .foregroundStyle(move.kind.swaps ? tint : .primary)
+      Spacer(minLength: DJStyle.xs)
+      if move.spec != nil {
+        Button(kept ? "★" : "☆", action: keep).buttonStyle(.plain).font(.caption)
+          .foregroundStyle(kept ? Color.yellow : Color.secondary)
+          .help(kept ? "Starred: click to unstar" : "Star the track this move led to")
+      }
+    }
+    .padding(.horizontal, DJStyle.xs).padding(.vertical, 2)
   }
 }

@@ -320,7 +320,8 @@ master-volume slider is not modelled (no ported macro moves it).
 
 **Found on the way (beats / Tone facts, kept):** `vinyl-brake`'s tape-stop step does nothing
 (`runCompound` fires only mute and FX sub-macros), so it is octave-down 60 ms later, for its own
-1 bar, with fxHold's default tail 0.6; Tone's Distortion curve has 1024 points, not 4096; Tone's
+1 bar, with fxHold's default tail 0.6 — the parity path keeps that; the app plays a turntable
+brake instead (`WaveOptions.turntableBrake`, GO-DIVERGENCE.md §5.5); Tone's Distortion curve has 1024 points, not 4096; Tone's
 `rolloff: -48` cascades three biquads (scope-model.js models four — kept there for parity);
 Tone.CrossFade leaks the wet in at −56 dB at wet 0 (GainToAudio's curve); the HP / LP setters'
 cancel-then-ramp jumps a cut ramp back to its start; pitch-down plays grains backwards at

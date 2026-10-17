@@ -31,6 +31,34 @@ under structural rules, rather than editing audio freely.
     randomness at run time.
   - **Provenance:** what a move produced records where it came from (`LoopProvenance`, a
     favorite's descriptor, a session's events), so the walk can be retraced or walked back.
+    The **journal** is the system of record for all of it: every poke and every store change
+    of a run, from a checkpoint, so any run can be rebuilt (`Journal.replay`). A state change
+    that is neither a `DeckAction` nor a `JournalEvent` is a bug.
+- **Wander is the walk made autonomous** (`Wander.swift`, the deck's Wander section): a net deck
+  with wander on takes one move per phrase (pace 4/8/16/32 bars, default 16) on its own bar
+  clock, entering the phrase's last bar: a role mute, STEMS, a net macro over that bar, a master
+  FX macro, a stinger (small, ~62 %), a nearby seed (±1…7), a seed with another instrument on
+  one tonal role, the same seed in another structure, or a neighbouring genre (same family,
+  nearest tempo: `Wander.neighbours`) — weights in `WanderMoveKind.weight`. Swaps land at the
+  next phrase's first bar with the transport still running (`PreparedTrack(startTick:)`,
+  `SwapStart`). The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
+  deck's step counter, so moves are **derived, never recorded**; only the pokes are
+  (`DeckAction.wander` / `.wanderPace` / `.wanderLock`, the controller's MIDI), plus the walk's
+  settings in a session's starting `DeckParams.wander`, so a replay walks the same path
+  (`WanderReplayTests`). Moves never touch disabled roles or locked buttons
+  (`DJEngine.lockedActions`). **Locks** (per deck, remembered in the app's defaults): genre,
+  tempo (genre hops within ±6 % of the tempo at lock time), key (genre hops keep the scale and
+  root; every new spec pins `extra["keyOffset"]` = `TrackSpec.pinnedKeyOffset`, which a pass
+  that moves keys per seed must honour), structure (no structure moves; hops stay in the
+  family), instruments (no instrument moves; every new spec carries the deck's instruments in
+  its `tracks` override), arrangement (no mutes / STEMS), fx (no macros / stingers), and
+  `keep:<role>` (its instrument rides along, never muted or re-picked; its notes still change
+  with the seed until beats has per-part seeds). Everything locked: wander says so and stands
+  still. **Steering**: the browser wheel steps the seed (loops and now songs, swapped at the
+  next bar) and pauses a wandering deck until a whole phrase passes with no turn; SHIFT + wheel
+  sets the pace, the browser push toggles it (both `[MIXXX]`, uncaptured). Sample decks don't
+  wander. The log (newest first, ★ stars the track a move led to) is in the panel and
+  `dj_state.decks.X.wander`.
 - **Coordinates vs moves**: beats' `compose()` is the coordinate system and stays
   byte-identical (Origin and boundary, GO-DIVERGENCE.md). dj's moves and rules live in
   `DJMusicality.apply`, the share overrides, the runner and the engine.
@@ -120,6 +148,13 @@ its copy; the two are now independent. Rules inherited from that split:
 - Same audio-thread rules, measured (`MasterChainRealTimeTests`, `renderDoesNotAllocate`). The
   pitch shifter's Chrome wavetables (`PeriodicWave`) are built once per sample rate by whoever
   creates the chain: never make a `MasterChain` / `WaveDeckSource` on the audio thread.
+- `vinyl-brake` on a project prepared with `WaveOptions.turntableBrake` (`.extended`; off in
+  `WaveOptions()`, which keeps beats' octave-down compound) is a turntable brake
+  (`TurntableBrake.swift`, GO-DIVERGENCE.md §5): varispeed on the runner's output, *before* the
+  chain (the chain is the mixer's insert and keeps real time), r = 1 − t / (¾ D), silent for the
+  last quarter, then `WaveRunner.catchUp` puts the tick clock where an unbraked deck would be
+  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. Master macros are
+  net-only (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake.
 - A neutral chain is bypassed and bit-transparent (decks without FX render the runner's exact
   bytes). `restBypass = false` / `solo` exist only for `MasterChainChromeTests`.
 - Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs
@@ -199,7 +234,7 @@ its copy; the two are now independent. Rules inherited from that split:
   referenced does an instrument fall back to its synth voice. Anything else that calls
   `slot(for:)` (auditions, tests) must `release`. `sampledInstrumentsDoNotAllocate` measures
   an eviction landing mid-render.
-- **Sampled drum kits** (`DrumKits.swift`, `SamplerSource.kit`, GO-DIVERGENCE.md §5.5):
+- **Sampled drum kits** (`DrumKits.swift`, `SamplerSource.kit`, GO-DIVERGENCE.md §5.6):
   drums default to beats' synth kits; a track may pick a kit (`Track.kit`, the `tracks`
   override `kit` on every drum channel, the poke `DeckAction.setKit` → `Deck.setKit`: same
   song, rebuilt from the next bar's tick, swapped at the bar). Kits are every bank-128 preset
@@ -297,8 +332,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - Anything the UI does to a deck goes through `DJEngine.perform` (recorded); on-screen pad
   presses go through `ControllerRouter.press` (recorded as MIDI).
 - No dropdowns on the deck: its controls beyond the core are `DeckSections` — a strip of toggle
-  buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load); which
-  are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s, lit when current.
+  buttons folding panels open (Perform, Master FX, Instruments, Favorites, Generate, Load, Notes,
+  History); which are open is `fold.<deck>` in the app's defaults. Choices are `ChoiceButton`s,
+  lit when current.
 - A wide window (`ViewThatFits`) gives each deck two columns: core beside the mixer, sections on
   the outer side (A left, B right); narrower stacks the sections under the core.
 - Favorites (`FavoritesStore`, `~/Library/Application Support/dj-vevr-se/favorites.json`) keep
@@ -346,6 +382,37 @@ its copy; the two are now independent. Rules inherited from that split:
   changes) and `DJBuildDate` into Info.plist; `BuildInfo.current` reads them ("dev" unbundled).
   It shows in the app's footer, in `dj_state.build`, and as MCP `serverInfo.version`
   (`djctl` itself is unbundled, so that one says "dev").
+
+## The journal and notes (DJCore/Journal)
+
+- One append-only JSONL file per app run, `~/Library/Application Support/dj-vevr-se/journal/
+  journal-<UTC start>.jsonl` (`$DJ_JOURNAL_DIR` overrides; tests pass a directory). Line 0 is a
+  checkpoint (`JournalState`: decks' sources + `DeckParams`, playing, follow, voice settings,
+  mixer, the loop row by clip id with gains/mute/solo/key lock, scenes, removed clips, row
+  settings, locks, and the stores: favorites, crates, variations, notes); then one event per
+  line: `{"v":1,"seq","t" (ISO ms, metadata only — never read back),"f" (engine frame),"k",…}`.
+- It is a second sink beside `SessionRecorder` at the same hooks (`perform`, the router's
+  MIDI, the tempo grid), so UI, controllers, MCP and the socket all land in it; the app adds
+  the store events (`favorite.*`, `crate.*`, `variation.*`, `note.*`, `library.restore`,
+  `sample.file`, `mark`). Encoded and written on the journal's own queue, never the audio
+  thread (`JournalRealTimeTests`); one `write` per line, `fsync` ≤ 1/s; a torn last line is
+  dropped on read. New state that persists or changes what a replay does needs an event.
+- `Journal.replay` stands a fresh offline engine on the checkpoint (clip audio from the loop
+  library by id, samples via `sample.file` paths) and applies the events at their frames with
+  `OfflineConductor`, as `SessionPlayer` does; the stores replay through the stores' own pure
+  edit functions (`FavoritesStore.adding`…). Deterministic offline; a live journal replays as
+  exactly as live timing allows (async composes and sampled round robin can shift a take —
+  then clip events fall back to the library's clip by id). `djctl journal list | show |
+  replay [--to SEQ|--at S] [--render f.wav] | export-session --from --to` (a slice → a normal
+  `Session`, starting at rest: playheads and the row at `from` are not in it).
+- **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
+  CID (same genre + seed + settings = same track, so the note returns whenever that
+  configuration plays again), a sample by content id (+ file, so starred samples carry them),
+  a clip by id. Journal events are their source of truth; `notes.json` is the projection for
+  launch, replaced by the newest journal's if they differ. UI: the deck's ✎ Notes section
+  (one-tap notes at the current bar, a field, the list; right-click edits), History (the
+  journal's latest lines, notes in yellow), ✎ on clip tiles and favorites; `dj_notes`,
+  `dj_journal`.
 
 ## Hardware notes (macOS)
 

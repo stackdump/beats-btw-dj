@@ -64,6 +64,12 @@ struct DeckState: Equatable {
   /// Auto-next: when the song ends, the next version plays (`Deck.autoAdvance`).
   var autoAdvance = false
   var reverb = ReverbState()
+  /// The deck's walk (`Deck.wander`): on, pace, locks, its log.
+  var wander = WanderState()
+  /// Bars to the walk's next move (or, paused, until it resumes); nil while off.
+  var wanderCountdown: Int?
+  /// Why a walk that is on stands still ("every move is locked"), if it does.
+  var wanderIdle: String?
 }
 
 /// A channel's reverb knobs, for SwiftUI.
@@ -136,6 +142,8 @@ public final class AppModel {
   var showMap = false
   /// The Controllers panel: every device drawn with its bindings.
   var showControllers = false
+  /// The Soundboard panel (SoundboardView.swift): every loop as one big pad.
+  var showSoundboard = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
   /// in the app's defaults as `keepScreenAwake`; off until turned on.
   private(set) var keepScreenAwake = false
@@ -174,7 +182,19 @@ public final class AppModel {
   var lockedButtons: Set<String> = []
   static let lockedButtonsKey = "lockedButtons"
   static func disabledRolesKey(_ deck: String) -> String { "disabledRoles.\(deck)" }
+  /// A deck's wander locks and pace, remembered across launches (wander itself starts off).
+  static func wanderLocksKey(_ deck: String) -> String { "wanderLocks.\(deck)" }
+  static func wanderPaceKey(_ deck: String) -> String { "wanderPace.\(deck)" }
   @ObservationIgnored let favoritesStore: FavoritesStore
+  /// The journal (JournalModel.swift): the run's event log, the notes it holds, its latest lines.
+  var notes: [TrackNote] = []
+  var journalEntries: [JournalEntry] = []
+  /// Per deck, the key its track's notes are under (`NoteTarget.key`), refreshed by `poll`.
+  var deckNoteKeys: [String: String] = [:]
+  @ObservationIgnored let notesStore: NotesStore
+  @ObservationIgnored var journal: Journal?
+  @ObservationIgnored let journalDir: URL?
+  @ObservationIgnored var journalSeen = -1
   /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
   var stockLoops: [StockLoop] = []
   var stockLoopsLoading = false
@@ -229,8 +249,12 @@ public final class AppModel {
   public init(
     engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
     loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil,
-    voices: VoiceVariationStore = VoiceVariationStore()
+    voices: VoiceVariationStore = VoiceVariationStore(), notes: NotesStore = NotesStore(),
+    journal: URL? = nil
   ) {
+    notesStore = notes
+    journalDir = journal
+    self.notes = notes.list()
     variationStore = voices
     variations = voices.all()
     injected = engine
@@ -256,6 +280,7 @@ public final class AppModel {
       restoreLocks(injected)
       restoreLoops(injected)
       if injected.tapTakeBars != tapBars { injected.perform(.tapBars(bars: tapBars)) }
+      if let journalDir { openJournal(injected, in: journalDir) }
       poll()
       return
     }
@@ -274,6 +299,7 @@ public final class AppModel {
       }
       loopFollow = dj.loopFollow
       dj.master = master
+      openJournal(dj, in: journalDir ?? Journal.defaultDirectory)
       try dj.start()
       let hub = ControllerHub(engine: dj)
       // warm the stock loop index (a first scan takes seconds) so the Load panel opens ready
@@ -350,6 +376,7 @@ public final class AppModel {
 
   public func stop() {
     dj?.stop()  // silence first: the rest can take a moment
+    closeJournal()
     controlServer?.stop()
     scopeHub?.perf.stop()
     hub?.stop()
@@ -438,11 +465,15 @@ public final class AppModel {
       state.disabledRoles = d.disabledRoles
       state.autoAdvance = d.autoAdvance
       state.reverb = ReverbState(d.reverb)
+      state.wander = d.wander
+      state.wanderCountdown = d.wanderCountdown
+      state.wanderIdle = d.wanderIdleReason(lockedActions: dj.lockedActions)
       decks[name] = state
     }
     let tempo = decksPlayingTempo
     if tempo != playingTempo { playingTempo = tempo }
     pollLoops(dj)
+    pollJournal(dj)
   }
 
   /// A clip's provenance as lines and JSON, worked out once per clip (it never changes).
@@ -581,7 +612,7 @@ public final class AppModel {
   }
   /// Drag a tile onto another: it goes just before that one.
   func moveClip(_ id: String, before: String?) {
-    dj?.moveClip(id, before: before)
+    dj?.perform(.clipMove(id: id, before: before))
     if let dj { pollLoops(dj) }
   }
   /// Wait for pending library writes (tests).
@@ -807,6 +838,7 @@ public final class AppModel {
     }
     do {
       favorites = try favoritesStore.add(f)
+      journal?.record(.favoriteAdd(f))
       return f
     } catch {
       status = "favorites: \(error)"
@@ -814,7 +846,10 @@ public final class AppModel {
     }
   }
   func removeFavorite(cid: String) {
-    do { favorites = try favoritesStore.remove(cid: cid) } catch {
+    do {
+      favorites = try favoritesStore.remove(cid: cid)
+      journal?.record(.favoriteRemove(cid: cid))
+    } catch {
       status = "favorites: \(error)"
     }
   }
@@ -872,7 +907,10 @@ public final class AppModel {
     let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !n.isEmpty else { return }
     var made = defaults.stringArray(forKey: Self.cratesKey) ?? []
-    if !made.contains(n) { made.append(n) }
+    if !made.contains(n) {
+      made.append(n)
+      journal?.record(.crateAdd(name: n))
+    }
     defaults.set(made, forKey: Self.cratesKey)
     favorites = favoritesStore.list()  // observed: the crate bar redraws
   }
@@ -889,7 +927,10 @@ public final class AppModel {
         source: .sample(
           id: "", title: loop.name, grid: BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)),
         file: path)
-      do { favorites = try favoritesStore.add(f) } catch {
+      do {
+        favorites = try favoritesStore.add(f)
+        journal?.record(.favoriteAdd(f))
+      } catch {
         status = "favorites: \(error)"
         return
       }
@@ -907,6 +948,7 @@ public final class AppModel {
   /// Delete a crate: its tag comes off every favorite (they stay starred).
   func deleteCrate(_ crate: String) {
     for f in favorites where f.tags.contains(crate) { removeFromCrate(f.cid, crate) }
+    journal?.record(.crateDelete(name: crate))
     defaults.set(
       (defaults.stringArray(forKey: Self.cratesKey) ?? []).filter { $0 != crate },
       forKey: Self.cratesKey)
@@ -915,7 +957,10 @@ public final class AppModel {
 
   /// A favorite's tags, replaced (the editor's add / remove).
   func setFavoriteTags(_ cid: String, _ tags: [String]) {
-    do { favorites = try favoritesStore.setTags(cid: cid, tags) } catch {
+    do {
+      favorites = try favoritesStore.setTags(cid: cid, tags)
+      journal?.record(.favoriteTags(cid: cid, tags: tags))
+    } catch {
       status = "favorites: \(error)"
     }
   }
@@ -1028,12 +1073,18 @@ public final class AppModel {
   /// Keep a channel's settings as a named variation of its instrument.
   func saveVariation(_ instrument: String, name: String, _ setting: VoiceSetting) {
     let v = VoiceVariation(name: name, params: setting.tweak, useSynth: setting.useSynth)
-    do { variations[instrument] = try variationStore.save(v, for: instrument) } catch {
+    do {
+      variations[instrument] = try variationStore.save(v, for: instrument)
+      journal?.record(.variationSave(instrument: instrument, variation: v))
+    } catch {
       status = "voices: \(error)"
     }
   }
   func renameVariation(_ instrument: String, _ name: String, to new: String) {
-    do { variations[instrument] = try variationStore.rename(name, to: new, for: instrument) } catch {
+    do {
+      variations[instrument] = try variationStore.rename(name, to: new, for: instrument)
+      journal?.record(.variationRename(instrument: instrument, name: name, to: new))
+    } catch {
       status = "voices: \(error)"
     }
   }
@@ -1041,6 +1092,7 @@ public final class AppModel {
     do {
       let left = try variationStore.delete(name, for: instrument)
       variations[instrument] = left.isEmpty ? nil : left
+      journal?.record(.variationDelete(instrument: instrument, name: name))
     } catch {
       status = "voices: \(error)"
     }
@@ -1068,11 +1120,13 @@ public final class AppModel {
   /// Lock a button (and the controller buttons bound to the same action), or unlock it.
   func setLocked(_ key: String, _ locked: Bool) {
     if locked { lockedButtons.insert(key) } else { lockedButtons.remove(key) }
+    dj?.perform(.lock(key: key, on: locked))  // recorded: it changes what the controllers do
     dj?.lockedActions = lockedButtons
     defaults.set(lockedButtons.sorted(), forKey: Self.lockedButtonsKey)
   }
 
-  /// Bring back the locks and disabled roles of the last run.
+  /// Bring back the locks, disabled roles and wander settings (its locks and pace) of the last
+  /// run.
   private func restoreLocks(_ dj: DJEngine) {
     lockedButtons = Set(defaults.stringArray(forKey: Self.lockedButtonsKey) ?? [])
     dj.lockedActions = lockedButtons
@@ -1080,7 +1134,59 @@ public final class AppModel {
       for r in defaults.stringArray(forKey: Self.disabledRolesKey(name)) ?? [] {
         d.setRoleDisabled(r, true)
       }
+      for l in defaults.stringArray(forKey: Self.wanderLocksKey(name)) ?? [] {
+        d.setWanderLock(l, true)
+      }
+      let pace = defaults.integer(forKey: Self.wanderPaceKey(name))
+      if pace > 0 { d.setWanderPace(pace) }
     }
+  }
+
+  // MARK: wander
+
+  /// The deck's walk on or off (the Wander button; the Inpulse's browser push).
+  func setWander(_ deck: String, _ on: Bool) {
+    dj?.perform(.wander(deck: deck, on: on))
+    poll()
+  }
+
+  /// Bars per wander move (4, 8, 16, 32), remembered for the deck.
+  func setWanderPace(_ deck: String, _ bars: Int) {
+    dj?.perform(.wanderPace(deck: deck, bars: bars))
+    defaults.set(dj?[deck]?.wander.pace ?? bars, forKey: Self.wanderPaceKey(deck))
+    poll()
+  }
+
+  /// Lock a dimension of the walk (or keep a part), or free it; remembered for the deck. The
+  /// tempo and key locks hold what plays at the moment they are set.
+  func setWanderLock(_ deck: String, _ dimension: String, _ on: Bool) {
+    dj?.perform(.wanderLock(deck: deck, dimension: dimension, on: on))
+    defaults.set(dj?[deck]?.wander.locks.sorted() ?? [], forKey: Self.wanderLocksKey(deck))
+    poll()
+  }
+
+  /// ★ on a move of the walk: star the track it led to (or played on); again, unstar it.
+  @discardableResult
+  func keepWanderMove(_ move: WanderMove) -> Favorite? {
+    guard let spec = move.spec else { return nil }
+    if let cid = DeckSourceDescriptor.net(spec).favoriteCID, isFavoriteSpec(spec) {
+      removeFavorite(cid: cid)
+      return nil
+    }
+    let name = BeatsTables.shared.genres[spec.genre]?.name ?? spec.genre
+    do {
+      let f = Favorite(title: generateTrackName(genre: name, seed: spec.seed), source: .net(spec))
+      favorites = try favoritesStore.add(f)
+      return f
+    } catch {
+      status = "favorites: \(error)"
+      return nil
+    }
+  }
+
+  func isFavoriteSpec(_ spec: TrackSpec?) -> Bool {
+    guard let cid = spec.flatMap({ DeckSourceDescriptor.net($0).favoriteCID }) else { return false }
+    return favorites.contains { $0.cid == cid }
   }
   func fire(_ deck: String, _ macro: NetMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
   func fire(_ deck: String, _ macro: MasterMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
@@ -1150,6 +1256,7 @@ public final class AppModel {
       isRecording = false
       do {
         let saved = try SessionStore().save(session)
+        journal?.record(.mark("session.saved \(saved.cid)"))
         lastSession = saved.cid
         lastSessionValue = session
         status = String(
@@ -1160,6 +1267,7 @@ public final class AppModel {
     } else {
       do {
         recorder = try SessionRecorder.start(on: dj)
+        journal?.record(.mark("session.start"))
         isRecording = true
         status = "recording"
       } catch {
@@ -1381,6 +1489,7 @@ public struct ContentView: View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
       deckRow(wide: wide)
+      if model.showSoundboard { SoundboardView(model: model).djCard(tint: LoopRowView.tint) }
       // the row appears with the first take (and stays while there are clips)
       if !model.clips.isEmpty || !model.recording.isEmpty {
         LoopRowView(model: model).djCard(tint: LoopRowView.tint)
@@ -1441,6 +1550,11 @@ public struct ContentView: View {
         .help("Every controller drawn as it looks, each control labelled with what it does")
         Toggle("Map", isOn: Binding(get: { model.showMap }, set: { model.showMap = $0 }))
           .toggleStyle(.button)
+        Toggle(
+          SoundboardView.title,
+          isOn: Binding(get: { model.showSoundboard }, set: { model.setShowSoundboard($0) })
+        )
+        .toggleStyle(.button).help(SoundboardView.help)
         // one button per attached controller: walk through its controls
         ForEach(model.devices, id: \.port) { d in
           Button("Check \(d.profile)") { model.startWalk(device: d.profile) }
@@ -1875,6 +1989,7 @@ struct NetPanel: View {
             .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         Spacer()
+        WanderButton(name: name, on: state.wander.on, model: model, tint: tint)
         Button("Sync") { model.sync(name) }.controlSize(.small)
           .lockable(DJActionKind.lockKey(deck: name, .sync), model)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.controlSize(.small)

@@ -88,7 +88,7 @@ struct SurfaceProfileTests {
         }
         let deckless: Set<DJActionKind> = [
           .crossfader, .master, .shift, .unbound, .keys, .nudge, .seedStep, .headphoneMix,
-          .headphoneLevel, .clipToggle, .focusDeck,
+          .headphoneLevel, .clipToggle, .focusDeck, .wander, .wanderPace,
         ]
         if !deckless.contains(b.action) { #expect(b.deck != nil, "\(p.name): \(b)") }
       }
@@ -420,18 +420,19 @@ struct BrowserSeedTests {
     #expect(dj["A"]!.netProject?.modelCID == played.modelCID)
   }
 
-  @Test func onlyAPlayingComposedLoopMoves() throws {
+  @Test func onlyAPlayingComposedNetMoves() throws {
     let (dj, s) = try make()
     loop(dj, "A", seed: 5)  // stopped
     s.handle(bytes: cw)
     #expect(dj["A"]!.currentSpec?.seed == 5, "not playing")
+    dj["B"]!.setPlaying(true)  // a sample deck
+    s.handle(bytes: cw)
+    #expect(dj["B"]!.mode == .sample && dj["A"]!.currentSpec?.seed == 5)
+    // a song moves too (Wander's steering), keeping its structure
     loop(dj, "A", seed: 5, structure: "minimal")
     dj["A"]!.setPlaying(true)
     s.handle(bytes: cw)
-    #expect(dj["A"]!.currentSpec?.seed == 5, "a song, not a loop")
-    dj["B"]!.setPlaying(true)  // a sample deck
-    s.handle(bytes: cw)
-    #expect(dj["B"]!.mode == .sample)
+    #expect(dj["A"]!.currentSpec == TrackSpec(genre: "techno", seed: 6, structure: "minimal"))
   }
 
   @Test func theFocusDeckWinsWhenTwoLoopsPlay() throws {

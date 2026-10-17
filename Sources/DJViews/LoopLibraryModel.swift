@@ -106,6 +106,7 @@ extension AppModel {
         return false
       }
       dj.rememberRemovedClip(clip, at: entry.index)
+      journal?.record(.libraryRestore(id: id, index: entry.index))
     }
     dj.perform(.clipRestore(id: id, at: nil))
     if lastRemoval?.id == id { lastRemoval = nil }

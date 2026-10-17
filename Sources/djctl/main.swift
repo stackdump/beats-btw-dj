@@ -5,6 +5,7 @@
 //   djctl play [fileA] [fileB] [--seconds N] [--volume V]
 //                                     two decks (demo loop where no file), every supported
 //                                     controller connected; Ctrl-C to stop
+//   djctl journal list|show|replay|export-session   the app's event log (JournalCommand.swift)
 //   djctl render <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2]
 //                [--options JSON] [--mute r,…] [--solo r,…] [--seconds N] [--float32]
 //                                     compose a track and render it offline (no app)
@@ -268,6 +269,10 @@ case "demo-session":
     events: [SessionEvent(frame: 4410, kind: .action(.play(deck: "A", on: true)))])
   let saved = try SessionStore(directory: dir).save(demo)
   print(saved.cid)
+
+case "journal":
+  // djctl journal list | show | replay | export-session (JournalCommand.swift)
+  journalCommand()
 
 case "sessions":
   let store = storeOption()
@@ -704,7 +709,7 @@ case "minecraft":
 
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | render <genre> <seed> | minecraft import | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | journal list|show|replay|export-session | export <cid> <out.wav> | render <genre> <seed> | minecraft import | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }

@@ -22,6 +22,8 @@ public final class SessionRecorder {
     // the defaults, so say so first. The tap length matters too: a controller's LOOP tap is
     // recorded as raw MIDI, and its length comes from the replaying engine.
     for a in engine.loopSettings where !DJEngine.defaultLoopSettings.contains(a) { r.record(a) }
+    // Locked actions too: a locked controller binding does nothing, so recorded MIDI needs them.
+    for key in engine.lockedActions.sorted() { r.record(.lock(key: key, on: true)) }
     return r
   }
 
@@ -34,6 +36,8 @@ public final class SessionRecorder {
       decks[name] = try d.sourceDescriptor()
       params[name] = d.currentParams
     }
+    // a replay's decks start with no bar seen: so do these (they are at rest, at tick 0)
+    for d in engine.decks.values { d.wander.lastBar = nil }
     initial = (decks, params)
     crossfader = engine.crossfader
     master = engine.master
@@ -101,6 +105,7 @@ extension Deck {
     p.reverbSize = reverb.size
     p.reverbTone = reverb.tone
     p.disabledRoles = disabledRoles.sorted()
+    p.wander = wander.settings
     return p
   }
 
@@ -118,6 +123,7 @@ extension Deck {
     reverb.size = p.reverbSize
     reverb.tone = p.reverbTone
     for r in p.disabledRoles { setRoleDisabled(r, true) }
+    wander = p.wander
   }
 }
 
@@ -147,6 +153,7 @@ extension DJEngine {
       recorded = .load(deck: deck, source: .sample(id: id, title: title, grid: gridded))
     }
     recorder?.record(recorded)
+    journal?.record(.action(recorded))
   }
 
   /// Run an action. Returns the beat grid of a freshly loaded sample, for the record.
@@ -267,6 +274,12 @@ extension DJEngine {
     case .voiceTweak(let n, let channel, let params):
       deck(n)?.setVoiceTweak(params, channel: channel)
     case .voiceSynth(let n, let channel, let on): deck(n)?.setSynthVoice(on, channel: channel)
+    case .clipMove(let id, let before): moveClip(id, before: before)
+    case .lock(let key, let on):
+      if on { lockedActions.insert(key) } else { lockedActions.remove(key) }
+    case .wander(let n, let on): deck(n)?.setWander(on)
+    case .wanderPace(let n, let bars): deck(n)?.setWanderPace(bars)
+    case .wanderLock(let n, let dimension, let on): deck(n)?.setWanderLock(dimension, on)
     case .setKit(let n, let kit): deck(n)?.setKit(kit)
     case .setPalette(let n, let palette): deck(n)?.setPalette(palette)
     }

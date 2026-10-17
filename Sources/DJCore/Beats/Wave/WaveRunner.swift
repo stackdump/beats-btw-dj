@@ -92,6 +92,11 @@ public struct WaveOptions {
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
+  /// `vinyl-brake` as a turntable brake (`WaveDeckSource`, TurntableBrake.swift): the whole
+  /// deck slows to a stop and drops back in time. false = beats' compound (an octave-down hold:
+  /// its tape-stop step does nothing there), what the parity fixtures run. A deliberate dj
+  /// divergence (GO-DIVERGENCE.md §5); on in `WaveOptions.extended`.
+  public var turntableBrake = false
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -537,6 +542,8 @@ public final class WaveProject: @unchecked Sendable {
   public let echo: EchoSpec?
   /// The parts' trims it plays with (`.balance`), dB; nil = none.
   public let balance: [String: Double]?
+  /// `vinyl-brake` brakes the deck while this project plays (`WaveOptions.turntableBrake`).
+  public internal(set) var turntableBrake = false
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
@@ -1008,9 +1015,11 @@ public final class WaveRunner {
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     let gaps = opts.musicality.contains(.dropGap) ? DJMusicality.dropGaps(project) : []
-    return buildLanes(
+    let prepared = buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
       geometry: project, gain: gain, energy: energy, gaps: gaps)
+    prepared.turntableBrake = opts.turntableBrake
+    return prepared
   }
 
   public static func prepare(json: JSONValue, sampleRate: Double, opts: WaveOptions = WaveOptions())
@@ -1225,6 +1234,38 @@ public final class WaveRunner {
     }
     clock[clkTickPos] += (ticks - whole) * clock[clkSpt]
   }
+
+  /// Put the tick clock `ticks` ticks further on, silently, as if it had kept running at the
+  /// tempo all along (a turntable brake's release: `WaveDeckSource`). Unlike `align`, the
+  /// remainder lands exactly: a boundary it crosses is ticked now, not on the next sample. Each
+  /// tick does what `doTick` would without sounding: a queued project takes over on its bar,
+  /// the macro hold counts down, the end of the song stops the deck. Allocation-free.
+  func catchUp(ticks: Double) {
+    guard ticks > 0, current != nil, clock[clkSpt] > 0 else { return }
+    flushGroove()
+    clockBroken = true
+    var pos = clock[clkTickPos] / clock[clkSpt] + ticks
+    while pos >= 1, let proj = current {
+      pos -= 1
+      let g = proj.graph
+      if let next = pending, (g.tick + 1) % 16 == 0 {
+        pending = nil
+        install(next)
+        continue
+      }
+      g.advance { _, _ in }
+      if macroHoldTicks > 0 { macroHoldTicks -= 1 }
+      if g.stopRequested {
+        stopped = true
+        stop()
+        return
+      }
+    }
+    clock[clkTickPos] = max(0, pos) * clock[clkSpt]
+  }
+
+  /// Does the project playing want `vinyl-brake` as a turntable brake?
+  var turntableBrake: Bool { current?.turntableBrake ?? false }
 
   // MARK: live performance
 

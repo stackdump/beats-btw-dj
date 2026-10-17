@@ -75,6 +75,8 @@ public final class DJEngine {
 
   /// Records the performance when set (see `SessionRecorder`).
   public var recorder: SessionRecorder?
+  /// The always-on event log (`Journal`): every input the recorder sees, and more. Main thread.
+  public var journal: Journal?
   /// Resolves a sample's content id to audio (replays, and `perform(.load)`).
   public var sampleResolver: ((String) -> SampleBuffer?)?
   /// Audio loaded through `perform`, by content id: lets a session be exported.
@@ -159,7 +161,9 @@ public final class DJEngine {
       wire(deck)
       deck.onGrid = { [weak self] g in
         self?.recorder?.record(.grid(deck: name, bpm: g.bpm, offset: g.offset))
+        self?.journal?.record(.action(.grid(deck: name, bpm: g.bpm, offset: g.offset)))
       }
+      deck.onSourceFile = { [weak self, unowned deck] url in self?.journalSampleFile(deck, url) }
       decks[name] = deck
     }
     wire(loopChannel)
@@ -253,13 +257,17 @@ public final class Deck: JogClock {
   public internal(set) var clipID: String?
   /// The audio file the sample on the deck was loaded from (set by the app after a file or
   /// stock-loop load; nil for nets, clips and the demo loop): what a favorite of it reloads.
-  public var sourceFile: URL?
+  public var sourceFile: URL? { didSet { if let sourceFile { onSourceFile?(sourceFile) } } }
+  /// Told when `sourceFile` is set (the journal notes which file a sample came from).
+  var onSourceFile: ((URL) -> Void)?
   /// Roles the user disabled: left out of every net this deck compiles, kept muted in the one
   /// playing (`setRoleDisabled`).
   public internal(set) var disabledRoles: Set<String> = []
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
+  /// The deck's walk (Wander.swift): on/off, pace, step, locks, the log of moves.
+  public internal(set) var wander = WanderState()
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
   /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
   public var leftTap: ScopeTap { renderer.leftTap }
@@ -427,7 +435,10 @@ public final class Deck: JogClock {
   init(name: String, sampleRate: Double, format: AVAudioFormat, loopBank: Bool = false) {
     self.name = name
     let tt = Turntable(sampleRate: sampleRate)
-    let wv = WaveDeckSource(sampleRate: sampleRate)
+    // The runner's own switches (groove, energy, stereo, room, echo, samplers in the loudness
+    // curve) come from its init options, not the prepared project: build it with the same
+    // extended options every deck prepares with, as `djctl render` does, so live matches render.
+    let wv = WaveDeckSource(sampleRate: sampleRate, opts: .extended(samplers: nil))
     cueSend.outputVolume = 0
     turntable = tt
     wave = wv
