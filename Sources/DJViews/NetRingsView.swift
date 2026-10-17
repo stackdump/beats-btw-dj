@@ -244,14 +244,16 @@ public struct NetRingsView: View {
     let parts = rings.filter { !Self.isStinger($0.role) }
     let stingers = rings.filter { Self.isStinger($0.role) }
     VStack(spacing: DJStyle.s) {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6)
-      {
+      // Four columns at the deck's 260 pt floor, more as it widens (each ring between 56 and
+      // 120 pt), so a wide deck gets a shorter grid instead of four ever-larger rings.
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 56, maximum: 120), spacing: 6)], spacing: 6) {
         ForEach(parts, id: \.role) { r in
           VStack(spacing: 1) {
             // no padding: the ring insets its own marks (`RingGeometry.inset`), so a loud hit's
             // flash already stays inside its square, off the label and the rings beside it
             RingNetView(ring: r, tint: tint, arcs: arcs)
-            Text(r.role).font(.system(size: 10, weight: r.muted ? .regular : .medium))
+            Text(r.role).font(.system(size: 11, weight: r.muted ? .regular : .medium))
+              .lineLimit(1)
               .foregroundStyle(r.muted ? .secondary : .primary)
           }
         }

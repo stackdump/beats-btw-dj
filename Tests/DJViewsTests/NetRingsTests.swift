@@ -125,12 +125,33 @@ struct NetRingsRenderTests {
     }
     let px = try #require(
       renderPixels(
-        NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange), width: 320,
+        NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange), width: 260,
         height: 160))
-    // 4 columns: two rows for five rings; the second row has a single ring on the left
-    let row2Left = px.count(inX: 0..<80, y: 80..<160) { r, _, _ in r > 150 }
-    let row2Right = px.count(inX: 160..<320, y: 80..<160) { r, _, _ in r > 150 }
+    // 260 pt is the deck's floor: 4 adaptive columns, so two rows for five rings; the second
+    // row has a single ring on the left
+    let row2Left = px.count(inX: 0..<65, y: 85..<160) { r, _, _ in r > 150 }
+    let row2Right = px.count(inX: 130..<260, y: 85..<160) { r, _, _ in r > 150 }
     #expect(row2Left > 20 && row2Right == 0, "left \(row2Left) right \(row2Right)")
+  }
+
+  /// A wider deck adds columns instead of growing four rings: six parts at 400 pt sit in one row
+  /// (at the 260 pt floor they take two).
+  @Test func aWiderGridAddsColumns() throws {
+    let rings = ["kick", "snare", "hihat", "bass", "melody", "harmony"].map {
+      RingView(
+        id: $0, role: $0, size: 16, hits: [Bool](repeating: true, count: 16),
+        velocities: [Int](repeating: 100, count: 16), token: 0, lastFired: -1, phase: 0,
+        muted: false)
+    }
+    let px = try #require(
+      renderPixels(
+        NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange), width: 400,
+        height: 160))
+    // the grid is centred in the render: the orange spans one ring's height, not two
+    let orange = { (r: Int, _: Int, b: Int) in r > 150 && b < 100 }
+    let lit = (0..<160).filter { px.count(inX: 0..<400, y: $0..<($0 + 1), where: orange) > 0 }
+    let span = (lit.last ?? 0) - (lit.first ?? 0) + 1
+    #expect(!lit.isEmpty && span < 75, "one row of six rings, \(span) rows tall")
   }
 
   /// Stingers don't take a part's place in the grid: they sit in a short row of small rings
@@ -143,14 +164,14 @@ struct NetRingsRenderTests {
         muted: false)
     }
     let view = NetRingsView(snapshot: NetSnapshot(tick: 0, rings: rings), tint: .orange)
-    savePNG(view, width: 320, height: 160, name: "rings-stingers")
-    let px = try #require(renderPixels(view, width: 320, height: 160))
+    savePNG(view, width: 260, height: 160, name: "rings-stingers")
+    let px = try #require(renderPixels(view, width: 260, height: 160))
     // bands of rows that hold orange: the parts' row, then the stingers' much shorter one (the
     // labels between them are white, and clear of the rings since the rings inset their marks).
     // A ring's dots are spaced (`fittedBase`), so a band bridges gaps of a few rows between them.
     let orange = { (r: Int, _: Int, b: Int) in r > 150 && b < 100 }
     var bands: [Range<Int>] = []
-    for y in 0..<160 where px.count(inX: 0..<320, y: y..<(y + 1), where: orange) > 0 {
+    for y in 0..<160 where px.count(inX: 0..<260, y: y..<(y + 1), where: orange) > 0 {
       if let last = bands.last, last.upperBound >= y - 8 {
         bands[bands.count - 1] = last.lowerBound..<(y + 1)
       } else {
@@ -158,9 +179,10 @@ struct NetRingsRenderTests {
       }
     }
     try #require(bands.count == 2, "\(bands)")
-    #expect(bands[0].count > 60 && bands[1].count < 34, "\(bands)")
-    // the parts' row holds kick and bass only (columns 3 and 4 empty)
-    #expect(px.count(inX: 170..<320, y: bands[0], where: { r, _, _ in r > 150 }) == 0)
+    #expect(bands[0].count > 45 && bands[1].count < 34, "\(bands)")
+    // the parts' row holds kick and bass only (columns 3 and 4 empty; at the deck's 260 pt
+    // floor there are four columns)
+    #expect(px.count(inX: 140..<260, y: bands[0], where: { r, _, _ in r > 150 }) == 0)
     #expect(NetRingsView.isStinger("hit12") && !NetRingsView.isStinger("hihat"))
   }
 

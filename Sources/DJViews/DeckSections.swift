@@ -104,11 +104,14 @@ struct ChoiceButton: View {
   let label: String
   let selected: Bool
   let tint: Color
+  /// A performance control (Master FX macros): live-button size, one line, never truncated.
+  var live = false
   let action: () -> Void
 
   var body: some View {
-    Toggle(label, isOn: Binding(get: { selected }, set: { _ in action() }))
-      .toggleStyle(.button).controlSize(.small).tint(tint)
+    let toggle = Toggle(label, isOn: Binding(get: { selected }, set: { _ in action() }))
+      .toggleStyle(.button).tint(tint)
+    if live { toggle.liveButton() } else { toggle.controlSize(.small) }
   }
 }
 
@@ -678,7 +681,7 @@ struct MasterFxPanel: View {
           Text(group).font(.caption2).foregroundStyle(.secondary)
           FlowRow(spacing: 4) {
             ForEach(MasterMacro.allCases.filter { $0.group == group }, id: \.rawValue) { m in
-              ChoiceButton(label: m.label, selected: running.contains(m), tint: tint) {
+              ChoiceButton(label: m.label, selected: running.contains(m), tint: tint, live: true) {
                 model.fire(name, m)
               }
               .lockable(DJActionKind.lockKey(deck: name, .macro, param: m.id), model)
@@ -700,7 +703,7 @@ struct WanderButton: View {
 
   var body: some View {
     Toggle("Wander", isOn: Binding(get: { on }, set: { model.setWander(name, $0) }))
-      .toggleStyle(.button).controlSize(.small).tint(tint)
+      .toggleStyle(.button).liveButton().tint(tint)
       .lockable(DJActionKind.lockKey(deck: name, .wander), model)
       .help(
         "The deck walks by itself: one move per phrase (a mute, a macro, the next seed, another "
@@ -743,7 +746,8 @@ struct WanderPanel: View {
         Text("bars").font(.caption2).foregroundStyle(.secondary)
         Spacer(minLength: DJStyle.xs)
         Text(status).font(.caption).monospacedDigit().lineLimit(1)
-          .foregroundStyle(w.on && state.wanderIdle == nil ? (w.paused ? .orange : tint) : .secondary)
+          .foregroundStyle(
+            w.on && state.wanderIdle == nil ? (w.paused ? .orange : tint) : .secondary)
       }
       FlowRow(spacing: 4) {
         Text("Lock").font(.caption2).foregroundStyle(.secondary)

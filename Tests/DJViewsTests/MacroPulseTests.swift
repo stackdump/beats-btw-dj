@@ -86,14 +86,24 @@ struct MacroPulseRenderTests {
     func button(_ running: Bool, time: Double = 0.5) -> some View {
       MacroButton(macro: .drop, running: running, time: time) {}.padding(16)
     }
-    let size = (w: 120, h: 60)
+    let size = (w: 240, h: 100)
     let idle = try #require(renderPixels(button(false), width: size.w, height: size.h))
-    // Offscreen the button is a placeholder box in the middle (about x 35...85, y 18...45); what
-    // the macro adds is a red glow in the margin around it.
+    // Offscreen the button is a yellow placeholder box (its size follows `liveButton()`); take it
+    // from the idle render. What the macro adds is a red glow in the margin around it.
+    var box = (x0: size.w, x1: 0, y0: size.h, y1: 0)
+    for y in 0..<idle.height {
+      for x in 0..<idle.width {
+        let c = idle.color(x, y)
+        if c.r > 200 && c.g > 160 && c.b < 80 && c.a > 200 {
+          box = (min(box.x0, x), max(box.x1, x + 1), min(box.y0, y), max(box.y1, y + 1))
+        }
+      }
+    }
+    #expect(box.x1 > box.x0, "the idle button's placeholder is found")
     func glow(_ p: Pixels) -> Int {
       var n = 0
       for y in 0..<p.height {
-        for x in 0..<p.width where x < 30 || x >= 90 || y < 14 || y >= 50 {
+        for x in 0..<p.width where x < box.x0 || x >= box.x1 || y < box.y0 || y >= box.y1 {
           let c = p.color(x, y)
           if c.r > 2 * c.g && c.r > 2 * c.b { n += c.a }  // alpha-weighted: the glow's energy
         }
