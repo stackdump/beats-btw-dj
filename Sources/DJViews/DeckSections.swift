@@ -376,13 +376,18 @@ struct GeneratePanel: View {
       .arrowKeys(Self.structures, current: structure) { structure = $0 }
       HStack(spacing: 4) {
         HStack(spacing: 4) {
-          ChoiceButton(label: "v2 motif", selected: cohesion == "v2", tint: tint) {
+          ChoiceButton(label: "shared motif", selected: cohesion == "v2", tint: tint) {
             cohesion = "v2"
           }
-          .help("Cohesion v2: motif + harmony")
-          ChoiceButton(label: "v1 legacy", selected: cohesion == "v1", tint: tint) {
+          .help(
+            "Cohesion v2: one theme per track — a motif, a chord plan and a groove every part"
+              + " shares, so the melody restates the motif and the bass follows the same chords")
+          ChoiceButton(label: "free-form", selected: cohesion == "v1", tint: tint) {
             cohesion = "v1"
           }
+          .help(
+            "Cohesion v1: no shared theme — each part writes its own line, looser and more"
+              + " random (the parts can clash)")
         }
         .arrowKeys(["v2", "v1"], current: cohesion) { cohesion = $0 }
         Spacer()
