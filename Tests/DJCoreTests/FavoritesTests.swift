@@ -25,10 +25,46 @@ struct FavoritesTests {
     #expect(s.list().map(\.title) == ["house · Other"])
   }
 
-  @Test func samplesAreNotFavorites() throws {
+  @Test func aSampleWithNoFileIsNotAFavorite() throws {
     let s = store()
     try s.add(Favorite(title: "demo", source: .sample(id: "demo-loop", title: "demo", grid: nil)))
     #expect(s.list().isEmpty)
+  }
+
+  @Test func aSampleIsAFavoriteByItsFileAndKeepsItsGridAndTags() throws {
+    let s = store()
+    let grid = BeatGrid(bpm: 150, offset: 0, confidence: 1)
+    let f = Favorite(
+      title: "Dubstep Siren Music 01",
+      source: .sample(id: "", title: "Dubstep Siren Music 01", grid: grid),
+      file: "/Library/Audio/Apple Loops/Apple/03 Dubstep/Dubstep Siren Music 01.caf",
+      tags: ["siren", "drop"])
+    try s.add(f)
+    let back = try #require(s.list().first)
+    #expect(back.isSample && back.cid == "file:" + f.file!)
+    #expect(back.file == f.file && back.tags == ["siren", "drop"])
+    if case .sample(_, let title, let g) = back.source {
+      #expect(title == "Dubstep Siren Music 01" && g?.bpm == 150)
+    } else {
+      Issue.record("a sample source")
+    }
+  }
+
+  @Test func tagsAreCleanedFilterAndSurviveAReStar() throws {
+    let s = store()
+    let net = Favorite(title: "techno · One", source: .net(TrackSpec(genre: "techno", seed: 1)))
+    let other = Favorite(title: "house · Two", source: .net(TrackSpec(genre: "house", seed: 2)))
+    try s.add(net)
+    try s.add(other)
+    try s.setTags(cid: net.cid, ["  intro ", "", "Intro", "heavy"])
+    try s.setTags(cid: other.cid, ["heavy"])
+    let all = s.list()
+    #expect(
+      all.first { $0.cid == net.cid }?.tags == ["intro", "heavy"], "trimmed, no blanks or repeats")
+    #expect(all.allTags == ["heavy", "intro"], "most used first")
+    #expect(all.tagged("intro").map(\.cid) == [net.cid] && all.tagged(nil).count == 2)
+    try s.add(Favorite(title: "techno · One", source: net.source))  // starred again
+    #expect(s.list().first?.tags == ["intro", "heavy"], "a re-star keeps the tags")
   }
 
   @Test func anInstrumentChangeIsATracksOverrideTheProjectPlays() throws {

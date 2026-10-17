@@ -121,9 +121,11 @@ struct LoadPanel: View {
     var count: Int
   }
 
-  /// How many matches the list shows (the nearest in tempo): enough to browse, few enough to
-  /// lay out at once.
+  /// How many matches the list shows at first, and adds per "Show more" (the nearest in tempo
+  /// first, then A–Z): enough to browse, few enough to lay out at once.
   static let shown = 150
+  /// How many it shows now; back to `shown` whenever the filter changes.
+  @State private var limit = LoadPanel.shown
 
   var body: some View {
     VStack(alignment: .leading, spacing: DJStyle.s) {
@@ -173,10 +175,21 @@ struct LoadPanel: View {
       .arrowKeys([""] + all.categories, current: category) { category = $0 }
       ScrollView(.vertical) {
         LazyVStack(alignment: .leading, spacing: 1) {
-          ForEach(hits.prefix(Self.shown), id: \.path) { loop in
+          ForEach(hits.prefix(limit), id: \.path) { loop in
             StockLoopRow(loop: loop, tint: tint) {
               Task { await model.loadStockLoop(name, loop) }
             }
+          }
+          // never a silent cut: say what is left and let it be shown
+          if hits.count > limit {
+            HStack(spacing: DJStyle.s) {
+              Text("\(hits.count - limit) more")
+                .font(.caption2).foregroundStyle(.secondary)
+              Button("Show \(min(Self.shown, hits.count - limit)) more") { limit += Self.shown }
+                .controlSize(.small)
+              Text("or search / pick a category").font(.caption2).foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, DJStyle.xs)
           }
         }
       }
@@ -184,7 +197,7 @@ struct LoadPanel: View {
       // over the list, the arrows load the loop before / after the one on the deck: audition
       // through the list without clicking
       .arrowKeys(
-        Array(hits.prefix(Self.shown)).map(\.path),
+        Array(hits.prefix(limit)).map(\.path),
         current: hits.first { $0.name == model.decks[name]?.title }?.path
       ) { path in
         if let loop = hits.first(where: { $0.path == path }) {
@@ -192,6 +205,7 @@ struct LoadPanel: View {
         }
       }
       .task(id: filter) {
+        limit = Self.shown
         let near = filter.tempo.map(Double.init)
         hits = await Task.detached(priority: .userInitiated) {
           all.matching(category: filter.category, query: filter.query, near: near)
@@ -304,24 +318,115 @@ struct FavoritesPanel: View {
   let current: String?
 
   var body: some View {
+    let tags = model.favorites.allTags
+    let shown = model.favorites.tagged(model.favoriteTag)
     VStack(alignment: .leading, spacing: 6) {
       if model.favorites.isEmpty {
-        Text("Star a playing track (☆ by its title) to keep it here.")
+        Text("Star what a deck plays (☆ by its title) — a track or a sample — to keep it here.")
           .font(.caption).foregroundStyle(.secondary)
       }
-      FlowRow(spacing: 4) {
-        ForEach(model.favorites, id: \.cid) { f in
-          Button(f.title) { model.loadFavorite(name, f) }
-            .controlSize(.small)
-            .tint(f.cid == current ? .yellow : nil)
-            .contextMenu { Button("Remove from favorites") { model.removeFavorite(cid: f.cid) } }
-            .help("Load onto deck \(name) (right-click to remove)")
+      if !tags.isEmpty {
+        FlowRow(spacing: 4) {
+          ChoiceButton(label: "All", selected: model.favoriteTag == nil, tint: .yellow) {
+            model.favoriteTag = nil
+          }
+          ForEach(tags, id: \.self) { t in
+            ChoiceButton(label: "#\(t)", selected: model.favoriteTag == t, tint: .yellow) {
+              model.favoriteTag = model.favoriteTag == t ? nil : t
+            }
+          }
+        }
+        .arrowKeys([nil] + tags.map { Optional($0) }, current: model.favoriteTag) {
+          model.favoriteTag = $0
         }
       }
-      .arrowKeys(model.favorites.map(\.cid), current: current) { cid in
-        if let f = model.favorites.first(where: { $0.cid == cid }) { model.loadFavorite(name, f) }
+      FlowRow(spacing: 4) {
+        ForEach(shown, id: \.cid) { f in
+          FavoriteChip(favorite: f, deck: name, model: model, isCurrent: f.cid == current)
+        }
+      }
+      .arrowKeys(shown.map(\.cid), current: current) { cid in
+        if let f = shown.first(where: { $0.cid == cid }) { model.loadFavorite(name, f) }
       }
     }
+  }
+}
+
+/// One favorite: press to load it; its tags beside it; right-click to tag or remove it.
+struct FavoriteChip: View {
+  let favorite: Favorite
+  let deck: String
+  let model: AppModel
+  let isCurrent: Bool
+  @State private var tagging = false
+
+  var body: some View {
+    Button {
+      model.loadFavorite(deck, favorite)
+    } label: {
+      HStack(spacing: 3) {
+        Image(systemName: favorite.isSample ? "waveform" : "point.3.connected.trianglepath.dotted")
+          .font(.caption2)
+        Text(favorite.title)
+        ForEach(favorite.tags, id: \.self) { t in
+          Text("#\(t)").font(.caption2).foregroundStyle(.secondary)
+        }
+      }
+    }
+    .controlSize(.small)
+    .tint(isCurrent ? .yellow : nil)
+    .contextMenu {
+      Button("Tags…") { tagging = true }
+      Button("Remove from favorites") { model.removeFavorite(cid: favorite.cid) }
+    }
+    .popover(isPresented: $tagging) {
+      TagEditor(tags: favorite.tags, known: model.favorites.allTags) {
+        model.setFavoriteTags(favorite.cid, $0)
+      }
+    }
+    .help(
+      (favorite.isSample ? "Sample: \(favorite.file ?? "")" : "Net track")
+        + " — load onto deck \(deck) (right-click: tags, remove)")
+  }
+}
+
+/// Add and remove a favorite's tags: the ones it has (click to drop), the ones used
+/// elsewhere (click to add), and a field for a new one.
+struct TagEditor: View {
+  let tags: [String]
+  let known: [String]
+  let set: ([String]) -> Void
+  @State private var draft = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Tags").font(.headline)
+      if !tags.isEmpty {
+        FlowRow(spacing: 4) {
+          ForEach(tags, id: \.self) { t in
+            Button("#\(t) ✕") { set(tags.filter { $0 != t }) }.controlSize(.small)
+              .help("Remove this tag")
+          }
+        }
+      }
+      let others = known.filter { !tags.contains($0) }
+      if !others.isEmpty {
+        Text("Used elsewhere").font(.caption2).foregroundStyle(.secondary)
+        FlowRow(spacing: 4) {
+          ForEach(others, id: \.self) { t in
+            Button("+ #\(t)") { set(tags + [t]) }.controlSize(.small)
+          }
+        }
+      }
+      TextField("New tag (Return to add)", text: $draft)
+        .textFieldStyle(.roundedBorder)
+        .onSubmit {
+          let t = draft.trimmingCharacters(in: .whitespaces)
+          if !t.isEmpty { set(tags + [t]) }
+          draft = ""
+        }
+    }
+    .padding(12).frame(width: 260)
   }
 }
 

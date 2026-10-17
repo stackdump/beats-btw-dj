@@ -152,7 +152,8 @@ extension AppModel {
         _ = try requireDeck(deck)
         poll()
         guard addFavorite(deck) != nil else {
-          throw ControlRequestError.bad("deck \(deck) has no net track to star (samples can't be)")
+          throw ControlRequestError.bad(
+            "deck \(deck) has nothing to star (a net, or a sample loaded from a file)")
         }
       case "remove":
         guard let cid = try favoriteCID(p) else {
@@ -165,11 +166,17 @@ extension AppModel {
         guard let cid = p["cid"]?.string, let f = favorites.first(where: { $0.cid == cid }) else {
           throw ControlRequestError.bad("no favorite with that `cid` (see action list)")
         }
-        guard await prepareAndLoad(deck, f.source) else { throw ControlRequestError.bad(status) }
+        guard await loadFavoriteNow(deck, f) else { throw ControlRequestError.bad(status) }
         poll()
         return deckJSON(deck) ?? .null
+      case "tags":
+        guard let cid = try favoriteCID(p), favorites.contains(where: { $0.cid == cid }) else {
+          throw ControlRequestError.bad("`cid` (or `deck`) of a favorite is required")
+        }
+        setFavoriteTags(cid, p["tags"]?.array?.compactMap(\.string) ?? [])
       case let other:
-        throw ControlRequestError.bad("action must be list | add | remove | load, not \(other)")
+        throw ControlRequestError.bad(
+          "action must be list | add | remove | load | tags, not \(other)")
       }
       poll()
       return .object(JSONObject([("favorites", .array(favorites.map(favoriteJSON)))]))
@@ -406,9 +413,13 @@ extension AppModel {
       o["genre"] = .string(spec.genre)
       o["seed"] = .number(spec.seed)
       if let st = spec.structure { o["structure"] = .string(st) }
+    } else if f.isSample {
+      o["kind"] = .string("sample")
+      if let file = f.file { o["file"] = .string(file) }
     } else {
       o["kind"] = .string("rawNets")
     }
+    if !f.tags.isEmpty { o["tags"] = .array(f.tags.map { .string($0) }) }
     return .object(o)
   }
 

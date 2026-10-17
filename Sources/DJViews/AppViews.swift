@@ -115,8 +115,10 @@ public final class AppModel {
   /// The Stage window's model (SPEC modes 7…21); made with the hub.
   public private(set) var stageModel: StageModel?
   var walk: ControlWalk?
-  /// Starred tracks, newest first (`FavoritesStore`).
+  /// Starred tracks and samples, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
+  /// The tag the Favorites panels show (nil: all).
+  var favoriteTag: String?
   @ObservationIgnored let favoritesStore: FavoritesStore
   /// The Apple Loops on this Mac (`StockLoopLibrary`), loaded the first time the Load panel asks.
   var stockLoops: [StockLoop] = []
@@ -594,6 +596,7 @@ public final class AppModel {
   }
   // Favorites
   private func sourceCID(_ name: String, _ d: Deck) -> String? {
+    if d.mode == .sample { return d.sourceFile.map { Favorite.fileCID($0.path) } }
     guard let source = d.netSource else { return nil }
     if let (s, cid) = sourceCIDs[name], s == source { return cid }
     guard let cid = source.favoriteCID else { return nil }
@@ -604,11 +607,20 @@ public final class AppModel {
     guard let cid = decks[deck]?.sourceCID else { return false }
     return favorites.contains { $0.cid == cid }
   }
-  /// Star the net on the deck (a sample can't be one); returns the favorite, nil if none.
+  /// Star what the deck plays: its net, or the sample's file (a sample with no file — a clip,
+  /// the demo loop — can't be one). Returns the favorite, nil if none.
   @discardableResult
   func addFavorite(_ deck: String) -> Favorite? {
-    guard let d = dj?[deck], let source = d.netSource else { return nil }
-    let f = Favorite(title: d.title, source: source)
+    guard let d = dj?[deck] else { return nil }
+    let f: Favorite
+    if let source = d.netSource {
+      f = Favorite(title: d.title, source: source)
+    } else if d.mode == .sample, let file = d.sourceFile {
+      f = Favorite(
+        title: d.title, source: .sample(id: "", title: d.title, grid: d.beatGrid), file: file.path)
+    } else {
+      return nil
+    }
     do {
       favorites = try favoritesStore.add(f)
       return f
@@ -630,10 +642,41 @@ public final class AppModel {
       addFavorite(deck)
     }
   }
-  /// Load a favorite onto a deck, through `perform` like any other load.
+  /// Load a favorite onto a deck, through `perform` like any other load: a net is prepared off
+  /// the main thread, a sample decoded from its file (with the grid it was starred with).
   func loadFavorite(_ deck: String, _ f: Favorite) {
     status = "loading \(f.title)…"
-    Task { @MainActor in await prepareAndLoad(deck, f.source) }
+    Task { @MainActor in await loadFavoriteNow(deck, f) }
+  }
+
+  @discardableResult
+  func loadFavoriteNow(_ deck: String, _ f: Favorite) async -> Bool {
+    guard let file = f.file, f.isSample else { return await prepareAndLoad(deck, f.source) }
+    guard let dj else { return false }
+    let url = URL(fileURLWithPath: file)
+    let sr = dj.sampleRate
+    do {
+      let buffer = try await Task.detached(priority: .userInitiated) {
+        try Deck.decode(url, sampleRate: sr)
+      }.value
+      var grid: BeatGrid?
+      if case .sample(_, _, let g) = f.source { grid = g }
+      dj.perform(
+        .load(deck: deck, source: .sample(id: "", title: f.title, grid: grid)), buffer: buffer)
+      dj[deck]?.sourceFile = url
+      status = "\(Int(dj.sampleRate)) Hz"
+      return true
+    } catch {
+      status = "\(f.title): \(error)"
+      return false
+    }
+  }
+
+  /// A favorite's tags, replaced (the editor's add / remove).
+  func setFavoriteTags(_ cid: String, _ tags: [String]) {
+    do { favorites = try favoritesStore.setTags(cid: cid, tags) } catch {
+      status = "favorites: \(error)"
+    }
   }
 
   /// Read the stock loop index (or scan, the first time: a few seconds) off the main thread.
@@ -659,6 +702,7 @@ public final class AppModel {
       let grid = BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)
       dj.perform(
         .load(deck: deck, source: .sample(id: "", title: loop.name, grid: grid)), buffer: buffer)
+      dj[deck]?.sourceFile = loop.url
       status = "\(Int(dj.sampleRate)) Hz"
       return true
     } catch {
@@ -727,6 +771,7 @@ public final class AppModel {
           source: .sample(
             id: "", title: url.deletingPathExtension().lastPathComponent, grid: nil)),
         buffer: buffer)
+      dj?[deck]?.sourceFile = url
       return true
     } catch {
       status = "\(error)"

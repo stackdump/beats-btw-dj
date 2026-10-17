@@ -222,6 +222,9 @@ public final class Deck: JogClock {
   let capture: CaptureTap
   /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads.
   public internal(set) var clipID: String?
+  /// The audio file the sample on the deck was loaded from (set by the app after a file or
+  /// stock-loop load; nil for nets, clips and the demo loop): what a favorite of it reloads.
+  public var sourceFile: URL?
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
@@ -416,6 +419,7 @@ public final class Deck: JogClock {
   public func load(_ buffer: SampleBuffer, title: String) {
     leaveNetMode()
     clipID = nil
+    sourceFile = nil
     waveform = nil
     loaded = buffer
     beatGrid = nil
@@ -563,6 +567,7 @@ public final class Deck: JogClock {
     currentRawNets = nil
     seedTarget = nil
     clipID = nil
+    sourceFile = nil
     stemsMuted = [:]
     if mode != .net {
       turntable.send(.transport(playing: false))

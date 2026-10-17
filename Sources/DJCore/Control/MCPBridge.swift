@@ -204,13 +204,17 @@ public struct MCPBridge {
     tool(
       "dj_favorites",
       """
-      The starred tracks (also the star by a deck's title and Load ▸ Favorites in the app). \
-      action list (default) returns them, newest first, with title, cid, genre, seed; add \
-      {deck} stars the net on a deck (instrument changes included); remove {cid | deck}; \
-      load {deck, cid} puts one on a deck (does not start playback).
+      The starred tracks and samples (also the star by a deck's title and Load ▸ Favorites in \
+      the app). action list (default) returns them, newest first, with title, cid, genre, seed \
+      (nets) or kind sample + file, and tags; add {deck} stars what a deck plays: its net \
+      (instrument changes included) or a sample loaded from a file (Apple Loop or audio file); \
+      remove {cid | deck}; load {deck, cid} puts one on a deck (does not start playback); \
+      tags {cid | deck, tags} replaces a favorite's tags. A net's cid is its share CID, a \
+      sample's "file:" + its path.
       """,
       [
-        "action": prop("string", "list | add | remove | load"),
+        "action": prop("string", "list | add | remove | load | tags"),
+        "tags": prop("array", "tags: the favorite's tags (they replace the old ones)"),
         "deck": prop("string", "A or B"),
         "cid": prop("string", "A favorite's cid, from list"),
       ]),
