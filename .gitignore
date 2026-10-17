@@ -10,3 +10,8 @@
 .claude/worktrees/
 # A/B kit renders (rebuilt by ab/*/render.sh; ~19 MB each)
 /ab/**/*.wav
+# sound banks are installed, never committed (Apple / MuseScore / the local Minecraft build)
+*.sf2
+*.sf3
+*.dls
+minecraft-local.*

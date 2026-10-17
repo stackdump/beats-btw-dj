@@ -173,6 +173,10 @@ public enum DeckAction: Equatable, Sendable {
   /// (`Deck.setKit`): the same song, swapped at the next bar; a `tracks` override, so it stars
   /// and shares.
   case setKit(deck: String, kit: String?)
+  /// Play a net deck's track from a sound palette (`SoundPalette`, recorded with its asset
+  /// version: `minecraft@32`) or, nil, none (`Deck.setPalette`): every role's category from the
+  /// palette, picked instruments and kits keeping theirs; the same song, at the next bar.
+  case setPalette(deck: String, palette: String?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -432,6 +436,8 @@ extension DeckAction {
       return o("voiceSynth", [d(deck), ("channel", .int(channel)), ("on", .bool(on))])
     case .setKit(let deck, let kit):
       return o("setKit", [d(deck), ("kit", kit.map { .string($0) } ?? .null)])
+    case .setPalette(let deck, let palette):
+      return o("setPalette", [d(deck), ("palette", palette.map { .string($0) } ?? .null)])
     }
   }
 
@@ -508,6 +514,7 @@ extension DeckAction {
       guard let ch = v["channel"]?.int else { return nil }
       self = .voiceSynth(deck: deck, channel: ch, on: v["on"]?.bool ?? false)
     case "setKit": self = .setKit(deck: deck, kit: v["kit"]?.string)
+    case "setPalette": self = .setPalette(deck: deck, palette: v["palette"]?.string)
     default: return nil
     }
   }

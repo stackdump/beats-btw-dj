@@ -215,6 +215,21 @@ its copy; the two are now independent. Rules inherited from that split:
   parity, deck swap), `SampledKitRealTimeTests` (a mid-render switch allocates nothing).
 - Sampled content never enters the repo or the CDN: Apple's licence covers playing it in
   your music, not redistributing the samples. `SamplerTests` re-measure pitch and level.
+- **Minecraft palette — local only.** `make minecraft` (`djctl minecraft import`) builds
+  `minecraft-local.sf2` + `minecraft-local.json` (asset index, per-sample SHA-1) in the SoundFont
+  folder from the user's own PrismLauncher assets (`MinecraftAssets`: newest index,
+  `$DJ_MINECRAFT_ASSETS` overrides; `MinecraftBank` fixed programs, kit at 0:127; decoded,
+  44.1 kHz/16-bit, tuned, steady tones crossfade-looped). Personal use only: the .ogg files and
+  the .sf2 never enter the repo, a release or the CDN (`*.sf2`, `minecraft-local.*` ignored), it
+  never joins the GM pools (`localOnlyBanks`), and `music/*` / `records/*` are never read.
+  Publishing refuses any set that plays it (`Session.localOnlySounds`; `djctl publish
+  --allow-local-sounds` / the Publish… checkbox override); local renders are fine.
+- **Palettes** (`SoundPalette`, `categories.json` `palettes` + `bankCategories`): a whole-track
+  role → category map, the `tracks` override `palette` (recorded with its asset version,
+  `minecraft@32`), the poke `DeckAction.setPalette` (next bar, same song). Picked instruments
+  and a picked kit keep theirs; picks seeded by track seed + role. Local-only banks skip the
+  tuning check on load (their importer tuned them). Unavailable palettes grey out with their
+  reason; tests skip without the assets. Wander palette lock: TODO in `Deck.setPalette`.
 
 ## Musicality (docs/musicality-notes.md)
 

@@ -649,6 +649,7 @@ private func buildLanes(
     if n.bundle.role == "control" && !(voiceFills && n.id.hasPrefix("fill-")) { continue }
     let tr = n.bundle.track
     let picked = geometry?.nets[n.id]?.track.picked ?? tr.picked
+    let palette = geometry?.nets[n.id]?.track.palette ?? tr.palette
     let override = opts.voices[n.id]
     var kindOrder: [String] = []
     var kindLane: [String: Int] = [:]
@@ -676,7 +677,9 @@ private func buildLanes(
             ?? tonalVoice(instrument: tr.instrument, group: tr.group)
           lane = tonalLane(
             voice, sr, tr.group == "harmony" ? 6 : 4, tables: &tables, seed: lanes.count)
-          bindSampler(lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: picked)
+          bindSampler(
+            lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: picked,
+            palette: palette)
           if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
           if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
         } else {
@@ -768,7 +771,8 @@ private func buildLanes(
     opts.instruments?.voice(instrument: liveInstrument, group: "melody")
     ?? tonalVoice(instrument: liveInstrument, group: "melody")
   let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
-  bindSampler(live, liveInstrument, "melody", opts)
+  let livePalette = melody.flatMap { geometry?.nets[$0.id]?.track.palette }
+  bindSampler(live, liveInstrument, "melody", opts, palette: livePalette)
   if subtractive { shapeVoice(live, group: "melody", sr) }
   if unison { detune(live, group: "melody", wide: stereo, sr) }
   live.netId = "<live>"
@@ -789,13 +793,20 @@ private func buildLanes(
 /// role and one loads (off the audio thread: this may load an EXS from disk, or evict an
 /// unused one). The reference taken on the slot is the project's, given back in
 /// `WaveProject.deinit`.
+///
+/// `palette` (`Track.palette`): the role plays from the palette's category first, unless the
+/// user picked its instrument; the instrument's own chain follows as the fallback.
 private func bindSampler(
-  _ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions, picked: Bool = false
+  _ lane: Lane, _ instrument: String, _ role: String, _ opts: WaveOptions, picked: Bool = false,
+  palette: String? = nil
 ) {
-  guard let bank = opts.samplers, opts.instruments != nil,
-    let sources = VoiceCatalog.shared.sources(
-      instrument: instrument, role: role.isEmpty ? "melody" : role, seed: opts.voicingSeed,
-      picked: picked),
+  guard let bank = opts.samplers, opts.instruments != nil else { return }
+  let role = role.isEmpty ? "melody" : role
+  let own = VoiceCatalog.shared.sources(
+    instrument: instrument, role: role, seed: opts.voicingSeed, picked: picked)
+  let fromPalette =
+    picked ? nil : SoundPalette.named(palette)?.sources(role: role, seed: opts.voicingSeed)
+  guard let sources = fromPalette.map({ $0 + (own ?? []) }) ?? own,
     let slot = bank.slot(for: sources)
   else { return }
   lane.samplerSlot = slot
@@ -807,7 +818,7 @@ func drumKitSource(_ project: Project) -> SamplerSource? {
   for id in project.nets.keys {
     guard let nb = project.nets[id], nb.role != "control", isDrumChannel(nb.track.channel)
     else { continue }
-    if let k = nb.track.kit {
+    if let k = nb.track.kit ?? SoundPalette.kit(for: nb.track.palette) {
       return DrumKits.source(for: k)
     }
   }

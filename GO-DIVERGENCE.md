@@ -142,6 +142,8 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
    (`WaveOptions()`: no bank, no instrument table) never samples drums, so the fixtures and
    `compose()` are unchanged. For beats: a kit choice would be a share-payload change, so only
    if beats wants sampled kits at all, and then with banks it may redistribute.
+   Sound palettes (`SoundPalette`, the `tracks` override `palette`) are dj-only the same way;
+   the Minecraft palette is local-only and never leaves the Mac, so it is not for beats.
 
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `vinyl-brake`'s tape-stop step does nothing (`runCompound` fires only mute and FX

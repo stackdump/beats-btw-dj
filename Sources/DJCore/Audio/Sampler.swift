@@ -206,8 +206,10 @@ public final class SamplerInstrument: @unchecked Sendable {
   /// Off the audio thread, before publishing: play the reference phrase, measure it, set
   /// `gain` to land on `targetRMSdB`, then silence and reset the unit. Returns false for a
   /// sound not fit to play — silent, or out of tune past `maxDetuneCents`.
+  /// `tuning: false` (a local-only bank, `SamplerSource.isLocalOnly`: its importer tuned it,
+  /// and its one-shots are too short to hold a note 0.1 s in) checks the level only.
   @discardableResult
-  func normalize(sampleRate sr: Double) -> Bool {
+  func normalize(sampleRate sr: Double, tuning: Bool = true) -> Bool {
     gain = 1
     let total = Int(2 * sr)
     let block = 512
@@ -229,6 +231,13 @@ public final class SamplerInstrument: @unchecked Sendable {
     }
     let rms = 10 * log10(max(sum / Double(total), 1e-20))
     gain = min(20, max(0.02, pow(10, (Self.targetRMSdB - rms) / 20)))
+    guard tuning else {
+      send(0xB0, 123, 0, at: 0)
+      au.reset()
+      timestamp.mSampleTime = 0
+      lastCheck = (rms, 0, true)
+      return rms > Self.silentRMSdB
+    }
     // Tuning: one held A3, measured 0.1–0.4 s in.
     send(0xB0, 123, 0, at: 0)
     au.reset()
@@ -447,7 +456,7 @@ public final class SamplerBank: @unchecked Sendable {
             inst.lastCheck?.rmsDB ?? -200)
           continue
         }
-      } else if !inst.normalize(sampleRate: sampleRate) {
+      } else if !inst.normalize(sampleRate: sampleRate, tuning: !s.isLocalOnly) {
         unloadable.insert(s)  // silent or out of tune: never published
         let c = inst.lastCheck
         let rms = c.map { String(format: "%.1f", $0.rmsDB) } ?? "?"

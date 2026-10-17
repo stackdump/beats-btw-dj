@@ -268,6 +268,7 @@ extension DJEngine {
       deck(n)?.setVoiceTweak(params, channel: channel)
     case .voiceSynth(let n, let channel, let on): deck(n)?.setSynthVoice(on, channel: channel)
     case .setKit(let n, let kit): deck(n)?.setKit(kit)
+    case .setPalette(let n, let palette): deck(n)?.setPalette(palette)
     }
     return nil
   }

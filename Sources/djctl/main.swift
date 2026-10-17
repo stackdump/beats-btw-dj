@@ -118,12 +118,13 @@ var positional = Array(args.dropFirst())
 /// answers, up to ~3 min). `dry` prints the bundle and stops.
 func publish(
   _ session: Session, audio: String?, title: String?, draft: Bool, host: String,
-  blobs: String?, noReload: Bool, mirror: Bool, dry: Bool
+  blobs: String?, noReload: Bool, mirror: Bool, dry: Bool, allowLocalSounds: Bool = false
 ) throws {
   let wav = try audio.map { [UInt8](try Data(contentsOf: URL(fileURLWithPath: $0))) }
   let stamp = ISO8601DateFormatter().string(from: Date())
   let bundle = try SessionBundle(
-    session: session, title: title, audioWAV: wav, renderedAt: stamp, draft: draft)
+    session: session, title: title, audioWAV: wav, renderedAt: stamp, draft: draft,
+    allowLocalOnly: allowLocalSounds)
   for f in bundle.files { print("  \(f.name)  \(f.data.count) bytes") }
   print("public URL (once mirrored): \(bundle.publicURL)")
   if dry { return }
@@ -338,7 +339,9 @@ case "bounce":
 
 case "publish":
   // djctl publish <cid> [--audio FILE.wav] [--title T] [--draft] [--host H] [--blobs DIR]
-  //                     [--no-reload] [--mirror] [--dry-run]
+  //                     [--no-reload] [--mirror] [--dry-run] [--allow-local-sounds]
+  // A set that plays local-only sounds (the Minecraft palette or kit) is refused unless
+  // --allow-local-sounds: those are built from the user's game assets, for this Mac only.
   // Stages the set into the CDN master's blob tree on valoper (as the render farm does) and
   // reloads its index. Only --mirror makes it public (runs mirror-push.sh -> pflow.dev), and
   // then it polls the public URL until the blob answers (up to ~3 min).
@@ -347,20 +350,21 @@ case "publish":
   let mirror = flag("--mirror")
   let draft = flag("--draft")
   let noReload = flag("--no-reload")
+  let allowLocal = flag("--allow-local-sounds")
   let audio = value("--audio")
   let title = value("--title")
   let host = value("--host") ?? "valoper.local"
   let blobs = value("--blobs")
   guard let cid = positional.first else {
     stderr(
-      "usage: djctl publish <cid> [--audio f.wav] [--title T] [--draft] [--host H] [--blobs DIR] [--no-reload] [--mirror] [--dry-run]   (djctl sessions lists cids)"
+      "usage: djctl publish <cid> [--audio f.wav] [--title T] [--draft] [--host H] [--blobs DIR] [--no-reload] [--mirror] [--dry-run] [--allow-local-sounds]   (djctl sessions lists cids)"
     )
     exit(2)
   }
   do {
     try publish(
       try store.load(cid: cid), audio: audio, title: title, draft: draft, host: host,
-      blobs: blobs, noReload: noReload, mirror: mirror, dry: dry)
+      blobs: blobs, noReload: noReload, mirror: mirror, dry: dry, allowLocalSounds: allowLocal)
   } catch {
     stderr("publish failed: \(error)")
     exit(1)
@@ -504,7 +508,7 @@ case "ctl":
   }
 
 case "render":
-  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--kit ID]
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--kit ID] [--palette NAME]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
   // --room renders it a second time without the reverb and reports the room's return level;
@@ -540,6 +544,12 @@ case "render":
     }
     positional.removeSubrange(i...(i + 1))
   }
+  // --palette NAME: the whole track from a sound palette (`SoundPalette`, e.g. minecraft)
+  var palette: String?
+  if let i = positional.firstIndex(of: "--palette"), positional.indices.contains(i + 1) {
+    palette = positional[i + 1]
+    positional.removeSubrange(i...(i + 1))
+  }
   // --kit ID: the drums on a sampled kit (`DrumKits`, e.g. MuseScore_General.sf2#128:0)
   var kit: String?
   if let i = positional.firstIndex(of: "--kit"), positional.indices.contains(i + 1) {
@@ -564,6 +574,21 @@ case "render":
     }
     if case .net(let s)? = DeckSourceDescriptor.net(spec).withKit(
       kit, channels: spec.project().drumChannels)
+    {
+      spec = s
+    }
+  }
+  if let palette {
+    guard let p = SoundPalette.named(palette) else {
+      stderr("no palette \(palette); one of: " + SoundPalette.all.map(\.id).joined(separator: ", "))
+      exit(2)
+    }
+    if let why = p.unavailableReason() {
+      stderr("palette \(p.id) can't play here: \(why)")
+      exit(2)
+    }
+    if case .net(let s)? = DeckSourceDescriptor.net(spec).withPalette(
+      p.recorded(), channels: spec.project().channels)
     {
       spec = s
     }
@@ -635,9 +660,51 @@ case "render":
     withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
   print(String(decoding: data, as: UTF8.self))
 
+case "minecraft":
+  // djctl minecraft import [--assets DIR] [--index N] [--out DIR]
+  // djctl minecraft status
+  // Builds minecraft-local.sf2 + minecraft-local.json in the SoundFont folder from the game
+  // sounds installed on this Mac (PrismLauncher's assets; $DJ_MINECRAFT_ASSETS or --assets
+  // overrides; the newest asset index unless --index). Local only: never commit, ship or
+  // publish the result.
+  let root = value("--assets") ?? MinecraftAssets.defaultRoot
+  let index = value("--index")
+  let out = value("--out") ?? SamplerSource.soundFontDir
+  switch positional.first {
+  case "import":
+    do {
+      let assets = try MinecraftAssets.locate(root: root, index: index)
+      print("assets \(assets.root)  index \(assets.indexID)")
+      let r = try MinecraftImport.run(assets: assets, to: out)
+      for p in r.programs {
+        print(
+          String(
+            format: "  %3d  %-18@ %+6.1f cents%@", p.program, p.name as NSString, -p.cents,
+            p.loop ? "  loop" : ""))
+      }
+      for s in r.skipped { print("  skipped \(s)") }
+      print("wrote \(r.path) (\(r.bytes / 1024) kB) + \(MinecraftBank.sidecarName)")
+      print("kit: \(MinecraftBank.kitID)   palette: minecraft (local only: never published)")
+    } catch {
+      stderr("minecraft import failed: \(error)")
+      exit(1)
+    }
+  case "status":
+    if let why = MinecraftBank.unavailableReason(dir: out) {
+      print("unavailable: \(why)")
+    } else if let side = MinecraftBank.Sidecar.load(dir: out) {
+      print(
+        "\(MinecraftBank.path(dir: out))  asset index \(side.assetIndex)  "
+          + "\(side.programs.count) programs + kit")
+    }
+  default:
+    stderr("usage: djctl minecraft import [--assets DIR] [--index N] [--out DIR] | status")
+    exit(2)
+  }
+
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | render <genre> <seed> | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | export <cid> <out.wav> | render <genre> <seed> | minecraft import | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }

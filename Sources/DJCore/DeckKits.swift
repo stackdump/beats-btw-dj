@@ -121,3 +121,73 @@ extension Deck {
     relocate(toTick: wave.isPlaying ? nextSwapTick : wave.tick)
   }
 }
+
+// MARK: - the sound palette
+
+// A whole-track palette (`SoundPalette`): the poke is `DeckAction.setPalette`, the
+// configuration the `tracks` override `palette` on every channel (each role's category from
+// the palette, seeded by the track seed + role as voicing is; picked instruments and a picked
+// kit keep theirs), the boundary the next bar, on the same song.
+
+extension DeckSourceDescriptor {
+  /// This net with every one of `channels` playing from `palette` (nil = none).
+  public func withPalette(_ palette: String?, channels: [Int]) -> DeckSourceDescriptor? {
+    withTrackField("palette", palette, channels: channels)
+  }
+}
+
+extension Project {
+  /// The channels of every net that plays (not control nets), in order.
+  public var channels: [Int] {
+    var out: Set<Int> = []
+    for id in nets.keys {
+      guard let nb = nets[id], nb.role != "control" else { continue }
+      out.insert(nb.track.channel)
+    }
+    return out.sorted()
+  }
+
+  /// The palette the track plays from (the first playing net's), nil = none.
+  public var palette: String? {
+    for id in nets.keys {
+      guard let nb = nets[id], nb.role != "control" else { continue }
+      return nb.track.palette
+    }
+    return nil
+  }
+
+  mutating func setPalette(_ palette: String?) {
+    for id in nets.keys {
+      guard var nb = nets[id] else { continue }
+      nb.track.palette = palette
+      nets[id] = nb
+    }
+  }
+}
+
+extension Deck {
+  /// The palette the deck's track plays from, as recorded (`minecraft@32`), or nil.
+  public var palette: String? { mode == .net ? netProject?.palette : nil }
+
+  /// Play the track from `palette` (`DeckAction.setPalette`; nil = none): the same song from
+  /// the next bar. A palette not playable here (its bank not imported) leaves every role as it
+  /// was voiced. The id is recorded with the asset version it plays here (`recorded`) when it
+  /// comes without one.
+  ///
+  /// TODO(wander): Wander is not on main yet. When it lands, a palette lock belongs here: while
+  /// the deck's palette is locked, Wander's moves keep `palette` (carry it into each new
+  /// configuration, as `roleFilter` is carried) instead of dropping it with the song's
+  /// `tracks` overrides (`TrackSpec.nextVersion`).
+  public func setPalette(_ palette: String?) {
+    guard mode == .net, var project = netProject else { return }
+    var id = palette.flatMap { $0.isEmpty ? nil : $0 }
+    if let p = id, SoundPalette.version(p) == nil, let known = SoundPalette.named(p) {
+      id = known.recorded()
+    }
+    guard project.palette != id else { return }
+    let channels = project.channels
+    guard !channels.isEmpty else { return }
+    project.setPalette(id)
+    retarget(project) { $0.withPalette(id, channels: channels) }
+  }
+}
