@@ -20,6 +20,80 @@ README's "Where we are" says what the app does; this is what each phase still ha
 - **Phase 5** — done, 5.1–5.7 (5.7: beats' scopes and Stage, [SCOPES.md](SCOPES.md)). Open:
   the scopes and Stage have not been checked in a live window ("Needs a person" in SCOPES.md).
 
+
+## Open work (2026-10-17)
+
+Everything below is what was left when the 2026-10-17 session stopped. `main` (f9aa3a8 and
+after) has, merged and tested: per-seed variety, the APC as an FX surface, the sound editor,
+the journal + notes, the turntable vinyl brake, Wander + locks, the Soundboard, sampled drum
+kits, the Minecraft palette, per-loop FX, loops master FX (checkpoint), palettes (checkpoint),
+the MPK bank-A part mutes, and two fixes (live decks now get the extended runner options;
+the echo / pluck read that crashed the audio thread). The user is reviewing these and may
+revert any by its merge commit.
+
+**Unfinished branches**
+- `sound/level-match` (worktree `dj-vevr-se-wt-levels`, WIP 805de18, not merged, tests not
+  run to the end). Problem: generated tracks are ~10 dB under loops (60 s renders −17…−22
+  LUFS; Apple loops −11…−14; a recorded loop −11.2) plus −3 dB on A/B from the centred
+  equal-power crossfader, which the loop channel skips. WIP has `LevelMatch.swift`,
+  `PeakLimiter.swift`, a net-deck target, sample auto-gain. Left: finish and test (target
+  ±1.5 LU for six genres, peaks < 0 dBFS, parity untouched, limiter RT test), sample
+  auto-gain clamps and off switch, decide the loop channel's default (−3 dB?), before/after
+  measurements, then merge.
+- `sound/palettes` merged as checkpoint 1537f30; WIP 855c781 (CLAUDE.md palettes notes) is
+  on the branch only. Left: merge or redo the CLAUDE.md notes, a full test run, repo lint.
+  Renders of every palette: `build/agent-renders/palettes/` (house seed 11).
+- `sound/loop-master-fx` merged as checkpoint 947b5ec. Left: the agent's full-suite run
+  (the RT run on main passed). APC SHIFT + aim → L is `[UNVERIFIED]`.
+
+**Release checks**
+- One clean full `make swift-test` and `make swift-rt-test` on main with nothing else
+  running (only filtered runs since the merges).
+- Push main (two commits ahead of origin at f9aa3a8, plus this roadmap).
+- Known failing tests: `tracksPlayAtOneLoudness`, `theKickNoLongerIsTheMix(funk)`,
+  `theWindowInTheDark`, `theHeaderLeavesRoomForTheStatusAtTheWindowsMinimumWidth`. Flaky
+  only under parallel load: `sampledInstrumentsDoNotAllocate` (the background sampler load
+  times out: slot −2), `aNewTrackRebuildsTheLanesAndTheirKernels`,
+  `WanderTests.aReplayWalksTheSamePath`, occasional RT frees in
+  `switchingTheTapOnAndOffAroundTheBlocksDoesNotAllocate` / `voiceTweaksDoNotAllocate`.
+  Give the slow ones longer waits or serialise them.
+
+**Hardware to verify on the units**
+- MPK mini bank A pads 1–8 = part mutes on the aimed deck (note numbers `[UNVERIFIED]`).
+- APC SHIFT + aim button → loops; the APC FX layout generally.
+- Inpulse browser wheel / push / SHIFT+wheel for Wander (`[MIXXX]`, uncaptured).
+- Headphone mix is now unbound on every controller (the APC's fader 5 became the LP).
+
+**Planned, not started**
+- Python test MCP harvesting the test harnesses (renders, LUFS/levels, pitch, replay
+  checks, screenshots) for agents to drive.
+- Audit the app MCP so every control is reachable (`dj_perform` ops, views, palettes,
+  notes, journal, loop FX, Wander).
+- Show the Wander walk on the Stage.
+
+**Follow-ups noted by the features**
+- Journal: in-app rewind (mid-file checkpoints for seeking, a live-engine reset path, store
+  `replaceAll`, a picker).
+- Wander: per-part seeds (a kept role's notes still change with the seed); a swap composed
+  after its phrase boundary lands a bar late live; the pitch fader isn't compensated on genre
+  hops.
+- Variety: lofi / ambient chords only transpose (pentatonic genres); some house sevenths rub
+  more on the new progressions.
+- Soundboard: fade / launch quantize / tempo follow are per loop channel, not per clip;
+  tuning a loop's instruments means taking it again; ↑/↓ step one pad, not a row; the
+  board's open state isn't remembered; stock loops and crates aren't pads; sequences are
+  edited only on the Loops row.
+- Loop FX: a clip moved onto a deck plays dry; scenes don't recall FX; a new sequence starts
+  with FX off.
+- Minecraft: gameplay-driven stingers via val's `mc_recent_events`; ±1-octave pre-shifted
+  zones for range. Publishing any local-only palette (Minecraft, Apple DLS) is refused
+  unless overridden.
+- Master macros are net-only on A/B (sample decks never brake).
+- Old branches not on main, to merge or drop: `layout/use-width`,
+  `integrate/main-plus-layout`, `plan/musicality-roadmap` (Phase 6 roadmap), `feat/browser-seed`,
+  `favorites`, `wip/djctl-mix`; old checkouts `dj-vevr-se-{compose,favorites,integrate,layout,
+  realism,ipad}`.
+
 ---
 
 ## Phase 1 — Every control on all three devices **(done 2026-10-07; Inpulse hardware pass open)**
