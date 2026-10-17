@@ -33,6 +33,10 @@ there. In short:
   clip. Any number of clips loop under the mixer at once, each in or out on the downbeat, in
   time with its deck; drag a tile's edge to crop it to the beat, join tiles into sequences,
   move one onto A or B. The row is saved (`~/Library/Application Support/dj-vevr-se/loops`).
+  Removing a loop never deletes it: it moves to `loops/removed/` (Undo for 8 s, or Removed… to
+  restore it where it was, or delete it for good). Loops can be renamed (double-click) and
+  coloured, filtered by deck / sequence / search / near the playing tempo, traced back (Load
+  source on A/B reloads the track at its section), exported as WAV or dragged out to Finder.
   Every channel has a reverb (Apple's AUReverb2: wet, size, tone) in its Reverb section.
 - **Sessions** — every control event is recorded; a set is a content-addressed `<cid>.json`
   that re-renders to the same bytes, exports to WAV and publishes to cdn.stackdump.com

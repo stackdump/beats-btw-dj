@@ -82,6 +82,17 @@ public final class AppModel {
   var recording: [String: RecordingState] = [:]
   /// Loops picked to join into a sequence.
   var selectedClips: Set<String> = []
+  /// Loops taken off the row, newest first: this launch's and the library's `removed/`.
+  var removedLoops: [RemovedLoop] = []
+  /// The last loop taken off the row, while its "Undo" shows (`LoopRemoval.undoSeconds`).
+  var lastRemoval: LoopRemoval?
+  /// What the Loops row shows (its header's chips, search and tempo filter).
+  var loopFilter = LoopFilter()
+  /// The library's `removed/` as last read (after each save).
+  @ObservationIgnored var diskRemoved: [RemovedLoop] = []
+  /// Per clip, whether its source can be loaded again; dropped when `sampleLibrary` changes.
+  @ObservationIgnored var originCache: [String: Bool] = [:]
+  @ObservationIgnored var originCacheSamples = -1
   var crossfader = 0.5
   var master = 0.8
   var headphoneMix = 0.0
@@ -124,11 +135,12 @@ public final class AppModel {
   @ObservationIgnored let loopLibrary: StockLoopLibrary
   /// Where LOOP-record clips are kept between launches: the app's own (`LoopLibrary()`) for the
   /// real engine; for an injected one only if the test passes one.
-  @ObservationIgnored private var takeStore: LoopLibrary?
-  /// The row as last saved (ids in order), so a poll saves only when it changed.
-  @ObservationIgnored private var savedClipIDs: [String] = []
-  /// Saves run off the main thread, one at a time.
-  @ObservationIgnored private let saveQueue = DispatchQueue(label: "dj-vevr-se.loops.save")
+  @ObservationIgnored var takeStore: LoopLibrary?
+  /// The row as last saved (ids, names and colours in order), so a poll saves only when it
+  /// changed.
+  @ObservationIgnored private var savedRow: [String] = []
+  /// Saves (and the library's other writes) run off the main thread, one at a time.
+  @ObservationIgnored let saveQueue = DispatchQueue(label: "dj-vevr-se.loops.save")
   /// Per deck, the source its `sourceCID` was hashed from, so a poll doesn't re-hash.
   @ObservationIgnored private var sourceCIDs: [String: (DeckSourceDescriptor, String)] = [:]
   var walkReportPath: String?
@@ -368,18 +380,27 @@ public final class AppModel {
   private func restoreLoops(_ dj: DJEngine) {
     guard let store = takeStore else { return }
     dj.restoreClips(store.load(sampleRate: dj.sampleRate))
-    savedClipIDs = dj.clips.map(\.id)
+    savedRow = Self.rowSignature(dj.clips)
+    diskRemoved = store.removed()
   }
 
-  private func pollLoops(_ dj: DJEngine) {
-    let ids = dj.clips.map(\.id)
-    if ids != savedClipIDs, let store = takeStore {
-      savedClipIDs = ids
+  /// What the library keeps of the row, to tell when it needs saving.
+  private static func rowSignature(_ clips: [LoopClip]) -> [String] {
+    clips.map { "\($0.id)|\($0.title)|\($0.color ?? "")" }
+  }
+
+  func pollLoops(_ dj: DJEngine) {
+    let signature = Self.rowSignature(dj.clips)
+    if signature != savedRow, let store = takeStore {
+      savedRow = signature
       let row = dj.clips
       saveQueue.async {
         do { try store.save(row) } catch { print("loop library: \(error)") }
+        let gone = store.removed()
+        Task { @MainActor in self.diskRemoved = gone }
       }
     }
+    pollRemoved(dj)
     let l = dj.loopChannel
     let strip = LoopChannelState(
       looping: dj.loopingClips.count, volume: l.volume, mute: l.mute, reverb: ReverbState(l.reverb))
@@ -399,7 +420,9 @@ public final class AppModel {
               $0.title.split(separator: " ").suffix(2).joined(separator: " ")
             }
               ?? "missing", repeats: s.repeats)
-        }, provenance: described(c).lines, provenanceJSON: described(c).json)
+        }, provenance: described(c).lines, provenanceJSON: described(c).json,
+        color: c.color, genre: c.originGenre, originTitle: c.originTitle,
+        canLoadOrigin: canLoadOrigin(c.id, dj))
     }
     let present = Set(row.map(\.id))
     if !selectedClips.isSubset(of: present) { selectedClips.formIntersection(present) }
@@ -440,14 +463,17 @@ public final class AppModel {
     guard dj?.clip(id) != nil else { return }
     dj?.perform(.clip(deck: deck, id: id))
   }
-  func removeClip(_ id: String) { dj?.removeClip(id) }
   /// Drag a tile onto another: it goes just before that one.
   func moveClip(_ id: String, before: String?) {
     dj?.moveClip(id, before: before)
     if let dj { pollLoops(dj) }
   }
   /// Wait for pending library writes (tests).
-  func flushLoopLibrary() { saveQueue.sync {} }
+  func flushLoopLibrary() {
+    saveQueue.sync {}
+    diskRemoved = takeStore?.removed() ?? []
+    if let dj { pollLoops(dj) }
+  }
   /// A tile's ▶/■: in on the next downbeat, or out on it.
   func toggleLoop(_ id: String) {
     guard let dj else { return }
