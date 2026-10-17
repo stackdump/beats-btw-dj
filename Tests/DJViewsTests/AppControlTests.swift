@@ -133,6 +133,36 @@ struct AppControlTests {
     }
   }
 
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func stockLoopsDropIntoCrates() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites(), loops: try temporaryLoopLibrary())
+    m.defaults = scratchDefaults()
+    m.start()
+    await m.loadStockLoops()
+    let loop = try #require(m.stockLoops.first)
+    m.newCrate("warmup")
+    #expect(m.crates == ["warmup"] && m.favorites.isEmpty, "an empty crate is kept by name")
+    m.addToCrate(loop.path, "warmup")
+    m.addToCrate(loop.path, "peak")  // a loop can be in several crates
+    m.addToCrate(loop.path, "warmup")  // and once per crate
+    let f = try #require(m.favorites.first)
+    #expect(f.isSample && f.file == loop.path && f.tags == ["warmup", "peak"])
+    #expect(m.crates == ["warmup", "peak"])
+    if case .sample(_, _, let g) = f.source { #expect(g?.bpm == loop.bpm) }
+    #expect(await m.loadFavoriteNow("B", f))
+    m.poll()
+    #expect(m.decks["B"]?.title == loop.name, "a crate's loop loads like any favorite")
+    m.removeFromCrate(f.cid, "peak")
+    #expect(m.favorites.first?.tags == ["warmup"])
+    m.deleteCrate("warmup")
+    #expect(m.crates == ["peak"], "peak was made by name and stays until deleted")
+    #expect(m.favorites.count == 1 && m.favorites.first?.tags == [], "the loop stays starred")
+  }
+
   @Test func stateDescribesBothDecks() async throws {
     let s = try await call(try model(), "state")
     #expect(s["decks"]?["A"]?["mode"]?.string == "sample")

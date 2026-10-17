@@ -110,6 +110,8 @@ struct LoadPanel: View {
   let importFile: () -> Void
   @State private var query = ""
   @State private var category = ""
+  /// The crate shown instead of the stock loops (nil: the stock loops).
+  @State private var crate: String?
   /// The list, recomputed only when what it depends on changes (`Filter`), off the main thread:
   /// filtering and sorting ~15k loops on every poll would cost the main thread again.
   @State private var hits: [StockLoop] = []
@@ -138,9 +140,52 @@ struct LoadPanel: View {
         .help("A beats share link (or envelope JSON) from the clipboard")
       }
       .controlSize(.small)
-      stockLoops
+      CrateBar(model: model, tint: tint, shown: $crate)
+      if let crate {
+        crateList(crate)
+      } else {
+        stockLoops
+      }
     }
     .task { await model.loadStockLoops() }
+  }
+
+  /// A crate's loops: press to load; right-click to take one out.
+  @ViewBuilder private func crateList(_ crate: String) -> some View {
+    let items = model.favorites.tagged(crate)
+    HStack(spacing: DJStyle.xs) {
+      SectionLabel("Crate · \(crate)")
+      Spacer()
+      Text("\(items.count)").font(.caption2).foregroundStyle(.secondary)
+    }
+    if items.isEmpty {
+      Text("Empty: drag stock loops onto the crate's chip.")
+        .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 60)
+    } else {
+      ScrollView(.vertical) {
+        LazyVStack(alignment: .leading, spacing: 1) {
+          ForEach(items, id: \.cid) { f in
+            Group {
+              if let file = f.file, let loop = model.stockLoops.first(where: { $0.path == file }) {
+                StockLoopRow(loop: loop, tint: tint) { model.loadFavorite(name, f) }
+              } else {
+                Button(f.title) { model.loadFavorite(name, f) }.buttonStyle(.plain).font(.caption)
+                  .padding(.horizontal, DJStyle.xs).padding(.vertical, 3)
+              }
+            }
+            .contextMenu {
+              Button("Remove from \(crate)") { model.removeFromCrate(f.cid, crate) }
+            }
+          }
+        }
+      }
+      .frame(height: 220)
+      .arrowKeys(
+        items.map(\.cid), current: model.decks[name]?.sourceCID
+      ) { cid in
+        if let f = items.first(where: { $0.cid == cid }) { model.loadFavorite(name, f) }
+      }
+    }
   }
 
   @ViewBuilder private var stockLoops: some View {
@@ -215,7 +260,57 @@ struct LoadPanel: View {
   }
 }
 
-/// One loop in the list: its name, then tempo, key and what it is. Pressing it loads the loop.
+/// The crates: a chip each (click to list it, again to go back to the stock loops; drop a
+/// stock-loop row on one to add it; right-click to delete), and "+ Crate" for a new one.
+struct CrateBar: View {
+  let model: AppModel
+  let tint: Color
+  @Binding var shown: String?
+  @State private var naming = false
+  @State private var draft = ""
+  @State private var target: String?
+
+  var body: some View {
+    FlowRow(spacing: DJStyle.xs) {
+      Text("Crates").font(.caption2).foregroundStyle(.secondary)
+      ForEach(model.crates, id: \.self) { c in
+        ChoiceButton(
+          label: "\(c) \(model.favorites.tagged(c).count)", selected: shown == c, tint: tint
+        ) { shown = shown == c ? nil : c }
+        .overlay(
+          RoundedRectangle(cornerRadius: 6).strokeBorder(
+            tint, lineWidth: target == c ? 2 : 0)
+        )
+        .dropDestination(for: String.self) { paths, _ in
+          for p in paths { model.addToCrate(p, c) }
+          return !paths.isEmpty
+        } isTargeted: { on in
+          target = on ? c : (target == c ? nil : target)
+        }
+        .contextMenu {
+          Button("Delete crate \(c)") {
+            if shown == c { shown = nil }
+            model.deleteCrate(c)
+          }
+        }
+        .help("Drop stock loops here; click to list them")
+      }
+      Button("+ Crate") { naming = true }.controlSize(.small)
+        .popover(isPresented: $naming) {
+          TextField("Crate name (Return)", text: $draft)
+            .textFieldStyle(.roundedBorder).frame(width: 200).padding(10)
+            .onSubmit {
+              model.newCrate(draft)
+              draft = ""
+              naming = false
+            }
+        }
+    }
+  }
+}
+
+/// One loop in the list: its name, then tempo, key and what it is. Pressing it loads the loop;
+/// drag it onto a crate to keep it there.
 struct StockLoopRow: View {
   let loop: StockLoop
   let tint: Color
@@ -243,6 +338,7 @@ struct StockLoopRow: View {
     }
     .buttonStyle(.plain)
     .onHover { hover = $0 }
+    .draggable(loop.path)
     .help("\(loop.pack) · \(loop.genre) · \(loop.beats) beats — load onto this deck")
   }
 }

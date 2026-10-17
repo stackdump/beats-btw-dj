@@ -813,6 +813,63 @@ public final class AppModel {
     }
   }
 
+  // Crates: your own lists of loops, built on favorites + tags (a crate is a tag; a loop in it
+  // is a starred sample carrying that tag), so one store holds every pick. Empty crates are
+  // kept by name in the app's defaults until something is dropped in.
+
+  static let cratesKey = "crates"
+
+  /// Every crate: the ones made here (in the order made), then any other tag in use.
+  var crates: [String] {
+    let made = defaults.stringArray(forKey: Self.cratesKey) ?? []
+    return made + favorites.allTags.filter { !made.contains($0) }
+  }
+
+  func newCrate(_ name: String) {
+    let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !n.isEmpty else { return }
+    var made = defaults.stringArray(forKey: Self.cratesKey) ?? []
+    if !made.contains(n) { made.append(n) }
+    defaults.set(made, forKey: Self.cratesKey)
+    favorites = favoritesStore.list()  // observed: the crate bar redraws
+  }
+
+  /// Put a stock loop (by path) in a crate: star it as a sample (with its own tempo as its
+  /// grid) if it isn't yet, and tag it.
+  func addToCrate(_ path: String, _ crate: String) {
+    newCrate(crate)
+    let cid = Favorite.fileCID(path)
+    if !favorites.contains(where: { $0.cid == cid }) {
+      guard let loop = stockLoops.first(where: { $0.path == path }) else { return }
+      let f = Favorite(
+        title: loop.name,
+        source: .sample(
+          id: "", title: loop.name, grid: BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)),
+        file: path)
+      do { favorites = try favoritesStore.add(f) } catch {
+        status = "favorites: \(error)"
+        return
+      }
+    }
+    let tags = favorites.first { $0.cid == cid }?.tags ?? []
+    if !tags.contains(crate) { setFavoriteTags(cid, tags + [crate]) }
+  }
+
+  /// Take a favorite out of a crate (it stays starred).
+  func removeFromCrate(_ cid: String, _ crate: String) {
+    let tags = favorites.first { $0.cid == cid }?.tags ?? []
+    setFavoriteTags(cid, tags.filter { $0 != crate })
+  }
+
+  /// Delete a crate: its tag comes off every favorite (they stay starred).
+  func deleteCrate(_ crate: String) {
+    for f in favorites where f.tags.contains(crate) { removeFromCrate(f.cid, crate) }
+    defaults.set(
+      (defaults.stringArray(forKey: Self.cratesKey) ?? []).filter { $0 != crate },
+      forKey: Self.cratesKey)
+    favorites = favoritesStore.list()
+  }
+
   /// A favorite's tags, replaced (the editor's add / remove).
   func setFavoriteTags(_ cid: String, _ tags: [String]) {
     do { favorites = try favoritesStore.setTags(cid: cid, tags) } catch {
