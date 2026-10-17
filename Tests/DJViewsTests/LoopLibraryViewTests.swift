@@ -105,6 +105,47 @@ struct LoopLibraryViewTests {
     #expect(m.controlState()["loops"]?["clips"]?[0]?["color"]?.string == "teal")
   }
 
+  @Test func deleteForeverIsNotUndoneByASaveAlreadyUnderWay() async throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let (m, dj) = try model(library: lib)
+    defer { dj.stop() }
+    let ids = m.clips.map(\.id)
+    m.flushLoopLibrary()
+    // the removal's save is still queued (it reads removed/ after writing) when the delete comes
+    let release = holdQueue(m.saveQueue)
+    m.removeClip(ids[0])
+    m.deleteForever(ids[0])
+    release()
+    m.saveQueue.sync {}
+    for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }  // the posts land on main
+    m.poll()
+    #expect(!m.removedLoops.contains { $0.id == ids[0] }, "\(m.removedLoops.map(\.id))")
+    #expect(!m.diskRemoved.contains { $0.id == ids[0] })
+    #expect(lib.removed().isEmpty && !removedLoopFiles(lib).contains("\(ids[0]).wav"))
+    // a later removal still shows up, from the library's list
+    m.removeClip(ids[1])
+    m.saveQueue.sync {}
+    for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(m.diskRemoved.map(\.id) == [ids[1]])
+  }
+
+  @Test func thePlayingTempoChangesOnlyWithTheTempo() throws {
+    let (m, dj) = try model(takes: 1)
+    defer { dj.stop() }
+    let flag = ChangeFlag()
+    withObservationTracking { _ = m.playingTempo } onChange: { flag.set() }
+    for _ in 0..<3 {
+      _ = try renderOffline(dj, frames: 2048)
+      m.poll()
+    }
+    #expect(m.decks["A"]?.playing == true)
+    #expect(!flag.changed, "deck A's position moves on; its tempo does not")
+    m.setPitch("A", 0.5)
+    m.poll()
+    #expect(flag.changed && m.playingTempo.map { abs($0 - 124.8) < 0.5 } == true)
+  }
+
   @Test func filtersHideTilesButPadSlotsFollowTheWholeRow() throws {
     let (m, dj) = try model(takes: 4)
     defer { dj.stop() }

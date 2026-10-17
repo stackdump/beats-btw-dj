@@ -154,6 +154,9 @@ public enum DeckAction: Equatable, Sendable {
   case loopKeyLock(on: Bool)
   /// How loops come in and go out: off | 10ms | beat | bar (`LoopFade`).
   case loopFade(mode: String)
+  /// How many bars a quick tap of a controller's LOOP button records (1…64), or nil for none
+  /// (a tap records to the next downbeat) (`DJEngine.setTapTakeBars`).
+  case tapBars(bars: Int?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -401,6 +404,7 @@ extension DeckAction {
       return o("clipKeyLock", [("id", .string(id)), ("on", .bool(on))])
     case .loopKeyLock(let on): return o("loopKeyLock", [("on", .bool(on))])
     case .loopFade(let mode): return o("loopFade", [("fade", .string(mode))])
+    case .tapBars(let bars): return o("tapBars", [("bars", bars.map { .int($0) } ?? .null)])
     }
   }
 
@@ -465,6 +469,7 @@ extension DeckAction {
     case "clipKeyLock": self = .clipKeyLock(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
     case "loopKeyLock": self = .loopKeyLock(on: v["on"]?.bool ?? false)
     case "loopFade": self = .loopFade(mode: v["fade"]?.string ?? LoopFade.declick.rawValue)
+    case "tapBars": self = .tapBars(bars: v["bars"]?.int)
     default: return nil
     }
   }

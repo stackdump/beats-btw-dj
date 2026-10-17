@@ -60,18 +60,31 @@ extension DJEngine {
   }
 
   /// What a clip's voice plays at: its level, or 0 when muted or soloed out.
-  public func audibleClipGain(_ id: String) -> Double {
+  public func audibleClipGain(_ id: String) -> Double { audible(id, at: clipGain(id)) }
+
+  /// Level `gain` for clip `id` as its voice plays it: 0 when muted or soloed out.
+  func audible(_ id: String, at gain: Double) -> Double {
     if clipMutes.contains(id) { return 0 }
     if !clipSolos.isEmpty && !clipSolos.contains(id) { return 0 }
-    return clipGain(id)
+    return gain
   }
 
   /// Every voice's level, again (a mute or solo changes others' too). The bank ramps to it.
+  /// A voice whose level is waiting for a scene's boundary (`LoopVoice.gainUntil`) keeps
+  /// waiting: the level it has until then, and the scene's from then, both with the new mute
+  /// and solo (a plain level change on its own would cancel the wait).
   func pushClipLevels() {
     guard let bank = loopChannel.bank else { return }
+    let now = loopChannel.renderedFrames
     for v in loopVoices.indices {
       guard let id = loopVoices[v].clipID else { continue }
-      bank.send(.gain(voice: v, Float(audibleClipGain(id))))
+      if let wait = loopVoices[v].gainUntil, wait.frame > now {
+        bank.send(.gain(voice: v, Float(audible(id, at: wait.gain))))
+        bank.send(.gainAt(voice: v, Float(audibleClipGain(id)), frame: wait.frame))
+      } else {
+        loopVoices[v].gainUntil = nil
+        bank.send(.gain(voice: v, Float(audibleClipGain(id))))
+      }
     }
   }
 
@@ -204,6 +217,7 @@ extension DJEngine {
     let ratio = loopVoices[v].targetBPM / bpm
     bank.voices[v].swap(buffer, pitch: ratio - 1)
     loopVoices[v].bufferBPM = bpm
+    loopVoices[v].bufferLength = Double(buffer.length)
     loopVoices[v].ratio = ratio
   }
 

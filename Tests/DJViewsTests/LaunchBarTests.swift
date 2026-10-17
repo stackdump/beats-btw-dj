@@ -22,6 +22,25 @@ struct LaunchBarTests {
 
   static let bar = 44_100  // 4 beats at 120 bpm, 22.05 kHz
 
+  @Test func aSceneWithNoLoopsOnTheRowIsNeverLit() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let id = try #require(m.clips.first?.id)
+    m.saveScene()
+    m.poll()
+    #expect(m.scenes.first?.active == true, "its loop plays")
+    m.removeClip(id)
+    try run(dj, Self.bar)
+    m.poll()
+    #expect(dj.loopingClips.isEmpty)
+    #expect(m.scenes.first?.count == 0 && m.scenes.first?.active == false, "\(m.scenes)")
+    // nor one saved with nothing playing
+    m.saveScene("empty")
+    m.poll()
+    #expect(m.scenes.last?.name == "empty" && m.scenes.last?.active == false)
+    #expect(m.controlState()["loops"]?["scenes"]?[1]?["active"] == .bool(false))
+  }
+
   @Test func launchOnIsRecordedAndRemembered() throws {
     let (m, dj) = try model()
     defer { dj.stop() }

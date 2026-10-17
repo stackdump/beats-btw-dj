@@ -33,7 +33,9 @@ public struct SequenceStep: Sendable, Equatable {
 /// its steps rendered back to back into one piece of audio, with the steps kept so it can be
 /// edited.
 public struct LoopClip: Sendable, Identifiable, Equatable {
-  /// Content id of the audio (`SampleBuffer.contentID`); also its key in `sampleLibrary`.
+  /// Content id of the audio as it was made (`SampleBuffer.contentID`); also its key in
+  /// `sampleLibrary`. A clip the library brings back at another sample rate keeps it, though its
+  /// resampled audio would hash differently.
   public let id: String
   /// Its name on the row ("A loop 3" until renamed, `DJEngine.renameClip`).
   public internal(set) var title: String
@@ -365,11 +367,14 @@ extension DJEngine {
   public func clip(_ id: String) -> LoopClip? { clips.first { $0.id == id } }
 
   /// Take a clip off the row (the audio stays in `sampleLibrary`: a recorded session may name it).
-  /// It is kept in `removedClips` with its place, so `restoreClip` can put it back.
+  /// It is kept in `removedClips` with its place and how it sounded, so `restoreClip` can put it
+  /// back as it was.
   public func removeClip(_ id: String) {
     guard let i = clips.firstIndex(where: { $0.id == id }) else { return }
     stopLoop(id, now: true)
-    rememberRemovedClip(clips.remove(at: i), at: i)
+    let sound = ClipSound(
+      muted: clipMutes.contains(id), soloed: clipSolos.contains(id), keyLock: clipKeyLocks[id])
+    rememberRemovedClip(clips.remove(at: i), at: i, sound: sound)
     forgetClipSound(id)
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
   }
@@ -546,12 +551,16 @@ extension DJEngine {
 
   /// `at`: change it at that deck frame instead of at once (a scene launch, on its boundary).
   public func setClipGain(_ id: String, _ g: Double, at: Int? = nil) {
+    let before = clipGain(id)
     clipGains[id] = g
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
       let level = Float(audibleClipGain(id))
       if let at {
+        // remembered, so a mute or solo before then keeps the change on its frame
+        loopVoices[v].gainUntil = (loopVoices[v].gainUntil?.gain ?? before, at)
         loopChannel.bank?.send(.gainAt(voice: v, level, frame: at))
       } else {
+        loopVoices[v].gainUntil = nil
         loopChannel.bank?.send(.gain(voice: v, level))
       }
     }
@@ -576,6 +585,7 @@ extension DJEngine {
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
       guard loopVoices[v].stopFrame != nil else { return }  // already in
       loopVoices[v].stopFrame = nil
+      loopVoices[v].boundary = nil
       // cancels the stop (or brings a fade-out back up)
       bank.send(.start(voice: v, frame: 0, fade: loopFadeFrames(bpm: loopVoices[v].targetBPM)))
       return
@@ -605,7 +615,8 @@ extension DJEngine {
     bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(bpm: target, short: atOnce)))
     loopVoices[v] = LoopVoice(
       clipID: id, ref: clock.ref?.name, ratio: ratio, bufferBPM: audio.bpm, targetBPM: target,
-      startFrame: at, scheduledAt: loopChannel.renderedFrames)
+      startFrame: at, scheduledAt: loopChannel.renderedFrames, bufferLength: length,
+      boundary: atOnce ? nil : clock.waitingBoundary(every: loopQuantum))
   }
 
   /// `at`: stop at that deck frame (a scene launch) instead of the next launch boundary.
@@ -619,15 +630,17 @@ extension DJEngine {
       return
     }
     let earliest = loopChannel.renderedFrames + (now ? 0 : Self.loopLead)
+    let clock = loopClock(for: clip(id))
     let at =
       now
       ? earliest
       : frame.map { max($0, earliest) }
-        ?? loopClock(for: clip(id)).nextBoundary(after: earliest, every: loopQuantum)
+        ?? clock.nextBoundary(after: earliest, every: loopQuantum)
     let fade = loopFadeFrames(bpm: loopVoices[v].targetBPM, short: now)
     bank.send(.stop(voice: v, frame: at, fade: fade))
     loopVoices[v].stopFrame = at
     loopVoices[v].scheduledAt = loopChannel.renderedFrames
+    loopVoices[v].boundary = now ? nil : clock.waitingBoundary(every: loopQuantum)
   }
 
   /// Housekeeping (from `serviceLoopTakes`): free voices whose loop is out, keep each loop at its
@@ -638,9 +651,14 @@ extension DJEngine {
     for v in loopVoices.indices {
       guard let id = loopVoices[v].clipID else { continue }
       if let stop = loopVoices[v].stopFrame {
-        if now >= stop && !bank.isActive(v) { loopVoices[v] = LoopVoice() }
+        if now >= stop && !bank.isActive(v) {
+          loopVoices[v] = LoopVoice()
+        } else {
+          retimeWaiting(v, bank, now: now)
+        }
         continue
       }
+      retimeWaiting(v, bank, now: now)
       // moved back from a deck: the deck hands over when the loop comes in, on the downbeat
       if bank.isActive(v) {
         for d in decks.values where d.clipID == id && d.playing { d.setPlaying(false) }
@@ -663,6 +681,56 @@ extension DJEngine {
   /// How far ahead of the render head a start or stop is scheduled at the least (the command
   /// must reach the audio thread first): ~43 ms at 48 kHz.
   static let loopLead = 2048
+
+  /// A start or stop still waiting for its boundary follows the reference deck to it. The frame
+  /// was worked out from the deck's tempo and phase when it was scheduled; a tempo fader, a
+  /// nudge or SYNC during a long countdown (2, 4 or 8 bars) moves that deck's boundary, and the
+  /// loop would come in (or go out) off it. So once the deck's tempo is not the one the frame
+  /// was worked out at (`LoopVoice.boundary`), each pass moves the frame to the deck's launch
+  /// line nearest it, and a waiting start is seeked to the clip's phase there. Only while both
+  /// frames are well ahead of the render head (the audio thread cannot have reached either),
+  /// only while the same deck is still the clip's clock, and only by less than a quarter of the
+  /// line spacing: a tempo change moves the line that little, while a looping sample, whose beat
+  /// count starts again on every pass, would otherwise seem to put its lines anywhere.
+  private func retimeWaiting(_ v: Int, _ bank: LoopBank, now: Int) {
+    let voice = loopVoices[v]
+    guard let boundary = voice.boundary, let id = voice.clipID, let clip = clip(id) else {
+      return
+    }
+    let clock = loopClock(for: clip)
+    guard clock.ref?.name == boundary.ref, let bpm = clock.bpm, clock.framesPerBeat > 0 else {
+      return
+    }
+    guard boundary.follow || abs(bpm - boundary.bpm) > 1e-9 else { return }
+    loopVoices[v].boundary?.follow = true
+    let safe = now + 2 * Self.loopLead
+    let reach = Double(boundary.beats) / 4 * clock.framesPerBeat
+    func moved(_ old: Int, _ new: Int) -> Bool {
+      let d = abs(new - old)
+      return old > safe && d > Self.retimeTolerance && Double(d) < reach
+    }
+    if let stop = voice.stopFrame {
+      let at = max(clock.nearestBoundary(to: stop, every: boundary.beats), now + Self.loopLead)
+      guard bank.isActive(v), moved(stop, at) else { return }
+      bank.send(.stop(voice: v, frame: at, fade: loopFadeFrames(bpm: voice.targetBPM)))
+      loopVoices[v].stopFrame = at
+      return
+    }
+    guard !bank.isActive(v), let start = voice.startFrame, voice.bufferLength > 0 else { return }
+    let at = max(clock.nearestBoundary(to: start, every: boundary.beats), now + Self.loopLead)
+    guard moved(start, at) else { return }
+    let beats = Double(clip.beats)
+    var b = (clock.beat(at) - (boundary.ref == clip.source ? clip.startBeat : 0))
+      .truncatingRemainder(dividingBy: beats)
+    if b < 0 { b += beats }
+    bank.voices[v].send(.seek(sample: b * voice.bufferLength / beats))
+    bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(bpm: voice.targetBPM)))
+    loopVoices[v].startFrame = at
+  }
+
+  /// How far (frames) a waiting boundary may drift before it is moved: ~1.3 ms, above a sample
+  /// deck's beat estimate's jitter.
+  static let retimeTolerance = 64
 
   /// What a loop lines up with: the deck it was taken from if that plays, else another playing
   /// deck, else a loop already going under the mixer, else nothing (it starts on its own).
@@ -695,16 +763,20 @@ extension DJEngine {
       }),
       let other = loopVoices[v].clipID.flatMap({ self.clip($0) })
     {
-      // what the voice holds may be a stretched copy: its length and tempo, not the clip's
+      // What the voice holds may be a stretched copy: the beat from its own length (published
+      // with its playhead, so the two always belong to the same audio). The tempo is the one it
+      // plays at, `targetBPM`, as the main thread set it: not the loaded audio's tempo × the
+      // turntable's rate, which mixes the new copy's tempo with the old rate for the block a
+      // swap takes to land (`swapVoice`).
       let tt = bank.voices[v]
-      let rate = max(1e-3, tt.currentRate)
       let length = Double(tt.length > 0 ? tt.length : other.buffer.length)
       let samplesPerBeat = length / Double(other.beats)
       var pos = tt.position.truncatingRemainder(dividingBy: length)
       if pos < 0 { pos += length }
+      let bpm = loopVoices[v].targetBPM
       return LoopClock(
         ref: nil, origin: (loopChannel.renderedFrames, pos / samplesPerBeat),
-        framesPerBeat: samplesPerBeat / rate, bpm: loopVoices[v].bufferBPM * rate)
+        framesPerBeat: 60 / bpm * sr, bpm: bpm)
     }
     return LoopClock(
       ref: nil, origin: (loopChannel.renderedFrames, 0), framesPerBeat: 0, bpm: nil)
@@ -726,6 +798,25 @@ struct LoopClock {
 
   /// The first downbeat (a beat that is a multiple of 4) at or after `frame`.
   func nextDownbeat(after frame: Int) -> Int { nextBoundary(after: frame, every: 4) }
+
+  /// The launch line (a beat that is a multiple of `beats`) nearest `frame`, before or after it.
+  func nearestBoundary(to frame: Int, every beats: Int) -> Int {
+    guard framesPerBeat > 0 else { return frame }
+    let q = Double(max(1, beats))
+    var back = beat(frame).truncatingRemainder(dividingBy: q)
+    if back < 0 { back += q }
+    let ahead = q - back
+    return ahead <= back
+      ? frame + Int((ahead * framesPerBeat).rounded(.up))
+      : frame - Int((back * framesPerBeat).rounded(.down))
+  }
+
+  /// What a start or stop scheduled now on a `beats` line of this clock waits for
+  /// (`LoopVoice.boundary`); nil without a reference deck.
+  func waitingBoundary(every beats: Int) -> (beats: Int, ref: String, bpm: Double, follow: Bool)? {
+    guard let ref, let bpm else { return nil }
+    return (beats, ref.name, bpm, false)
+  }
 
   /// The first beat at or after `frame` that is a multiple of `beats`, counted in the
   /// reference's own numbering (beat 0 is its bar 1), so 4-bar phrases (16) land on bars 1, 5,
@@ -757,6 +848,15 @@ struct LoopVoice {
   var startFrame: Int?
   /// When its pending start or stop was scheduled (the countdown's full length).
   var scheduledAt: Int?
+  /// A level change waiting for a frame (a scene's, on its boundary): the clip's level until
+  /// then (`clipGains` already holds the new one) and the frame.
+  var gainUntil: (gain: Double, frame: Int)?
+  /// Samples in the audio it was started with (a stretched copy's, perhaps).
+  var bufferLength = 0.0
+  /// The boundary its pending start or stop waits for: a line every `beats` beats of reference
+  /// deck `ref`, worked out at that deck's tempo `bpm`; `follow` once that tempo has changed
+  /// (`retimeWaiting` then keeps it on the deck's line); nil for one not on a deck's boundary.
+  var boundary: (beats: Int, ref: String, bpm: Double, follow: Bool)?
   /// Key lock: the tempo a stretch is wanted for and the frame it was first wanted at (it is
   /// rendered once that has held for `DJEngine.stretchDebounce`), and the render in flight.
   var stretchWant: (bpm: Double, since: Int)?

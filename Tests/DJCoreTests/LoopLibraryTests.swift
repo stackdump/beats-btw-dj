@@ -47,6 +47,60 @@ struct LoopLibraryTests {
       abs(back.buffer.length - 2 * 88_200) < 64, "two bars at 44.1 kHz: \(back.buffer.length)")
   }
 
+  @Test func anotherSampleRateKeepsTheIdsSoScenesAndFilesStay() throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let row = [clip(1), clip(2, bars: 2), clip(3)]
+    let scenes = [LoopScene(name: "Scene 1", clips: row.prefix(2).map { SceneClip(clipID: $0.id) })]
+    try lib.save(row, scenes: scenes)
+    try lib.save([row[0], row[1]])  // clip 3 taken off the row
+    // relaunched at 44.1 kHz: the audio is resampled, the ids are the ones saved
+    let back = lib.load(sampleRate: 44_100)
+    #expect(back.map(\.id) == [row[0].id, row[1].id])
+    #expect(back.allSatisfy { $0.buffer.sampleRate == 44_100 })
+    #expect(lib.loadScenes() == scenes)
+    let files = loopLibraryFiles(lib)
+    try lib.save(back)
+    #expect(loopLibraryFiles(lib) == files, "no new WAVs, none moved away")
+    #expect(lib.removed().map(\.id) == [row[2].id], "only the loop really removed")
+    let gone = try #require(lib.removedClip(row[2].id, sampleRate: 44_100))
+    #expect(gone.id == row[2].id, "a removed one decodes under its own id too")
+  }
+
+  @Test @MainActor func aResampledLibraryClipLoopsAndLaunchesInItsScene() throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let row = [clip(1), clip(2)]
+    try lib.save(row, scenes: [LoopScene(name: "S", clips: [SceneClip(clipID: row[1].id)])])
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 44_100)
+    dj.restoreClips(lib.load(sampleRate: dj.sampleRate))
+    dj.restoreScenes(lib.loadScenes())
+    dj.launchScene("S")
+    #expect(dj.loopingClips == [row[1].id], "the scene finds its clip")
+    let c = try #require(dj.clip(row[1].id))
+    #expect(dj.sampleLibrary[c.buffer.contentID] != nil, "its resampled audio is named too")
+  }
+
+  @Test func aFailedMoveLeavesTheRemovedLoopListed() throws {
+    let lib = tempLoopLibrary()
+    defer {
+      removeLoopLibrary(lib)
+    }
+    let (a, b) = (clip(1), clip(2))
+    try lib.save([a, b])
+    try blockRemovedAudio(lib, b.id)
+    defer { unblockRemovedAudio(lib, b.id) }
+    #expect(throws: (any Error).self) { try lib.save([a]) }
+    // its entry reached removed.json before anything moved, and the index still has it: it is
+    // listed on the row (its audio is still there), and the next save finishes the job
+    #expect(lib.removed().map(\.id) == [b.id])
+    #expect(lib.load(sampleRate: 48_000).map(\.id) == [a.id, b.id])
+    unblockRemovedAudio(lib, b.id)
+    try lib.save([a])
+    #expect(lib.removed().map(\.id) == [b.id] && lib.removedClip(b.id, sampleRate: 48_000) != nil)
+    #expect(lib.load(sampleRate: 48_000).map(\.id) == [a.id])
+  }
+
   @Test @MainActor func restoredClipsJoinTheRowAndReorder() throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
     let row = [clip(1), clip(2), clip(3)]

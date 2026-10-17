@@ -34,7 +34,9 @@ public struct LoopLibrary: Sendable {
     }
   }
 
-  /// A clip from its index entry and its audio.
+  /// A clip from its index entry and its audio. It keeps the id it was saved under: decoded at
+  /// another sample rate the audio is resampled, and its content id would change with it, so
+  /// scenes, sequences and the library's own files (all by id) would lose it.
   static func clip(_ e: JSONValue, audio: (String) -> URL, sampleRate: Double) -> LoopClip? {
     guard let id = e["id"]?.string,
       let beats = e["beats"]?.int ?? e["bars"]?.int.map({ $0 * 4 }), beats > 0,
@@ -43,7 +45,7 @@ public struct LoopLibrary: Sendable {
     else { return nil }
     let steps = e["steps"].map { [SequenceStep](json: $0) }
     return LoopClip(
-      id: steps == nil ? buffer.contentID : DJEngine.sequenceID(buffer),
+      id: id,
       title: e["title"]?.string ?? "loop",
       source: e["source"]?.string ?? "A", beats: beats, bpm: bpm,
       startBeat: e["startBeat"]?.double ?? 0, buffer: buffer,
@@ -89,6 +91,11 @@ public struct LoopLibrary: Sendable {
   /// yet (or move it back out of `removed/`), the index, and move the audio of clips no longer
   /// on the row into `removed/`, each with its entry, its place and when. `scenes`: the scenes
   /// to keep with them (nil keeps the ones already saved).
+  ///
+  /// The order is chosen so a crash (or a failed move) at any step leaves every clip findable:
+  /// `removed.json` gets the entries of the clips leaving the row first, then their audio moves,
+  /// and only then is `library.json` written without them. Until then the old index still names
+  /// them (and the next save tries again); an entry in both is shown on the row.
   public func save(
     _ clips: [LoopClip], scenes: [LoopScene]? = nil, removedAt date: Date = Date()
   ) throws {
@@ -103,11 +110,18 @@ public struct LoopLibrary: Sendable {
         try c.wavData().write(to: audioFile(c.id), options: .atomic)
       }
     }
+    try moveOffTheRow(keeping: Set(clips.map(\.id)), before: before, stamp: date)
     try write(
       indexFile, schema: Self.schema, key: "loops", clips.map { .object(Self.entry($0)) },
       extra: scenes.isEmpty ? [] : [("scenes", .array(scenes.map(\.json)))])
-    // what left the row goes to removed/, newest first
-    let keep = Set(clips.map(\.id))
+  }
+
+  /// What left the row (in `before`, the index as it was, and not in `keep`) goes to removed/,
+  /// newest first: the entries first, then the audio (any WAV in the folder not on the row).
+  private func moveOffTheRow(keeping keep: Set<String>, before: [JSONValue], stamp date: Date)
+    throws
+  {
+    let fm = FileManager.default
     let stamp = LoopProvenance.iso.string(from: date)
     var gone: [JSONValue] = []
     for (i, e) in before.enumerated() {
@@ -126,14 +140,13 @@ public struct LoopLibrary: Sendable {
       return
     }
     try fm.createDirectory(at: removedDir, withIntermediateDirectories: true)
-    for f in strays {
-      let to = removedDir.appendingPathComponent(f)
-      try? fm.removeItem(at: to)  // the same id is the same audio
-      try fm.moveItem(at: dir.appendingPathComponent(f), to: to)
-    }
     let goneIDs = Set(gone.compactMap { $0["id"]?.string })
+    // an entry is kept while its audio is in removed/, or about to be moved there
     func kept(_ e: JSONValue) -> Bool {
-      e["id"]?.string.map { fm.fileExists(atPath: removedAudioFile($0).path) } ?? false
+      e["id"]?.string.map {
+        fm.fileExists(atPath: removedAudioFile($0).path)
+          || fm.fileExists(atPath: audioFile($0).path)
+      } ?? false
     }
     let list =
       gone.filter(kept)
@@ -142,6 +155,11 @@ public struct LoopLibrary: Sendable {
         return !keep.contains(id) && !goneIDs.contains(id) && kept(e)
       }
     try write(removedIndexFile, schema: Self.removedSchema, key: "removed", list)
+    for f in strays {
+      let to = removedDir.appendingPathComponent(f)
+      try? fm.removeItem(at: to)  // the same id is the same audio
+      try fm.moveItem(at: dir.appendingPathComponent(f), to: to)
+    }
   }
 
   /// The clips taken off the row, newest first (their entries only: no audio is read).
@@ -214,10 +232,19 @@ extension DJEngine {
   /// Put saved clips back on the row (after any already there), ready to loop.
   public func restoreClips(_ restored: [LoopClip]) {
     for c in restored where clip(c.id) == nil {
-      sampleLibrary[c.id] = c.buffer
+      registerClipAudio(c)
       clips.append(c)
     }
     loopCount = max(loopCount, clips.count)
+  }
+
+  /// A clip's audio in `sampleLibrary`: under its id, and under its content id too when that
+  /// differs (a library clip resampled to this rate keeps the id it was saved under), so a deck
+  /// holding it can still be named by its content (`sourceDescriptor`).
+  func registerClipAudio(_ c: LoopClip) {
+    sampleLibrary[c.id] = c.buffer
+    let content = c.buffer.contentID
+    if content != c.id, !c.id.hasPrefix("seq-") { sampleLibrary[content] = c.buffer }
   }
 
   /// Move clip `id` on the row to just before `before` (to the end if nil).

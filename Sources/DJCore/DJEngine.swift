@@ -48,9 +48,10 @@ public final class DJEngine {
   public internal(set) var removedClips: [RemovedClip] = []
   /// How many bars a tap of LOOP records (let go within `DJEngine.loopTapFrames` of the
   /// press), when the press does not say: what a controller's LOOP button uses. The app sets it
-  /// from its own setting; nil turns fixed-length takes off (a tap records to the next downbeat,
-  /// like a hold).
-  public var tapTakeBars: Int? = 2
+  /// from its own setting through `perform(.tapBars)`, so a session records it (a controller's
+  /// tap is recorded as MIDI, and a replay would otherwise take the default); nil turns
+  /// fixed-length takes off (a tap records to the next downbeat, like a hold).
+  public internal(set) var tapTakeBars: Int? = DJEngine.defaultTapTakeBars
   /// What loops start and stop on, in beats: 4 (the next bar) unless set (`setLoopQuantum`).
   public internal(set) var loopQuantum = DJEngine.defaultLoopQuantum
   /// Saved sets of loops (`LoopScene`), in the order they were made.

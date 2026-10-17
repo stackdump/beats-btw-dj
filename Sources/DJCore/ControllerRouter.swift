@@ -78,13 +78,15 @@ public final class ControllerRouter {
   }
 
   /// The lights of the attached surface whose profile is `profileName`, with its port.
+  /// `shift`: show that layer (`SurfaceController.lights`), not the held one.
   public func lights(
-    profileName: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime
+    profileName: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime,
+    shift: Bool? = nil
   ) -> (port: String, groups: [String: [PadLight]])? {
     guard let (port, s) = surfaces.first(where: { $0.value.profile.name == profileName }) else {
       return nil
     }
-    return (port, s.lights(now: now))
+    return (port, s.lights(now: now, shift: shift))
   }
 
   /// Press and release a control on screen, as if it had been touched on the hardware:
