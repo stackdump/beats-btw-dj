@@ -466,12 +466,15 @@ public final class Deck: JogClock {
 
   deinit { capture.detach() }
 
-  public func load(_ buffer: SampleBuffer, title: String) {
+  /// Puts `buffer` on the turntable. `level`: give it the deck's auto-gain (`autoGain`,
+  /// `SampleLevel`); a clip (`loadClip`) plays at the level it was taken at instead.
+  public func load(_ buffer: SampleBuffer, title: String, level: Bool = true) {
     leaveNetMode()
     clipID = nil
     sourceFile = nil
     waveform = nil
     loaded = buffer
+    sampleLevel = level ? buffer.level : nil
     beatGrid = nil
     isDemo = false
     computeWaveform(buffer)
@@ -482,7 +485,30 @@ public final class Deck: JogClock {
     loopEnd = nil
     looping = false
     turntable.load(buffer)
+    applyAutoGain(now: true)
   }
+
+  // MARK: level (LevelMatch.swift)
+
+  /// Sample loads play at the app's reference loudness (`SampleLevel.autoGainDB`); off, the
+  /// audio plays at its own level. A deck setting (`.param(name: "autoGain")`, in
+  /// `DeckParams`), so a session replays with it; the gain itself is derived from the audio.
+  public var autoGain = false { didSet { if autoGain != oldValue { applyAutoGain(now: false) } } }
+  /// What the loaded sample measured (nil for a clip, a net, or nothing loaded).
+  public internal(set) var sampleLevel: SampleLevel?
+  /// The auto-gain the turntable plays the sample at, dB (0 when off or nothing to level).
+  public var autoGainDB: Double { autoGain ? sampleLevel?.autoGainDB ?? 0 : 0 }
+
+  func applyAutoGain(now: Bool) {
+    turntable.send(.gain(Float(pow(10, autoGainDB / 20)), now: now))
+  }
+
+  /// The deck's short-term loudness (BS.1770, last 3 s) before the EQ and fader, LUFS
+  /// (−200 when silent); `momentaryLUFS` over 400 ms. Any thread.
+  public var shortTermLUFS: Double { renderer.meter.shortTermLUFS }
+  public var momentaryLUFS: Double { renderer.meter.momentaryLUFS }
+  /// How far the net deck's limiter is pulling its peaks down now, dB (0 when it isn't).
+  public var limiterGainReductionDB: Double { mode == .net ? wave.limiterGainReductionDB : 0 }
 
   /// CUE button: while playing, back to the cue point and pause; while
   /// paused, set the cue point at the playhead.

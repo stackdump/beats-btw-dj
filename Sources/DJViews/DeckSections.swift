@@ -214,6 +214,11 @@ struct LoadPanel: View {
               ?? "\(hits.count)"
       )
       .font(.caption2).foregroundStyle(.secondary)
+      // samples and stock loops at the app's one loudness (LevelMatch), or as recorded
+      ChoiceButton(label: "Auto level", selected: model.autoGain[name] ?? true, tint: tint) {
+        model.setAutoGain(name, !(model.autoGain[name] ?? true))
+      }
+      .help("Play loaded samples at the same loudness as generated tracks (±12 dB)")
     }
     if !all.isEmpty {
       TextField("Search loops (name, pack, genre)", text: $query)

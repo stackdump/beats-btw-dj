@@ -159,5 +159,22 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
    Sound palettes (`SoundPalette`, the `tracks` override `palette`) are dj-only the same way;
    the Minecraft palette is local-only and never leaves the Mac, so it is not for beats.
 
+7. **One loudness: a limiter instead of the tanh, tracks at −12 LUFS** (LevelMatch.swift,
+   `PeakLimiter`, `WaveOptions.master = "limit"`, on in `.extended`). beats' wave engine ends in
+   `tanh(0.8 × sum)`, and its tracks come out at whatever level their voices sum to: −17…−22 LUFS
+   (lofi, jazz quietest), ~10 dB under an Apple loop or a commercial dance track, so a DJ mixing
+   one against a loop has to ride the fader. dj normalises every track (`.loudness`, retargeted to
+   `LevelMatch.referenceLUFS` = −12 LUFS integrated), keeps the runner's sum linear, and ends the
+   deck in a lookahead peak limiter (1.5 ms, fast + slow release, ceiling −1 dBFS) after the
+   master chain. Measured (`djctl render <genre> 4242`, whole songs): −11.8…−13.9 LUFS, peaks −1
+   dBFS, median gain reduction ≤ 0.3 dB, 95th percentile ≤ 1.8 dB. Sample decks are levelled to
+   the same reference on load. The parity path (`WaveOptions()`) keeps beats' tanh and no gain.
+   For beats: the same normalisation (a per-track gain from a short loudness probe of the busiest
+   section) and a limiter on the master would let its feed and share links play at one level.
+   The loudness probe can't hear sampled instruments: dj plays sampled parts in it at measured
+   offsets under their synth voices (`Loudness.sampledPartDB`), because samplers are levelled on a
+   short phrase to the lead and take no `.balance` trim, and so sit 2–6 dB under the synth part
+   they replace in a song (pads most).
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `scope-model.js` models Tone's `rolloff: -48` as four biquads; Tone cascades three.

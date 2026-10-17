@@ -90,6 +90,7 @@ extension WaveOptions {
     o.samplers = samplers
     o.voicingSeed = seed
     o.turntableBrake = true
+    o.master = "limit"
     return o
   }
 

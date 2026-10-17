@@ -156,6 +156,11 @@ public final class AppModel {
   private(set) var tapBars = 2
   static let tapBarsKey = "loopTapBars"
   static let tapBarChoices = [1, 2, 4, 8]
+  /// Sample loads auto-levelled to the app's reference (`Deck.autoGain`, LevelMatch.swift), per
+  /// deck: the Load panel's "Auto level" chip. The last choice is saved as `autoGain` in the
+  /// app's defaults and every deck starts with it (through `perform`, so a journal has it).
+  private(set) var autoGain: [String: Bool] = [:]
+  static let autoGainKey = "autoGain"
   // Scopes (SPEC modes 1…6): the panel under the decks, and what it shows.
   var showScopes = false
   var scopeKind: ScopeKind = .live
@@ -280,6 +285,7 @@ public final class AppModel {
       restoreLocks(injected)
       restoreLoops(injected)
       if injected.tapTakeBars != tapBars { injected.perform(.tapBars(bars: tapBars)) }
+      applyAutoGainPreference(injected)
       if let journalDir { openJournal(injected, in: journalDir) }
       poll()
       return
@@ -287,6 +293,7 @@ public final class AppModel {
     setKeepScreenAwake(defaults.bool(forKey: Self.keepScreenAwakeKey))
     do {
       let dj = try DJEngine()
+      applyAutoGainPreference(dj)
       for d in dj.decks.values { d.loadDemo() }
       restoreLocks(dj)
       if takeStore == nil { takeStore = LoopLibrary() }
@@ -593,6 +600,22 @@ public final class AppModel {
     dj?.perform(.grabBars(deck: deck, bars: bars))
     if let dj { pollLoops(dj) }
   }
+  private func applyAutoGainPreference(_ dj: DJEngine) {
+    let on = defaults.object(forKey: Self.autoGainKey) as? Bool ?? true
+    for name in dj.decks.keys.sorted() {
+      if dj[name]?.autoGain != on { dj.perform(.param(deck: name, name: "autoGain", value: on ? 1 : 0)) }
+      autoGain[name] = on
+    }
+  }
+
+  /// The Load panel's "Auto level" chip: this deck's sample loads at the reference loudness, or
+  /// as recorded. Remembered as the default for every deck.
+  func setAutoGain(_ deck: String, _ on: Bool) {
+    dj?.perform(.param(deck: deck, name: "autoGain", value: on ? 1 : 0))
+    autoGain[deck] = on
+    defaults.set(on, forKey: Self.autoGainKey)
+  }
+
   func setTapBars(_ n: Int) {
     guard Self.tapBarChoices.contains(n) else { return }
     tapBars = n
