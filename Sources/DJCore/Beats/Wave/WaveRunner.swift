@@ -108,6 +108,10 @@ public struct WaveOptions {
   /// The family's groove template the drums play (`DJMusicality.Fixes.feel`), set from the
   /// track's genre (`GrooveTemplate.forGenre`); nil = none, even with `.feel` on.
   public var feel: GrooveTemplate?
+  /// Brushes on the snare (`Brush`, `DJMusicality.Fixes.backbeat`'s jazz): its synth lanes play
+  /// the brush voice, a sampled kit's play the bank's Brush kit (or the kit's own snare, softer).
+  /// Set by `forGenre`; false = beats' snare (parity, and every other genre).
+  public var brushes = false
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -263,6 +267,11 @@ final class Lane {
   var fBase = 0.0
   var fMul = 0.0
   var fK = 1.0
+  var fQ = 1.0
+  /// `.sweep`: each voice's `fBase` and `fK` as struck (the lane's own outside a buildup;
+  /// `BuildupSweep` inside one), so a note keeps the colour it started with.
+  var fBaseV: [Double] = []
+  var fKV: [Double] = []
   var fEnv: [Double] = []
   var fVel: [Double] = []
   var fz1: [Double] = []
@@ -518,6 +527,9 @@ private func shapeVoice(_ lane: Lane, group: String, plucked: Set<String>, _ sr:
   lane.fBase = f.base
   lane.fMul = exp(-1 / (f.seconds * sr))
   lane.fK = 1 / f.q
+  lane.fQ = f.q
+  lane.fBaseV = [Double](repeating: f.base, count: lane.poly)
+  lane.fKV = [Double](repeating: 1 / f.q, count: lane.poly)
   lane.fEnv = [Double](repeating: 0, count: lane.poly)
   lane.fVel = [Double](repeating: 0, count: lane.poly)
   lane.fz1 = [Double](repeating: 0, count: lane.poly)
@@ -645,6 +657,8 @@ public final class WaveProject: @unchecked Sendable {
   /// The sound design it was prepared with (`WaveOptions.voiceDesign`): another start of the
   /// same song keeps it.
   public internal(set) var voiceDesign = VoiceDesign()
+  /// The noise riser into its drops (`.riser`, `RiserVoice`); nil = none. Set by `prepare`.
+  var riser: RiserVoice?
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
@@ -797,7 +811,8 @@ private func buildLanes(
           }
           if unison { detune(lane, group: part, wide: stereo, design: opts.voiceDesign, sr) }
         } else {
-          var voice = drumVoice(kind: key, instrument: tr.instrument)
+          let brushed = opts.brushes && key == "snare"
+          var voice = brushed ? Brush.voice : drumVoice(kind: key, instrument: tr.instrument)
           if key == "kick", let hz = kickHz {
             // `.kickTune`: the same sweep, landing on the key
             voice.f0 *= hz / voice.f1
@@ -805,11 +820,18 @@ private func buildLanes(
           }
           lane = gateLane(voice, sr, lanes.count)
           if let kit {
-            bindKit(lane, kind: key, kit, opts)
+            if brushed, let brush = DrumKits.brushKit(for: kit),
+              bindKit(lane, kind: key, brush, opts)
+            {
+              // the bank's Brush kit plays the snare
+            } else if bindKit(lane, kind: key, kit, opts), brushed {
+              // no Brush kit in the bank: the kit's own snare, played softer
+              lane.kitVelocity = Brush.stockVelocity
+            }
             // `.balance`: the kit was matched to the synth kit before its trims; the kick's
             // trim moves the whole kit (its own balance is the kit's)
             if !trims.isEmpty, let db = trims["kick"] {
-              lane.kitVelocity = DrumKits.velocityScale(db)
+              lane.kitVelocity *= DrumKits.velocityScale(db)
             }
           }
         }
@@ -954,11 +976,16 @@ func drumKitSource(_ project: Project) -> SamplerSource? {
 
 /// Play a drum lane's hits on the kit (its kind's GM key), when the kit loads in the deck's
 /// bank; else the lane keeps beats' synth voice. Its reference is the project's (`deinit`).
-private func bindKit(_ lane: Lane, kind: String, _ kit: SamplerSource, _ opts: WaveOptions) {
-  guard let bank = opts.samplers, let slot = bank.slot(for: [kit]) else { return }
+/// Whether it bound.
+@discardableResult
+private func bindKit(_ lane: Lane, kind: String, _ kit: SamplerSource, _ opts: WaveOptions)
+  -> Bool
+{
+  guard let bank = opts.samplers, let slot = bank.slot(for: [kit]) else { return false }
   lane.samplerSlot = slot
   lane.kitNote = DrumKits.gmNote(kind: kind)
   lane.kitHoldMs = DrumKits.holdMs(kind: kind)
+  return true
 }
 
 // clock slots
@@ -1056,6 +1083,10 @@ public final class WaveRunner {
   // lowpass leaves the drums alone; level and cutoff follow the project's `EnergyCurve`,
   // smoothed once a block.
   private let energyOn: Bool
+  // `.sweep`: how far through a buildup the note being struck is (`EnergyCurve.rampProgress`),
+  // -1 outside one; set before each tonal note-on, read by `strike`.
+  private let sweepOn: Bool
+  private var sweepX = -1.0
   private var splitTone = false
   private var accTone = 0.0
   private var toneL = [Float](repeating: 0, count: 4096)
@@ -1098,6 +1129,9 @@ public final class WaveRunner {
   // mix as mid and side, and go on into the room.
   private let echoFx: PingPong?
   private var accEcho = 0.0
+  /// `.riser`: the song step the current project is playing (its riser's place), or `Int.min`
+  /// for none (stopped, or the tick a queued project took over on, which plays nothing).
+  private var riserStep = Int.min
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
@@ -1109,6 +1143,7 @@ public final class WaveRunner {
     grooveOn = opts.musicality.contains(.groove)
     onHit = opts.onHit
     energyOn = opts.musicality.contains(.energy)
+    sweepOn = opts.musicality.contains(.sweep)
     stereoOn = opts.musicality.contains(.stereo)
     samplerSide = SideHighpass(hz: 150, sampleRate: sampleRate)
     masterGain = opts.masterGain
@@ -1143,8 +1178,10 @@ public final class WaveRunner {
     // plays on samplers (each sits at its sampler's level, not its synth voice's)
     let measureGain = opts.trackGain == nil && opts.musicality.contains(.loudness)
     let gain = opts.trackGain ?? 1
+    // (`.sweep` reads the curve's ramps too; the level and lowpass stay `.energy`'s)
     let energy =
-      opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
+      opts.musicality.contains(.energy) || opts.musicality.contains(.sweep)
+      ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     let songRests =
       opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
@@ -1157,6 +1194,11 @@ public final class WaveRunner {
       geometry: project, gain: gain, energy: energy, rests: rests, songRests: songRests,
       tail: opts.tail, harmony: harmony)
     prepared.turntableBrake = opts.turntableBrake
+    if opts.musicality.contains(.riser) {
+      prepared.riser = RiserVoice(
+        windows: DJMusicality.riserWindows(project), sampleRate: sampleRate,
+        stereo: opts.musicality.contains(.stereo), space: opts.musicality.contains(.space))
+    }
     if measureGain {
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
@@ -1204,6 +1246,8 @@ public final class WaveRunner {
     }
     current = next
     next.restCursor.reset()
+    next.riser?.reset()
+    riserStep = Int.min
     reverb?.tune(next.space)
     echoFx?.tune(next.echo, bpm: next.graph.tempo)
     setTempo(next.graph.tempo)
@@ -1226,6 +1270,8 @@ public final class WaveRunner {
     macroHoldTicks = 0
     graph?.reset()
     current?.restCursor.reset()
+    current?.riser?.reset()
+    riserStep = Int.min
     samplersAllOff()
     energyPrimed = false
     toneLP.0.reset()
@@ -1474,7 +1520,9 @@ public final class WaveRunner {
       }
     }
     let cur = lane.sd[v] + lane.sa[v]
+    if sweepOn { sweepX = sweepProgress(tick: -1) }
     strike(lane, v, note: note)
+    sweepX = -1
     if lane.fAmount > 0 { lane.fVel[v] = w * w }
     lane.md[v] = exp(-lane.st[slotInvSr] / 0.3)  // release time constant, used after noteOff
     lane.hold[v] = true
@@ -1653,7 +1701,18 @@ public final class WaveRunner {
     }
     let steps = n.durSteps[t]
     let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
+    if sweepOn { sweepX = sweepProgress(tick: tick) }
     trigger(lane, note: note, w: w, durMs: durMs)
+    sweepX = -1
+  }
+
+  /// `.sweep`: the ramp progress of the step a note was due on (`tick` is the graph's counter
+  /// after it; -1 = now), or -1 outside a buildup.
+  @inline(__always)
+  private func sweepProgress(tick: Int) -> Double {
+    guard let proj = current, let curve = proj.energy else { return -1 }
+    let step = (tick >= 0 ? tick : proj.graph.tick) - 1
+    return curve.rampProgress(step: max(0, step)) ?? -1
   }
 
   /// `onHit`'s record of a hit (offline only: it builds strings). `note`: as played.
@@ -1959,7 +2018,18 @@ public final class WaveRunner {
       while k < lane.mipTop.count - 1 && lane.mipTop[k] < hz * 1.06 { k += 1 }
       lane.mipBase[v] = k * (waveTableSize + 1)
     }
-    if lane.fAmount > 0 { lane.fEnv[v] = 1 }
+    if lane.fAmount > 0 {
+      lane.fEnv[v] = 1
+      // `.sweep`: a buildup's notes struck darker at first, brighter and more resonant as it
+      // goes; any other note gets the lane's own values (bit-identical renders outside one)
+      if sweepX >= 0 {
+        lane.fBaseV[v] = BuildupSweep.base(lane.fBase, x: sweepX)
+        lane.fKV[v] = 1 / BuildupSweep.q(lane.fQ, x: sweepX)
+      } else {
+        lane.fBaseV[v] = lane.fBase
+        lane.fKV[v] = lane.fK
+      }
+    }
     if lane.uniWide {
       // centred at A3 and below (the pair's beating would widen the low mids), full from C5
       lane.uniWidth[v] = lane.uniMax * min(1, max(0, Double(note - 57) / 15))
@@ -2273,12 +2343,12 @@ public final class WaveRunner {
   private func filterSample(_ lane: Lane, _ k: Int, _ x: Double, hz: Double) -> Double {
     let e = lane.fEnv[k]
     lane.fEnv[k] = e * lane.fMul
-    let fc = min(hz * lane.fBase + lane.fAmount * lane.fVel[k] * e, 0.3 * sampleRate)
+    let fc = min(hz * lane.fBaseV[k] + lane.fAmount * lane.fVel[k] * e, 0.3 * sampleRate)
     // tan(π fc / sr), to a few percent below 0.3 sr (its Taylor series to x⁵)
     let w = Double.pi * fc * lane.st[slotInvSr]
     let w2 = w * w
     let g = w * (1 + w2 * (1.0 / 3 + w2 * (2.0 / 15)))
-    let a1 = 1 / (1 + g * (g + lane.fK))
+    let a1 = 1 / (1 + g * (g + lane.fKV[k]))
     let a2 = g * a1
     let a3 = g * a2
     let ic1 = lane.fz1[k]
@@ -2314,6 +2384,7 @@ public final class WaveRunner {
     // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
     let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
     let step = g.tick
+    riserStep = step
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 {
@@ -2474,6 +2545,15 @@ public final class WaveRunner {
       }
       if let f = fading { for lane in f.lanes where lane.active { laneSample(lane) } }
       if let proj = current { for lane in proj.sources { lane.st[slotPrev] = lane.st[slotEnv] } }
+      if let riser = current?.riser {
+        let at = playing && !scrubbing && riserStep != Int.min
+        if riser.render(at: at ? Double(riserStep) + clock[clkTickPos] / clock[clkSpt] : nil) {
+          // a stinger: not rested, not ducked, beside the drums (out of the tonal lowpass)
+          acc += riser.mid
+          accS += riser.side
+          accSend += riser.mid * riser.send
+        }
+      }
       if let echoFx, echoFx.isOn {
         let (el, er) = echoFx.process(accEcho)
         let mid = 0.5 * (el + er)
