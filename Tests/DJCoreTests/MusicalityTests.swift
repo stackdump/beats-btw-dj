@@ -43,6 +43,17 @@ private let tensionGenres = BeatsTables.shared.genreIDs.filter {
 }
 
 struct MusicalityTests {
+  /// Every flag has its own bit, a name `djctl render --fixes` takes, and is in `all`.
+  @Test func fixesRegistryIsConsistent() {
+    let flags = DJMusicality.Fixes.named.filter { $0.key != "none" }
+    let bits = flags.values.map(\.rawValue)
+    #expect(bits.allSatisfy { $0 != 0 && $0 & ($0 - 1) == 0 }, "one bit per flag")
+    #expect(Set(bits).count == bits.count, "bits are unique")
+    let union = flags.values.reduce(DJMusicality.Fixes()) { $0.union($1) }
+    #expect(union == .all, "named and all list the same flags")
+    #expect(DJMusicality.Fixes.named["none"] == [])
+  }
+
   /// The pass rewrites bindings and markings only: same nets, places, transitions and arcs as
   /// the composer built, so views, section jumps and sessions agree with what plays.
   @Test func passKeepsTheNetTopology() {
