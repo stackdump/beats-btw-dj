@@ -212,6 +212,21 @@ its copy; the two are now independent. Rules inherited from that split:
   bit-transparent. UI: the Loops row's "Master FX" fold (`LoopMasterFxStrip`).
 - A neutral chain is bypassed and bit-transparent (decks without FX render the runner's exact
   bytes). `restBypass = false` / `solo` exist only for `MasterChainChromeTests`.
+- **The FX unit** (`Audio/FxUnit.swift`, `FxUnitDeck.swift`, `DJViews/FxUnitViews.swift`): live
+  knobs on a target's chain — A, B or L, each its own `Deck.fxUnit` (in `DeckParams`, so sessions
+  and checkpoints start from it): bipolar filter (left LP, right HP), HP, LP, phaser mix / depth /
+  rate, crush, drive, pitch; on a net deck also its genre's room / echo / feedback sends (sample
+  decks and L have none: greyed, `fxUnitMissing`). Theme: the poke is `DeckAction.fx(deck:param:
+  value:)` / `.fxReset` / `.fxKill` (a value is configuration, deterministic on replay); the
+  boundary is **immediate**, glided ~30 ms on the audio thread — a deliberate exception to bar
+  quantise for continuous controls (reset / kill take `onBeat`: the next beat). A drag is
+  recorded ≤ 30 Hz (`FxUnitCoalescer`). With macros, per key the more processed wins (HP max, LP
+  min, mix / crush / drive max, pitch adds, depth / rate the macro's while it moves them): macros
+  ride on top and release back to the unit; a neutral unit asks for the chain's rest (bypass,
+  bit-transparent), an untouched one sends nothing. Unit ops ramp over one block with no cancel
+  (`MasterParams.apply(_:_:at:live:)`); a `.set` while a quantised move waits lands it at once.
+  Measured allocation-free (`FxUnitRealTimeTests`). UI: one full-width card under the deck row
+  (bottom bar "FX unit"), aimed A / B / L, following the focus until one is picked.
 - Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs
   scripts/beats-macro-fx.mjs, which fetches Tone 15.1.22 into `.build/tone`, SRI-checked) and
   `master-chain-chrome.json` (Chrome rendering Tone's nodes; `make fixtures-chrome`,
@@ -714,9 +729,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
 - `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
   never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
-  limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
-  under an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`; dies with its
-  holder, so never stale; MCP runs only — a terminal `make` ignores it); `djtest_lock` says who
+  limit}` (`make swift-shots`, PNGs back as images) run filtered debug tests in parallel; what
+  must run alone holds an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`;
+  dies with its holder, so never stale): release `djtest_swift_test` runs (`lock=true` forces it on
+  others) and `make swift-test` / `swift-rt-test` / `swift-rt-test-filter` from any worktree or
+  terminal (`TEST_LOCK`, `djtest_mcp/locked.py`; a lock an ancestor holds doesn't block); `djtest_lock` says who
   holds it. Failures are tagged known_failing / flaky_under_load / new from
   `djtest_mcp/known_tests.json`, a copy of ROADMAP's Release checks lists — edit both.
 - Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s

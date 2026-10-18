@@ -50,9 +50,25 @@ extension DJMusicality {
   /// fallback, but must work on the ring steps the window covers (`ringStart ..< ringStart +
   /// end - start`, mod `ringLength`), not assume 0.
   public static func slotWindows(_ project: Project, role: String) -> [String: [SlotWindow]] {
-    let nets = project.nets.pairs.filter {
-      $0.value.riffGroup == role && $0.value.role != "control"
-    }
+    windows(
+      project, role: role,
+      nets: project.nets.pairs.filter {
+        $0.value.riffGroup == role && $0.value.role != "control"
+      })
+  }
+
+  /// The windows of one net that isn't a slot net (no `riffGroup`: a single `harmony` pad, a
+  /// `snare`), keyed by its id: where its mutes / unmutes leave it playing, by `role`'s phrase
+  /// grid (its id when it has no phrases). `slotWindows` never returns these, so the passes
+  /// that rewrite slots don't see them.
+  static func netWindows(_ project: Project, net id: String) -> [SlotWindow] {
+    guard let nb = project.nets[id], nb.role != "control" else { return [] }
+    return windows(project, role: id, nets: [(key: id, value: nb)])[id] ?? []
+  }
+
+  private static func windows(
+    _ project: Project, role: String, nets: [(key: String, value: NetBundle)]
+  ) -> [String: [SlotWindow]] {
     guard !nets.isEmpty, !project.structure.isEmpty else { return [:] }
     let ids = Set(nets.map(\.key))
     let rings: [String: (at: Int, count: Int)] = Dictionary(

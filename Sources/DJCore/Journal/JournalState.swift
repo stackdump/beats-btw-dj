@@ -443,6 +443,7 @@ public struct JournalState: Equatable, Sendable {
     dj.loopChannel.reverb.wet = loopChannel.reverbWet
     dj.loopChannel.reverb.size = loopChannel.reverbSize
     dj.loopChannel.reverb.tone = loopChannel.reverbTone
+    dj.loopChannel.applyFxUnit(loopChannel.fxUnit)
     dj.loopChannel.mute = loopMute
     dj.crossfader = crossfader
     dj.master = master

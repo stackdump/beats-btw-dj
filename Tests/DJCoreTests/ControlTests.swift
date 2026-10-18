@@ -155,7 +155,7 @@ struct MCPBridgeTests {
       "clipMove": #""id":"x""#, "clipFx": #""id":"x""#, "lock": #""key":"A.play""#,
       "wanderPace": #""bars":8"#, "wanderLock": #""dimension":"tempo""#,
       "setRoleVoice": #""role":"bass""#, "clipImport": #""id":"x""#,
-      "masterFx": #""key":"lp-freq""#,
+      "masterFx": #""key":"lp-freq""#, "fx": #""param":"filter","value":0.5"#,
     ]
     #expect(Set(DeckAction.jsonOps).count == DeckAction.jsonOps.count)
     for op in DeckAction.jsonOps where op != "load" {

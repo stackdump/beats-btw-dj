@@ -116,6 +116,22 @@ extension AppModel {
             throw ControlRequestError.bad("masterFx value must be 0…1 (the slider's travel)")
           }
         }
+        // the FX unit: a known control, inside its travel, on a deck that has it
+        if case .fx(_, let param, let value) = action {
+          guard let p = FxParam(id: param) else {
+            throw ControlRequestError.bad(
+              "unknown FX unit param \(param) (one of: "
+                + FxParam.allCases.map(\.id).joined(separator: ", ") + ")")
+          }
+          guard value.isFinite, p.range.contains(value) else {
+            throw ControlRequestError.bad(
+              "fx \(param) value must be \(jsNumberString(p.range.lowerBound))…"
+                + "\(jsNumberString(p.range.upperBound))")
+          }
+          if let why = d.fxUnitMissing(p) {
+            throw ControlRequestError.bad("deck \(deck): no \(param) (\(why))")
+          }
+        }
         if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
           throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")
         }
@@ -721,6 +737,7 @@ extension AppModel {
     o["crossfader"] = .number(crossfader)
     o["master"] = .number(master)
     o["focus"] = .string(engine?.focus ?? "A")
+    o["fxUnit"] = fxUnitJSON()
     o["recording"] = .bool(isRecording)
     o["loops"] = .object(
       JSONObject([

@@ -76,6 +76,16 @@ final class PingPong {
   private var hpX = 0.0
   private var hpY = 0.0
   private(set) var spec: EchoSpec?
+  /// The FX unit's echo send gain (1 = the genre's sends) and feedback boost (0 = the genre's,
+  /// 1 = `FxParam.maxFeedback`), each ramped linearly over the block it was set for. At 1 / 0 the
+  /// echo is exactly the genre's.
+  private var send = 1.0
+  private var sendTarget = 1.0
+  private var sendStep = 0.0
+  private var boost = 0.0
+  private var boostTarget = 0.0
+  private var boostStep = 0.0
+  private var unitLeft = 0
 
   init(sampleRate sr: Double) {
     sampleRate = sr
@@ -111,9 +121,28 @@ final class PingPong {
 
   var isOn: Bool { wet > 0 }
 
+  /// The FX unit's echo send and feedback boost (`FxUnitLayer`), reached linearly over the next
+  /// `frames` samples. Allocation-free (audio thread).
+  func setSend(_ g: Double, feedback b: Double, frames: Int) {
+    sendTarget = g
+    boostTarget = b
+    unitLeft = max(1, frames)
+    sendStep = (g - send) / Double(unitLeft)
+    boostStep = (b - boost) / Double(unitLeft)
+  }
+
   /// One sample in (the send), one stereo sample out (the repeats).
   @inline(__always)
   func process(_ x: Double) -> (Double, Double) {
+    var x = x
+    if unitLeft > 0 {
+      unitLeft -= 1
+      send = unitLeft == 0 ? sendTarget : send + sendStep
+      boost = unitLeft == 0 ? boostTarget : boost + boostStep
+    }
+    if send != 1 { x *= send }
+    let feedback =
+      boost == 0 ? self.feedback : self.feedback + (FxParam.maxFeedback - self.feedback) * boost
     delay += (target - delay) * glide
     let hp = hpA * (hpY + x - hpX)
     hpX = x

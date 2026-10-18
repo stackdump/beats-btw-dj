@@ -49,13 +49,18 @@ enum LoopMasterCommand: BitwiseCopyable {
   case slider(key: UInt8, value: Int16)
   /// Cancel and restore everything (pending fires too); a running brake releases.
   case panic
+  /// The FX unit (FxUnit.swift): a control, a reset, the kill. (No sends: the bus has no room or
+  /// echo of its own.)
+  case fxUnit(FxUnitCommand)
 }
 
 public final class LoopMasterBus: @unchecked Sendable {
   let sampleRate: Double
-  private let commands = SPSCRing<LoopMasterCommand>(capacity: 64)
+  private let commands = SPSCRing<LoopMasterCommand>(capacity: 128)
   private let fx: FxAutomation
   private let chain: MasterChain
+  /// The FX unit's hands on the chain (FxUnit.swift).
+  private let unit: FxUnitLayer
   private let brake: TurntableBrake
 
   /// Frames the bus has run (the loop channel's own clock).
@@ -76,7 +81,8 @@ public final class LoopMasterBus: @unchecked Sendable {
   private let opIndex: UnsafeMutablePointer<Int>
   private let opTime: UnsafeMutablePointer<Double>
   private let opKey: UnsafeMutablePointer<UInt8>
-  private let opValue: UnsafeMutablePointer<Int32>
+  private let opValue: UnsafeMutablePointer<Double>
+  private let opLive: UnsafeMutablePointer<Bool>
   private var opCount = 0
 
   // Audio → main.
@@ -96,6 +102,7 @@ public final class LoopMasterBus: @unchecked Sendable {
     self.sampleRate = sampleRate
     fx = FxAutomation()
     chain = MasterChain(sampleRate: sampleRate)
+    unit = FxUnitLayer(sampleRate: sampleRate)
     brake = TurntableBrake(sampleRate: sampleRate)
     let p = Self.pendingCapacity
     pendingID = [UInt8](repeating: 0, count: p)
@@ -106,6 +113,7 @@ public final class LoopMasterBus: @unchecked Sendable {
     opTime = .allocate(capacity: Self.opCapacity)
     opKey = .allocate(capacity: Self.opCapacity)
     opValue = .allocate(capacity: Self.opCapacity)
+    opLive = .allocate(capacity: Self.opCapacity)
   }
 
   deinit {
@@ -113,6 +121,7 @@ public final class LoopMasterBus: @unchecked Sendable {
     opTime.deallocate()
     opKey.deallocate()
     opValue.deallocate()
+    opLive.deallocate()
   }
 
   // MARK: main thread
@@ -137,6 +146,9 @@ public final class LoopMasterBus: @unchecked Sendable {
     sliderSet[key] = value
     commands.push(.slider(key: UInt8(key.rawValue), value: Int16(clamping: value)))
   }
+
+  /// The FX unit (FxUnit.swift; the deck sends it, `Deck.setFx`).
+  func sendFxUnit(_ c: FxUnitCommand) { commands.push(.fxUnit(c)) }
 
   /// Release everything: animations cancelled and restored, waiting fires dropped, a brake out.
   public func panic() {
@@ -189,6 +201,9 @@ public final class LoopMasterBus: @unchecked Sendable {
     let braking = brake.isOn
     let idleBefore = chain.isIdle()
     while let c = commands.pop() { apply(c) }
+    unit.beginBlock(frames: n, startFrame: s, automation: fx) { key, value in
+      queue(key, value, at: 0, live: true)
+    }
     // the fires due in this block, in frame order; the source rendered up to each brake
     var done = 0
     while let i = nextDue(before: s + n) {
@@ -230,7 +245,9 @@ public final class LoopMasterBus: @unchecked Sendable {
         chain.process(left, right, from: from, to: k)
         from = k
       }
-      chain.apply(MasterFxKey(rawValue: Int(opKey[i]))!, Int(opValue[i]), at: opTime[i])
+      chain.apply(
+        MasterFxKey(rawValue: Int(opKey[i]))!, opValue[i], at: opTime[i],
+        live: opLive[i] ? Double(n) / sampleRate : nil)
     }
     chain.process(left, right, from: from, to: n)
     chain.finish(frames: n)
@@ -269,6 +286,7 @@ public final class LoopMasterBus: @unchecked Sendable {
       pendingCount = 0
       brake.panic()
       fx.panic { handle($0) }
+    case .fxUnit(let u): unit.take(u)
     }
   }
 
@@ -294,12 +312,20 @@ public final class LoopMasterBus: @unchecked Sendable {
   /// The automation's events during a block: slider dispatches queued for the chain at their
   /// sample; tempo writes (the Feel puck's tempo axis) dropped — the loops keep the decks' tempo.
   private func handle(_ e: FxAutomationEvent) {
-    guard case .fx(let t, let key, let value) = e, opCount < Self.opCapacity else { return }
-    let offset = max(0, t - blockTransport)
+    guard case .fx(let t, let key, let value) = e else { return }
+    // the macro's slider, on the FX unit's setting (FxUnit.swift: at neutral, the slider)
+    queue(key, unit.automated(key, value, automation: fx), at: t - blockTransport, live: false)
+  }
+
+  /// A chain op for this block, `offset` seconds into it.
+  private func queue(_ key: MasterFxKey, _ value: Double, at offset: Double, live: Bool) {
+    guard opCount < Self.opCapacity else { return }
+    let offset = max(0, offset)
     opIndex[opCount] = min(blockFrames, max(0, Int((offset * sampleRate).rounded(.up))))
     opTime[opCount] = chain.time(at: 0) + offset
     opKey[opCount] = UInt8(key.rawValue)
-    opValue[opCount] = Int32(value)
+    opValue[opCount] = value
+    opLive[opCount] = live
     opCount += 1
   }
 }

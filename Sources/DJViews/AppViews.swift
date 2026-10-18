@@ -173,6 +173,22 @@ public final class AppModel {
   static let soundboardCrateKey = "soundboardCrate"
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
+  /// The FX unit panel (FxUnitViews.swift), under the decks. Saved in the app's defaults as
+  /// `showFxUnit`; closed until opened.
+  var showFxUnit = false
+  static let showFxUnitKey = "showFxUnit"
+  /// Each target's FX unit as of the last poll (A, B, L).
+  var fxUnits: [String: FxUnitState] = [:]
+  /// The target the FX unit panel aims at; nil follows the focus (`DJEngine.focus`).
+  var fxTarget: String?
+  /// `DJEngine.focus` as of the last poll.
+  var fxFocus = "A"
+  /// What the XY pad's vertical axis moves (its horizontal is the filter).
+  var fxY = FxParam.crush
+  /// Reset and kill wait for the next beat.
+  var fxOnBeat = false
+  /// Dragged knobs, recorded at most 30 times a second (`FxUnitCoalescer`).
+  @ObservationIgnored var fxCoalescer = FxUnitCoalescer()
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
   /// in the app's defaults as `keepScreenAwake`; off until turned on.
   private(set) var keepScreenAwake = false
@@ -317,6 +333,7 @@ public final class AppModel {
     }
     soundboardCrate = defaults.string(forKey: Self.soundboardCrateKey)
     showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
+    showFxUnit = defaults.bool(forKey: Self.showFxUnitKey)
     if let injected {
       dj = injected
       scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
@@ -525,6 +542,7 @@ public final class AppModel {
     }
     let tempo = decksPlayingTempo
     if tempo != playingTempo { playingTempo = tempo }
+    pollFxUnit(dj, now: now)
     pollLoops(dj)
     pollJournal(dj)
   }
@@ -1668,6 +1686,8 @@ public struct ContentView: View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
       deckRow(wide: wide, mixer: mixer)
+      // the FX unit: one panel for A, B and the loops, under the deck row in both layouts
+      if model.showFxUnit { FxUnitPanel(model: model).djCard(tint: model.fxTint) }
       if model.showSoundboard { SoundboardView(model: model).djCard(tint: LoopRowView.tint) }
       // the row appears with the first take (and stays while there are clips)
       if !model.clips.isEmpty || !model.recording.isEmpty {
@@ -1749,6 +1769,11 @@ public struct ContentView: View {
           isOn: Binding(get: { model.showSoundboard }, set: { model.setShowSoundboard($0) })
         )
         .toggleStyle(.button).help(SoundboardView.help)
+        Toggle(
+          model.fxUnits.values.contains { $0.settings.isActive } ? "FX unit ●" : "FX unit",
+          isOn: Binding(get: { model.showFxUnit }, set: { model.setShowFxUnit($0) })
+        )
+        .toggleStyle(.button).help(FxUnitPanel.help)
         // one button per attached controller: walk through its controls
         ForEach(model.devices, id: \.port) { d in
           Button("Check \(d.profile)") { model.startWalk(device: d.profile) }

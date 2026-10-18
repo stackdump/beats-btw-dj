@@ -1,18 +1,19 @@
 """djtest_swift_test, djtest_lock — filtered Swift test runs, one at a time.
 
 swift_test  `make swift-test-filter FILTER=…` (or `swift-rt-test-filter` with
-            release) under the shared lock; parses swift-testing's transcript
+            release, under the shared lock); parses swift-testing's transcript
             into passed / failed / skipped / issues / seconds and tags each
             failure from known_tests.json (ROADMAP's known-failing and flaky
             lists): known_failing, flaky_under_load or new.
 lock_status who holds the lock, if anyone.
 
 The lock is an flock(2) on ~/Library/Caches/dj-vevr-se/swift-test.lock
-($DJTEST_LOCK overrides), shared by every worktree's server: two filtered runs
-in parallel are what makes the slow tests flaky. The kernel drops an flock when
-its holder dies, so a crashed run can't leave it stale; the JSON written into
-the file only says who holds it. It covers MCP runs only: a `make` in a
-terminal doesn't take it.
+($DJTEST_LOCK overrides), shared by every worktree. It serialises what timing and allocation counts
+need alone: release (RT) runs here, and the Makefile's full-suite and RT targets
+(`make swift-test`, `swift-rt-test`, `swift-rt-test-filter`, via locked.py).
+Filtered debug runs and shots don't take it, so fix agents run in parallel. The
+kernel drops an flock when its holder dies, so a crashed run can't leave it
+stale; the JSON written into the file only says who holds it.
 
 There is no unfiltered run: `filter` is required and must name something.
 """
@@ -83,13 +84,24 @@ def _open_lock() -> int:
 
 @dataclass
 class LockInfo:
+    locked: bool = True
     waited_seconds: float = 0.0
     waited_for: dict | None = None
     path: str = ""
 
     def as_dict(self) -> dict:
-        return {"path": self.path, "waited_seconds": round(self.waited_seconds, 2),
+        return {"locked": self.locked, "path": self.path, "waited_seconds": round(self.waited_seconds, 2),
                 "waited_for": self.waited_for}
+
+
+@contextlib.contextmanager
+def maybe_held(lock: bool, what: dict, *, wait: float = LOCK_WAIT, root: Path | None = None):
+    """held(...) when lock, else an unlocked LockInfo (the run goes ahead in parallel)."""
+    if not lock:
+        yield LockInfo(locked=False)
+        return
+    with held(what, wait=wait, root=root) as info:
+        yield info
 
 
 @contextlib.contextmanager
@@ -299,13 +311,16 @@ def summarize(res: rn.Result, filter: str, release: bool, log: Path,
 
 
 def swift_test(filter: str, *, release: bool = False, timeout: float = TEST_TIMEOUT,
-               lock_wait: float = LOCK_WAIT, worktree: str = "") -> dict:
+               lock_wait: float = LOCK_WAIT, worktree: str = "",
+               lock: bool | None = None) -> dict:
+    """lock: hold the shared lock for the run; default only for release (RT) runs."""
     f = check_filter(filter)
     wt = rn.worktree_root(worktree)
     argv = test_argv(f, release=release)
     d = rn.run_dir("swift-tests", wt)
-    with held({"tool": "djtest_swift_test", "filter": f, "release": release},
-              wait=lock_wait, root=wt) as lock:
+    with maybe_held(release if lock is None else lock,
+                    {"tool": "djtest_swift_test", "filter": f, "release": release},
+                    wait=lock_wait, root=wt) as lock:
         res = rn.get_runner().run(argv, cwd=str(wt), timeout=timeout)
     log = d / "output.txt"
     log.write_text((res.stdout or "") + "\n--- stderr ---\n" + (res.stderr or ""))

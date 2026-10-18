@@ -33,8 +33,12 @@ test: swift-test swift-rt-test test-go test-web
 swift-build:
 	swift build
 
+# Full-suite and RT runs hold the shared test lock (tools/testmcp/djtest_mcp/locked.py: waits
+# for another full / RT run in any worktree); filtered debug runs and shots don't.
+TEST_LOCK = PYTHONPATH=$(CURDIR)/tools/testmcp python3 -m djtest_mcp.locked --what 'make $@' --
+
 swift-test:
-	swift test $(SWIFT_TEST_FLAGS)
+	$(TEST_LOCK) swift test $(SWIFT_TEST_FLAGS)
 
 # One suite or test: make swift-test-filter FILTER='ScopeLive'
 swift-test-filter:
@@ -55,11 +59,11 @@ swift-shots:
 # such frees in 2 of 10 runs), so sampler tests tolerate exactly that free, judged per call by
 # its stack (AllocationReport.freesAreOnlyListenerMapReclamation).
 swift-rt-test:
-	swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
+	$(TEST_LOCK) swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
 
 # One RT suite or test, same release build: make swift-rt-test-filter FILTER='AllocationCounterTests'
 swift-rt-test-filter:
-	swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
+	$(TEST_LOCK) swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
 
 # make djctl ARGS="monitor inpulse"
 djctl:

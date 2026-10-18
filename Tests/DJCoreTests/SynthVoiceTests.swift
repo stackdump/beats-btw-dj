@@ -129,7 +129,7 @@ struct SynthVoiceTests {
 
   /// Trance's arp takes the pluck envelope (`VoiceDesign.forGenre`, through `forGenre`); a
   /// house arp, and beats' options for trance (parity), keep the lead's.
-  @Test func trancesArpIsPlucked() {
+  @Test func trancesArpIsPlucked() throws {
     let arp = tonalVoice(instrument: "", group: "arp")
     for genre in ["trance", "edm", "synthwave"] {
       let design = WaveOptions.extended.forGenre(genre).voiceDesign
@@ -141,9 +141,23 @@ struct SynthVoiceTests {
     #expect(WaveOptions.extended.forGenre("house").voiceDesign == VoiceDesign())
     #expect(WaveOptions().forGenre("trance").voiceDesign == VoiceDesign())
     #expect(FilterEnvelope.forVoice(arp, group: "melody", plucked: ["arp"]) != .pluck)
-    // a whole trance track: every shaped arp lane closes at the pluck's rate
-    let track = PreparedTrack(
-      spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: sr)
+    // a whole trance track: every shaped arp lane closes at the pluck's rate. Trance's own arp
+    // instruments (pluck, edm-pluck, bright-pluck, muted-pluck) all have voices of their own in
+    // the instrument table (Karplus-Strong or a set lowpass), which no filter envelope shapes:
+    // no seed has a shaped arp lane. So the arp plays a plain saw the table doesn't know (a
+    // user's instrument pick), which `.subtractive` shapes as a lead unless the arp is plucked.
+    let base = TrackSpec(genre: "trance", seed: 42, structure: "minimal")
+    let arpChannel = try #require(
+      base.project().nets.pairs.first { $0.value.track.group == "arp" }?.value.track.channel)
+    guard
+      case .net(let spec)? = DeckSourceDescriptor.net(base).withInstrument(
+        "supersaw", channel: arpChannel)
+    else {
+      Issue.record("no spec with the arp's instrument picked")
+      return
+    }
+    #expect(InstrumentTable.shared.entries["supersaw"] == nil)
+    let track = PreparedTrack(spec: spec, sampleRate: sr)
     let arpNets = track.played.nets.keys.filter { track.played.nets[$0]?.track.group == "arp" }
     var shaped = 0
     for id in arpNets {

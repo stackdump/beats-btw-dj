@@ -475,10 +475,14 @@ struct SoundboardTests {
   }
 
   /// A fresh engine with deck A playing the demo loop (120 bpm), nothing on the row.
-  func stockModel(_ defaults: UserDefaults? = nil) throws -> (AppModel, DJEngine) {
+  /// `playing: false` leaves it loaded at rest: a `SessionRecorder` only starts on decks at
+  /// rest (`SessionError.notAtRest`).
+  func stockModel(_ defaults: UserDefaults? = nil, playing: Bool = true) throws -> (
+    AppModel, DJEngine
+  ) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
     dj["A"]!.loadDemo()
-    dj["A"]!.setPlaying(true)
+    dj["A"]!.setPlaying(playing)
     try dj.start()
     let m = AppModel(engine: dj)
     m.defaults = defaults ?? scratchDefaults()
@@ -492,7 +496,7 @@ struct SoundboardTests {
   /// boundary; it lights as its clip does; a click on a sounding one takes it out, and another
   /// brings the same clip back. The Row page shows the clip like any other loop.
   @Test func aStockPadImportsAndLaunchesTheLoop() async throws {
-    let (m, dj) = try stockModel()
+    let (m, dj) = try stockModel(playing: false)  // it records a session
     defer { dj.stop() }
     let loop = try temporaryStockLoop("Test Beat 01", category: "Drums")
     m.stockLoops = [loop]
@@ -587,14 +591,14 @@ struct SoundboardTests {
     #expect(m3.soundboardPage == .crate)
   }
 
-  /// A fresh engine (deck A playing the demo loop) over a temporary favorites store, with two
-  /// stand-in stock loops starred into crates: both in "warm", the second in "peak" too.
+  /// A fresh engine (deck A holding the demo loop, at rest so a `SessionRecorder` can start)
+  /// over a temporary favorites store, with two stand-in stock loops starred into crates:
+  /// both in "warm", the second in "peak" too.
   func crateModel(
     _ defaults: UserDefaults? = nil, favorites: FavoritesStore? = nil
   ) throws -> (AppModel, DJEngine, [StockLoop]) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
     dj["A"]!.loadDemo()
-    dj["A"]!.setPlaying(true)
     try dj.start()
     let m = AppModel(engine: dj, favorites: favorites ?? temporaryFavorites())
     m.defaults = defaults ?? scratchDefaults()

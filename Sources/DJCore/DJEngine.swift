@@ -382,6 +382,9 @@ public final class Deck: JogClock {
   /// A master macro fired on this deck (nil: its panic), net or sample: the loops' master bus
   /// takes it from here (on the loop channel itself, or linked: LoopMasterFx.swift).
   var onMasterMacro: ((MasterMacro?, Int?) -> Void)?
+  /// The FX unit's settings on this deck's chain (FxUnit.swift, FxUnitDeck.swift): kept through
+  /// track loads and mode switches, sent to whichever chain the deck plays through.
+  public internal(set) var fxUnit = FxUnitSettings()
   /// A curated stinger's loop to launch on the loop row (StingerLaunch.swift); false when it
   /// can't play, and the Hit plays its stinger net instead.
   var onStingerLoop: ((StingerAssignment) -> Bool)?
@@ -752,6 +755,7 @@ public final class Deck: JogClock {
       turntable.send(.transport(playing: false))
       mode = .net
       wave.isActive = true
+      syncFxUnit()  // the FX unit moves to the net's chain
     }
     netProject = project
     ringShapes = [:]
@@ -777,6 +781,7 @@ public final class Deck: JogClock {
     wave.pause()
     wave.isActive = false
     mode = .sample
+    syncFxUnit()  // the FX unit moves to the sample deck's bus
     netProject = nil
     fixes = nil
     passApplied = false
