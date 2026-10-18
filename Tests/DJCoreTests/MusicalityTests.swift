@@ -376,7 +376,10 @@ struct MusicalityTests {
       #expect(try #require(b.arpChordTones) == 1, "\(genre)/\(seed)")
       #expect(try #require(b.arpDoublesMelody) < 0.3, "\(genre)/\(seed)")
       #expect(b.inKey >= a.inKey)
-      let arp = NoteLog.capture(t.played).filter { $0.group == "arp" }
+      // a steady run at the figure's own rate (`.arpDensity` varies it: ArpDensityTests)
+      let steady = DJMusicality.apply(
+        t.composed, spec: t.spec, fixes: .all.subtracting(.arpDensity))
+      let arp = NoteLog.capture(steady).filter { $0.group == "arp" }
       for (_, bar) in Dictionary(grouping: arp, by: { ($0.tick - 1) / 16 }) {
         #expect(bar.count >= 8, "\(genre)/\(seed): \(bar.count) arp notes in a bar")
       }

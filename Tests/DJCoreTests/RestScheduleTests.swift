@@ -92,8 +92,13 @@ struct RestScheduleTests {
       s.entries
         == gaps.map { Entry(from: $0, to: $0 + DJMusicality.dropGapSteps, mask: .rhythm) })
     #expect(RestSchedule.build(edm, fixes: []).isEmpty)
-    #expect(RestSchedule.build(edm, fixes: .all.subtracting(.dropGap)).isEmpty, "stubs: no rests")
-    #expect(RestSchedule.build(edm, fixes: .all) == s)
+    #expect(
+      RestSchedule.build(edm, fixes: .all.subtracting([.dropGap, .kickOut])).isEmpty,
+      "stubs: no rests")
+    #expect(RestSchedule.build(edm, fixes: .all.subtracting(.kickOut)) == s)
+    #expect(
+      RestSchedule.build(edm, fixes: .all)
+        == RestSchedule(merging: s.entries + DJMusicality.kickOutRests(edm)))
   }
 
   /// A lane's class: the drop gap rests kick, non-fill drums and bass, nothing else.
@@ -103,7 +108,7 @@ struct RestScheduleTests {
     #expect(C.of(kind: "snare", group: "drums", net: "snare") == .drums)
     #expect(C.of(kind: "openhat", group: "drums", net: "hihat") == .drums)
     #expect(C.of(kind: "crash", group: "drums", net: "fill-1").isEmpty)
-    #expect(C.of(kind: "kick", group: "drums", net: "fill-2").isEmpty)
+    #expect(C.of(kind: "kick", group: "drums", net: "fill-2") == .fill)
     #expect(C.of(kind: "tonal", group: "bass", net: "bass") == .bass)
     #expect(C.of(kind: "tonal", group: "harmony", net: "harmony") == .harmony)
     #expect(C.of(kind: "tonal", group: "melody", net: "melody-0") == .melody)

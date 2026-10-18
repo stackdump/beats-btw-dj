@@ -6,9 +6,11 @@
 //                                     two decks (demo loop where no file), every supported
 //                                     controller connected; Ctrl-C to stop
 //   djctl journal list|show|replay|export-session   the app's event log (JournalCommand.swift)
-//   djctl render <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2]
+//   djctl bounce <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2]
 //                [--options JSON] [--mute r,…] [--solo r,…] [--seconds N] [--float32]
 //                                     compose a track and render it offline (no app)
+//   djctl render <genre> <seed> [--seconds N] [--out f.wav] [--mute r,…] [--solo r,…] …
+//                                     offline render + musicality / audio report as JSON
 //   djctl levels [file…] [--stock N]  loudness (LUFS, peak) and the auto-gain a sample deck
 //                                     plays each file at, and the spread before / after
 //                                     (LevelSurvey, LevelMatch.swift); --stock: N stock loops
@@ -104,11 +106,7 @@ var positional = Array(args.dropFirst())
 
 /// `--mute a,b` / `--solo a,b` (roles, mixer groups or net ids) as a render filter.
 @MainActor func roleFilterOption() -> RoleFilter? {
-  func list(_ n: String) -> Set<String>? {
-    stringOption(n).map { Set($0.split(separator: ",").map(String.init)) }
-  }
-  let f = RoleFilter(mute: list("--mute") ?? [], solo: list("--solo"))
-  return f.isEmpty ? nil : f
+  RenderRequest.filter(mute: stringOption("--mute"), solo: stringOption("--solo"))
 }
 
 @MainActor func writeRender(_ session: Session, filter: RoleFilter?, to path: String, float32: Bool)
@@ -334,10 +332,7 @@ case "bounce":
       throw ComposeOptions.Invalid(description: "unknown genre \(args[0])")
     }
     var spec = TrackSpec(genre: args[0], seed: seed, structure: structure, cohesion: cohesion)
-    if let optionsText {
-      guard let o = try JSONValue.parse(optionsText).object else {
-        throw ComposeOptions.Invalid(description: "--options must be a JSON object")
-      }
+    if let o = try RenderRequest.options(optionsText) {
       spec = try ComposeOptions.apply(o, to: spec)
     }
     guard let session = Session.playing(spec, seconds: seconds) else {
@@ -522,12 +517,18 @@ case "ctl":
 
 case "render":
   // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--kit ID] [--palette NAME]
+  //              [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
   // --room renders it a second time without the reverb and reports the room's return level;
   // --balance solos each part (`MixBalance`) and reports its level against the mix. The
   // `groove` block is how the played hits sit against the grid (`GrooveReport`).
+  // --mute / --solo render stems (`RenderRequest`: roles, mixer groups or net ids; the --room
+  // and --balance renders use the same filter); --options / --cohesion as `bounce` takes them.
   let seconds = option("--seconds") ?? 90
+  let stemFilter = roleFilterOption()
+  let cohesionArg = stringOption("--cohesion")
+  let optionsArg = stringOption("--options")
   var structure: String? = "standard"
   var out: String?
   if let i = positional.firstIndex(of: "--structure"), positional.indices.contains(i + 1) {
@@ -576,11 +577,23 @@ case "render":
   positional.removeAll { $0 == "--synth" || $0 == "--room" || $0 == "--balance" }
   guard positional.count >= 2, let seed = Double(positional[1]) else {
     stderr(
-      "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--synth]"
+      "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] "
+        + "[--notes f.txt] [--synth] [--room] [--balance] [--kit ID] [--palette NAME] "
+        + "[--fixes all|none|a,…] [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]"
     )
     exit(2)
   }
-  var spec = TrackSpec(genre: positional[0], seed: seed, structure: structure)
+  let request: RenderRequest
+  var spec: TrackSpec
+  do {
+    request = RenderRequest(
+      genre: positional[0], seed: seed, structure: structure, cohesion: cohesionArg,
+      options: try RenderRequest.options(optionsArg), filter: stemFilter)
+    spec = try request.spec()
+  } catch {
+    stderr("render failed: \(error)")
+    exit(2)
+  }
   if let kit {
     guard DrumKits.source(for: kit) != nil else {
       stderr("no kit \(kit); installed: " + DrumKits.installed.map(\.id).joined(separator: ", "))
@@ -609,7 +622,7 @@ case "render":
   let hits = HitLog()
   hits.attach(&deckOpts)
   let source = WaveDeckSource(sampleRate: sr, opts: deckOpts)
-  var trackOpts = WaveOptions.extended(samplers: synth ? nil : source.samplers)
+  var trackOpts = request.applied(to: .extended(samplers: synth ? nil : source.samplers))
   trackOpts.musicality = fixes
   let track = PreparedTrack(spec: spec, sampleRate: sr, opts: trackOpts)
   // `.sectionHarmony`: the notes as the runner plays them, the band moved per section
@@ -643,13 +656,16 @@ case "render":
   }
   let dips = render.preDropDips(track.played)
   if !dips.isEmpty { audio["preDropDipDB"] = round3(dips.reduce(0, +) / Double(dips.count)) }
+  // `.bandStop`: the beat before each chorus against the one before it, song family only
+  let stops = render.bandStopDips(track.played, genre: spec.genre)
+  if !stops.isEmpty { audio["bandStopDipDB"] = round3(stops.reduce(0, +) / Double(stops.count)) }
   // --room: render it again without `.space`; what the room adds, against the dry mix
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts
     dryDeck.musicality.remove(.space)
     dryDeck.onHit = nil
     let drySource = WaveDeckSource(sampleRate: sr, opts: dryDeck)
-    var dryOpts = WaveOptions.extended(samplers: synth ? nil : drySource.samplers)
+    var dryOpts = request.applied(to: .extended(samplers: synth ? nil : drySource.samplers))
     dryOpts.musicality = fixes.subtracting(.space)
     let dry = OfflineRender(
       track: PreparedTrack(spec: spec, sampleRate: sr, opts: dryOpts), source: drySource,
@@ -666,7 +682,7 @@ case "render":
   }
   // --balance: each part soloed against the whole mix, K-weighted (synth voices)
   if balance {
-    var o = WaveOptions.extended
+    var o = request.applied(to: .extended)
     o.musicality = fixes
     let levels = MixBalance.measure(track.played, opts: o.forGenre(spec.genre))
     audio["balanceDB"] = levels.mapValues(round3)
@@ -682,12 +698,13 @@ case "render":
   }
   audio["sound"] = sound
   audio["sampled"] = source.sampledNets
-  let doc: [String: Any] = [
+  var doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,
     "audio": audio, "tempo": track.played.tempo, "groove": groove.dictionary,
     "sectionSteps": track.played.structure.map(\.steps),
   ]
+  doc.merge(request.reportKeys(spec)) { _, new in new }
   let data = try JSONSerialization.data(
     withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
   print(String(decoding: data, as: UTF8.self))

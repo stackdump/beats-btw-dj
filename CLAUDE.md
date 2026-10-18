@@ -137,6 +137,10 @@ its copy; the two are now independent. Rules inherited from that split:
   each distinct offending stack with a hit count (up to 16; the rest count as `unrecorded`).
 - Projects are composed and compiled off the audio thread (`TrackSpec` →
   `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
+- Mix-out tail (`WaveOptions.tail` = `MixOutTail(fromTick, bars)`, nil on parity): a
+  `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
+  the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
+  `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
@@ -251,6 +255,11 @@ its copy; the two are now independent. Rules inherited from that split:
   purpose (guitar round robin, tape/chime modulation): sessions with them are not
   byte-identical on replay; GM programs always are. `make sampler-sweep` runs the sound
   checks over every installed sound (minutes); the default suite takes one per category.
+- Part levels (`SamplerPartLevels`): after `normalize` a tonal load also plays part probes
+  (pad chords, bass eighths, lead, arp; 3 passes, K-weighted) against the group's synth voice
+  → `SamplerBank.slotPartLevelDB(slot, group:)`. Unity-gain levels are cached by (file, size,
+  mtime, rate, probe `version`) in `Application Support/DJApp/sampler-part-levels.json`
+  (`$DJ_SAMPLER_PART_CACHE`; empty = memory only); bump `version` when a probe changes.
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and
@@ -410,7 +419,16 @@ its copy; the two are now independent. Rules inherited from that split:
   stretches built at prepare from `.dropGap` and 6.2's `.layerBudget` / `.bandStop` / `.kickOut`
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
   `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
-  `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
+  `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`). Genre-gated
+  gestures read `WaveOptions.genre` (set by `forGenre`; nil = raw nets / parity: off).
+  `.bandStop`: song family only, all but the lead (and crashes) rest the beat before a chorus
+  not covered by the drop gap, only where the lead has a note; fill chains are `Class.fill`,
+  which nothing else rests. `djctl render` reports `bandStopDipDB` (below 200 Hz).
+- Mix targets are data (ROADMAP 6.1): `Resources/beats/targets.json` (`MixTargets`, hand-edited;
+  `make beats-tables` writes only tables.json) holds `Loudness.targetDB`'s probe offset and gain range,
+  `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
+  reference bands (lufs, lra, truePeak, slope, side; empty until measured). Every number names its
+  `source` — retune there, saying where the new value came from; `TargetsTableTests` pins the values.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
@@ -498,6 +516,10 @@ its copy; the two are now independent. Rules inherited from that split:
   app can restart under a live MCP session. `make mcp-install` copies it to `build/mcp/` and
   registers `dj-vevr-se` at user scope. `djctl ctl <method> [json]` sends one raw request.
 - Publishing is deliberately not a tool (it's public and asks in a modal).
+- Outside audio joins the loop row only through `DJEngine.importClip` (recorded as `clipImport`
+  by content id, provenance `LoopProvenance.stock`; `dj_stock_loops addToRow`). A set with one is
+  refused by `SessionBundle` with no override (`Session.importedClips`): stock loops never reach
+  the CDN.
 - Build id: `bundle-app.sh` stamps `CFBundleVersion` (short commit, `-dirty` with tracked
   changes) and `DJBuildDate` into Info.plist; `BuildInfo.current` reads them ("dev" unbundled).
   It shows in the app's footer, in `dj_state.build`, and as MCP `serverInfo.version`
@@ -523,8 +545,14 @@ its copy; the two are now independent. Rules inherited from that split:
   edit functions (`FavoritesStore.adding`…). Deterministic offline; a live journal replays as
   exactly as live timing allows (async composes and sampled round robin can shift a take —
   then clip events fall back to the library's clip by id). `djctl journal list | show |
-  replay [--to SEQ|--at S] [--render f.wav] | export-session --from --to` (a slice → a normal
-  `Session`, starting at rest: playheads and the row at `from` are not in it).
+  replay [--to SEQ|--at S] [--from-start] [--render f.wav] | export-session --from --to` (a
+  slice → a normal `Session`, starting at rest: playheads and the row at `from` are not in it).
+- Mid-file checkpoints: `AppModel.pollJournal` calls `Journal.checkpointIfDue` (60 engine s or
+  2000 entries, and only after something was recorded); they keep the decks' playheads and no
+  `stores` key (`JournalState.hasStores`). A replay starts from the last checkpoint within
+  `toSeq`/`endFrame` (`startSeq`), folding line 0's stores and the store events before it;
+  `fromStart` forces line 0. Same state as a full replay, not the same audio (loops restart,
+  tails and router state start fresh) — byte-identical audio needs `fromStart`.
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
@@ -541,6 +569,20 @@ its copy; the two are now independent. Rules inherited from that split:
 - Chrome's Web MIDI needs `localhost` or https; `make serve` uses :8765.
 - Only one app should hold the port if behaviour looks odd — quit Chrome's
   lab tab before blaming the CLI, and vice versa.
+
+## Test MCP (tools/testmcp)
+
+- `dj-vevr-se-test` (package `djtest_mcp`, mcp>=2.0 `MCPServer`, shaped like `~/Workspace/mcp/workbit_mcp`):
+  offline tools for a Claude session — `djtest_build` (release djctl + its bundle copied to
+  `build/testmcp/`, which the rest run), `djtest_render` (`djctl render` → WAV under
+  `build/testmcp/renders/<ts>/`, returns MusicalityReport + AudioMetrics, lufs / peakDB lifted),
+  `djtest_matrix` (musicality-matrix.py → summary rows), `djtest_replay` (`journal replay
+  --json --render`; `twice` compares state + sha256 — round-robin samplers may differ on
+  purpose), `djtest_journal_list`. Never the speakers, the app or its socket.
+- Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s
+  FakeRunner, so `make testmcp-test` (unittest) never builds Swift or renders.
+- `make testmcp-install` only prints the `claude mcp add --scope user dj-vevr-se-test …`
+  command; it never registers anything. The user runs it.
 
 ## Commits
 

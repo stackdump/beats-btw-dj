@@ -309,6 +309,42 @@ extension DJEngine {
     return id
   }
 
+  // MARK: audio from outside
+
+  /// Put outside audio (a stock loop) on the row as a clip of `beats` beats, starting on its
+  /// first sample, and loop it under the mixer from the next launch boundary, in time with
+  /// whatever the loops follow. `bpm` is its tempo; nil works it out from the buffer's length
+  /// (an Apple Loop's metadata tempo is rounded, and a loop whose length and tempo disagree
+  /// drifts against the decks). The clip's id is the audio's content id and its `source` the
+  /// loop channel. The same audio twice is one clip: one already on the row is looped again,
+  /// a removed one is put back. Returns its id (nil for an empty buffer or no beats). Recorded
+  /// as `DeckAction.clipImport`; `provenance` is `LoopProvenance.stock` for a stock loop.
+  @discardableResult
+  public func importClip(
+    buffer: SampleBuffer, title: String, bpm: Double? = nil, beats: Int,
+    provenance: JSONValue? = nil
+  ) -> String? {
+    guard beats > 0, buffer.length > 0 else { return nil }
+    let tempo = bpm ?? Self.importTempo(buffer, beats: beats)
+    guard tempo.isFinite, tempo > 0 else { return nil }
+    let id = buffer.contentID
+    sampleLibrary[id] = buffer
+    if clip(id) == nil, !restoreClip(id) {
+      clips.append(
+        LoopClip(
+          id: id, title: title, source: loopChannel.name, beats: beats, bpm: tempo, startBeat: 0,
+          buffer: buffer, waveform: WaveformOverview(buffer: buffer, columns: 400),
+          provenance: provenance))
+    }
+    startLoop(id)
+    return id
+  }
+
+  /// The tempo `importClip` gives a clip of `beats` beats in `buffer` when it is given none.
+  public static func importTempo(_ buffer: SampleBuffer, beats: Int) -> Double {
+    Double(beats) * 60 * buffer.sampleRate / Double(max(buffer.length, 1))
+  }
+
   // MARK: grabbing what was played
 
   /// Take the last `bars` whole bars `deck` has already played, out of its capture history:
