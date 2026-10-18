@@ -16,6 +16,13 @@ import Synchronization
 /// late against its own dry signal (the dry side of the mix waits as long), as under the mixer:
 /// beat grid, tap and fire stamps are not moved for it (0.5 ms at 48 kHz).
 ///
+/// A sample deck A / B also runs the net decks' master chain (`master`, the loop channel's
+/// `LoopMasterBus`, one per deck, built here off the audio thread: `MasterChain` builds
+/// wavetables): turntable → clip FX → master bus → limiter. The master macros (sweeps, holds, the
+/// Feel puck's filter axis, the pitch shifter) land on the deck's next bar at its tempo
+/// (`Deck.fire(_: MasterMacro)`). At rest the bus is bit-transparent, so a deck without master
+/// FX renders the turntable's bytes. The bus's vinyl brake is not fired on a sample deck (yet).
+///
 /// Threading: `renderBlock` is the audio thread's; `sendFx` the main thread's. Everything else
 /// here is read-only or an atomic read, from any thread.
 final class DeckRenderer: @unchecked Sendable {
@@ -38,6 +45,10 @@ final class DeckRenderer: @unchecked Sendable {
   let fx: LoopFxVoice?
   private let fxLimiter: LoopFxLimiter?
   private let fxCommands = SPSCRing<DeckFxCommand>(capacity: 32)
+  /// The master chain and macros on a sample deck (nil on the loop channel: its bank has its own).
+  let master: LoopMasterBus?
+  /// Did the clip's FX chain run in this block (audio thread)? The limiter runs while it does.
+  private var blockFx = false
   /// The right channel for a mono render through the stereo chain (`fxChunk` frames a pass).
   private let fxScratch: UnsafeMutablePointer<Float>
   private static let fxChunk = 512
@@ -49,6 +60,7 @@ final class DeckRenderer: @unchecked Sendable {
     meter = LoudnessMeter(sampleRate: turntable.sampleRate)
     fx = bank == nil ? LoopFxVoice(sampleRate: turntable.sampleRate) : nil
     fxLimiter = bank == nil ? LoopFxLimiter(sampleRate: turntable.sampleRate) : nil
+    master = bank == nil ? LoopMasterBus(sampleRate: turntable.sampleRate) : nil
     fxScratch = .allocate(capacity: Self.fxChunk)
     fxScratch.initialize(repeating: 0, count: Self.fxChunk)
   }
@@ -97,9 +109,12 @@ final class DeckRenderer: @unchecked Sendable {
       bank.render(frames: frames, left: left, right: right, startFrame: start)
     } else if wave.isActive {
       wave.render(frames: frames, left: left, right: right, startFrame: start)
+    } else if let master {
+      blockFx = false
+      master.render(self, frames: frames, left: left, right: right, startFrame: start)
+      limit(frames: frames, left: left, right: right, engaged: master.engaged)
     } else {
       turntable.render(frames: frames, left: left, right: right)
-      processFx(frames: frames, left: left, right: right)
     }
     meter.push(left, right, frames: frames)
     if tap.isEnabled {
@@ -111,31 +126,57 @@ final class DeckRenderer: @unchecked Sendable {
     renderedFramesAtomic.store(start + frames, ordering: .releasing)
   }
 
-  /// Audio thread. The clip's FX over the turntable's block, then the limiter, both only while
-  /// they are in the path. Commands are taken in sample mode only (a net deck leaves them for
-  /// when it is a sample deck again).
+  /// Audio thread. The clip's FX over the turntable's block, only while it is in the path.
+  /// Commands are taken in sample mode only (a net deck leaves them for when it is a sample deck
+  /// again).
   private func processFx(
     frames n: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
   ) {
-    guard let fx, let fxLimiter else { return }
+    guard let fx else { return }
     while let c = fxCommands.pop() { fx.set(c.params, sounding: c.sounding) }
-    let ran = fx.running
-    guard ran || !fxLimiter.idle else { return }
-    if ran {
-      if let right {
-        fx.process(left, right, n)
-      } else {
-        var i = 0
-        while i < n {
-          let k = min(Self.fxChunk, n - i)
-          fxScratch.update(from: left + i, count: k)
-          fx.process(left + i, fxScratch, k)
-          i += k
-        }
+    guard fx.running else { return }
+    blockFx = true
+    if let right {
+      fx.process(left, right, n)
+    } else {
+      var i = 0
+      while i < n {
+        let k = min(Self.fxChunk, n - i)
+        fxScratch.update(from: left + i, count: k)
+        fx.process(left + i, fxScratch, k)
+        i += k
       }
     }
+  }
+
+  /// Audio thread. The safety limiter, last (after the master chain: distortion, crush and the
+  /// pitch shifter can lift peaks), while the clip FX or the master bus changed the block or it
+  /// is still coming back up.
+  private func limit(
+    frames n: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
+    engaged: Bool
+  ) {
+    guard let fxLimiter, blockFx || engaged || !fxLimiter.idle else { return }
     fxLimiter.process(left, right, n)
   }
+}
+
+// The master bus renders the turntable and the clip's FX as its source. Its vinyl brake is never
+// started on a sample deck, so it renders straight through and nothing here is ever braked.
+extension DeckRenderer: BrakeSource {
+  var playing: Bool { true }
+
+  func process(
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int,
+    startFrame _: Int
+  ) {
+    turntable.render(frames: frames, left: left, right: right)
+    processFx(frames: frames, left: left, right: right)
+  }
+
+  func brakeLag(sampleRate _: Double) -> Double { 1 }
+  func brakeChunk(output _: Int, pulled _: Int) {}
+  func catchUp(ticks _: Double) {}
 }
 
 /// A clip's FX for a sample deck's chain (`DeckRenderer.sendFx`).

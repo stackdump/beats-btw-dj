@@ -29,7 +29,12 @@ import Synchronization
 // At rest the bus is bit-transparent (a neutral chain is bypassed, an idle brake renders straight
 // through), so loops without master FX render the bank's old bytes.
 //
-// Threading: `render` is the audio thread's (from `LoopBank.render`). `fire`, `setSlider`, `panic`
+// Sample decks A / B run one each too (`DeckRenderer.master`): the source is the turntable and the
+// clip's FX, the clock the deck's frames rendered in sample mode, macros timed on the deck's bar
+// grid at its tempo (`Deck.sampleMasterFire`), and the brake never fired (it renders straight
+// through).
+//
+// Threading: `render` is the audio thread's (from `LoopBank.render`, `DeckRenderer.renderBlock`). `fire`, `setSlider`, `panic`
 // and the mirrors are the main thread's. Real-time: everything is allocated in `init`
 // (`LoopMasterRealTimeTests`). Make it off the audio thread: `MasterChain` builds wavetables.
 
