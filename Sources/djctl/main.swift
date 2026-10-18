@@ -521,7 +521,8 @@ case "render":
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
   // --room renders it a second time without the reverb and reports the room's return level;
-  // --balance solos each part (`MixBalance`) and reports its level against the mix.
+  // --balance solos each part (`MixBalance`) and reports its level against the mix. The
+  // `groove` block is how the played hits sit against the grid (`GrooveReport`).
   let seconds = option("--seconds") ?? 90
   var structure: String? = "standard"
   var out: String?
@@ -601,13 +602,18 @@ case "render":
   let sr = 48_000.0
   var deckOpts = WaveOptions.extended
   deckOpts.musicality = fixes
+  let hits = HitLog()
+  hits.attach(&deckOpts)
   let source = WaveDeckSource(sampleRate: sr, opts: deckOpts)
   var trackOpts = WaveOptions.extended(samplers: synth ? nil : source.samplers)
   trackOpts.musicality = fixes
   let track = PreparedTrack(spec: spec, sampleRate: sr, opts: trackOpts)
-  let (log, controls) = NoteLog.captureAll(track.played)
+  // `.sectionHarmony`: the notes as the runner plays them, the band moved per section
+  let (log, controls) = NoteLog.captureAll(
+    track.played, harmony: SectionHarmony.playing(track.played, fixes: fixes))
   // the played project: `.variety` moves the key, and the report reads it from the project
-  let report = MusicalityReport(project: track.played, log: log, controls: controls)
+  let report = MusicalityReport(
+    project: track.played, log: log, controls: controls, genre: spec.genre)
   if let notesOut {
     // one note per line: tick net group note velocity channel steps
     let lines = log.map {
@@ -619,6 +625,7 @@ case "render":
   }
   let render = OfflineRender(track: track, source: source, seconds: seconds)
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
+  let groove = GrooveReport(hits.records, sampleRate: sr, bpm: track.played.tempo)
   var audio = render.metrics.dictionary
   // BS.1770 integrated loudness, EBU loudness range and true peak, and what the deck's peak limiter did (PeakLimiter.swift)
   audio["lufs"] = round3(
@@ -639,6 +646,7 @@ case "render":
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts
     dryDeck.musicality.remove(.space)
+    dryDeck.onHit = nil
     let drySource = WaveDeckSource(sampleRate: sr, opts: dryDeck)
     var dryOpts = WaveOptions.extended(samplers: synth ? nil : drySource.samplers)
     dryOpts.musicality = fixes.subtracting(.space)
@@ -676,7 +684,7 @@ case "render":
   let doc: [String: Any] = [
     "genre": spec.genre, "seed": seed, "structure": structure ?? "loop",
     "seconds": Double(render.left.count) / sr, "musicality": report.dictionary,
-    "audio": audio, "tempo": track.played.tempo,
+    "audio": audio, "tempo": track.played.tempo, "groove": groove.dictionary,
     "sectionSteps": track.played.structure.map(\.steps),
   ]
   let data = try JSONSerialization.data(

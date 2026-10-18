@@ -213,7 +213,9 @@ public enum DJMusicality {
     public static let shape = Fixes(rawValue: 1 << 38)
     /// Bass bar 2 echoes bar 1's rhythm (`BassMotif.swift`, p64-bass-motif).
     public static let bassMotif = Fixes(rawValue: 1 << 39)
-    /// Per-genre arp figures. Runner (p64-arp-style).
+    /// Per-genre arp figures (`ArpFigure.seeded(_:variant:genre:)`, p64-arp-style): trance
+    /// rolls up and down in sixteenths, synthwave climbs in eighths with octave jumps, edm
+    /// plays up or broken sixteenths; other genres keep `.arpeggio`'s pool (house has no arp).
     public static let arpStyle = Fixes(rawValue: 1 << 40)
     /// The arp rate follows the phrase's density. Runner (p64-arp-density).
     public static let arpDensity = Fixes(rawValue: 1 << 41)
@@ -285,7 +287,9 @@ public enum DJMusicality {
     if fixes.contains(.variety) { varyFigures(&p, genre: genre, spec: spec) }
     if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
-    if fixes.contains(.arpeggio) { arpeggiate(&p, seed: spec.seed) }
+    if fixes.contains(.arpeggio) {
+      arpeggiate(&p, seed: spec.seed, genre: fixes.contains(.arpStyle) ? spec.genre : nil)
+    }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.shape) { shapeMelody(&p, genre: genre, spec: spec) }
@@ -1149,18 +1153,22 @@ public enum DJMusicality {
   static let arpPattern = [0, 1, 2, 3, 1, 2, 3, 4, 2, 3, 4, 3, 2, 1, 2, 1]
 
   /// An arp figure: which tone of a `span`-tone ladder each sixteenth plays, its first tone
-  /// (`start`, up the ladder), and whether it plays every sixteenth or every eighth.
+  /// (`start`, up the ladder), and whether it plays every sixteenth or every eighth. `phase`
+  /// starts the figure part-way through its cycle (an up-and-down keeps its shape, where
+  /// `start` would wrap it); with `octaves` each tone plays twice, the second an octave up.
   struct ArpFigure: Hashable {
     var shape: Int
     var span: Int
     var start: Int
     var rate: Int
+    var phase = 0
+    var octaves = false
 
     static let shapes = 6
 
     /// The ladder index for sixteenth `s` (0…15).
     func tone(_ s: Int) -> Int {
-      let i = s / rate
+      let i = s / rate / (octaves ? 2 : 1) + phase
       let n = span
       let x: Int
       switch shape {
@@ -1177,12 +1185,43 @@ public enum DJMusicality {
       return (x + start) % n
     }
 
+    /// Semitones above the ladder tone for sixteenth `s`: 12 on the second of each pair
+    /// under `octaves`, else 0.
+    func octave(_ s: Int) -> Int { octaves && (s / rate) % 2 == 1 ? 12 : 0 }
+
     /// The figure a slot of variant `variant` plays in a track of `seed`: drawn from the seed
     /// and the variant's letter, so every A slot plays one figure and a B slot another. A C
     /// variant (which beats composes sparser) plays eighths.
-    static func seeded(_ seed: Double, variant: String) -> ArpFigure {
+    ///
+    /// With `genre` (`.arpStyle`) the figure comes from that genre's pool, the seed still
+    /// picking within it: trance an up-and-down in sixteenths over 4–6 tones from a seeded
+    /// phase, synthwave eighths rising (up, up and down or down) with every tone answered an
+    /// octave up, edm up or broken sixteenths (a C slot's sixteenths are eighths, as in the full
+    /// pool). Any other genre (house has no arp role, so
+    /// nothing to play) and `nil` draw from the full pool.
+    static func seeded(_ seed: Double, variant: String, genre: String? = nil) -> ArpFigure {
       let u = UInt32(bitPattern: jsToInt32(seed))
       var rng = Mulberry32(seed: Int(Int32(bitPattern: u ^ hashStr("dj-arp/" + variant))))
+      switch genre {
+      case "trance":
+        let span = 4 + rng.nextInt(3)
+        let phase = rng.nextInt(2 * span - 2)
+        return ArpFigure(
+          shape: 2, span: span, start: 0, rate: variant == "C" ? 2 : 1, phase: phase)
+      case "synthwave":
+        let shape = [0, 2, 1][rng.nextInt(3)]
+        let span = 3 + rng.nextInt(3)
+        let start = shape == 2 ? 0 : rng.nextInt(span)
+        let phase = shape == 2 ? rng.nextInt(2 * span - 2) : 0
+        return ArpFigure(
+          shape: shape, span: span, start: start, rate: 2, phase: phase, octaves: true)
+      case "edm":
+        let shape = rng.nextInt(2) == 0 ? 0 : 3
+        let span = 4 + rng.nextInt(3)
+        let start = rng.nextInt(span)
+        return ArpFigure(shape: shape, span: span, start: start, rate: variant == "C" ? 2 : 1)
+      default: break
+      }
       let shape = rng.nextInt(shapes)
       let span = 4 + rng.nextInt(3)
       let start = rng.nextInt(span)
@@ -1198,8 +1237,8 @@ public enum DJMusicality {
   /// up and down, broken, a pedal or beats-like, from a seeded first tone, every sixteenth or
   /// eighth: seeded from the track's seed and the slot's variant), one step long, at the
   /// velocity it had. Bars it left silent stay silent: the arrangement's phrasing is kept, the
-  /// notes are the chord's.
-  static func arpeggiate(_ p: inout Project, seed: Double) {
+  /// notes are the chord's. With `genre` (`.arpStyle`) the figure is drawn from its pool.
+  static func arpeggiate(_ p: inout Project, seed: Double, genre: String? = nil) {
     let (chords, padBars) = padChords(p)
     guard padBars > 0 else { return }
     for id in p.nets.keys {
@@ -1214,7 +1253,7 @@ public enum DJMusicality {
         continue
       }
       let low = m - 5
-      let figure = ArpFigure.seeded(seed, variant: nb.riffVariant)
+      let figure = ArpFigure.seeded(seed, variant: nb.riffVariant, genre: genre)
       var bound = OrderedMap<MidiBinding>()
       for bar in 0..<(nb.transitions.count / 16) {
         let inBar = steps.filter { $0.step / 16 == bar }
@@ -1231,7 +1270,7 @@ public enum DJMusicality {
         guard ladder.count == figure.span else { continue }
         for s in stride(from: 0, to: 16, by: figure.rate) {
           var b = template
-          b.note = max(0, min(127, ladder[figure.tone(s)]))
+          b.note = max(0, min(127, ladder[figure.tone(s)] + figure.octave(s)))
           b.velocity = velocity
           b.duration = 0
           b.durationSteps = 1
