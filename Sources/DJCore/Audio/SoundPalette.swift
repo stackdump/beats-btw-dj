@@ -68,13 +68,14 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
   }
 
   /// How a track records this palette: with the version of what it plays here (the Minecraft
-  /// bank's asset index, from its sidecar, whose per-sample SHA-1s pin the sounds), so a
-  /// session, favorite or loop names what it was made with.
+  /// bank's asset index, from its sidecar, whose per-sample SHA-1s pin the sounds, and its
+  /// format when not 1: `minecraft@32+b2`), so a session, favorite or loop names what it was
+  /// made with.
   public func recorded(dir: String = SamplerSource.soundFontDir) -> String {
     if banks.contains(MinecraftBank.fileName),
-      let index = MinecraftBank.Sidecar.load(dir: dir)?.assetIndex
+      let version = MinecraftBank.Sidecar.load(dir: dir)?.version
     {
-      return "\(id)@\(index)"
+      return "\(id)@\(version)"
     }
     return id
   }

@@ -112,6 +112,9 @@ public struct WaveOptions {
   /// the brush voice, a sampled kit's play the bank's Brush kit (or the kit's own snare, softer).
   /// Set by `forGenre`; false = beats' snare (parity, and every other genre).
   public var brushes = false
+  /// A sine an octave under the synth basses (`SubOctave`, `DJMusicality.Fixes.subOctave`).
+  /// Set by `forGenre` (dnb, dubstep, trap); false = beats' bass (parity, every other genre).
+  public var subOctave = false
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -122,7 +125,8 @@ public struct WaveOptions {
   public var turntableBrake = false
   /// The loudness probe's stand-in for sampled parts (`Loudness.measure`): net id → a level on
   /// its tonal lane, so its synth voice sounds about as loud as the sampler the deck plays there
-  /// (`WaveProject.sampledGroups`, `Loudness.sampledPartDB`). Empty everywhere else.
+  /// (`WaveProject.sampledGroups`: the slot's measured part level plus its slot gain,
+  /// `SampledBalance.probeLevel`; `Loudness.sampledPartDB` when unmeasured). Empty elsewhere.
   var probeLevels: [String: Double] = [:]
   public var onTick: ((WaveRunner) -> Void)?
   /// Offline only (`GrooveReport`, `djctl render`): called on the render thread with every
@@ -290,6 +294,10 @@ final class Lane {
   var uniMax = Unison.width
   var uz1 = 0.0
   var uz2 = 0.0
+  /// `.subOctave`: each voice's sine an octave down (`subPhase`; empty = none), played where
+  /// half the note's rate is at least `subMinRate` (`SubOctave.minHz`, cycles per sample).
+  var subPhase: [Double] = []
+  var subMinRate = 0.0
   // post chain on the voice sum: lowpass biquad (`post`, 5 coefficients on every tonal lane,
   // used while `postOn`), then distortion
   var post: [Double] = []
@@ -553,6 +561,13 @@ private func detune(
     type: "highpass", fc: pad ? design.padSideHz : Unison.sideHz, q: 0.7071, sr: sr)
 }
 
+/// `.subOctave`: give a synth bass lane a sine per voice an octave down.
+private func addSubOctave(_ lane: Lane, _ sr: Double) {
+  guard lane.isTonal, !lane.isPluck else { return }
+  lane.subPhase = [Double](repeating: 0, count: lane.poly)
+  lane.subMinRate = SubOctave.minHz / sr
+}
+
 /// `.feel` as the runner reads it: a family's `GrooveTemplate` flattened into fixed arrays
 /// (`voice × 16 + step`) when a project is prepared. The swing is not folded in (unlike
 /// `GrooveTemplate.Prepared`): it is worked out per hit at the tempo playing, so a tempo
@@ -720,6 +735,11 @@ public final class WaveProject: @unchecked Sendable {
   let sendSlots: UInt64
   /// The echo this project plays (`.echo`); nil = none.
   public let echo: EchoSpec?
+  /// The sampler slots of lanes that send to the echo (`EchoSpec.send` > 0), and each one's send
+  /// (64 entries; a slot two lanes share takes the larger). Rendered one at a time through the
+  /// scratch pair, their send reaches the echo a block late.
+  let echoSlots: UInt64
+  let slotEcho: [Float]
   /// The parts' trims it plays with (`.balance`), dB; nil = none.
   public let balance: [String: Double]?
   /// The groove template it plays (`.feel`); nil = none. `feelTable` is what the runner reads.
@@ -770,12 +790,20 @@ public final class WaveProject: @unchecked Sendable {
     self.space = space
     var slots: UInt64 = 0
     var sending: UInt64 = 0
+    var echoing: UInt64 = 0
+    var echoes = [Float](repeating: 0, count: 64)
     for lane in lanes where lane.samplerSlot >= 0 && lane.samplerSlot < 64 {
       if lane.ducks { slots |= 1 << UInt64(lane.samplerSlot) }
       if lane.send > 0 { sending |= 1 << UInt64(lane.samplerSlot) }
+      if lane.echoSend > 0 {
+        echoing |= 1 << UInt64(lane.samplerSlot)
+        echoes[lane.samplerSlot] = max(echoes[lane.samplerSlot], Float(lane.echoSend))
+      }
     }
     duckSlots = slots
     sendSlots = space == nil ? 0 : sending
+    echoSlots = echo == nil || samplers == nil ? 0 : echoing
+    slotEcho = echoes
     let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     let track =
       trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
@@ -849,6 +877,7 @@ private func buildLanes(
   let space = opts.musicality.contains(.space)
   let subtractive = opts.musicality.contains(.subtractive)
   let unison = opts.musicality.contains(.unison)
+  let subOctave = opts.subOctave && opts.musicality.contains(.subOctave)
   let echo = opts.musicality.contains(.echo) && opts.echo != nil
   let kickHz =
     opts.musicality.contains(.kickTune) ? KickTuning.hz(root: g.project.rootNote) : nil
@@ -897,11 +926,14 @@ private func buildLanes(
           if lane.samplerSlot >= 0 {
             let group = tr.group ?? n.bundle.riffGroup
             sampledGroups[n.id] = group
-            if balanceSlots, let bank = opts.samplers, lane.samplerSlot < 64 {
+            // the slot's own part level, measured at its load (which `bindSampler` has just
+            // waited for): the probe plays the synth part where this sampler sits, after its
+            // `.balance` gain. Unmeasured (a bank that skips the probes), the table's average.
+            let level = opts.samplers?.slotPartLevelDB(lane.samplerSlot, group: group)
+            if balanceSlots, lane.samplerSlot < 64 {
               let trim =
                 n.id.hasPrefix("fill-")
                 ? 0 : MixBalance.part(kind: "tonal", group: group).flatMap { trims[$0] } ?? 0
-              let level = bank.slotPartLevelDB(lane.samplerSlot, group: group)
               let gainDB =
                 slotGainDB[lane.samplerSlot]
                 ?? SampledBalance.gainDB(trimDB: trim, partLevelDB: level)
@@ -909,7 +941,7 @@ private func buildLanes(
               probeLevels[n.id] = SampledBalance.probeLevel(
                 trimDB: trim, partLevelDB: level, group: group, gainDB: gainDB)
             } else {
-              probeLevels[n.id] = Loudness.sampledPartLevel(group: group)
+              probeLevels[n.id] = Loudness.sampledPartLevel(group: group, measuredDB: level)
             }
           }
           let part = tr.group ?? n.bundle.riffGroup
@@ -917,6 +949,7 @@ private func buildLanes(
             shapeVoice(lane, group: part, plucked: opts.voiceDesign.pluckGroups, sr)
           }
           if unison { detune(lane, group: part, wide: stereo, design: opts.voiceDesign, sr) }
+          if subOctave && part == "bass" { addSubOctave(lane, sr) }
         } else {
           let brushed = opts.brushes && key == "snare"
           var voice = brushed ? Brush.voice : drumVoice(kind: key, instrument: tr.instrument)
@@ -1240,9 +1273,16 @@ public final class WaveRunner {
   private var sendBuf = [Float](repeating: 0, count: 4096)
   private var sendingSlots: UInt64 = 0
   // Echo (`DJMusicality.Fixes.echo`): each sample's echo send (`accEcho`); the repeats join the
-  // mix as mid and side, and go on into the room.
+  // mix as mid and side, and go on into the room. Sampled leads send as they do to the room:
+  // a slot at a time into `echoBuf`, then through `echoFifo` during the next block.
   private let echoFx: PingPong?
   private var accEcho = 0.0
+  private var echoFifo = [Float](repeating: 0, count: 8192)
+  private var echoRead = 0
+  private var echoCount = 0
+  private var echoBuf = [Float](repeating: 0, count: 4096)
+  private var echoingSlots: UInt64 = 0
+  private var slotEchoBuf = [Float](repeating: 0, count: 64)
   /// `.riser`: the song step the current project is playing (its riser's place), or `Int.min`
   /// for none (stopped, or the tick a queued project took over on, which plays nothing).
   private var riserStep = Int.min
@@ -1317,7 +1357,7 @@ public final class WaveRunner {
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
         balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil,
-        sampled: prepared.probeLevels)
+        sampled: prepared.probeLevels, subOctave: opts.subOctave)
     }
     return prepared
   }
@@ -2090,38 +2130,44 @@ public final class WaveRunner {
     }
     evCount = 0
     let fits = frames <= duckL.count
-    // slots with a gain go one at a time (each with its own duck and send); the rest by group
-    let gained = fits ? live & gainedSlots : 0
-    let ducked = fits ? live & duckingSlots & ~gained : 0
-    let sent = fits ? live & sendingSlots & ~gained : 0
-    let sending = sent | (gained & sendingSlots)
-    bank.renderAll(live & ~ducked & ~sent & ~gained, frames: frames, left, right)
+    // slots with a gain or an echo send go one at a time (each with its own duck and sends);
+    // the rest by group
+    let single = fits ? live & (gainedSlots | echoingSlots) : 0
+    let ducked = fits ? live & duckingSlots & ~single : 0
+    let sent = fits ? live & sendingSlots & ~single : 0
+    let sending = sent | (single & sendingSlots)
+    let echoing = single & echoingSlots
+    bank.renderAll(live & ~ducked & ~sent & ~single, frames: frames, left, right)
     // the slots that duck, send, or both, a group at a time through the scratch pair
     if sending != 0 { for i in 0..<frames { sendBuf[i] = 0 } }
+    if echoing != 0 { for i in 0..<frames { echoBuf[i] = 0 } }
     for group in 0..<3 {
       let mask = group == 0 ? ducked & ~sent : group == 1 ? sent & ~ducked : ducked & sent
       guard mask != 0 else { continue }
       renderScratch(
         bank, mask, gain: 1, ducks: group != 1, sends: group != 0, left, right, frames: frames)
     }
-    var m = gained
+    var m = single
     while m != 0 {
       let i = m.trailingZeroBitCount
       m &= m - 1
       let bit: UInt64 = 1 << UInt64(i)
       renderScratch(
-        bank, bit, gain: slotGainBuf[i], ducks: duckingSlots & bit != 0,
-        sends: sendingSlots & bit != 0, left, right, frames: frames)
+        bank, bit, gain: gainedSlots & bit != 0 ? slotGainBuf[i] : 1,
+        ducks: duckingSlots & bit != 0, sends: sendingSlots & bit != 0,
+        echo: echoingSlots & bit != 0 ? slotEchoBuf[i] : 0, left, right, frames: frames)
     }
     bank.endBlock()
     if sending != 0 { queueSamplerSend(frames: frames) }
+    if echoing != 0 { queueSamplerEcho(frames: frames) }
   }
 
   /// Render `mask`'s slots into the cleared scratch pair, then add them to the block at `gain`,
-  /// ducked (`duckBuf`) and into the room's send (`sendBuf`) as asked. Inside `flushSamplers`.
+  /// ducked (`duckBuf`), into the room's send (`sendBuf`) as asked and, `echo` > 0, that much
+  /// into the echo's (`echoBuf`). Inside `flushSamplers`.
   @inline(__always)
   private func renderScratch(
-    _ bank: SamplerBank, _ mask: UInt64, gain: Float, ducks: Bool, sends: Bool,
+    _ bank: SamplerBank, _ mask: UInt64, gain: Float, ducks: Bool, sends: Bool, echo: Float = 0,
     _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
   ) {
     for i in 0..<frames {
@@ -2139,7 +2185,9 @@ public final class WaveRunner {
       let r = duckR[i] * g
       left[i] += l
       right?[i] += r
-      if sends { sendBuf[i] += right == nil ? l : 0.5 * (l + r) }
+      let mono = right == nil ? l : 0.5 * (l + r)
+      if sends { sendBuf[i] += mono }
+      if echo > 0 { echoBuf[i] += mono * echo }
     }
   }
 
@@ -2153,6 +2201,18 @@ public final class WaveRunner {
       if w >= sendFifo.count { w -= sendFifo.count }
       sendFifo[w] = sendBuf[i] * level
       fifoCount += 1
+    }
+  }
+
+  /// The sampled leads' echo send of the block just rendered, into `echoFifo` for the echo to
+  /// take during the next block, lifted by the master gain as `queueSamplerSend` is.
+  private func queueSamplerEcho(frames: Int) {
+    let level = Float(1 / max(0.05, masterGain))
+    for i in 0..<frames where echoCount < echoFifo.count {
+      var w = echoRead + echoCount
+      if w >= echoFifo.count { w -= echoFifo.count }
+      echoFifo[w] = echoBuf[i] * level
+      echoCount += 1
     }
   }
 
@@ -2394,6 +2454,14 @@ public final class WaveRunner {
         if lane.uniWide { uside += env * (o1 - o2) * 0.7071 * lane.uniWidth[k] }
       }
       if lane.fAmount > 0 { osc = filterSample(lane, k, osc, hz: rate * sampleRate) }
+      if !lane.subPhase.isEmpty {
+        // `.subOctave`: after the filter, a clean sine an octave down
+        let half = rate * 0.5
+        var sp = lane.subPhase[k] + half
+        sp -= sp.rounded(.down)
+        lane.subPhase[k] = sp
+        if half >= lane.subMinRate { osc += SubOctave.gain * sin(2 * Double.pi * sp) }
+      }
       let y = env * osc
       out += y
       if spread { side += y * lane.voicePan[k] }
@@ -2660,6 +2728,17 @@ public final class WaveRunner {
     duckingSlots = depth > 0 ? current?.duckSlots ?? 0 : 0
     sendingSlots = reverb != nil && frames <= sendBuf.count ? current?.sendSlots ?? 0 : 0
     gainedSlots = frames <= duckL.count ? current?.gainSlots ?? 0 : 0
+    let echoOn = echoFx?.isOn == true
+    echoingSlots = echoOn && frames <= echoBuf.count ? current?.echoSlots ?? 0 : 0
+    if !echoOn { echoCount = 0 }
+    if echoingSlots != 0, let p = current {
+      var m = echoingSlots
+      while m != 0 {
+        let i = m.trailingZeroBitCount
+        m &= m - 1
+        slotEchoBuf[i] = p.slotEcho[i]
+      }
+    }
     if gainedSlots != 0, let p = current {
       var m = gainedSlots
       while m != 0 {
@@ -2718,7 +2797,13 @@ public final class WaveRunner {
         }
       }
       if let echoFx, echoFx.isOn {
-        let (el, er) = echoFx.process(accEcho)
+        var x = accEcho
+        if echoCount > 0 {
+          x += Double(echoFifo[echoRead])
+          echoRead = echoRead + 1 == echoFifo.count ? 0 : echoRead + 1
+          echoCount -= 1
+        }
+        let (el, er) = echoFx.process(x)
         let mid = 0.5 * (el + er)
         let side = 0.5 * (el - er)
         accSend += mid * EchoSpec.roomSend

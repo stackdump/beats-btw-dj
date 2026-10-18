@@ -139,6 +139,8 @@ public final class AppModel {
   var headphoneLevel = 0.7
   var inpulseOutput: AudioOutputDevice?
   var inpulseRouted = false
+  /// Finds the Inpulse's audio device; tests swap it so they never route (or restart) the real one.
+  @ObservationIgnored var findInpulse: () -> AudioOutputDevice? = { AudioDevices.inpulse() }
   var padLights: [String: [PadLight]] = [:]
   /// Every attached controller's LEDs by profile name, for the device map (SPEC 25).
   var deviceLights: [String: DeviceLights] = [:]
@@ -160,6 +162,10 @@ public final class AppModel {
   var stockPadQuery = ""
   /// Stock loops being decoded for the row from their pads (shown as loading).
   var stockPadsLoading: Set<String> = []
+  /// The crate the Crate page shows (`setSoundboardCrate`), saved in the app's defaults as
+  /// `soundboardCrate`; nil (or a crate since deleted) shows the first crate.
+  var soundboardCrate: String?
+  static let soundboardCrateKey = "soundboardCrate"
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
@@ -191,6 +197,10 @@ public final class AppModel {
   private(set) var scopeHub: ScopeHub?
   /// The Stage window's model (SPEC modes 7…21); made with the hub.
   public private(set) var stageModel: StageModel?
+  /// Open / close the Stage window from the control socket (`view`'s `stage.open`): set by the
+  /// main window from its `openWindow` / `dismissWindow`; nil without a window (tests).
+  @ObservationIgnored var openStageWindow: (() -> Void)?
+  @ObservationIgnored var closeStageWindow: (() -> Void)?
   var walk: ControlWalk?
   /// Starred tracks and samples, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
@@ -300,6 +310,7 @@ public final class AppModel {
     if let p = defaults.string(forKey: Self.soundboardPageKey).flatMap(SoundboardPage.init) {
       soundboardPage = p
     }
+    soundboardCrate = defaults.string(forKey: Self.soundboardCrateKey)
     showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
     if let injected {
       dj = injected
@@ -428,7 +439,7 @@ public final class AppModel {
     master = dj.master
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
-    inpulseOutput = AudioDevices.inpulse()
+    inpulseOutput = findInpulse()
     // with Shift down the mirror shows the loop page a shift-click reaches
     let shiftLayer: Bool? = showPads && shiftKeyHeld() ? true : nil
     if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name, shift: shiftLayer) {
@@ -798,25 +809,28 @@ public final class AppModel {
   /// Master → the Inpulse's outputs 1/2, headphone cue → 3/4. Restarts the engine; if the
   /// device refuses, the stereo path comes back.
   func toggleInpulseOutput() {
-    guard let dj else { return }
-    Task { @MainActor in
-      dj.stop()
-      do {
-        if inpulseRouted {
-          try dj.disableCueRouting()
-          inpulseRouted = false
-        } else if let dev = AudioDevices.inpulse() {
-          try await dj.enableCueOutput(device: dev)
-          inpulseRouted = true
-        }
-        try dj.start()
-        status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
-      } catch {
-        status = "cue output: \(error)"
-        try? dj.disableCueRouting()
+    Task { @MainActor in await routeInpulseOutput(!inpulseRouted) }
+  }
+
+  /// Route to the Inpulse (on) or back to stereo (off); a no-op when already there.
+  func routeInpulseOutput(_ on: Bool) async {
+    guard let dj, on != inpulseRouted else { return }
+    dj.stop()
+    do {
+      if inpulseRouted {
+        try dj.disableCueRouting()
         inpulseRouted = false
-        try? dj.start()
+      } else if let dev = findInpulse() {
+        try await dj.enableCueOutput(device: dev)
+        inpulseRouted = true
       }
+      try dj.start()
+      status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
+    } catch {
+      status = "cue output: \(error)"
+      try? dj.disableCueRouting()
+      inpulseRouted = false
+      try? dj.start()
     }
   }
 
@@ -920,9 +934,11 @@ public final class AppModel {
   }
   /// Load a favorite onto a deck, through `perform` like any other load: a net is prepared off
   /// the main thread, a sample decoded from its file (with the grid it was starred with).
-  func loadFavorite(_ deck: String, _ f: Favorite) {
+  /// Returns the load's task (its value: did it load), for callers that wait on it.
+  @discardableResult
+  func loadFavorite(_ deck: String, _ f: Favorite) -> Task<Bool, Never> {
     status = "loading \(f.title)…"
-    Task { @MainActor in await loadFavoriteNow(deck, f) }
+    return Task { @MainActor in await loadFavoriteNow(deck, f) }
   }
 
   @discardableResult
@@ -1528,6 +1544,7 @@ public final class AppModel {
 public struct ContentView: View {
   let model: AppModel
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.dismissWindow) private var dismissWindow
 
   public init(model: AppModel) { self.model = model }
 
@@ -1561,7 +1578,11 @@ public struct ContentView: View {
     // the rings and the small animations pace themselves by the hub's visual level
     .environment(\.scopeHub, model.scopeHub)
     // arrow keys step through whatever list of choices the mouse is over
-    .onAppear { HoverKeys.shared.install() }
+    .onAppear {
+      HoverKeys.shared.install()
+      model.openStageWindow = { [openWindow] in openWindow(id: StageWindow.id) }
+      model.closeStageWindow = { [dismissWindow] in dismissWindow(id: StageWindow.id) }
+    }
     // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
     // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
     // bar, which are full at the window's minimum width

@@ -93,11 +93,24 @@ struct NoteRow: View {
 }
 
 /// The History section: the journal's latest lines, newest first, a fader sweep folded into
-/// one row, notes highlighted.
+/// one row, notes highlighted. "⟲ Rewind" turns the list into a picker (`RewindPoint`: marks,
+/// notes, checkpoints, every `AppModel.rewindEvery`th action, then the file's older
+/// checkpoints); a row's ⟲ asks first, naming the time and what happened, then rewinds.
 struct HistoryPanel: View {
   let model: AppModel
   @State private var notesOnly = false
+  @State private var rewinding: Bool
+  @State private var picked: RewindPoint?
+  @State private var older: [RewindPoint] = []
+  @State private var busy = false
+  @State private var outcome: String?
   static let shown = 80
+
+  init(model: AppModel, rewinding: Bool = false, picked: RewindPoint? = nil) {
+    self.model = model
+    _rewinding = State(initialValue: rewinding)
+    _picked = State(initialValue: picked)
+  }
 
   struct Row: Identifiable {
     let entry: JournalEntry
@@ -120,38 +133,138 @@ struct HistoryPanel: View {
   }
 
   var body: some View {
-    let rows = Self.rows(model.journalEntries, notesOnly: notesOnly)
     VStack(alignment: .leading, spacing: DJStyle.xs) {
       HStack(spacing: DJStyle.xs) {
         SectionLabel("Journal")
         Toggle("Notes only", isOn: $notesOnly).toggleStyle(.button).controlSize(.mini)
-          .tint(noteTint)
+          .tint(noteTint).disabled(rewinding)
+        Toggle("⟲ Rewind", isOn: $rewinding).toggleStyle(.button).controlSize(.mini)
+          .tint(.orange).disabled(model.journal == nil || busy)
+          .help("Pick a point in this run's journal to put the app back to")
       }
-      if rows.isEmpty {
-        Text(model.journal == nil ? "No journal this run." : "Nothing yet.")
-          .font(.caption).foregroundStyle(.secondary)
-      } else {
-        ScrollView(.vertical) {
-          LazyVStack(alignment: .leading, spacing: 1) {
-            ForEach(rows) { r in
-              HStack(alignment: .firstTextBaseline, spacing: DJStyle.xs) {
-                Text(r.entry.time.formatted(date: .omitted, time: .standard))
-                  .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                Text(r.entry.event.summary + (r.count > 1 ? "  ×\(r.count)" : ""))
-                  .font(.caption).lineLimit(1)
-                  .foregroundStyle(r.entry.event.isNote ? noteTint : Color.primary)
-                  .fontWeight(r.entry.event.isNote ? .semibold : .regular)
-              }
-              .help("#\(r.entry.seq) at frame \(r.entry.frame)")
-            }
-          }
-        }
-        .frame(height: 180)
-      }
+      if rewinding { picker } else { history }
       if let file = model.journal?.file.lastPathComponent {
         Text("\(file) · djctl journal show latest")
           .font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
       }
+    }
+    .task(id: rewinding) {
+      if rewinding { older = await model.fileRewindPoints() } else { picked = nil }
+    }
+  }
+
+  @ViewBuilder private var history: some View {
+    let rows = Self.rows(model.journalEntries, notesOnly: notesOnly)
+    if rows.isEmpty {
+      Text(model.journal == nil ? "No journal this run." : "Nothing yet.")
+        .font(.caption).foregroundStyle(.secondary)
+    } else {
+      ScrollView(.vertical) {
+        LazyVStack(alignment: .leading, spacing: 1) {
+          ForEach(rows) { r in
+            HStack(alignment: .firstTextBaseline, spacing: DJStyle.xs) {
+              Text(r.entry.time.formatted(date: .omitted, time: .standard))
+                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+              Text(r.entry.event.summary + (r.count > 1 ? "  ×\(r.count)" : ""))
+                .font(.caption).lineLimit(1)
+                .foregroundStyle(r.entry.event.isNote ? noteTint : Color.primary)
+                .fontWeight(r.entry.event.isNote ? .semibold : .regular)
+            }
+            .help("#\(r.entry.seq) at frame \(r.entry.frame)")
+          }
+        }
+      }
+      .frame(height: 180)
+    }
+  }
+
+  /// The rewind picker: the confirm strip for the picked row, progress / the outcome, the rows.
+  @ViewBuilder private var picker: some View {
+    let points = AppModel.rewindPoints(model.journalEntries, older: older)
+    if let p = picked {
+      VStack(alignment: .leading, spacing: DJStyle.xs) {
+        Text("Rewind to \(Self.time(p)) — \(p.summary)?").font(.caption.bold()).lineLimit(2)
+        Text("Everything after it is undone; the journal keeps it.")
+          .font(.caption2).foregroundStyle(.secondary)
+        HStack(spacing: DJStyle.xs) {
+          Button("⟲ Rewind", role: .destructive) { rewind(to: p) }
+          Button("Cancel") { picked = nil }
+        }
+        .controlSize(.small)
+      }
+      .padding(DJStyle.xs)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+    }
+    if busy {
+      HStack(spacing: DJStyle.xs) {
+        ProgressView().controlSize(.small)
+        Text(model.status).font(.caption).lineLimit(1)
+      }
+    } else if let outcome {
+      Text(outcome).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+    }
+    if points.isEmpty {
+      Text("Nothing to rewind to yet.").font(.caption).foregroundStyle(.secondary)
+    } else {
+      ScrollView(.vertical) {
+        VStack(alignment: .leading, spacing: 1) {
+          ForEach(Array(points.enumerated()), id: \.element.id) { i, p in
+            if p.fromFile, i == 0 || !points[i - 1].fromFile {
+              Text("earlier — checkpoints in the file").font(.caption2).foregroundStyle(.secondary)
+                .padding(.top, DJStyle.xs)
+            }
+            pointRow(p)
+          }
+        }
+      }
+      .frame(height: 180)
+    }
+  }
+
+  private func pointRow(_ p: RewindPoint) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: DJStyle.xs) {
+      Text(Self.time(p)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+      Text(p.summary).font(.caption).lineLimit(1)
+        .foregroundStyle(Self.color(p.kind))
+        .fontWeight(p.kind == .action ? .regular : .semibold)
+      Spacer(minLength: 0)
+      Button("⟲") { picked = p }
+        .buttonStyle(.borderless).font(.caption.bold()).foregroundStyle(.orange)
+        .disabled(busy).help("Rewind to #\(p.seq)…")
+    }
+    .padding(.vertical, 1)
+    .background(picked?.seq == p.seq ? Color.orange.opacity(0.15) : .clear)
+  }
+
+  private static func time(_ p: RewindPoint) -> String {
+    p.time.formatted(date: .omitted, time: .standard)
+  }
+
+  private static func color(_ k: RewindPoint.Kind) -> Color {
+    switch k {
+    case .note: noteTint
+    case .mark: .orange
+    case .checkpoint: .cyan
+    case .action: .primary
+    }
+  }
+
+  private func rewind(to p: RewindPoint) {
+    picked = nil
+    busy = true
+    outcome = nil
+    Task {
+      do {
+        try await model.rewindJournal(toSeq: p.seq)
+        outcome = model.status
+      } catch {
+        let line = "rewind to seq \(p.seq) failed: \(error)"
+        model.status = line
+        outcome = line
+      }
+      busy = false
+      older = await model.fileRewindPoints()
     }
   }
 }

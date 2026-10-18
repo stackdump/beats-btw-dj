@@ -271,6 +271,8 @@ extension Deck {
   /// A controller's STEMS buttons on a net deck: each mutes a group of roles. "music" is
   /// everything but the drums; "mic" is the lead, the nearest a net has to a vocal.
   static let stems = ["music": ["bass", "melody", "harmony", "arp"], "mic": ["melody"]]
+  /// The STEMS groups by name (`DeckAction.stemMute`): mic, music.
+  public static var stemNames: [String] { stems.keys.sorted() }
 
   /// The roles of `stem` this deck's net has.
   func stemRoles(_ stem: String) -> [String] {

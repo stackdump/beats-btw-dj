@@ -22,7 +22,8 @@ public struct MCPBridge {
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
     "dj_notes": "notes", "dj_journal": "journal", "dj_palettes": "palettes",
-    "dj_view": "view", "dj_variations": "variations", "dj_minecraft_events": "minecraftEvents",
+    "dj_view": "view", "dj_variations": "variations", "dj_loops": "loops",
+    "dj_settings": "settings", "dj_minecraft_events": "minecraftEvents",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -171,13 +172,14 @@ public struct MCPBridge {
       reference deck, phrases on its bars 1, 5, 9…; default 4) · loopFollow {mode: \
       louder|source}: which deck the loops' tempo follows (louder: the louder playing deck, the \
       default; source: each loop the deck it was taken from) · sceneSave {name}: the loops \
-      playing now (and their levels) as a scene (overwrites one of that name) · sceneLaunch \
+      playing now (and their levels and FX) as a scene (overwrites one of that name) · sceneLaunch \
       {name}: its loops in, every other out, all on the next launch boundary · sceneRename \
       {name, to} · sceneDelete {name} (dj_state.loops.scenes, .quantize) · \
       clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \
       replacing?}: join clips into a sequence (or rewrite one) · clip {deck: L|A|B, id}: move a \
       clip onto a deck (L = under the mixer) · clipRemove {id}: off the row, its audio kept \
-      (dj_state.loops.removed) · clipRestore {id, at?}: a removed clip back where it was (or at \
+      (dj_state.loops.removed; dj_loops undo puts it back, and has the row's load source, \
+      export and stop all) · clipRestore {id, at?}: a removed clip back where it was (or at \
       index at) · clipForget {id}: delete a removed clip for good · clipRename {id, title} · \
       clipColor {id, color: red|orange|yellow|green|teal|blue|violet|pink or null} · clipMute \
       {id, on}: silent but still looping, in phase · clipSolo {id, on}: while any clip is soloed \
@@ -220,7 +222,15 @@ public struct MCPBridge {
       drums and bass for bars bars and stops on a bar line (the room rings out; section jumps \
       keep it, a new track drops it) · mixIn {deck, bars? 1-64, default 4}: bring the deck in \
       drums-forward: from the next bar its melodic parts rest for bars bars and come back on \
-      the bar line after. Deck "L" also takes param volume / mute (1 = muted), \
+      the bar line after · rewind {deck}: back to the start (a sample's first frame, a net's \
+      tick 0) · focus {deck: A|B|L}: aim the deck-less controls (keys, joystick, seed, wander) \
+      as a controller's deck-select does (dj_state.focus) · stemMute {deck, stem: \
+      music|mic, on}: a net deck's STEMS group muted or back (music: all but the drums; mic: the \
+      lead) · masterFx {deck, key: hp-freq|lp-freq|phaser-freq|phaser-depth|phaser-wet|\
+      crush-bits|distortion|master-pitch, value 0…1}: move a master FX slider by hand, value \
+      the fraction of its travel (as a controller fader sends it; master-pitch −12…12 \
+      semitones, the rest 0…100), on a net's chain, a sample deck's bus or the loops' (L). \
+      Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
       Net-only ops (section, role, macro, stinger, panic, mixOut, mixIn) need a deck in net mode. Use \
@@ -455,14 +465,87 @@ public struct MCPBridge {
     tool(
       "dj_view",
       "Show or hide the main window's panels: the Soundboard (every loop as a big pad), "
-        + "Controllers, Map, Scopes and the on-screen APC pads. Leave a panel out to keep it as "
-        + "it is; returns what shows now.",
+        + "Controllers, Map, Scopes, the on-screen APC pads and the Loops master FX strip; fold "
+        + "each deck's sections open or shut; set what the scope panel shows; open, close or set "
+        + "the Stage window. Leave anything out to keep it as it is; returns what shows now.",
       [
         "soundboard": prop("boolean", "The Soundboard: one pad per loop, scenes on top"),
         "controllers": prop("boolean", "Every controller drawn with its bindings"),
         "map": prop("boolean", "The device map"),
         "scopes": prop("boolean", "The scope panel"),
         "pads": prop("boolean", "The on-screen APC mini grid"),
+        "loopMasterFx": prop("boolean", "The Loops row's master FX strip"),
+        "sections": obj([
+          ("type", .string("object")),
+          (
+            "description",
+            .string(
+              "Per deck, the sections to show open (the rest fold), e.g. {\"A\": [\"perform\", "
+                + "\"masterfx\"]}: perform, wander, masterfx, reverb, track, favorites, "
+                + "generate, load, notes, history")
+          ),
+          (
+            "additionalProperties",
+            obj([("type", .string("array")), ("items", obj([("type", .string("string"))]))])
+          ),
+        ]),
+        "scope": obj([
+          ("type", .string("object")),
+          ("description", .string("The scope panel (dj_state.scope)")),
+          (
+            "properties",
+            obj([
+              ("open", prop("boolean", "Show the panel (as scopes)")),
+              ("kind", prop("string", "live | spectro | bands | raster")),
+              ("source", prop("string", "master, A or B")),
+              ("measured", prop("boolean", "The measured half (spectro and bands)")),
+            ])
+          ),
+        ]),
+        "stage": obj([
+          ("type", .string("object")),
+          ("description", .string("The Stage window (dj_state.stage)")),
+          (
+            "properties",
+            obj([
+              ("open", prop("boolean", "Open (true) or close (false) the window")),
+              ("source", prop("string", "master, A or B")),
+              (
+                "visualizer",
+                prop("string", "mandala (constellation) | corona | sonar | petal | shuffle")
+              ),
+              (
+                "overlays",
+                obj([
+                  ("type", .string("array")), ("items", obj([("type", .string("string"))])),
+                  (
+                    "description",
+                    .string("The overlays on, replacing the set: flow, pulse, flame, tilt, bolts")
+                  ),
+                ])
+              ),
+              ("background", prop("string", "void | stars | aurora")),
+            ])
+          ),
+        ]),
+      ]),
+    tool(
+      "dj_settings",
+      """
+      The monitoring settings: pfl {A, B} (a deck's headphone cue), headphoneMix (0 cue only … \
+      1 master only in the headphones), headphoneLevel (0…1), awake (keep the screen from \
+      sleeping) and inpulseOutput (master → the Inpulse's outputs 1/2, cue → 3/4; restarts the \
+      audio engine, an error when no Inpulse is connected). Only the keys given change (a bad \
+      one changes nothing); returns headphones {mix, level, pfl}, awake and inpulseOutput as \
+      they stand (dj_state shows the same). These are monitoring, not performance: they never \
+      reach the master mix, so a recorded session does not record them.
+      """,
+      [
+        "pfl": prop("object", "Deck name → cue on/off, e.g. {\"A\": true, \"B\": false}"),
+        "headphoneMix": prop("number", "0 = cue only … 1 = master only"),
+        "headphoneLevel": prop("number", "Headphone volume, 0…1"),
+        "awake": prop("boolean", "Keep the display awake while the app is open"),
+        "inpulseOutput": prop("boolean", "Route master and cue to the Inpulse's audio outputs"),
       ]),
     tool(
       "dj_record",
@@ -489,6 +572,26 @@ public struct MCPBridge {
         "target": prop("string", "A target key, e.g. track:z4EBG…"),
         "text": prop("string", "The note"),
         "id": prop("string", "A note's id, from list"),
+      ]),
+    tool(
+      "dj_loops",
+      """
+      The Loops row's buttons that are not deck actions. action list (default) returns \
+      dj_state.loops; undo puts back the loop last taken off the row (the row's Undo, for a few \
+      seconds after dj_perform clipRemove; clipRestore {id} brings back any removed loop); \
+      loadSource {id, deck} loads the track a clip was taken from onto deck A or B (a net \
+      composed again, at the section it was in; a sample while its audio is in memory; does not \
+      start playback); export {id, path} writes a clip's audio as a 32-bit float stereo WAV to \
+      path (an absolute .wav path, or a folder: named after the clip) and returns its frames and \
+      sampleRate; stopAll takes every looping clip out on the next launch boundary (a clipLoop \
+      off each, recorded) and returns the ids stopped. Starting, stopping, gain, crop, mute, \
+      solo and a clip's FX (clipFx) are dj_perform ops.
+      """,
+      [
+        "action": prop("string", "list | undo | loadSource | export | stopAll"),
+        "id": prop("string", "A clip's id (dj_state.loops.clips[].id)"),
+        "deck": prop("string", "A or B (loadSource)"),
+        "path": prop("string", "export: an absolute .wav path, or a folder"),
       ]),
     tool(
       "dj_journal",

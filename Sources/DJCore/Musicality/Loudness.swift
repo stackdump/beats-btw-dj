@@ -29,10 +29,14 @@ public enum Loudness {
   static let probeRate = 8_000.0
 
   /// How much quieter a part plays on a sampled instrument than on its synth voice, in a
-  /// track (dB, by group). Samplers are levelled on a short reference phrase to the lead voice
-  /// (`SamplerInstrument.targetRMSdB`) and take no `.balance` trim, so in a song they sit under
-  /// the synth part they replace — most of all pads (slow attacks, long notes) and basses. The
-  /// probe can't play the deck's samplers, so it plays the synth part this much down. Measured
+  /// track (dB, by group): the fallback for a slot with no measured part level of its own. The
+  /// probe can't play the deck's samplers, so it plays each sampled part's synth voice where
+  /// the slot sits: the slot's `SamplerInstrument.partLevelDB` (measured at its load, which
+  /// prepare waits for, so the same spec gets the same gain cold or cached) plus its `.balance`
+  /// gain (`SampledBalance.probeLevel`). Only a bank that skipped the probes falls back here, to
+  /// the palette's average: samplers are levelled on a short reference phrase to the lead voice
+  /// (`SamplerInstrument.targetRMSdB`), so in a song they sit under the synth part they
+  /// replace — most of all pads (slow attacks, long notes) and basses. Measured
   /// (`LevelSurveyTests.sampledPartsAgainstTheirSynthVoices`: soloed parts, 40 s of seed 4242,
   /// ten genres, the default palette, Studio; mean ± spread): bass −4.1 ± 1.9, harmony −5.0 ±
   /// 1.3, melody −1.7 ± 1.5 (2026-10-18; was −4.3 / −5.8 / −1.6). No genre plays its arp on a
@@ -41,23 +45,31 @@ public enum Loudness {
     "bass": -4.1, "harmony": -5.0, "melody": -1.7,
   ]
 
-  static func sampledPartLevel(group: String) -> Double {
-    pow(10, (sampledPartDB[group] ?? sampledPartDB["melody"]!) / 20)
+  /// The linear level the probe plays a sampled `group` part's synth voice at: `measuredDB`
+  /// (the slot's part level) when there is one, else the table's average.
+  static func sampledPartLevel(group: String, measuredDB: Double? = nil) -> Double {
+    pow(10, (measuredDB ?? sampledPartDB[group] ?? sampledPartDB["melody"]!) / 20)
   }
 
   /// The fixes that change how the voices themselves sound (and so how loud they are): the
   /// probe plays those of the deck's, so the gain is measured on the voices the deck plays.
-  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison]
+  /// (`.subOctave` plays only where the deck's options turn it on: `subOctave` below.)
+  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison, .subOctave]
 
   /// The gain for `project` (1 when it plays nothing), measured with the `voiceFixes` among
   /// `fixes` on.
   /// `sampled`: net id → a level the probe plays that net's part at (the parts the deck plays
-  /// on samplers, `sampledPartLevel`, `WaveRunner.prepare`).
+  /// on samplers, at each slot's measured part level and gain: `WaveRunner.prepare`).
+  /// `subOctave`: the deck's `WaveOptions.subOctave` (the genre's), so the probe hears the
+  /// sub the deck plays.
   public static func gain(
     for project: Project, fixes: DJMusicality.Fixes = [], balance: [String: Double]? = nil,
-    sampled: [String: Double] = [:]
+    sampled: [String: Double] = [:], subOctave: Bool = false
   ) -> Double {
-    guard let db = measure(project, fixes: fixes, balance: balance, sampled: sampled) else {
+    guard
+      let db = measure(
+        project, fixes: fixes, balance: balance, sampled: sampled, subOctave: subOctave)
+    else {
       return 1
     }
     let g = pow(10, (targetDB - db) / 20)
@@ -70,7 +82,7 @@ public enum Loudness {
   static func measure(
     _ project: Project, start: Int? = nil, fixes: DJMusicality.Fixes = [],
     balance: [String: Double]? = nil, sampled: [String: Double] = [:],
-    sampleRate probeRate: Double = probeRate
+    subOctave: Bool = false, sampleRate probeRate: Double = probeRate
   ) -> Double? {
     let start = start ?? busiestStart(project)
     var o = WaveOptions()
@@ -78,6 +90,7 @@ public enum Loudness {
     o.master = "linear"
     o.musicality = fixes.intersection(voiceFixes)
     o.probeLevels = sampled
+    o.subOctave = subOctave
     if let balance {
       o.musicality.insert(.balance)
       o.trackBalance = balance

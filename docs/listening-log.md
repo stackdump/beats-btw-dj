@@ -28,6 +28,18 @@ scripts/listening-log.py selftest         # the script's own checks
 → 6.3, melody → 6.4, groove → 6.5, sound and mix → 6.6. A `broken` counts twice. A stage the log
 never names is a candidate to drop (ROADMAP 6.1).
 
+## Translation check
+
+ROADMAP 6.6. `djctl render <genre> <seed> --translate` plays each part soloed through
+approximate phone, headphones and monitors curves (each names its source) and folded to mono,
+and flags a part more than 12 dB under its full-range level (`Translation`). The numbers say
+where to listen; the rows say what was heard. Listen to the same build on each device and add
+one row per device, from this template:
+
+```
+| <genre> | 42 | <build> | <track/loop/broken> | <first wrong> | phone | flagged by --translate: <parts or none>; <what was heard> |
+```
+
 ## Log
 
 | genre | seed | build | verdict | first wrong | device | notes |

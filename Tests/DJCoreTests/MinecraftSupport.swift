@@ -55,3 +55,41 @@ func eventMapWithOverride(_ json: String) throws -> MinecraftEventMap {
   guard let b = Bundle(path: dir.path) else { throw CocoaError(.fileNoSuchFile) }
   return try MinecraftEventMap.load(bundles: [b] + MinecraftEventMap.defaultBundles)
 }
+
+/// A sine at `freq` Hz, `seconds` long, amplitude 0.5.
+func sineWave(_ freq: Double, sampleRate sr: Double, seconds: Double) -> [Float] {
+  (0..<Int(seconds * sr)).map { Float(0.5 * sin(2 * Double.pi * freq * Double($0) / sr)) }
+}
+
+/// The level of one frequency in `x` (Hann-windowed DFT, dB re a full-scale sine).
+func toneLevelDB(_ x: ArraySlice<Float>, freq: Double, sampleRate sr: Double) -> Double {
+  let v = Array(x)
+  let n = v.count
+  guard n > 1 else { return -200 }
+  var re = 0.0
+  var im = 0.0
+  var wsum = 0.0
+  for i in 0..<n {
+    let w = 0.5 - 0.5 * cos(2 * Double.pi * Double(i) / Double(n - 1))
+    let ph = 2 * Double.pi * freq * Double(i) / sr
+    re += w * Double(v[i]) * cos(ph)
+    im -= w * Double(v[i]) * sin(ph)
+    wsum += w
+  }
+  return 20 * log10(max(2 * (re * re + im * im).squareRoot() / wsum, 1e-12))
+}
+
+/// Writes a Minecraft sidecar into `dir`, as the import would — or, `format` nil, as a
+/// format-1 bank's (no `format` key).
+func writeMinecraftSidecar(dir: String, assetIndex: String, format: Int?) throws {
+  var json = MinecraftBank.Sidecar(
+    assetIndex: assetIndex, sha1: [:], programs: ["harp2"], format: format ?? 1
+  ).json
+  if format == nil, case .object(var o) = json {
+    o["format"] = nil
+    json = .object(o)
+  }
+  try (json.canonicalJS + "\n").write(
+    toFile: (dir as NSString).appendingPathComponent(MinecraftBank.sidecarName),
+    atomically: true, encoding: .utf8)
+}

@@ -127,18 +127,7 @@ public enum MixBalance {
   ) -> [String: Double] {
     let start = Loudness.busiestStart(played)
     let sampleRate = samplers?.sampleRate ?? sampleRate
-    var o = opts
-    o.samplers = samplers
-    o.master = samplers == nil ? "linear" : "limit"
-    // one gain and the whole track's energy curve for every solo, so each sits at its place in
-    // the mix (measured from a solo, both would differ)
-    o.trackGain = 1
-    if o.musicality.contains(.energy) && o.trackEnergy == nil {
-      o.trackEnergy = EnergyCurve(project: played)
-    }
-    if o.musicality.contains(.balance) && o.trackBalance == nil {
-      o.trackBalance = trims(for: played, fixes: o.musicality)
-    }
+    let o = soloOptions(played, opts: opts, samplers: samplers)
     func level(_ p: Project) -> Double? {
       let runner = WaveRunner(sampleRate: sampleRate, opts: o)
       runner.load(
@@ -177,6 +166,71 @@ public enum MixBalance {
 }
 
 extension MixBalance {
+  /// The options every solo of `played` renders with (`measure`, `Translation`): `opts` on
+  /// `samplers` (nil: synth voices, through a linear master), at one gain, with the whole
+  /// track's energy curve and balance trims, so each part sits at its place in the mix.
+  static func soloOptions(_ played: Project, opts: WaveOptions, samplers: SamplerBank?)
+    -> WaveOptions
+  {
+    var o = opts
+    o.samplers = samplers
+    o.master = samplers == nil ? "linear" : "limit"
+    // one gain and the whole track's energy curve for every solo, so each sits at its place in
+    // the mix (measured from a solo, both would differ)
+    o.trackGain = 1
+    if o.musicality.contains(.energy) && o.trackEnergy == nil {
+      o.trackEnergy = EnergyCurve(project: played)
+    }
+    if o.musicality.contains(.balance) && o.trackBalance == nil {
+      o.trackBalance = trims(for: played, fixes: o.musicality)
+    }
+    return o
+  }
+
+  /// Stereo renders of the whole mix ("mix") and of each part of `parts` soloed, over `bars`
+  /// bars of the busiest section of `played`, with `measure`'s options (`soloOptions`). Parts
+  /// silent there are left out. Offline.
+  public static func stereoSolos(
+    _ played: Project, opts: WaveOptions, bars: Int = 8, sampleRate: Double = 24_000,
+    samplers: SamplerBank? = nil
+  ) -> (sampleRate: Double, renders: [String: (left: [Float], right: [Float])]) {
+    let start = Loudness.busiestStart(played)
+    let sampleRate = samplers?.sampleRate ?? sampleRate
+    let o = soloOptions(played, opts: opts, samplers: samplers)
+    let tempo = played.tempo > 0 ? played.tempo : 120
+    let frames = Int(Double(bars) * 4 * 60 / tempo * sampleRate)
+    func render(_ p: Project) -> (left: [Float], right: [Float])? {
+      let runner = WaveRunner(sampleRate: sampleRate, opts: o)
+      runner.load(
+        prepared: WaveRunner.prepare(p, sampleRate: sampleRate, opts: o, startTick: start))
+      if let samplers { silence(samplers) }
+      runner.play()
+      var left = [Float](repeating: 0, count: frames)
+      var right = left
+      var n = 0
+      left.withUnsafeMutableBufferPointer { l in
+        right.withUnsafeMutableBufferPointer { r in
+          while n < frames {
+            let m = min(512, frames - n)
+            runner.process(l.baseAddress! + n, r.baseAddress! + n, frames: m)
+            n += m
+            if runner.stopped { break }
+          }
+        }
+      }
+      var energy = 0.0
+      for i in 0..<n { energy += Double(left[i] * left[i] + right[i] * right[i]) }
+      guard n > 0, energy > 1e-12 * Double(n) else { return nil }
+      return (Array(left[0..<n]), Array(right[0..<n]))
+    }
+    var out: [String: (left: [Float], right: [Float])] = [:]
+    out["mix"] = render(played)
+    for name in parts {
+      if let r = render(solo(played, name)) { out[name] = r }
+    }
+    return (sampleRate, out)
+  }
+
   /// Offline: sound off and notes off on every slot `bank` plays (CC 120, 123), so the next
   /// render starts silent.
   static func silence(_ bank: SamplerBank) {

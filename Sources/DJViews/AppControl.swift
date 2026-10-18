@@ -59,7 +59,7 @@ extension AppModel {
         let d = try requireDeck(deck)
         let netOnly = [
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
-          "setPalette", "setRoleVoice", "mixOut", "mixIn",
+          "setPalette", "setRoleVoice", "mixOut", "mixIn", "stemMute",
         ]
         // the loop channel and the sample decks take the master macros and panic (their master
         // FX bus; a sample deck's has no vinyl brake yet)
@@ -100,6 +100,21 @@ extension AppModel {
             throw ControlRequestError.bad("\(a["op"]?.string ?? "mix") bars must be 1-64")
           }
         default: break
+        }
+        if case .stemMute(_, let stem, _) = action, !Deck.stemNames.contains(stem) {
+          throw ControlRequestError.bad(
+            "stemMute stem must be one of \(Deck.stemNames.joined(separator: ", "))")
+        }
+        // the master FX sliders: on a net's chain, a sample deck's bus, or the loops' ("L")
+        if case .masterFx(_, let key, let value) = action {
+          guard MasterFxKey(id: key) != nil else {
+            throw ControlRequestError.bad(
+              "unknown master FX key \(key) (one of: "
+                + MasterFxKey.allCases.map(\.id).joined(separator: ", ") + ")")
+          }
+          guard value.isFinite, (0...1).contains(value) else {
+            throw ControlRequestError.bad("masterFx value must be 0…1 (the slider's travel)")
+          }
         }
         if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
           throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")
@@ -382,7 +397,10 @@ extension AppModel {
       return deckJSON(deck) ?? .null
 
     case "view":
-      return controlView(p)
+      return try controlView(p)
+
+    case "settings":
+      return try await controlSettings(p)
 
     case "screenshot":
       return try screenshot(to: p["path"]?.string)
@@ -403,6 +421,9 @@ extension AppModel {
 
     case "variations":
       return try await controlVariations(p)
+
+    case "loops":
+      return try await controlLoops(p)
 
     case "minecraftEvents":
       return try controlMinecraftEvents(p)
@@ -618,6 +639,57 @@ extension AppModel {
     poll()
     return MinecraftEventFeed.report(
       deck: deck, fired: fired, skipped: skipped, cursor: minecraftFeed.cursor)
+  }
+
+  /// The control socket's `settings`: the monitoring settings the bottom bar and mixer set —
+  /// `pfl` {deck: bool}, `headphoneMix` / `headphoneLevel` (0…1), `awake`, `inpulseOutput`.
+  /// Applies only the keys given (all checked first, so a bad one changes nothing) and returns
+  /// every value as it stands. None of it is recorded: the cue never reaches the master mix.
+  func controlSettings(_ p: JSONValue) async throws -> JSONValue {
+    var pfl: [(String, Bool)] = []
+    if let given = p["pfl"] {
+      guard let o = given.object else {
+        throw ControlRequestError.bad("`pfl` must be an object of deck: bool, e.g. {\"A\": true}")
+      }
+      for (name, v) in o.entries {
+        guard let on = v.bool else { throw ControlRequestError.bad("pfl.\(name) must be a bool") }
+        _ = try requireDeck(name)
+        pfl.append((name, on))
+      }
+    }
+    func level(_ key: String) throws -> Double? {
+      guard let v = p[key] else { return nil }
+      guard let x = v.double, (0...1).contains(x) else {
+        throw ControlRequestError.bad("`\(key)` must be a number from 0 to 1")
+      }
+      return x
+    }
+    let mix = try level("headphoneMix")
+    let headLevel = try level("headphoneLevel")
+    let awake = p["awake"]?.bool
+    if p["awake"] != nil && awake == nil { throw ControlRequestError.bad("`awake` must be a bool") }
+    let route = p["inpulseOutput"]?.bool
+    if p["inpulseOutput"] != nil && route == nil {
+      throw ControlRequestError.bad("`inpulseOutput` must be a bool")
+    }
+    if route == true && !inpulseRouted && findInpulse() == nil {
+      throw ControlRequestError.bad(
+        "no DJControl Inpulse audio output is connected (plug it in over USB; "
+          + "dj_state.inpulseOutput is null while it is missing)")
+    }
+    for (name, on) in pfl { setPFL(name, on) }
+    if let mix { setHeadphoneMix(mix) }
+    if let headLevel { setHeadphoneLevel(headLevel) }
+    if let awake { setKeepScreenAwake(awake) }
+    if let route { await routeInpulseOutput(route) }
+    poll()
+    let state = controlState()
+    var o = JSONObject([
+      ("headphones", state["headphones"] ?? .null), ("awake", .bool(keepScreenAwake)),
+      ("inpulseOutput", state["inpulseOutput"] ?? .null),
+    ])
+    if route == true && !inpulseRouted { o["status"] = .string(status) }
+    return .object(o)
   }
 
   func requireDeck(_ name: String) throws -> Deck {
