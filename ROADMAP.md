@@ -77,6 +77,17 @@ revert any by its merge commit.
 - Audit the app MCP so every control is reachable (`dj_perform` ops, views, palettes,
   notes, journal, loop FX, Wander).
 - Show the Wander walk on the Stage.
+- **Curated stingers for Hit 1–4** (asked 2026-10-18): each Hit button should fire something that belongs to the
+  track. Today the four `hit1`…`hit4` nets play the genre's `stingerInstrumentSet` voiced through
+  the palette's `stinger` pool by seed + net; nothing curates them. Curate effects and loops for
+  assignment to Hit 1–4 by the generated genre and the sound palette: a data table of candidates
+  (one-shots like `laser`, master-FX / net macro gestures, loop-library and stock-loop clips),
+  each tagged by genre family, palette, key fit and tempo fit; the four Hit slots resolved from
+  (genre, palette, seed) as `applySound` resolves sounds, so the same configuration always gets
+  the same hits; loops quantised and tempo-matched to the deck. Theme check: the poke is the
+  existing Hit / `stinger` binding, the rule is a pure function of the configuration, the
+  boundary is the stinger's beat / bar quantise. Wander's stinger move draws from the same
+  table. Apple loops stay local-only (never in a share or on the CDN).
 
 **Follow-ups noted by the features**
 - Journal: in-app rewind (mid-file checkpoints for seeking, a live-engine reset path, store
