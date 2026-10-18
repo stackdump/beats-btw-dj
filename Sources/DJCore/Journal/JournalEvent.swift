@@ -105,7 +105,9 @@ public enum JournalEvent: Equatable, Sendable {
       return [("instrument", .string(instrument)), ("name", .string(name))]
     case .noteAdd(let n): return [("note", n.json)]
     case .noteEdit(let id, let text, let at):
-      return [("id", .string(id)), ("text", .string(text)), ("at", .string(JournalTime.string(at)))]
+      return [
+        ("id", .string(id)), ("text", .string(text)), ("at", .string(JournalTime.string(at))),
+      ]
     case .noteDelete(let id): return [("id", .string(id))]
     case .mark(let text): return [("text", .string(text))]
     }
@@ -185,7 +187,8 @@ public enum JournalEvent: Equatable, Sendable {
     case .favoriteAdd(let f): return "★ \(f.title)"
     case .favoriteRemove(let cid): return "☆ unstarred \(cid.prefix(14))…"
     case .favoriteTags(let cid, let tags):
-      return "tags \(cid.prefix(14))… = " + (tags.isEmpty ? "none" : tags.map { "#" + $0 }.joined(separator: " "))
+      return "tags \(cid.prefix(14))… = "
+        + (tags.isEmpty ? "none" : tags.map { "#" + $0 }.joined(separator: " "))
     case .crateAdd(let name): return "crate + \(name)"
     case .crateDelete(let name): return "crate − \(name)"
     case .variationSave(let i, let v): return "variation saved \(v.label(i))"
@@ -208,6 +211,8 @@ public enum JournalEvent: Equatable, Sendable {
     case .action(.master): "master"
     case .action(.clipGain(let id, _)): "gain.\(id)"
     case .action(.clipFx(let id, _)): "fx.\(id)"
+    case .action(.clipQuantize(let id, _)): "quantize.\(id)"
+    case .action(.clipFade(let id, _)): "fade.\(id)"
     case .action(.voiceTweak(let deck, let ch, _)): "voice.\(deck).\(ch)"
     case .midi(let port, let bytes) where bytes.count == 3 && bytes[0] & 0xF0 == 0xB0:
       "cc.\(port).\(bytes[0]).\(bytes[1])"  // a knob turned

@@ -139,4 +139,14 @@ struct MCPBridgeTests {
       try reply(b, #"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"dj_nope"}}"#)[
         "error"]?["code"]?.int == -32602)
   }
+
+  @Test func dJPerformDocumentsTheClipLaunchOverrides() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":10,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains("clipQuantize {id, beats:"))
+    #expect(text.contains("clipFade {id, fade:"))
+  }
 }

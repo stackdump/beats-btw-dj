@@ -38,6 +38,10 @@ public final class DJEngine {
   var clipMutes: Set<String> = []
   var clipSolos: Set<String> = []
   var clipKeyLocks: [String: Bool] = [:]
+  /// Clips' own launch boundary (beats) and fade, where they have one (LoopLaunch.swift,
+  /// LoopSound.swift); the rest follow `loopQuantum` / `loopFade`.
+  var clipQuanta: [String: Int] = [:]
+  var clipFades: [String: LoopFade] = [:]
   public internal(set) var loopKeyLock = false
   public internal(set) var loopFade = LoopFade.declick
   var stretchCache: [String: (bpm: Double, buffer: SampleBuffer)] = [:]

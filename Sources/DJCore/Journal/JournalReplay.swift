@@ -124,7 +124,8 @@ extension Journal {
     case .action(let a):
       // A clip this replay didn't make (a live take that rendered differently) comes from the
       // library, so the moves on it still land.
-      for id in a.clipIDs where dj.clip(id) == nil && !dj.removedClips.contains(where: { $0.clip.id == id }) {
+      for id in a.clipIDs
+      where dj.clip(id) == nil && !dj.removedClips.contains(where: { $0.clip.id == id }) {
         if let c = clips(id) { dj.restoreClips([c]) }
       }
       dj.applyAction(a)
@@ -168,7 +169,9 @@ extension Journal {
     for a in at.loopSettings where !DJEngine.defaultLoopSettings.contains(a) {
       events.append(SessionEvent(frame: 0, kind: .action(a)))
     }
-    for k in at.locked { events.append(SessionEvent(frame: 0, kind: .action(.lock(key: k, on: true)))) }
+    for k in at.locked {
+      events.append(SessionEvent(frame: 0, kind: .action(.lock(key: k, on: true))))
+    }
     for name in at.decks.keys.sorted() where at.decks[name]!.playing {
       events.append(SessionEvent(frame: 0, kind: .action(.play(deck: name, on: true))))
     }
@@ -176,7 +179,8 @@ extension Journal {
       let f = e.frame - start.frame
       switch e.event {
       case .action(let a): events.append(SessionEvent(frame: f, kind: .action(a)))
-      case .midi(let p, let b): events.append(SessionEvent(frame: f, kind: .midi(port: p, bytes: b)))
+      case .midi(let p, let b):
+        events.append(SessionEvent(frame: f, kind: .midi(port: p, bytes: b)))
       default: break
       }
     }
@@ -195,7 +199,8 @@ extension DeckAction {
     switch self {
     case .clip(_, let id), .clipLoop(let id, _), .clipGain(let id, _), .clipCrop(let id, _, _),
       .clipRemove(let id), .clipRename(let id, _), .clipColor(let id, _), .clipMute(let id, _),
-      .clipSolo(let id, _), .clipKeyLock(let id, _), .clipFx(let id, _):
+      .clipSolo(let id, _), .clipKeyLock(let id, _), .clipFx(let id, _),
+      .clipQuantize(let id, _), .clipFade(let id, _):
       return [id]
     case .clipMove(let id, let before): return [id] + (before.map { [$0] } ?? [])
     case .clipSequence(let steps, let replacing):
