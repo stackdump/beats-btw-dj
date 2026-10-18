@@ -79,6 +79,9 @@ public struct DeckParams: Equatable, Sendable {
   public var reverbWet = 0.0
   public var reverbSize = 0.5
   public var reverbTone = 0.5
+  /// Sample loads auto-levelled (`Deck.autoGain`). Off by default, as `Deck`'s: a session from
+  /// before level matching (no key) replays its samples at their own level, as it was played.
+  public var autoGain = false
   /// Roles disabled on the deck (`Deck.disabledRoles`), sorted.
   public var disabledRoles: [String] = []
   /// The deck's walk as the session starts (`Deck.wander`: on, pace, step, locks and what they
@@ -96,7 +99,7 @@ public enum DeckAction: Equatable, Sendable {
   case clearCue(deck: String, slot: Int)
   case loop(deck: String, op: String)  // in | out | halve | double
   /// name: volume | filter | gain | eqLow | eqMid | eqHigh | pitch | mute | reverbWet |
-  /// reverbSize | reverbTone
+  /// reverbSize | reverbTone | autoGain (0 / 1: sample loads auto-levelled, `Deck.autoGain`)
   case param(deck: String, name: String, value: Double)
   case crossfader(Double)
   case master(Double)
@@ -359,6 +362,7 @@ extension DeckParams {
     // only when touched, so sets from before the reverb keep their canonical text and CID
     if !disabledRoles.isEmpty { o["disabledRoles"] = .array(disabledRoles.map { .string($0) }) }
     if wander != WanderState() { o["wander"] = wander.json }
+    if autoGain { o["autoGain"] = .bool(true) }
     if reverbWet != 0 || reverbSize != 0.5 || reverbTone != 0.5 {
       o["reverbWet"] = .number(reverbWet)
       o["reverbSize"] = .number(reverbSize)
@@ -381,6 +385,7 @@ extension DeckParams {
     reverbWet = v["reverbWet"]?.double ?? reverbWet
     reverbSize = v["reverbSize"]?.double ?? reverbSize
     reverbTone = v["reverbTone"]?.double ?? reverbTone
+    autoGain = v["autoGain"]?.bool ?? autoGain
     disabledRoles = v["disabledRoles"]?.array?.compactMap(\.string) ?? []
     if let w = v["wander"] { wander = WanderState(json: w) }
   }

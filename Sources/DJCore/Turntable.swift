@@ -8,6 +8,8 @@ public final class SampleBuffer: @unchecked Sendable {
   public let sampleRate: Double
   let left: UnsafeMutablePointer<Float>
   let right: UnsafeMutablePointer<Float>  // == left for mono
+  /// `level`, once measured (LevelMatch.swift).
+  let levelCache = Mutex<SampleLevel?>(nil)
 
   public init(left l: [Float], right r: [Float]? = nil, sampleRate: Double) {
     precondition(!l.isEmpty, "empty audio")
@@ -62,6 +64,9 @@ public enum TurntableCommand: BitwiseCopyable {
   case loopOff
   /// Seconds the platter takes to catch up with the hand.
   case chase(seconds: Double)
+  /// Output gain (linear): the deck's auto-gain (`SampleLevel.autoGainDB`). Glides there over
+  /// about 10 ms unless `now` (a load: the new audio starts at its own level).
+  case gain(Float, now: Bool)
 }
 
 /// A turntable: reads a looped buffer at a variable, signed rate with linear
@@ -98,12 +103,16 @@ public final class Turntable: @unchecked Sendable {
   private let rateSmooth: Double
   private let motorSmooth: Double
   private let maxRate = 12.0
+  private var gain: Float = 1
+  private var gainTarget: Float = 1
+  private let gainSmooth: Float
 
   public init(sampleRate: Double) {
     self.sampleRate = sampleRate
     chaseTau = 0.035 * sampleRate
     rateSmooth = 1 - exp(-1 / (0.004 * sampleRate))
     motorSmooth = 1 - exp(-1 / (0.045 * sampleRate))
+    gainSmooth = Float(1 - exp(-1 / (0.003 * sampleRate)))
   }
 
   deinit {
@@ -189,6 +198,17 @@ public final class Turntable: @unchecked Sendable {
         right?[i] = b.right[i0] + (b.right[i1] - b.right[i0]) * f
       }
     }
+    // the auto-gain: nothing at unity, so a deck without one renders the audio's own samples
+    if gain != 1 || gainTarget != 1 {
+      for i in 0..<frames {
+        if gain != gainTarget {
+          gain += (gainTarget - gain) * gainSmooth
+          if abs(gain - gainTarget) < 1e-6 { gain = gainTarget }
+        }
+        left[i] *= gain
+        right?[i] *= gain
+      }
+    }
     posBits.store(pos.bitPattern, ordering: .relaxed)
     rateBits.store(rate.bitPattern, ordering: .relaxed)
     // with the playhead, not when a swap is applied mid-render: a reader then never sees the
@@ -268,6 +288,9 @@ public final class Turntable: @unchecked Sendable {
       looping = true
     case .loopOff: looping = false
     case .chase(let seconds): chaseTau = max(0.002, seconds) * sampleRate
+    case .gain(let g, let now):
+      gainTarget = g
+      if now { gain = g }
     }
   }
 }

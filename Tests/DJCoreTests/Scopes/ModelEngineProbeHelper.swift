@@ -87,6 +87,7 @@ func deckPowerGain(freq: Double, setup: (DJEngine, Deck) -> Void) throws -> Doub
   let deck = dj["A"]!
   let n = Int(sr * 0.6)
   let sine = (0..<n).map { Float(0.5 * sin(2 * Double.pi * freq * Double($0) / sr)) }
+  deck.autoGain = false  // the strip's gains alone (no level matching of the sine)
   deck.load(SampleBuffer(left: sine, sampleRate: sr), title: "sine")
   setup(dj, deck)
   deck.setPlaying(true)

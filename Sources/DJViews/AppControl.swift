@@ -638,6 +638,20 @@ extension AppModel {
       ]))
     o["quantize"] = .string(s.quantize)
     o["autoAdvance"] = .bool(d.autoAdvance)
+    // loudness before the EQ and fader (LevelMatch.swift): the deck's meter, a sample's
+    // auto-gain, a net deck's limiter
+    func r1(_ x: Double) -> JSONValue { .number((x * 10).rounded() / 10) }
+    var level = JSONObject([
+      ("shortTermLUFS", r1(max(-120, d.shortTermLUFS))),
+      ("momentaryLUFS", r1(max(-120, d.momentaryLUFS))), ("autoGain", .bool(d.autoGain)),
+      ("autoGainDB", r1(d.autoGainDB)),
+    ])
+    if let l = d.sampleLevel {
+      if let lufs = l.lufs { level["sampleLUFS"] = r1(lufs) }
+      level["samplePartial"] = .bool(l.partial)
+    }
+    if s.isNet { level["limiterGainReductionDB"] = r1(d.limiterGainReductionDB) }
+    o["level"] = .object(level)
     o["hotCues"] = .array(s.cues.sorted().map { .int($0) })
     // the deck's walk: on, pace, the countdown, paused (steering), locks, the newest moves
     o["wander"] = d.wanderJSON(lockedActions: engine?.lockedActions ?? [])

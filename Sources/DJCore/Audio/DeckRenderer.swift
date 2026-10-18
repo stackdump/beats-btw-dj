@@ -22,11 +22,15 @@ final class DeckRenderer: @unchecked Sendable {
   /// reader only ever wants the newest few hundred samples.
   let leftTap = ScopeTap(capacity: ScopeTap.leftCapacity)
   private let renderedFramesAtomic = Atomic<Int>(0)
+  /// Pre-EQ, pre-fader loudness of this deck (`Deck.shortTermLUFS`), always on (cheap: two
+  /// biquads a channel).
+  let meter: LoudnessMeter
 
   init(turntable: Turntable, wave: WaveDeckSource, bank: LoopBank? = nil) {
     self.turntable = turntable
     self.wave = wave
     self.bank = bank
+    meter = LoudnessMeter(sampleRate: turntable.sampleRate)
   }
 
   /// Frames this deck has rendered since it was made, counted on every render call in both
@@ -63,6 +67,7 @@ final class DeckRenderer: @unchecked Sendable {
     } else {
       turntable.render(frames: frames, left: left, right: right)
     }
+    meter.push(left, right, frames: frames)
     if tap.isEnabled {
       tap.push(left: left, right: right, frames: frames, startFrame: start)
     }

@@ -56,7 +56,10 @@ public struct WaveMod {
 }
 
 public struct WaveOptions {
-  /// "soft" (tanh, default) or "linear" (tests).
+  /// "soft" (beats' tanh, default), "linear" (tests), or "limit" (the app,
+  /// `WaveOptions.extended`): the runner's sum stays linear and the deck ends in a lookahead
+  /// peak limiter (`PeakLimiter`, in `WaveDeckSource`) after the master chain, so the loudness
+  /// gain can bring a track up to `LevelMatch.referenceLUFS` without driving the tanh.
   public var master = "soft"
   public var masterGain = 0.8
   public var voices: [String: VoiceSpec] = [:]
@@ -97,6 +100,10 @@ public struct WaveOptions {
   /// its tape-stop step does nothing there), what the parity fixtures run. A deliberate dj
   /// divergence (GO-DIVERGENCE.md §5); on in `WaveOptions.extended`.
   public var turntableBrake = false
+  /// The loudness probe's stand-in for sampled parts (`Loudness.measure`): net id → a level on
+  /// its tonal lane, so its synth voice sounds about as loud as the sampler the deck plays there
+  /// (`WaveProject.sampledGroups`, `Loudness.sampledPartDB`). Empty everywhere else.
+  var probeLevels: [String: Double] = [:]
   public var onTick: ((WaveRunner) -> Void)?
   public init() {}
 }
@@ -525,8 +532,11 @@ public final class WaveProject: @unchecked Sendable {
   /// project is freed (off the audio thread), which is what keeps the slot from eviction.
   let samplers: SamplerBank?
   /// Gain on everything this project plays, before the master curve (`Loudness`; 1 = as
-  /// beats has it).
-  public let gain: Double
+  /// beats has it). Set by `prepare`, before the hand-over.
+  public internal(set) var gain: Double
+  /// The nets whose tonal lane plays a sampled instrument, with the lane's group: what the
+  /// loudness probe stands in for them (`WaveRunner.prepare`).
+  var sampledGroups: [String: String] = [:]
   /// The section energy arc the deck plays (`DJMusicality.Fixes.energy`); nil = none.
   public let energy: EnergyCurve?
   /// How far bass and pad dip on each kick (0: no ducking), and the sampler slots they play.
@@ -633,6 +643,7 @@ private func buildLanes(
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
+  var sampledGroups: [String: String] = [:]
   // `.fills` / `.buildup` / `.crash`: beats' drum-fill nets are control nets with notes; give
   // them a voice.
   let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup, .crash])
@@ -687,6 +698,7 @@ private func buildLanes(
           bindSampler(
             lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: picked,
             option: option)
+          if lane.samplerSlot >= 0 { sampledGroups[n.id] = tr.group ?? n.bundle.riffGroup }
           if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
           if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
         } else {
@@ -737,6 +749,8 @@ private func buildLanes(
         {
           lane.st[slotLevel] *= pow(10, db / 20)
         }
+        // the loudness probe: a sampled part about as loud as its sampler
+        if key == "tonal", let level = opts.probeLevels[n.id] { lane.st[slotLevel] *= level }
         if !gaps.isEmpty && override == nil && !g.isStingerNet[n.index] {
           lane.gapped =
             key == "tonal"
@@ -788,12 +802,14 @@ private func buildLanes(
   let liveIndex = lanes.count
   lanes.append(live)
   for lane in lanes { lane.captureBase() }
-  return WaveProject(
+  let project = WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, gaps: gaps,
     space: space ? opts.space ?? .room : nil, echo: echo ? opts.echo : nil,
     balance: trims.isEmpty ? nil : trims)
+  project.sampledGroups = sampledGroups
+  return project
 }
 
 /// Play `instrument` on the deck's sampler when its category picks a sampled sound for this
@@ -855,6 +871,9 @@ public final class WaveRunner {
   public var opts: WaveOptions
   public var masterGain: Double
   private let linear: Bool
+  /// `master == "limit"`: linear like "linear", but with the master and track gain (the deck's
+  /// `PeakLimiter` follows); "linear" leaves the plain sum unscaled (the probes scale it).
+  private let scaled: Bool
   private var current: WaveProject?
   private var pending: WaveProject?
   /// The previous project's voices, ringing out after a swap.
@@ -983,7 +1002,8 @@ public final class WaveRunner {
     stereoOn = opts.musicality.contains(.stereo)
     samplerSide = SideHighpass(hz: 150, sampleRate: sampleRate)
     masterGain = opts.masterGain
-    linear = opts.master == "linear"
+    linear = opts.master == "linear" || opts.master == "limit"
+    scaled = opts.master == "limit"
     clock[clkTempo] = 120
     clock[clkSpt] = spt(120)
   }
@@ -1009,12 +1029,10 @@ public final class WaveRunner {
     }
     // (the compiled graph is built from the project's JSON, which has no coordinates: the
     // layout takes the net positions from the project itself)
-    let gain =
-      opts.trackGain
-      ?? (opts.musicality.contains(.loudness)
-        ? Loudness.gain(
-          for: project, fixes: opts.musicality,
-          balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil) : 1)
+    // `.loudness`: measured after the lanes are built, so the probe knows which parts the deck
+    // plays on samplers (each sits at its sampler's level, not its synth voice's)
+    let measureGain = opts.trackGain == nil && opts.musicality.contains(.loudness)
+    let gain = opts.trackGain ?? 1
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     let gaps = opts.musicality.contains(.dropGap) ? DJMusicality.dropGaps(project) : []
@@ -1022,6 +1040,12 @@ public final class WaveRunner {
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
       geometry: project, gain: gain, energy: energy, gaps: gaps)
     prepared.turntableBrake = opts.turntableBrake
+    if measureGain {
+      prepared.gain = Loudness.gain(
+        for: project, fixes: opts.musicality,
+        balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil,
+        sampled: prepared.sampledGroups.mapValues { Loudness.sampledPartLevel(group: $0) })
+    }
     return prepared
   }
 
@@ -2273,10 +2297,10 @@ public final class WaveRunner {
       } else if wide, let right {
         let l = acc + accS
         let r = acc - accS
-        left[i] = Float(linear ? l : tanh(l * gain))
-        right[i] = Float(linear ? r : tanh(r * gain))
+        left[i] = Float(scaled ? l * gain : linear ? l : tanh(l * gain))
+        right[i] = Float(scaled ? r * gain : linear ? r : tanh(r * gain))
       } else {
-        let y = linear ? acc : tanh(acc * gain)
+        let y = scaled ? acc * gain : linear ? acc : tanh(acc * gain)
         left[i] = Float(y)
         right?[i] = Float(y)
       }

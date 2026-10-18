@@ -9,6 +9,8 @@
 //   djctl render <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2]
 //                [--options JSON] [--mute r,…] [--solo r,…] [--seconds N] [--float32]
 //                                     compose a track and render it offline (no app)
+//   djctl levels <file>…              loudness (LUFS, peak) and the auto-gain a sample deck
+//                                     plays each file at (LevelMatch.swift)
 import DJCore
 import Foundation
 
@@ -616,9 +618,11 @@ case "render":
   let render = OfflineRender(track: track, source: source, seconds: seconds)
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   var audio = render.metrics.dictionary
+  // BS.1770 integrated loudness, and what the deck's peak limiter did (PeakLimiter.swift)
   audio["lufs"] = round3(
     IntegratedLoudness.lufs(left: render.left, right: render.right, sampleRate: sr))
   if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
+  if let limiter = source.limiter { audio["limiter"] = limiter.statistics().dictionary }
   let levels = render.sectionLevels(track.played)
   audio["sections"] = levels.map { ["name": $0.name, "rmsDB": round3($0.db)] }
   if let lo = levels.map(\.db).min(), let hi = levels.map(\.db).max() {
@@ -672,6 +676,21 @@ case "render":
   let data = try JSONSerialization.data(
     withJSONObject: doc, options: [.sortedKeys, .prettyPrinted])
   print(String(decoding: data, as: UTF8.self))
+
+case "levels":
+  // djctl levels <audio file>…: each file's loudness and the auto-gain a sample deck would
+  // play it at (`SampleLevel`, LevelMatch.swift), one JSON object per line.
+  for path in positional {
+    do {
+      let buffer = try Deck.decode(URL(fileURLWithPath: path), sampleRate: 48_000)
+      var d = buffer.level.dictionary
+      d["file"] = path
+      let data = try JSONSerialization.data(withJSONObject: d, options: [.sortedKeys])
+      print(String(decoding: data, as: UTF8.self))
+    } catch {
+      stderr("\(path): \(error)")
+    }
+  }
 
 case "minecraft":
   // djctl minecraft import [--assets DIR] [--index N] [--out DIR]

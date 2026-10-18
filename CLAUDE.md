@@ -360,6 +360,23 @@ its copy; the two are now independent. Rules inherited from that split:
   four-on-the-floor) (`varyFigures`). `.arpeggio`'s figure is seeded too (`ArpFigure`: shape,
   span, start, rate, from the seed and the slot's variant letter). `VarietyTests` count distinct
   4-bar patterns per part across 30 seeds.
+- **One loudness** (`Audio/LevelMatch.swift`, GO-DIVERGENCE.md §5.7): everything the user can
+  play lands at `LevelMatch.referenceLUFS` (−12 LUFS integrated) at unity knobs, before the EQ
+  and fader. Net decks: `.loudness` (`Loudness.targetDB` = reference − 0.4, calibrated on whole
+  songs; the probe plays sampled parts at `Loudness.sampledPartDB` under their synth voice) and,
+  with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
+  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
+  `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
+  shares) measured once per buffer (`SampleBuffer.level`, cached), auto-gain toward the reference
+  (−4 LU for a one-band loop: bass / kick / hats), ±12 dB, never lifting the peak past −1 dBFS;
+  applied by the turntable (`TurntableCommand.gain`). Derived from the audio, so never recorded;
+  the deck setting `Deck.autoGain` is (`.param(name: "autoGain")`, `DeckParams.autoGain`, both
+  off by default and written only when on, so older sessions replay at the samples' own level;
+  the app turns it on from its `autoGain` default). One BS.1770: `IntegratedLoudness` (offline;
+  nil / −200 for silence) and its short-term form `LoudnessMeter`. Clips on a deck (`loadClip`) keep their level: a take is the deck
+  after its EQ. `Deck.shortTermLUFS` / `momentaryLUFS` (pre-EQ meter in `DeckRenderer`) and
+  `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
+  percentiles); `djctl levels <file>…` a file's level and auto-gain.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)

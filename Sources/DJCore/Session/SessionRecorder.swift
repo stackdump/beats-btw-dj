@@ -104,6 +104,7 @@ extension Deck {
     p.reverbWet = reverb.wet
     p.reverbSize = reverb.size
     p.reverbTone = reverb.tone
+    p.autoGain = autoGain
     p.disabledRoles = disabledRoles.sorted()
     p.wander = wander.settings
     return p
@@ -122,6 +123,7 @@ extension Deck {
     reverb.wet = p.reverbWet
     reverb.size = p.reverbSize
     reverb.tone = p.reverbTone
+    autoGain = p.autoGain
     for r in p.disabledRoles { setRoleDisabled(r, true) }
     wander = p.wander
   }
@@ -192,6 +194,7 @@ extension DJEngine {
       case "reverbWet": d.reverb.wet = v
       case "reverbSize": d.reverb.size = v
       case "reverbTone": d.reverb.tone = v
+      case "autoGain": d.autoGain = v > 0.5
       default: break
       }
     case .crossfader(let v):

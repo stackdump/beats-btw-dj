@@ -192,9 +192,12 @@ struct SessionReplayTests {
   static func perform(blocks: Int = 520) throws -> (Session, RenderedAudio) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
     dj.deterministic = true
+    // compiled with the deck's options, as the app does and the replay will: the loudness gain
+    // counts the parts the deck's bank binds (`WaveProject.sampledGroups`)
     dj["A"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate))
+        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate,
+        opts: dj["A"]!.waveOptions))
     dj["B"]!.loadDemo()
     dj["A"]!.volume = 0.85
     try dj.start()
