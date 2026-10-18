@@ -69,13 +69,18 @@ struct MusicalityTests {
         // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
         // steps, `.motif` a melody's second bars (bar 1's rhythm), `.buildup` / `.crash` the
         // fill chains' (a roll, a crash), `.variety` a bass pickup or every other bass hit and
-        // ghost drum hits (all on the net's own transitions); nothing else gains or loses notes
+        // ghost drum hits, `.backbeat` the chill family's kick and snare figures (all on the
+        // net's own transitions); nothing else gains or loses notes
         let unvaried = DJMusicality.apply(
           t.composed, spec: t.spec, fixes: .all.subtracting(.variety)
         ).nets[id]!
         #expect(Set(b.bindings.keys).isSubset(of: Set(b.transitions.keys)), "\(genre) \(id)")
         if id.hasPrefix("fill-") {
           continue
+        } else if DJMusicality.backbeatStyle(genre: genre) != nil,
+          DJMusicality.backbeatRoles.contains(id)
+        {
+          #expect(!b.bindings.keys.isEmpty, "\(genre) \(id)")
         } else if b.track.group == "arp" || b.track.group == "melody" {
           #expect(!b.bindings.keys.isEmpty, "\(genre) \(id)")
         } else if b.track.group == "harmony" {
