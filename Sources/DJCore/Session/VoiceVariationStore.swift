@@ -49,8 +49,7 @@ public struct VoiceVariationStore {
   /// Save `variation` for `instrument` (replacing one of the same name, in its place). Returns
   /// the instrument's new list.
   @discardableResult
-  public func save(_ variation: VoiceVariation, for instrument: String) throws -> [VoiceVariation]
-  {
+  public func save(_ variation: VoiceVariation, for instrument: String) throws -> [VoiceVariation] {
     let before = all()
     let after = Self.saving(variation, for: instrument, in: before)
     if after != before { try write(after) }

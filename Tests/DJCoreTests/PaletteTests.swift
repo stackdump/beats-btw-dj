@@ -392,7 +392,8 @@ struct PalettePublishTests {
     let fine = session(
       .net(spec),
       events: [
-        SessionEvent(frame: 1, kind: .action(.setRoleVoice(deck: "A", role: "melody", voice: "gm:0")))
+        SessionEvent(
+          frame: 1, kind: .action(.setRoleVoice(deck: "A", role: "melody", voice: "gm:0")))
       ])
     #expect(fine.localOnlySounds.isEmpty)
   }

@@ -85,7 +85,8 @@ struct VoiceTweakEngineTests {
       for lane in s.latest!.lanes where lane.channel == ch {
         lane.baseLevel = 0
         lane.setVoice(
-          VoiceLaneParams(channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
+          VoiceLaneParams(
+            channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
       }
       s.play()
     }
@@ -280,7 +281,9 @@ struct VoiceTweakCodecTests {
       voice: InstrumentTable.shared.voice(instrument: "laser", group: "melody"), sampleRate: sr)
     #expect(p.has(VoiceLaneParams.pitch) && !p.has(VoiceLaneParams.level))
     #expect(p.pmOn && p.pitchFrom > p.pitchTo, "a partial sweep fills in from the instrument")
-    #expect(VoiceLaneParams(channel: 2, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr).mask == 0)
+    #expect(
+      VoiceLaneParams(channel: 2, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr)
+        .mask == 0)
   }
 }
 
@@ -296,7 +299,8 @@ struct VoiceVariationStoreTests {
     #expect(store.list("laser").map(\.name) == ["short zap", "dark"], "in the order saved")
     #expect(store.list("laser")[1].useSynth && store.list("laser")[1].params.lowpass == 600)
     // the same name again replaces it in place
-    try store.save(VoiceVariation(name: "short zap", params: VoiceTweak(pitchTime: 0.05)), for: "laser")
+    try store.save(
+      VoiceVariation(name: "short zap", params: VoiceTweak(pitchTime: 0.05)), for: "laser")
     #expect(store.list("laser").map(\.name) == ["short zap", "dark"])
     #expect(store.list("laser")[0].params.pitchTime == 0.05)
     // a fresh store over the same file reads it back

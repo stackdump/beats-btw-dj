@@ -171,7 +171,8 @@ struct MasterTapTests {
     // (and the net deck's peak limiter delays its output by its lookahead)
     let latency = deck.wave.limiter?.lookahead ?? 0
     #expect(
-      onset < 16 + latency, "sounding within a few samples of the fire's own frame (onset \(onset))")
+      onset < 16 + latency, "sounding within a few samples of the fire's own frame (onset \(onset))"
+    )
     #expect(after.contains { abs($0) > 0.01 })
     // every fire is followed by sound just after its frame (the tap is the post-master mix)
     let covered = events.filter { Int($0.frame) + 1024 <= tap.endFrame }

@@ -106,7 +106,8 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
 
   static func loadText() throws -> String {
     guard
-      let url = Bundle.main.url(forResource: "palettes", withExtension: "json", subdirectory: "voices")
+      let url = Bundle.main.url(
+        forResource: "palettes", withExtension: "json", subdirectory: "voices")
         ?? Bundle.module.url(
           forResource: "palettes", withExtension: "json", subdirectory: "voices")
     else {
@@ -184,8 +185,7 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
     let names = Self.roleOrder.filter { roles[$0] != nil } + (roles["*"] != nil ? ["*"] : [])
     return names.map { role in
       let opts = pool(role) ?? []
-      if opts.contains(where: { Self.unavailableReason(option: $0, role: role, dir: dir) == nil })
-      {
+      if opts.contains(where: { Self.unavailableReason(option: $0, role: role, dir: dir) == nil }) {
         return (role, nil)
       }
       let why = opts.compactMap { Self.unavailableReason(option: $0, role: role, dir: dir) }
@@ -310,8 +310,7 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
       out = SamplerSource.soundFonts(in: dir).map { .sf2($0, program: n) }
     } else if option.hasPrefix("dls:"), let n = Int(option.dropFirst(4)) {
       if FileManager.default.fileExists(atPath: SamplerSource.gmBank.path) { out = [.gm(n)] }
-    } else if let c = bankCategory(option), !c.sounds.isEmpty, bankReason(c.bank, dir: dir) == nil
-    {
+    } else if let c = bankCategory(option), !c.sounds.isEmpty, bankReason(c.bank, dir: dir) == nil {
       let category = String(option.dropFirst(5))
       let built =
         c.bank == MinecraftBank.fileName ? MinecraftBank.Sidecar.load(dir: dir)?.programs : nil
@@ -422,7 +421,8 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
     if let b = bankCategory(option) {
       let category = String(option.dropFirst(5))
       if let s = sources(option: option, role: role, seed: seed, dir: dir)?.first,
-        case .sf2(_, let prog) = s, let p = MinecraftBank.programs.first(where: { $0.program == prog })
+        case .sf2(_, let prog) = s,
+        let p = MinecraftBank.programs.first(where: { $0.program == prog })
       {
         return p.name
       }
