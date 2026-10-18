@@ -230,6 +230,18 @@ public enum DeckAction: Equatable, Sendable {
   /// Bring a net deck in drums-forward (`Deck.mixIn`): its melodic lanes rest from the next bar
   /// for `bars` bars, then come back on a bar line.
   case mixIn(deck: String, bars: Int)
+  /// Back to the start: the sample's first frame, or tick 0 of the net (`Deck.rewind`).
+  case rewind(deck: String)
+  /// Aim the deck-less controls (keys, joystick, seed, wander) at A, B or the loop channel "L"
+  /// (`DJEngine.focus`), as a controller's deck-select button does.
+  case focus(deck: String)
+  /// A net deck's STEMS group muted (`on`) or back (`Deck.toggleStem`, only when it changes):
+  /// "music" (all but the drums) or "mic" (the lead).
+  case stemMute(deck: String, stem: String, on: Bool)
+  /// A master FX slider moved by hand, `value` 0…1 of its travel (`MasterFxKey.sliderValue`,
+  /// what a controller's fader sends), on the deck's chain: a net's, a sample deck's bus or the
+  /// loops' ("L").
+  case masterFx(deck: String, key: String, value: Double)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -552,6 +564,12 @@ extension DeckAction {
         ])
     case .mixOut(let deck, let bars): return o("mixOut", [d(deck), ("bars", .int(bars))])
     case .mixIn(let deck, let bars): return o("mixIn", [d(deck), ("bars", .int(bars))])
+    case .rewind(let deck): return o("rewind", [d(deck)])
+    case .focus(let deck): return o("focus", [d(deck)])
+    case .stemMute(let deck, let stem, let on):
+      return o("stemMute", [d(deck), ("stem", .string(stem)), ("on", .bool(on))])
+    case .masterFx(let deck, let key, let value):
+      return o("masterFx", [d(deck), ("key", .string(key)), ("value", .number(value))])
     }
   }
 
@@ -570,7 +588,7 @@ extension DeckAction {
     "loopFade", "clipQuantize", "clipFade", "clipFollow", "tapBars", "voiceTweak", "voiceSynth",
     "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
-    "setRoleVoice", "clipImport", "mixOut", "mixIn",
+    "setRoleVoice", "clipImport", "mixOut", "mixIn", "rewind", "focus", "stemMute", "masterFx",
   ]
 
   public init?(json v: JSONValue) {
@@ -678,6 +696,13 @@ extension DeckAction {
         beats: v["beats"]?.int ?? 0, provenance: provenance)
     case "mixOut": self = .mixOut(deck: deck, bars: v["bars"]?.int ?? MixOutTail.defaultBars)
     case "mixIn": self = .mixIn(deck: deck, bars: v["bars"]?.int ?? Self.defaultMixInBars)
+    case "rewind": self = .rewind(deck: deck)
+    case "focus": self = .focus(deck: deck)
+    case "stemMute":
+      self = .stemMute(deck: deck, stem: v["stem"]?.string ?? "music", on: v["on"]?.bool ?? true)
+    case "masterFx":
+      guard let key = v["key"]?.string else { return nil }
+      self = .masterFx(deck: deck, key: key, value: v["value"]?.double ?? 0)
     default: return nil
     }
   }

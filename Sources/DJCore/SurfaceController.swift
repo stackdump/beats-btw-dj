@@ -140,8 +140,7 @@ public final class SurfaceController {
     case .masterFx:
       // a slider position on its own range, as beats' FX panel sends it
       if let d = deck, let k = b.macro.flatMap(MasterFxKey.init(id:)) {
-        let v = Int((Double(k.min) + e.value * Double(k.max - k.min)).rounded())
-        d.setMasterFx(k, v)  // the net's chain, a sample deck's bus, or the loops'
+        d.setMasterFx(k, k.sliderValue(e.value))  // the net's chain, a sample deck's bus, or the loops'
       }
     case .reverbWet: deck?.reverb.wet = e.value
     case .reverbSize: deck?.reverb.size = e.value
@@ -507,5 +506,14 @@ public final class SurfaceController {
     case .pitch: return d.map { ($0.pitch + 1) / 2 }
     default: return nil
     }
+  }
+}
+
+extension MasterFxKey {
+  /// A slider position, 0…1 of its travel, in the slider's own units (its range, rounded): what a
+  /// controller's master FX fader and `DeckAction.masterFx` both set.
+  public func sliderValue(_ position: Double) -> Int {
+    let p = position.isFinite ? Swift.max(0, Swift.min(1, position)) : 0
+    return Int((Double(min) + p * Double(max - min)).rounded())
   }
 }

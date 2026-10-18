@@ -155,6 +155,7 @@ struct MCPBridgeTests {
       "clipMove": #""id":"x""#, "clipFx": #""id":"x""#, "lock": #""key":"A.play""#,
       "wanderPace": #""bars":8"#, "wanderLock": #""dimension":"tempo""#,
       "setRoleVoice": #""role":"bass""#, "clipImport": #""id":"x""#,
+      "masterFx": #""key":"lp-freq""#,
     ]
     #expect(Set(DeckAction.jsonOps).count == DeckAction.jsonOps.count)
     for op in DeckAction.jsonOps where op != "load" {
@@ -181,7 +182,25 @@ struct MCPBridgeTests {
     #expect(text.contains("mixOut {deck, bars? 1-64, default \(MixOutTail.defaultBars)}"))
     #expect(text.contains("mixIn {deck, bars? 1-64, default \(DeckAction.defaultMixInBars)}"))
     #expect(text.contains("stinger, panic, mixOut, mixIn) need a deck in net mode"))
-    #expect(DeckAction.jsonOps.suffix(2) == ["mixOut", "mixIn"])
+    let mix = try #require(DeckAction.jsonOps.firstIndex(of: "mixOut"))
+    #expect(DeckAction.jsonOps[mix + 1] == "mixIn")
+  }
+
+  /// The controller-only ops say what they take: the focus targets, the STEMS groups, and every
+  /// master FX slider key with the 0…1 travel.
+  @Test func theControllerOnlyOpsAreDocumented() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":12,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains("rewind {deck}"))
+    #expect(text.contains("focus {deck: A|B|L}"))
+    #expect(
+      text.contains(
+        "stemMute {deck, stem: \(Deck.stemNames.reversed().joined(separator: "|")), on}"))
+    let keys = MasterFxKey.allCases.map(\.id).joined(separator: "|")
+    #expect(text.contains("masterFx {deck, key: \(keys), value 0…1}"))
   }
 
   @Test func importingAStockLoopOntoTheRowIsDocumented() throws {

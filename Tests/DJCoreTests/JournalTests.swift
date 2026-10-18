@@ -101,6 +101,55 @@ struct JournalCodecTests {
     }
   }
 
+  /// The controller-only controls as actions (rewind, focus, STEMS, a master FX slider): each
+  /// round-trips through its line, a slider's moves fold into one row like a knob's, and each
+  /// reads as a line for people.
+  @Test func theControllerActionsRoundTripFoldAndRead() throws {
+    let actions: [DeckAction] = [
+      .rewind(deck: "A"), .focus(deck: "L"), .stemMute(deck: "B", stem: "music", on: true),
+      .stemMute(deck: "B", stem: "mic", on: false),
+      .masterFx(deck: "A", key: "lp-freq", value: 0.25),
+      .masterFx(deck: "L", key: "master-pitch", value: 1),
+    ]
+    for (i, a) in actions.enumerated() {
+      #expect(DeckAction(json: try JSONValue.parse(a.json.jsStringified)) == a)
+      let e = JournalEntry(seq: i + 1, time: journalDate(1), frame: i, event: .action(a))
+      #expect(try #require(JournalEntry(line: e.line)).event == .action(a))
+    }
+    // a masterFx without its key does not decode
+    #expect(
+      DeckAction(json: try JSONValue.parse(#"{"op":"masterFx","deck":"A","value":1}"#)) == nil)
+    let fx = JournalEvent.action(.masterFx(deck: "A", key: "lp-freq", value: 0.25))
+    #expect(fx.foldKey == "A.fx.lp-freq")
+    #expect(
+      JournalEvent.action(.masterFx(deck: "A", key: "lp-freq", value: 0.9)).foldKey == fx.foldKey)
+    #expect(
+      JournalEvent.action(.masterFx(deck: "A", key: "hp-freq", value: 0.9)).foldKey != fx.foldKey)
+    #expect(fx.foldKey != JournalEvent.action(.param(deck: "A", name: "filter", value: 0)).foldKey)
+    #expect(JournalEvent.action(.rewind(deck: "A")).foldKey == nil)
+    #expect(fx.summary == "A fx lp-freq 0.25")
+    #expect(JournalEvent.action(.rewind(deck: "A")).summary == "A rewind")
+    #expect(JournalEvent.action(.focus(deck: "L")).summary == "focus L")
+    #expect(
+      JournalEvent.action(.stemMute(deck: "B", stem: "mic", on: true)).summary
+        == "B stem mic muted")
+  }
+
+  /// The master FX slider's mapping is one function, the controller's and the action's: 0…1 of
+  /// the travel onto the slider's own range, rounded and clamped.
+  @Test func aMasterFxPositionMapsOntoTheSlidersRange() {
+    #expect(MasterFxKey.lpFreq.sliderValue(0) == 0 && MasterFxKey.lpFreq.sliderValue(1) == 100)
+    #expect(MasterFxKey.lpFreq.sliderValue(0.254) == 25)
+    #expect(MasterFxKey.masterPitch.sliderValue(0) == -12)
+    #expect(MasterFxKey.masterPitch.sliderValue(0.5) == 0)
+    #expect(MasterFxKey.masterPitch.sliderValue(1) == 12)
+    #expect(
+      MasterFxKey.crushBits.sliderValue(2) == 100 && MasterFxKey.crushBits.sliderValue(-1) == 0)
+    #expect(MasterFxKey.distortion.sliderValue(.nan) == 0)
+    // a controller fader at 64/127 lands where the action at the same position does
+    #expect(MasterFxKey.phaserWet.sliderValue(64.0 / 127) == 50)
+  }
+
   /// A clip's own launch boundary and fade are in a checkpoint only when it has them, and a
   /// restore gives them back.
   @Test func aCheckpointKeepsAClipsLaunchBoundaryAndFade() throws {
@@ -323,6 +372,13 @@ struct JournalReplayTests {
           store(
             .variationSave(
               instrument: "laser", variation: VoiceVariation(name: "zap", params: VoiceTweak())))
+        case 200:
+          // the controller-only controls, as actions: a master FX slider and a rewind on the
+          // audible deck, the focus and a STEMS group on the net one
+          dj.perform(.masterFx(deck: "A", key: "lp-freq", value: 0.6))
+          dj.perform(.rewind(deck: "A"))
+          dj.perform(.focus(deck: "B"))
+          dj.perform(.stemMute(deck: "B", stem: "music", on: true))
         case 360: dj.perform(.grabBars(deck: "A", bars: 1))
         case 370:
           // both clips are on the row by now
@@ -371,6 +427,13 @@ struct JournalReplayTests {
       "variation.save",
     ] {
       #expect(kinds.contains(k), "journaled \(k)")
+    }
+    let events = c.entries.map(\.event)
+    for a in [
+      DeckAction.masterFx(deck: "A", key: "lp-freq", value: 0.6), .rewind(deck: "A"),
+      .focus(deck: "B"), .stemMute(deck: "B", stem: "music", on: true),
+    ] {
+      #expect(events.contains(.action(a)), "journaled \(a.summary)")
     }
     #expect(live.state.clips.count == 2, "a take and a grab: \(live.state.clips.map(\.id))")
     #expect(live.state.clips.last?.title == "the take", "moved to the end, renamed")

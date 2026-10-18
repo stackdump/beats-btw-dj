@@ -221,7 +221,15 @@ public struct MCPBridge {
       drums and bass for bars bars and stops on a bar line (the room rings out; section jumps \
       keep it, a new track drops it) · mixIn {deck, bars? 1-64, default 4}: bring the deck in \
       drums-forward: from the next bar its melodic parts rest for bars bars and come back on \
-      the bar line after. Deck "L" also takes param volume / mute (1 = muted), \
+      the bar line after · rewind {deck}: back to the start (a sample's first frame, a net's \
+      tick 0) · focus {deck: A|B|L}: aim the deck-less controls (keys, joystick, seed, wander) \
+      as a controller's deck-select does (dj_state.focus) · stemMute {deck, stem: \
+      music|mic, on}: a net deck's STEMS group muted or back (music: all but the drums; mic: the \
+      lead) · masterFx {deck, key: hp-freq|lp-freq|phaser-freq|phaser-depth|phaser-wet|\
+      crush-bits|distortion|master-pitch, value 0…1}: move a master FX slider by hand, value \
+      the fraction of its travel (as a controller fader sends it; master-pitch −12…12 \
+      semitones, the rest 0…100), on a net's chain, a sample deck's bus or the loops' (L). \
+      Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
       Net-only ops (section, role, macro, stinger, panic, mixOut, mixIn) need a deck in net mode. Use \

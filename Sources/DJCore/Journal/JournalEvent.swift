@@ -221,6 +221,7 @@ public enum JournalEvent: Equatable, Sendable {
   public var foldKey: String? {
     switch self {
     case .action(.param(let deck, let name, _)): "\(deck).\(name)"
+    case .action(.masterFx(let deck, let key, _)): "\(deck).fx.\(key)"
     case .action(.crossfader): "crossfader"
     case .action(.master): "master"
     case .action(.clipGain(let id, _)): "gain.\(id)"
@@ -265,6 +266,11 @@ extension DeckAction {
     case .queueNext(let deck, let spec):
       return "\(deck) next up \(DeckSourceDescriptor.net(spec).summary)"
     case .lock(let key, let on): return "\(on ? "lock" : "unlock") \(key)"
+    case .masterFx(let deck, let key, let value):
+      return "\(deck) fx \(key) \(String(format: "%.2f", value))"
+    case .focus(let deck): return "focus \(deck)"
+    case .stemMute(let deck, let stem, let on):
+      return "\(deck) stem \(stem) \(on ? "muted" : "back")"
     default:
       // the rest: the op, the deck, then the other fields
       var parts: [String] = []
