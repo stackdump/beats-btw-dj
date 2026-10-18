@@ -346,7 +346,7 @@ extension AppModel {
       return try controlNotes(p)
 
     case "journal":
-      return controlJournal(p)
+      return try await controlJournal(p)
 
     default:
       throw ControlRequestError.bad("unknown method \(method)")
