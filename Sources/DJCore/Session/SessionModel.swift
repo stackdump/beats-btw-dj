@@ -220,6 +220,13 @@ public enum DeckAction: Equatable, Sendable {
   /// (performed with the buffer, replayed through the sample resolver). `provenance` is
   /// `LoopProvenance.stock` for a stock loop, which a publish refuses (`Session.importedClips`).
   case clipImport(id: String, title: String, bpm: Double, beats: Int, provenance: JSONValue?)
+  /// Mix a net deck out (`Deck.mixOut`): at the next bar it jumps to the outro (or plays on
+  /// where it is) and plays drums-forward for `bars` bars, then stops on a bar line. One
+  /// action: the relocation it makes is not recorded apart.
+  case mixOut(deck: String, bars: Int)
+  /// Bring a net deck in drums-forward (`Deck.mixIn`): its melodic lanes rest from the next bar
+  /// for `bars` bars, then come back on a bar line.
+  case mixIn(deck: String, bars: Int)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -538,8 +545,13 @@ extension DeckAction {
           ("id", .string(id)), ("title", .string(title)), ("bpm", .number(bpm)),
           ("beats", .int(beats)), ("provenance", provenance ?? .null),
         ])
+    case .mixOut(let deck, let bars): return o("mixOut", [d(deck), ("bars", .int(bars))])
+    case .mixIn(let deck, let bars): return o("mixIn", [d(deck), ("bars", .int(bars))])
     }
   }
+
+  /// How many bars a mix-in rests when nobody says: 4.
+  public static let defaultMixInBars = 4
 
   /// Every `op` `init(json:)` decodes, in its order. dj_perform documents each one
   /// (`ControlTests.everyPerformOpIsDocumented`): a new case goes here and in its description.
@@ -552,7 +564,7 @@ extension DeckAction {
     "sceneRename", "sceneDelete", "clipMute", "clipSolo", "clipKeyLock", "loopKeyLock",
     "loopFade", "clipQuantize", "clipFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
-    "setRoleVoice", "clipImport",
+    "setRoleVoice", "clipImport", "mixOut", "mixIn",
   ]
 
   public init?(json v: JSONValue) {
@@ -657,6 +669,8 @@ extension DeckAction {
       self = .clipImport(
         id: id, title: v["title"]?.string ?? "", bpm: v["bpm"]?.double ?? 0,
         beats: v["beats"]?.int ?? 0, provenance: provenance)
+    case "mixOut": self = .mixOut(deck: deck, bars: v["bars"]?.int ?? MixOutTail.defaultBars)
+    case "mixIn": self = .mixIn(deck: deck, bars: v["bars"]?.int ?? Self.defaultMixInBars)
     default: return nil
     }
   }

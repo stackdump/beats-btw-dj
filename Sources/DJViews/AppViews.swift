@@ -31,6 +31,9 @@ struct DeckState: Equatable {
   var rolesOn: Set<String> = []
   var nextReady = false
   var nextComposing = false
+  /// A mix-out tail plays (`Deck.isMixingOut`) / a mix-in's rest is to come or playing.
+  var mixingOut = false
+  var mixingIn = false
   /// The share CID of the net on the deck (what a favorite of it is named by); nil for samples.
   var sourceCID: String?
   /// Each role's instrument and what it could play instead (`Deck.roleVoices`).
@@ -471,6 +474,8 @@ public final class AppModel {
       state.voiceSettings = d.mode == .net ? d.wave.voiceSettings : [:]
       state.kit = d.kit
       state.palette = d.palette
+      state.mixingOut = d.isMixingOut
+      state.mixingIn = d.isMixingIn
       if d.mode == .net {
         var spin = ringSpins[name] ?? RingSpin()
         spin.observe(advances: d.advances, at: now)
@@ -1280,6 +1285,12 @@ public final class AppModel {
   func fire(_ deck: String, _ macro: MasterMacro) { dj?.perform(.macro(deck: deck, id: macro.id)) }
   func panic(_ deck: String) { dj?.perform(.panic(deck: deck)) }
   func stinger(_ deck: String, _ n: Int) { dj?.perform(.stinger(deck: deck, n: n)) }
+  func mixOut(_ deck: String) {
+    dj?.perform(.mixOut(deck: deck, bars: MixOutTail.defaultBars))
+  }
+  func mixIn(_ deck: String) {
+    dj?.perform(.mixIn(deck: deck, bars: DeckAction.defaultMixInBars))
+  }
   func skipToNext(_ deck: String) { dj?.perform(.nextTrack(deck: deck)) }
   func sync(_ deck: String) { dj?.perform(.sync(deck: deck, align: "bar")) }
   func cycleQuantize(_ deck: String) {
@@ -2129,6 +2140,7 @@ struct NetPanel: View {
             .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         WanderButton(name: name, on: state.wander.on, model: model, tint: tint)
+        MixButtons(name: name, state: state, model: model, tint: tint)
         Button("Sync") { model.sync(name) }.liveButton()
           .lockable(DJActionKind.lockKey(deck: name, .sync), model)
         Button("Q: \(state.quantize)") { model.cycleQuantize(name) }.liveButton()
