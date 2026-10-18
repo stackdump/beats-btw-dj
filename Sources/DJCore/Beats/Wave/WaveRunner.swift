@@ -99,6 +99,9 @@ public struct WaveOptions {
   /// `stop-transport` is ignored, and the deck stops on its `endTick`. nil = the song as it
   /// ends (parity, and every deck until `Deck.mixOut` sets one).
   public var tail: MixOutTail?
+  /// The track's genre, set by `forGenre`; nil (raw nets, parity) = unknown, and the gestures
+  /// a genre gates (`.bandStop`: the song family) stay off.
+  public var genre: String?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -228,11 +231,11 @@ final class Lane {
   var voiceSpread: [Double] = []
   var voicePan: [Double] = []
   /// What the lane is for the rest schedule (`WaveProject.rests`): it drops its hits while the
-  /// step's mask holds its class. Empty (never rests): fills' and crashes' drums, stingers,
-  /// overrides, the live keys.
+  /// step's mask holds its class. Empty (never rests): crashes, stingers, overrides, the live
+  /// keys.
   var restClass: RestSchedule.Class = []
-  /// `.sectionHarmony`: the lane's group in `WaveProject.harmony` (-1: not moved, e.g. drums
-  /// and the live keys).
+  /// `.sectionHarmony` / `.harmonicRhythm`: the lane's group in `WaveProject.harmony` (-1: not
+  /// moved, e.g. drums and the live keys).
   var harmonyGroup = -1
   /// `.choke`: the open hat a hit on this (closed hat) lane chokes; on the open hat lane,
   /// whether it is being choked and how fast it dies then (per sample).
@@ -571,7 +574,8 @@ public final class WaveProject: @unchecked Sendable {
   public let tail: MixOutTail?
   /// Where the audio thread is in `rests`; reset when the project is installed or stopped.
   var restCursor = RestSchedule.Cursor()
-  /// The section plan the tonal lanes play through (`.sectionHarmony`); nil = as bound.
+  /// The section plan the tonal lanes play through (`.sectionHarmony`, `.harmonicRhythm`); nil =
+  /// as bound.
   public let harmony: SectionHarmony?
   /// The room this project plays in (`.space`); nil = dry.
   public let space: SpaceSpec?
@@ -1074,10 +1078,12 @@ public final class WaveRunner {
     let gain = opts.trackGain ?? 1
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
-    let songRests = opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality)
+    let songRests =
+      opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
-    // `.sectionHarmony`: the band moves with the section (a pure function of the played
-    // project, cheap: rebuilt on section jumps rather than carried)
+    // `.sectionHarmony` / `.harmonicRhythm`: the band moves with the section and its chords
+    // (a pure function of the played project, cheap: rebuilt on section jumps rather than
+    // carried)
     let harmony = SectionHarmony.playing(project, fixes: opts.musicality)
     let prepared = buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
