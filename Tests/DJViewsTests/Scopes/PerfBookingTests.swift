@@ -247,9 +247,9 @@ struct PerfBookingTests {
     #expect(differ > 100, "the menu's face in the header follows the preference (\(differ))")
   }
 
-  /// The main window is at least 760 pt wide (DJApp's `minWidth`) and pads its content by 16 pt
-  /// on each side.
-  static let headerRoom = 760.0 - 32
+  /// The main window (the scope panel's, not the Stage's) is at least 720 pt wide (DJApp's
+  /// `WindowRoot(minSize:)`) and pads its content by 16 pt on each side.
+  static let headerRoom = 720.0 - 32
 
   @Test func theHeaderLeavesRoomForTheStatusAtTheWindowsMinimumWidth() throws {
     let rig = try ScopeViewRig()
@@ -296,12 +296,15 @@ struct PerfBookingTests {
     let long = try #require(
       renderPixels(
         header(String(repeating: "lanes and bpm ", count: 12)), width: width, height: 24))
+    // A narrower frame is no squeeze probe: the pills are fixedSize and overflow it, and both
+    // renders shift alike. What this catches is the pills losing fixedSize / layoutPriority(-1)
+    // on the status (seen: 8097 pixels changed).
     var pillsChanged = 0
     for y in 0..<24 {
       for x in 0..<pillsEnd where short.color(x, y) != long.color(x, y) { pillsChanged += 1 }
     }
     #expect(pillsChanged == 0, "a long status does not squeeze a pill (\(pillsChanged) pixels)")
-    savePNG(header("10 lanes · 128 bpm · 4 bars"), width: width, height: 24, name: "header-760")
+    savePNG(header("10 lanes · 128 bpm · 4 bars"), width: width, height: 24, name: "header-720")
   }
 
   // MARK: the Stage
