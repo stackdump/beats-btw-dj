@@ -108,8 +108,10 @@ public final class PreparedTrack: @unchecked Sendable {
   /// `opts.musicality` asks), or `project` itself for a raw-`nets` share or without fixes.
   public let played: Project
   public let prepared: WaveProject
-  /// What `prepared` was prepared with (the genre's and palette's settings applied), and at.
-  let opts: WaveOptions
+  /// What `prepared` was prepared with: the deck's options with the track's voicing seed and
+  /// its genre's and palette's settings applied (`MixBalance.measure` renders the parts with
+  /// them), and at.
+  public let opts: WaveOptions
   let sampleRate: Double
 
   /// The composed track's spec; nil for a raw-`nets` share.
