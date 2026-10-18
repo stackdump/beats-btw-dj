@@ -248,6 +248,11 @@ its copy; the two are now independent. Rules inherited from that split:
   purpose (guitar round robin, tape/chime modulation): sessions with them are not
   byte-identical on replay; GM programs always are. `make sampler-sweep` runs the sound
   checks over every installed sound (minutes); the default suite takes one per category.
+- Part levels (`SamplerPartLevels`): after `normalize` a tonal load also plays part probes
+  (pad chords, bass eighths, lead, arp; 3 passes, K-weighted) against the group's synth voice
+  → `SamplerBank.slotPartLevelDB(slot, group:)`. Unity-gain levels are cached by (file, size,
+  mtime, rate, probe `version`) in `Application Support/DJApp/sampler-part-levels.json`
+  (`$DJ_SAMPLER_PART_CACHE`; empty = memory only); bump `version` when a probe changes.
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and
