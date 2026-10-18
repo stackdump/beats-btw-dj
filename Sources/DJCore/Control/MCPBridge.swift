@@ -237,7 +237,16 @@ public struct MCPBridge {
       lead) · masterFx {deck, key: hp-freq|lp-freq|phaser-freq|phaser-depth|phaser-wet|\
       crush-bits|distortion|master-pitch, value 0…1}: move a master FX slider by hand, value \
       the fraction of its travel (as a controller fader sends it; master-pitch −12…12 \
-      semitones, the rest 0…100), on a net's chain, a sample deck's bus or the loops' (L). \
+      semitones, the rest 0…100), on a net's chain, a sample deck's bus or the loops' (L) · \
+      fx {deck, param: \(FxParam.allCases.map(\.id).joined(separator: "|")), value}: the FX \
+      unit, live on the deck's chain (A, B or L): smoothed over ~30 ms, not quantised; value in \
+      the param's travel (filter −1…1: left LP, right HP, 0 off; pitch −12…12 semitones; the \
+      rest 0…1; neutral: lp 1, phaser-depth 0.5, the rest 0); room / echo / feedback are a net \
+      deck's sends (its genre's room and echo: 0 = as composed, 1 = 4× the send / feedback \
+      0.92), not on sample decks or L; master macros ride on top of the unit and release back \
+      to it · fxReset {deck, onBeat?}: every FX unit control to neutral and its kill off \
+      (onBeat: on the deck's next beat) · fxKill {deck, on, onBeat?}: bypass the FX unit \
+      keeping its knobs, or back (dj_state.fxUnit). \
       Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).

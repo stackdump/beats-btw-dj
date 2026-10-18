@@ -25,6 +25,8 @@ public final class SessionRecorder {
     for a in engine.loopSettings where !DJEngine.defaultLoopSettings.contains(a) { r.record(a) }
     // Locked actions too: a locked controller binding does nothing, so recorded MIDI needs them.
     for key in engine.lockedActions.sorted() { r.record(.lock(key: key, on: true)) }
+    // The loops' FX unit (the decks' is in their params): as the actions that set it.
+    for a in engine.loopChannel.fxUnit.actions(deck: engine.loopChannel.name) { r.record(a) }
     return r
   }
 
@@ -109,6 +111,7 @@ extension Deck {
     p.autoGain = autoGain
     p.disabledRoles = disabledRoles.sorted()
     p.wander = wander.settings
+    p.fxUnit = fxUnit
     return p
   }
 
@@ -131,6 +134,7 @@ extension Deck {
     applyAutoGain(now: true)
     for r in p.disabledRoles { setRoleDisabled(r, true) }
     wander = p.wander
+    applyFxUnit(p.fxUnit)
   }
 }
 
@@ -324,6 +328,12 @@ extension DJEngine {
       if let d = deck(n), d.isStemMuted(stem) != on { d.toggleStem(stem) }
     case .masterFx(let n, let key, let value):
       if let d = deck(n), let k = MasterFxKey(id: key) { d.setMasterFx(k, k.sliderValue(value)) }
+    case .fx(let n, let param, let value):
+      if let d = deck(n), let p = FxParam(id: param) { d.setFx(p, value) }
+    case .fxReset(let n, let onBeat):
+      if let d = deck(n) { d.resetFx(atFrame: onBeat ? fxBeatFrame(d) : 0) }
+    case .fxKill(let n, let on, let onBeat):
+      if let d = deck(n) { d.killFx(on, atFrame: onBeat ? fxBeatFrame(d) : 0) }
     case .clipImport(let id, let title, let bpm, let beats, let provenance):
       if let b = buffer ?? sampleLibrary[id] ?? sampleResolver?(id) {
         importClip(

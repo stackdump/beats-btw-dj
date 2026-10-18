@@ -87,6 +87,8 @@ public struct DeckParams: Equatable, Sendable {
   /// The deck's walk as the session starts (`Deck.wander`: on, pace, step, locks and what they
   /// hold), so a replay draws the same moves; no log.
   public var wander = WanderState()
+  /// The FX unit on the deck's chain (`Deck.fxUnit`); written only when it is not neutral.
+  public var fxUnit = FxUnitSettings()
   public init() {}
 }
 
@@ -246,6 +248,14 @@ public enum DeckAction: Equatable, Sendable {
   /// what a controller's fader sends), on the deck's chain: a net's, a sample deck's bus or the
   /// loops' ("L").
   case masterFx(deck: String, key: String, value: Double)
+  /// One control of the FX unit on the deck's chain ("A", "B" or the loops' "L"): `param` an
+  /// `FxParam` id, `value` in its travel (`FxParam.range`). Live: smoothed over ~30 ms on the
+  /// audio thread, not quantised (FxUnit.swift).
+  case fx(deck: String, param: String, value: Double)
+  /// Every FX unit control back to neutral and its kill off; `onBeat`: on the deck's next beat.
+  case fxReset(deck: String, onBeat: Bool)
+  /// The FX unit bypassed (`on`), its knobs kept, or back; `onBeat`: on the next beat.
+  case fxKill(deck: String, on: Bool, onBeat: Bool)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -426,6 +436,7 @@ extension DeckParams {
     if !disabledRoles.isEmpty { o["disabledRoles"] = .array(disabledRoles.map { .string($0) }) }
     if wander != WanderState() { o["wander"] = wander.json }
     if autoGain { o["autoGain"] = .bool(true) }
+    if fxUnit != FxUnitSettings() { o["fxUnit"] = fxUnit.json }
     if reverbWet != 0 || reverbSize != 0.5 || reverbTone != 0.5 {
       o["reverbWet"] = .number(reverbWet)
       o["reverbSize"] = .number(reverbSize)
@@ -451,6 +462,7 @@ extension DeckParams {
     autoGain = v["autoGain"]?.bool ?? autoGain
     disabledRoles = v["disabledRoles"]?.array?.compactMap(\.string) ?? []
     if let w = v["wander"] { wander = WanderState(json: w) }
+    if let f = v["fxUnit"] { fxUnit = FxUnitSettings(json: f) }
   }
 }
 
@@ -576,6 +588,12 @@ extension DeckAction {
       return o("stemMute", [d(deck), ("stem", .string(stem)), ("on", .bool(on))])
     case .masterFx(let deck, let key, let value):
       return o("masterFx", [d(deck), ("key", .string(key)), ("value", .number(value))])
+    case .fx(let deck, let param, let value):
+      return o("fx", [d(deck), ("param", .string(param)), ("value", .number(value))])
+    case .fxReset(let deck, let onBeat):
+      return o("fxReset", [d(deck)] + (onBeat ? [("onBeat", .bool(true))] : []))
+    case .fxKill(let deck, let on, let onBeat):
+      return o("fxKill", [d(deck), ("on", .bool(on))] + (onBeat ? [("onBeat", .bool(true))] : []))
     }
   }
 
@@ -595,7 +613,7 @@ extension DeckAction {
     "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
     "setRoleVoice", "clipImport", "mixOut", "mixIn", "rewind", "focus", "stemMute", "masterFx",
-    "clipRetune",
+    "clipRetune", "fx", "fxReset", "fxKill",
   ]
 
   /// Instruments by MIDI channel as JSON: `{"3": "saw"}`, channels in order.
@@ -727,6 +745,12 @@ extension DeckAction {
     case "masterFx":
       guard let key = v["key"]?.string else { return nil }
       self = .masterFx(deck: deck, key: key, value: v["value"]?.double ?? 0)
+    case "fx":
+      guard let param = v["param"]?.string, let value = v["value"]?.double else { return nil }
+      self = .fx(deck: deck, param: param, value: value)
+    case "fxReset": self = .fxReset(deck: deck, onBeat: v["onBeat"]?.bool ?? false)
+    case "fxKill":
+      self = .fxKill(deck: deck, on: v["on"]?.bool ?? true, onBeat: v["onBeat"]?.bool ?? false)
     default: return nil
     }
   }

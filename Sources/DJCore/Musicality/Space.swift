@@ -177,6 +177,12 @@ final class FDNReverb {
   private var sideHP: SideHighpass
   /// Output gain: the spec's `wet`, normalised so a longer room is not simply louder.
   private(set) var outGain = 0.0
+  /// The FX unit's send gain on the input (1 = the genre's sends), ramped linearly over the block
+  /// it was set for (`setSend`). Exactly 1 leaves the input untouched.
+  private var send = 1.0
+  private var sendTarget = 1.0
+  private var sendStep = 0.0
+  private var sendLeft = 0
 
   init(sampleRate sr: Double) {
     sampleRate = sr
@@ -204,6 +210,14 @@ final class FDNReverb {
     outGain = Self.makeup * spec.wet * (1 - mean * mean).squareRoot()
   }
 
+  /// The FX unit's room send (`FxUnitLayer.roomGain`), reached linearly over the next `frames`
+  /// samples. Allocation-free (audio thread).
+  func setSend(_ g: Double, frames: Int) {
+    sendTarget = g
+    sendLeft = max(1, frames)
+    sendStep = (g - send) / Double(sendLeft)
+  }
+
   /// Clear the room (the tail stops). Allocation-free.
   func reset() {
     for i in 0..<buf.count { buf[i] = 0 }
@@ -217,6 +231,12 @@ final class FDNReverb {
   /// One sample in (the send bus), one stereo sample out (the return).
   @inline(__always)
   func process(_ x: Double) -> (Double, Double) {
+    var x = x
+    if sendLeft > 0 {
+      sendLeft -= 1
+      send = sendLeft == 0 ? sendTarget : send + sendStep
+    }
+    if send != 1 { x *= send }
     let h1 = hpA * (hpY.0 + x - hpX.0)
     hpX.0 = x
     hpY.0 = h1

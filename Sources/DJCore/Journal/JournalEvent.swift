@@ -222,6 +222,7 @@ public enum JournalEvent: Equatable, Sendable {
     switch self {
     case .action(.param(let deck, let name, _)): "\(deck).\(name)"
     case .action(.masterFx(let deck, let key, _)): "\(deck).fx.\(key)"
+    case .action(.fx(let deck, let param, _)): "\(deck).fxunit.\(param)"
     case .action(.crossfader): "crossfader"
     case .action(.master): "master"
     case .action(.clipGain(let id, _)): "gain.\(id)"
@@ -270,6 +271,12 @@ extension DeckAction {
     case .masterFx(let deck, let key, let value):
       return "\(deck) fx \(key) \(String(format: "%.2f", value))"
     case .focus(let deck): return "focus \(deck)"
+    case .fx(let deck, let param, let value):
+      return "\(deck) fx unit \(param) \(String(format: "%.2f", value))"
+    case .fxReset(let deck, let onBeat):
+      return "\(deck) fx unit reset" + (onBeat ? " on the beat" : "")
+    case .fxKill(let deck, let on, let onBeat):
+      return "\(deck) fx unit \(on ? "killed" : "back")" + (onBeat ? " on the beat" : "")
     case .stemMute(let deck, let stem, let on):
       return "\(deck) stem \(stem) \(on ? "muted" : "back")"
     case .clipRetune(let id, let voices):
