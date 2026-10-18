@@ -314,7 +314,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `minecraft-local.sf2` + `minecraft-local.json` (asset index, per-sample SHA-1) in the SoundFont
   folder from the user's own PrismLauncher assets (`MinecraftAssets`: newest index,
   `$DJ_MINECRAFT_ASSETS` overrides; `MinecraftBank` fixed programs, kit at 0:127; decoded,
-  44.1 kHz/16-bit, tuned, steady tones crossfade-looped). Personal use only: the .ogg files and
+  44.1 kHz/16-bit, tuned, steady tones crossfade-looped; each tone also stored ±1 octave,
+  band-limited (`octaveShift`, −60 dB from 11.025 kHz), in three key zones `octaveZones`; bank
+  `formatVersion` 2 is in the sidecar and the recorded palette, `minecraft@32+b2`). Personal use only: the .ogg files and
   the .sf2 never enter the repo, a release or the CDN (`*.sf2`, `minecraft-local.*` ignored), it
   never joins the GM pools (`localOnlyBanks`), and `music/*` / `records/*` are never read.
   Publishing refuses any set that plays it (`Session.localOnlySounds`; `djctl publish

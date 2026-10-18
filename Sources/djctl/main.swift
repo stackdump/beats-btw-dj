@@ -795,7 +795,7 @@ case "minecraft":
       print("unavailable: \(why)")
     } else if let side = MinecraftBank.Sidecar.load(dir: out) {
       print(
-        "\(MinecraftBank.path(dir: out))  asset index \(side.assetIndex)  "
+        "\(MinecraftBank.path(dir: out))  asset index \(side.assetIndex)  format \(side.format)  "
           + "\(side.programs.count) programs + kit")
     }
   default:
