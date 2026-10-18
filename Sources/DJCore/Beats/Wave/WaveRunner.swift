@@ -105,6 +105,10 @@ public struct WaveOptions {
   /// The family's groove template the drums play (`DJMusicality.Fixes.feel`), set from the
   /// track's genre (`GrooveTemplate.forGenre`); nil = none, even with `.feel` on.
   public var feel: GrooveTemplate?
+  /// Brushes on the snare (`Brush`, `DJMusicality.Fixes.backbeat`'s jazz): its synth lanes play
+  /// the brush voice, a sampled kit's play the bank's Brush kit (or the kit's own snare, softer).
+  /// Set by `forGenre`; false = beats' snare (parity, and every other genre).
+  public var brushes = false
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -779,7 +783,8 @@ private func buildLanes(
           if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
           if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
         } else {
-          var voice = drumVoice(kind: key, instrument: tr.instrument)
+          let brushed = opts.brushes && key == "snare"
+          var voice = brushed ? Brush.voice : drumVoice(kind: key, instrument: tr.instrument)
           if key == "kick", let hz = kickHz {
             // `.kickTune`: the same sweep, landing on the key
             voice.f0 *= hz / voice.f1
@@ -787,11 +792,18 @@ private func buildLanes(
           }
           lane = gateLane(voice, sr, lanes.count)
           if let kit {
-            bindKit(lane, kind: key, kit, opts)
+            if brushed, let brush = DrumKits.brushKit(for: kit),
+              bindKit(lane, kind: key, brush, opts)
+            {
+              // the bank's Brush kit plays the snare
+            } else if bindKit(lane, kind: key, kit, opts), brushed {
+              // no Brush kit in the bank: the kit's own snare, played softer
+              lane.kitVelocity = Brush.stockVelocity
+            }
             // `.balance`: the kit was matched to the synth kit before its trims; the kick's
             // trim moves the whole kit (its own balance is the kit's)
             if !trims.isEmpty, let db = trims["kick"] {
-              lane.kitVelocity = DrumKits.velocityScale(db)
+              lane.kitVelocity *= DrumKits.velocityScale(db)
             }
           }
         }
@@ -933,11 +945,16 @@ func drumKitSource(_ project: Project) -> SamplerSource? {
 
 /// Play a drum lane's hits on the kit (its kind's GM key), when the kit loads in the deck's
 /// bank; else the lane keeps beats' synth voice. Its reference is the project's (`deinit`).
-private func bindKit(_ lane: Lane, kind: String, _ kit: SamplerSource, _ opts: WaveOptions) {
-  guard let bank = opts.samplers, let slot = bank.slot(for: [kit]) else { return }
+/// Whether it bound.
+@discardableResult
+private func bindKit(_ lane: Lane, kind: String, _ kit: SamplerSource, _ opts: WaveOptions)
+  -> Bool
+{
+  guard let bank = opts.samplers, let slot = bank.slot(for: [kit]) else { return false }
   lane.samplerSlot = slot
   lane.kitNote = DrumKits.gmNote(kind: kind)
   lane.kitHoldMs = DrumKits.holdMs(kind: kind)
+  return true
 }
 
 // clock slots
