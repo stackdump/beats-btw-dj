@@ -13,6 +13,10 @@
 //                                     plays each file at, and the spread before / after
 //                                     (LevelSurvey, LevelMatch.swift); --stock: N stock loops
 //                                     per category
+//   djctl measure <file> [--start S] [--seconds N] [--note N]
+//                                     any audio file through render's audio block (LUFS, LRA,
+//                                     true peak, spectrum) as JSON, named by basename + sha256;
+//                                     --note: its pitch against that MIDI note (FileMeasure.swift)
 import DJCore
 import Foundation
 
@@ -626,13 +630,9 @@ case "render":
   let render = OfflineRender(track: track, source: source, seconds: seconds)
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   let groove = GrooveReport(hits.records, sampleRate: sr, bpm: track.played.tempo)
-  var audio = render.metrics.dictionary
-  // BS.1770 integrated loudness, EBU loudness range and true peak, and what the deck's peak limiter did (PeakLimiter.swift)
-  audio["lufs"] = round3(
-    IntegratedLoudness.lufs(left: render.left, right: render.right, sampleRate: sr))
-  audio["lra"] = round3(
-    IntegratedLoudness.range(left: render.left, right: render.right, sampleRate: sr))
-  audio["truePeakDBTP"] = round3(TruePeak.dbtp(left: render.left, right: render.right))
+  // AudioMetrics, BS.1770 integrated loudness, EBU loudness range and true peak (the block
+  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift)
+  var audio = FileMeasure.audioBlock(left: render.left, right: render.right, sampleRate: sr)
   if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
   if let limiter = source.limiter { audio["limiter"] = limiter.statistics().dictionary }
   let levels = render.sectionLevels(track.played)
@@ -724,6 +724,10 @@ case "levels":
   for f in survey.failures { stderr("\(f.name): \(f.error)") }
   try line(["summary": survey.summary])
 
+case "measure":
+  // djctl measure <file> [--start S] [--seconds N] [--note N] (MeasureCommand.swift)
+  measureCommand()
+
 case "minecraft":
   // djctl minecraft import [--assets DIR] [--index N] [--out DIR]
   // djctl minecraft status
@@ -768,7 +772,7 @@ case "minecraft":
 
 default:
   stderr(
-    "usage: djctl ports | audio | sessions | journal list|show|replay|export-session | export <cid> <out.wav> | render <genre> <seed> | minecraft import | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
+    "usage: djctl ports | audio | sessions | journal list|show|replay|export-session | export <cid> <out.wav> | render <genre> <seed> | levels [file…] | measure <file> | minecraft import | bounce <genre> <seed> <out.wav> | publish <cid> | mix <genre[:seed]> <genre[:seed]>… | cue-test [--seconds N] | monitor [match] | play [fileA] [fileB] [--seconds N] [--volume 0-1] | mcp | ctl <method> [json]"
   )
   exit(2)
 }

@@ -144,6 +144,9 @@ its copy; the two are now independent. Rules inherited from that split:
   ms 0…15 and velocity scale per drum voice × 16 steps, tempo-scaled Linn swing) is averaged
   from the Groove MIDI Dataset (CC BY 4.0, attributed in README) by `make groove-templates`
   (sha256-pinned fetch into `.build/gmd`); regenerate, never hand-edit the numbers.
+  `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
+  b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
+  4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 
@@ -328,6 +331,10 @@ its copy; the two are now independent. Rules inherited from that split:
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
+  `djctl measure <file> [--start S] [--seconds N] [--note N]` runs any local audio file
+  (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
+  decoded by `Deck.decode` at the file's rate), named by basename + sha256 prefix, never
+  copied; `--note` adds `PitchMeasure` (wraps the sampler's `pitchClassError`, unmoved).
 - Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
@@ -394,7 +401,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
   percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
   each file's level and auto-gain, then the spread before / after against each one's target and
-  the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp).
+  the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp). The loop channel
+  starts at trim −3 dB (`DJEngine.loopChannelGain` = gain 0.25, trim 1/√2: the centred
+  crossfader's gain on A/B, which L doesn't take), so a take sits level with its deck. Recorded:
+  `Session.loopGain` (`mixer.loopGain`, written only off the legacy 0.5, absent = unity, so old
+  sessions keep text, CID and sound) and the journal's `loopChannel.gain` (`LoopChannelLevelTests`).
 - Runner rests are one `RestSchedule` (`WaveProject.rests`): disjoint (from, to, class mask)
   stretches built at prepare from `.dropGap` and 6.2's `.layerBudget` / `.bandStop` / `.kickOut`
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
