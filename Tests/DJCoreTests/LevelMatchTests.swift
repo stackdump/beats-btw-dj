@@ -202,13 +202,14 @@ struct LevelMatchTests {
     let (slots, fixed) = sampledSlots(one.track.prepared, one.bank)
     try #require(!slots.isEmpty, "a sampled part (nothing installed?)")
     #expect(one.track.prepared.gain == two.track.prepared.gain)
-    #expect(one.track.prepared.slotGain == two.track.prepared.slotGain)
+    #expect(sameSamples(one.track.prepared.slotGain, two.track.prepared.slotGain) == .identical)
     #expect(one.track.prepared.probeLevels == two.track.prepared.probeLevels)
     for slot in slots {
       #expect(one.bank.slotPartLevelDB(slot) == two.bank.slotPartLevelDB(slot), "slot \(slot)")
     }
     if fixed {
-      #expect(one.render.left == two.render.left && one.render.right == two.render.right)
+      #expect(sameSamples(one.render.left, two.render.left) == .identical)
+      #expect(sameSamples(one.render.right, two.render.right) == .identical)
     } else {
       print("twoColdCacheRendersOfOneSpecMatch: an EXS slot plays; bytes not compared")
     }
@@ -239,7 +240,8 @@ struct LevelMatchTests {
     var a = x
     var b = x
     q.process(&a, &b, frames: x.count)
-    #expect(Array(a[q.lookahead...]) == Array(x[..<(x.count - q.lookahead)]))
+    #expect(
+      sameSamples(Array(a[q.lookahead...]), Array(x[..<(x.count - q.lookahead)])) == .identical)
     #expect(q.gainReductionDB == 0)
   }
 
@@ -339,15 +341,20 @@ struct LevelMatchTests {
     // the same as no params at all, and as the setting off
     var off = DeckParams()
     off.autoGain = false
-    #expect(try SessionPlayer(session: session(nil)).render().left == replay.left)
-    #expect(try SessionPlayer(session: session(off)).render().left == replay.left)
+    #expect(
+      try sameSamples(SessionPlayer(session: session(nil)).render().left, replay.left) == .identical
+    )
+    #expect(
+      try sameSamples(SessionPlayer(session: session(off)).render().left, replay.left) == .identical
+    )
     // on: the demo loop is levelled, so it plays differently
     #expect(DemoLoop.make(sampleRate: rate).level.autoGainDB != 0)
     var on = DeckParams()
     on.autoGain = true
     let levelled = session(on)
     #expect(levelled.canonical.contains("autoGain") && levelled.cid != old.cid)
-    #expect(try SessionPlayer(session: levelled).render().left != replay.left)
+    #expect(
+      try sameSamples(SessionPlayer(session: levelled).render().left, replay.left) != .identical)
   }
 
   /// The same buffer always measures the same: the gain is derived, never recorded.

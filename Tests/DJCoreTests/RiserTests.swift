@@ -125,13 +125,13 @@ struct RiserTests {
     let on = render(p, [.riser])
     let off = render(p, [])
     let before = 32 * step
-    #expect(Array(on.l[0..<before]) == Array(off.l[0..<before]))
-    #expect(Array(on.r[0..<before]) == Array(off.r[0..<before]))
+    #expect(sameSamples(Array(on.l[0..<before]), Array(off.l[0..<before])) == .identical)
+    #expect(sameSamples(Array(on.r[0..<before]), Array(off.r[0..<before])) == .identical)
     let again = render(p, [.riser])
     // (compared as Bools: a failing #expect on two renders would print a million floats)
     let same = again.l == on.l && again.r == on.r
     #expect(same)
-    #expect(on.l != off.l)
+    #expect(sameSamples(on.l, off.l) != .identical)
   }
 
   /// It climbs to −12 dB and cuts at the drop: nothing of it a few ms into the drop.
@@ -168,7 +168,7 @@ struct RiserTests {
   @Test func widensUnderStereo() {
     let p = riserProject()
     let mono = render(p, [.riser])
-    #expect(mono.l == mono.r)
+    #expect(sameSamples(mono.l, mono.r) == .identical)
     let wide = render(p, [.riser, .stereo])
     let plain = render(p, [.stereo])
     let side = zip(minus(wide.l, plain.l), minus(wide.r, plain.r)).map { ($0 - $1) / 2 }

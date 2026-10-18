@@ -226,7 +226,8 @@ struct SessionReplayTests {
     #expect(live.left.reduce(0) { max($0, abs($1)) } > 0.1)
     let replay = try SessionPlayer(session: session).render()
     #expect(replay.frames == live.frames)
-    #expect(replay.left == live.left && replay.right == live.right)
+    #expect(sameSamples(replay.left, live.left) == .identical)
+    #expect(sameSamples(replay.right, live.right) == .identical)
   }
 
   /// The app's normal case: auto-gain on before the sample loads, so the live deck plays at the
@@ -237,14 +238,15 @@ struct SessionReplayTests {
     #expect(DemoLoop.make(sampleRate: rate).level.autoGainDB != 0)
     let replay = try SessionPlayer(session: session).render()
     #expect(replay.frames == live.frames)
-    #expect(replay.left == live.left && replay.right == live.right)
+    #expect(sameSamples(replay.left, live.left) == .identical)
+    #expect(sameSamples(replay.right, live.right) == .identical)
   }
 
   @Test func twoRendersAreByteIdentical() throws {
     let (session, _) = try Self.perform(blocks: 300)
     let a = WAV.encode(try SessionPlayer(session: session).render(), float32: true)
     let b = WAV.encode(try SessionPlayer(session: session).render(), float32: true)
-    #expect(a == b)
+    #expect(sameSamples(a, b) == .identical)
     #expect(a.count == 44 + session.frames * 8)
   }
 
@@ -253,7 +255,7 @@ struct SessionReplayTests {
     let revived = try Session.decode(session.canonical, cid: session.cid)
     #expect(revived == session)
     let replay = try SessionPlayer(session: revived).render()
-    #expect(replay.left == Array(live.left.prefix(replay.frames)))
+    #expect(sameSamples(replay.left, Array(live.left.prefix(replay.frames))) == .identical)
   }
 
   @Test func theRecordedInputsAreWhatWasDone() throws {
@@ -274,7 +276,7 @@ struct SessionReplayTests {
     changed.events[i] = SessionEvent(
       frame: changed.events[i].frame, kind: .action(.crossfader(0.1)))
     let other = try SessionPlayer(session: changed).render()
-    #expect(other.left != Array(live.left.prefix(other.frames)))
+    #expect(sameSamples(other.left, Array(live.left.prefix(other.frames))) != .identical)
   }
 
   @Test func audioLoadedMidSetIsNamedByContentAndReplaysWithItsLibrary() throws {
@@ -317,7 +319,7 @@ struct SessionReplayTests {
     #expect(named.first == file.contentID && named.last == "demo-loop")
     #expect(dj.sampleLibrary[file.contentID] === file)
     let replay = try SessionPlayer(session: session, samples: { dj.sampleLibrary[$0] }).render()
-    #expect(replay.left == out)
+    #expect(sameSamples(replay.left, out) == .identical)
     #expect(out.reduce(0) { max($0, abs($1)) } > 0.1)
     #expect(throws: SessionError.missingSample(id: file.contentID)) {
       try SessionPlayer(session: session).render()
@@ -399,10 +401,12 @@ struct RawNetsSessionTests {
     #expect(revived == session)
     let replay = try SessionPlayer(session: revived).render()
     #expect(replay.frames == l.count)
-    #expect(replay.left == l && replay.right == r)
+    #expect(sameSamples(replay.left, l) == .identical)
+    #expect(sameSamples(replay.right, r) == .identical)
     let again = try SessionPlayer(session: revived).render()
     #expect(
-      WAV.encode(again, float32: true) == WAV.encode(replay, float32: true), "byte-identical")
+      sameSamples(WAV.encode(again, float32: true), WAV.encode(replay, float32: true))
+        == .identical, "byte-identical")
   }
 
   @Test func olderSessionsAndBadRawNetsDecodeAsBefore() throws {

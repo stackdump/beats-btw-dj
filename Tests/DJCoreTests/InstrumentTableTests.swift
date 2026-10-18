@@ -107,7 +107,9 @@ struct InstrumentTableTests {
     ]
     for name in names {
       #expect(hasVoice(name), "\(name) has its own voice")
-      #expect(render(name, Self.phrase, 2) != saw, "\(name) is not the plain saw")
+      #expect(
+        sameSamples(render(name, Self.phrase, 2), saw) != .identical, "\(name) is not the plain saw"
+      )
     }
   }
 
@@ -154,7 +156,10 @@ struct InstrumentTableTests {
   }
 
   @Test func auditionsAreDeterministic() {
-    #expect(render("electric-guitar", Self.phrase, 1) == render("electric-guitar", Self.phrase, 1))
+    #expect(
+      sameSamples(
+        render("electric-guitar", Self.phrase, 1), render("electric-guitar", Self.phrase, 1))
+        == .identical)
   }
 
   @Test func appTracksGetTheirStrings() {

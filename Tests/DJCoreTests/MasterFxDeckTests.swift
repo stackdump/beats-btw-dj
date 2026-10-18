@@ -122,13 +122,17 @@ struct MasterFxDeckTests {
       if b == 10 { wetSrc.fire(.sweepLp, bars: 1) }
       if b == 20 { #expect(wetSrc.activeMasterMacros == [.sweepLp]) }
     }
-    #expect(wet.l[..<(10 * 128)] == dry.l[..<(10 * 128)], "nothing before the fire")
-    #expect(wet.l[(40 * 128)..<(100 * 128)] != dry.l[(40 * 128)..<(100 * 128)], "the LP sweep")
+    #expect(
+      sameSamples(wet.l[..<(10 * 128)], dry.l[..<(10 * 128)]) == .identical,
+      "nothing before the fire")
+    #expect(
+      sameSamples(wet.l[(40 * 128)..<(100 * 128)], dry.l[(40 * 128)..<(100 * 128)]) != .identical,
+      "the LP sweep")
     #expect(wetSrc.activeMasterMacros.isEmpty)
     #expect(wetSrc.masterFilterCorners.bypassed)
     // 0.8 s + 0.1 s ramp + 5 ms fade ≈ block 167 at 22.05 kHz; well after that, the same bytes
-    #expect(wet.l[(200 * 128)...] == dry.l[(200 * 128)...])
-    #expect(wet.r[(200 * 128)...] == dry.r[(200 * 128)...])
+    #expect(sameSamples(wet.l[(200 * 128)...], dry.l[(200 * 128)...]) == .identical)
+    #expect(sameSamples(wet.r[(200 * 128)...], dry.r[(200 * 128)...]) == .identical)
   }
 
   @Test func fxMacrosRenderTheSameBytesTwice() {
@@ -152,7 +156,8 @@ struct MasterFxDeckTests {
     }
     let a = once()
     let b = once()
-    #expect(a.l == b.l && a.r == b.r)
+    #expect(sameSamples(a.l, b.l) == .identical)
+    #expect(sameSamples(a.r, b.r) == .identical)
     #expect(a.l.allSatisfy { $0.isFinite })
   }
 
@@ -224,7 +229,8 @@ struct MasterFxDeckTests {
       refL += l
       refR += r
     }
-    #expect(out.l == refL && out.r == refR)
+    #expect(sameSamples(out.l, refL) == .identical)
+    #expect(sameSamples(out.r, refR) == .identical)
     let bus = try #require(deck.renderer.master)
     #expect(bus.filterCorners.bypassed && deck.activeMasterMacros.isEmpty)
   }
@@ -244,7 +250,7 @@ struct MasterFxDeckTests {
       if f == bar120 / 2 { #expect(deck.activeMasterMacros == [.sweepLp], "waiting counts") }
     }
     #expect(abs(fire - bar120) <= 1, "\(fire)")
-    #expect(wet.l[..<fire] == dry.l[..<fire], "nothing before its bar")
+    #expect(sameSamples(wet.l[..<fire], dry.l[..<fire]) == .identical, "nothing before its bar")
     // 0.8 s into the bar, the LP is half way down; 4608 frames = whole periods of both tones
     let w = (fire + 38_000)..<(fire + 38_000 + 4608)
     let hf = dB(toneAmplitude(Array(wet.l[w]), hz: 6000) / toneAmplitude(Array(dry.l[w]), hz: 6000))
@@ -255,8 +261,8 @@ struct MasterFxDeckTests {
     let after = (fire + bar120 + 24_000)..<(fire + bar120 + 24_000 + 4608)
     let back = toneAmplitude(Array(wet.l[after]), hz: 6000)
     #expect(abs(dB(back / toneAmplitude(Array(dry.l[after]), hz: 6000))) < 0.1)
-    #expect(wet.l[(fire + 2 * bar120)...] == dry.l[(fire + 2 * bar120)...])
-    #expect(wet.r[(fire + 2 * bar120)...] == dry.r[(fire + 2 * bar120)...])
+    #expect(sameSamples(wet.l[(fire + 2 * bar120)...], dry.l[(fire + 2 * bar120)...]) == .identical)
+    #expect(sameSamples(wet.r[(fire + 2 * bar120)...], dry.r[(fire + 2 * bar120)...]) == .identical)
     #expect(deck.activeMasterMacros.isEmpty)
     #expect(deck.renderer.master?.filterCorners.bypassed == true)
   }
@@ -291,7 +297,7 @@ struct MasterFxDeckTests {
       }
     }
     #expect(abs(fire - bar120) <= 1, "\(fire)")
-    #expect(wet.l[..<fire] == dry.l[..<fire], "nothing before its bar")
+    #expect(sameSamples(wet.l[..<fire], dry.l[..<fire]) == .identical, "nothing before its bar")
     // the spin-down (¾ of the bar): each sixteenth comes later than the last, the rate falling
     let spin = onsets(wet.l, in: fire..<(fire + 3 * bar120 / 4))
     #expect(spin.count >= 5, "\(spin)")
@@ -482,7 +488,8 @@ struct MasterFxSessionTests {
     let session = recorder.finish()
     #expect(session.events.contains { $0.kind == .action(.macro(deck: "A", id: "sweep-lp")) })
     let a = try SessionPlayer(session: session).render()
-    #expect(a.left == l && a.right == r, "the replay is the live set")
+    #expect(sameSamples(a.left, l) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, r) == .identical, "the replay is the live set")
   }
 
   @Test func aSetWithFXMacrosReplaysToTheByte() throws {
@@ -490,7 +497,9 @@ struct MasterFxSessionTests {
     #expect(session.events.contains { $0.kind == .action(.macro(deck: "A", id: "sweep-lp")) })
     let a = try SessionPlayer(session: session).render()
     let b = try SessionPlayer(session: session).render()
-    #expect(a.left == live.left && a.right == live.right, "the replay is the live set")
-    #expect(a.left == b.left && a.right == b.right, "two renders, same bytes")
+    #expect(sameSamples(a.left, live.left) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, live.right) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.left, b.left) == .identical, "two renders, same bytes")
+    #expect(sameSamples(a.right, b.right) == .identical, "two renders, same bytes")
   }
 }

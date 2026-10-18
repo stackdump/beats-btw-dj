@@ -20,7 +20,7 @@ struct ScopeFeedTests {
     var raw = [Float](repeating: 0, count: 1024)
     let r = raw.withUnsafeMutableBufferPointer { a.tap.read(from: 5000, into: $0) }
     #expect(r.count == 1024 && r.lost == 0)
-    #expect(feed.history.window(count: 1024, endingAt: 6024) == raw)
+    #expect(sameSamples(feed.history.window(count: 1024, endingAt: 6024), raw) == .identical)
     #expect(raw.contains { abs($0) > 0.01 }, "the net is making sound")
   }
 

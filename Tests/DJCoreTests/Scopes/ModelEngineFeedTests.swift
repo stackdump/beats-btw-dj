@@ -276,7 +276,7 @@ struct ModelEngineMasterTests {
     let heard = Array(model.fxRow(forLane: 0))
     let gain = 0.8 * deck.trim * deck.volume * rig.dj.crossfadeGain("A") * rig.dj.master
     let expected = ModelFx.response(DeckFx(deck: deck, gain: gain), sampleRate: rig.dj.sampleRate)
-    #expect(heard == expected)
+    #expect(sameSamples(heard, expected) == .identical)
     #expect(
       heard[4] < 0.01 * heard[1] && heard[0] < 0.5 * heard[1], "low-pass and -24 dB bass shelf")
     #expect(Double(heard[1]) < gain * gain, "and every row is under the plain gain")

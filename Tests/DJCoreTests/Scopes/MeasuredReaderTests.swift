@@ -285,7 +285,7 @@ struct MeasuredReaderIngestTests {
     a.ingest(
       window: [Float](repeating: 0, count: 3096) + tail, sampleRate: 44100, time: 1, anchor: nil,
       tickSec: 0.125)
-    #expect(r.power == a.power)
+    #expect(sameSamples(r.power, a.power) == .identical)
   }
 
   @Test func theSampleRateSetsTheBins() {

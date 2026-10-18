@@ -107,11 +107,14 @@ struct BrushTests {
       var o = base.forGenre(g)
       o.genre = nil
       #expect(
-        renderRunner(kitPhraseProject(), opts: o, sampleRate: sr, seconds: 1) == before, "\(g)")
+        sameSamples(renderRunner(kitPhraseProject(), opts: o, sampleRate: sr, seconds: 1), before)
+          == .identical, "\(g)")
     }
     var jazz = base.forGenre("jazz")
     jazz.genre = nil
-    #expect(renderRunner(kitPhraseProject(), opts: jazz, sampleRate: sr, seconds: 1) != before)
+    #expect(
+      sameSamples(renderRunner(kitPhraseProject(), opts: jazz, sampleRate: sr, seconds: 1), before)
+        != .identical)
   }
 
   /// The Brush kit of a bank: bank 128 program 40, else the first bank-128 preset named a brush.

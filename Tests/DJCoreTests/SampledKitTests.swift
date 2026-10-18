@@ -124,12 +124,14 @@ struct SampledKitTests {
     o.master = "linear"
     let plain = renderRunner(kitPhraseProject(), opts: o, sampleRate: sr, seconds: 1)
     let picked = renderRunner(kitPhraseProject(kit: floorKit), opts: o, sampleRate: sr, seconds: 1)
-    #expect(plain == picked)
+    #expect(sameSamples(plain, picked) == .identical)
     var x = WaveOptions.extended
     x.master = "linear"
     #expect(
-      renderRunner(kitPhraseProject(), opts: x, sampleRate: sr, seconds: 1)
-        == renderRunner(kitPhraseProject(kit: floorKit), opts: x, sampleRate: sr, seconds: 1))
+      sameSamples(
+        renderRunner(kitPhraseProject(), opts: x, sampleRate: sr, seconds: 1),
+        renderRunner(kitPhraseProject(kit: floorKit), opts: x, sampleRate: sr, seconds: 1))
+        == .identical)
   }
 
   /// A kit pick is the share's `tracks` override on every drum channel: the composed project's

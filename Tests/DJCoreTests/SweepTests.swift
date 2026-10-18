@@ -129,9 +129,9 @@ struct SweepTests {
     let on = render(p, opts: options(p, sweep: true), steps: before + 16)
     let off = render(p, opts: options(p, sweep: false), steps: before + 16)
     let edge = Int(Double(before) * sr * 15 / p.tempo) - 512
-    #expect(Array(on[0..<edge]) == Array(off[0..<edge]))
+    #expect(sameSamples(Array(on[0..<edge]), Array(off[0..<edge])) == .identical)
     // and the buildup itself is not
-    #expect(on[edge...] != off[edge...])
+    #expect(sameSamples(on[edge...], off[edge...]) != .identical)
   }
 
   /// A soloed subtractive part (no `.energy` lowpass, so the brightening is the sweep's): its

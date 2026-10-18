@@ -155,12 +155,13 @@ struct RingExtrasRenderTests {
     }
     let fwd = try render66(RingArcs(playing: false))
     let back = try render66(RingArcs(playing: false, reverseArrows: true))
-    #expect(fwd.rgba == back.rgba, "no arrowheads, so the flag changes nothing")
+    #expect(
+      sameSamples(fwd.rgba, back.rgba) == .identical, "no arrowheads, so the flag changes nothing")
     // while 8 steps in 100 pt carry them: the flag moves them
     let eight = bare(size: 8)
     let f8 = try render(RingArcs(playing: false), ring: eight)
     let b8 = try render(RingArcs(playing: false, reverseArrows: true), ring: eight)
-    #expect(f8.rgba != b8.rgba)
+    #expect(sameSamples(f8.rgba, b8.rgba) != .identical)
   }
 
   @Test func theLastFiredStepKeepsItsGoldRingAfterTheFlashFades() throws {

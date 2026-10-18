@@ -76,8 +76,8 @@ private let sr = 48_000.0
       RenderRequest(
         genre: "techno", seed: 42, filter: RenderRequest.filter(mute: "", solo: nil)),
       seconds: 4)
-    #expect(plain.left == empty.left)
-    #expect(plain.right == empty.right)
+    #expect(sameSamples(plain.left, empty.left) == .identical)
+    #expect(sameSamples(plain.right, empty.right) == .identical)
   }
 
   @MainActor @Test func soloBassIsABassStem() throws {

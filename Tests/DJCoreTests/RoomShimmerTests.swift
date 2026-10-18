@@ -142,11 +142,12 @@ private let pre61 = "rule-of-thumb (pre-6.1)"
     let lead = chordOnce("melody")
     let a = render(lead, [.stereo, .space], space: room)
     let b = render(lead, [.stereo, .space, .shimmer], space: room)
-    #expect(a.l == b.l && a.r == b.r)
+    #expect(sameSamples(a.l, b.l) == .identical)
+    #expect(sameSamples(a.r, b.r) == .identical)
     let pad = chordOnce()
     let c = render(pad, [.stereo, .space], space: room)
     let d = render(pad, [.stereo, .space, .shimmer], space: room)
-    #expect(c.l != d.l)
+    #expect(sameSamples(c.l, d.l) != .identical)
     // and the room's lanes send what they did: the lead's prepared sends are unchanged
     var o = WaveOptions()
     o.musicality = [.space, .shimmer]
@@ -162,7 +163,8 @@ private let pre61 = "rule-of-thumb (pre-6.1)"
     let room = SpaceSpec(seconds: 2, wet: 0.4, damping: 7000)
     let a = render(chordOnce(), [.stereo, .space], space: room)
     let b = render(chordOnce(), [.stereo, .space, .shimmer], space: room)
-    #expect(a.l == b.l && a.r == b.r)
+    #expect(sameSamples(a.l, b.l) == .identical)
+    #expect(sameSamples(a.r, b.r) == .identical)
   }
 
   /// It is an octave up: in the tail, a lone A4 (440 Hz) pad has more at 880 Hz against 440

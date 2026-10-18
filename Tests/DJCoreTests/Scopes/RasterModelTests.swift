@@ -265,8 +265,8 @@ struct RasterModelTests {
     // length: steps when positive; else ms / tickMs (125 ms at 120 bpm), at least 0.5; 0 ms = 100
     #expect(Array(r.dur[first]) == [2, 4, 0.5, 0.8, 1, 3, 2, 0.5])
     // the second round of the ring repeats the first
-    #expect(
-      Array(r.vel[8..<16]) == Array(r.vel[first]) && Array(r.dur[8..<16]) == Array(r.dur[first]))
+    #expect(sameSamples(Array(r.vel[8..<16]), Array(r.vel[first])) == .identical)
+    #expect(sameSamples(Array(r.dur[8..<16]), Array(r.dur[first])) == .identical)
   }
 
   @Test func legacyMillisecondsFollowTheTempoAndABadTempoIsOneTwenty() {
@@ -283,7 +283,9 @@ struct RasterModelTests {
     }
     #expect(durs(120) == [4, 0.8])  // 500 / 125, 100 / 125
     #expect(durs(240) == [8, 1.6])  // a step is 62.5 ms
-    #expect(durs(0) == durs(120) && durs(.nan) == durs(120) && durs(-5) == durs(120))
+    #expect(sameSamples(durs(0), durs(120)) == .identical)
+    #expect(sameSamples(durs(.nan), durs(120)) == .identical)
+    #expect(sameSamples(durs(-5), durs(120)) == .identical)
   }
 
   @Test func netsWithoutALaneAreSkippedAndLanesAreCopiedVerbatim() {
@@ -402,8 +404,11 @@ struct RasterModelTests {
       project: p, structure: p.structure, tempo: 128, laneOf: map)
     #expect(a.count > 100)
     #expect(a.sameContent(as: b))
-    #expect(a.step == b.step && a.lane == b.lane && a.note == b.note && a.vel == b.vel)
-    #expect(a.dur.map(\.bitPattern) == b.dur.map(\.bitPattern))
+    #expect(sameSamples(a.step, b.step) == .identical)
+    #expect(sameSamples(a.lane, b.lane) == .identical)
+    #expect(sameSamples(a.note, b.note) == .identical)
+    #expect(sameSamples(a.vel, b.vel) == .identical)
+    #expect(sameSamples(a.dur.map(\.bitPattern), b.dur.map(\.bitPattern)) == .identical)
     // and it does not depend on the projects' history: a project round-tripped through JSON is
     // the same score
     let c = RasterModel.compute(

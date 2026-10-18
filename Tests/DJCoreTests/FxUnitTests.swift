@@ -128,7 +128,8 @@ struct FxUnitBusTests {
     for p in FxParam.allCases { set(rig.bank.master, p, p.neutral) }
     rig.bank.master.sendFxUnit(.kill(on: false, frame: 0))
     let wet = rig.render(48_000)
-    #expect(wet.left == dry.left && wet.right == dry.right)
+    #expect(sameSamples(wet.left, dry.left) == .identical)
+    #expect(sameSamples(wet.right, dry.right) == .identical)
     #expect(rig.bank.master.filterCorners.bypassed)
   }
 
@@ -146,15 +147,19 @@ struct FxUnitBusTests {
         set(bus, p, v)
       }
       var wet = rig.render(48_000)
-      #expect(wet.left[24_000..<48_000] != dry.left[24_000..<48_000], "the unit is heard")
+      #expect(
+        sameSamples(wet.left[24_000..<48_000], dry.left[24_000..<48_000]) != .identical,
+        "the unit is heard")
       #expect(!bus.filterCorners.bypassed)
       if kill { bus.sendFxUnit(.kill(on: true, frame: 0)) } else { bus.sendFxUnit(.reset(frame: 0)) }
       let rest = rig.render(3 * 48_000)
       wet.left += rest.left
       wet.right += rest.right
       let from = 2 * 48_000
-      #expect(Array(wet.left[from...]) == Array(dry.left[from...]), "kill \(kill)")
-      #expect(Array(wet.right[from...]) == Array(dry.right[from...]))
+      #expect(
+        sameSamples(Array(wet.left[from...]), Array(dry.left[from...])) == .identical,
+        "kill \(kill)")
+      #expect(sameSamples(Array(wet.right[from...]), Array(dry.right[from...])) == .identical)
       #expect(bus.filterCorners.bypassed)
       #expect(rig.bank.limiter.idle)
     }
@@ -328,7 +333,9 @@ struct FxUnitSendTests {
       return out
     }
     let d = render(dry)
-    #expect(render(neutral) == d, "neutral sends: the genre's room and echo exactly")
+    #expect(
+      sameSamples(render(neutral), d) == .identical,
+      "neutral sends: the genre's room and echo exactly")
     let w = render(wet)
     let diff = zip(w, d).map { $0 - $1 }
     #expect(rms(diff) > 0.1 * rms(d), "4× the sends are heard: \(rms(diff)) vs \(rms(d))")
@@ -358,15 +365,20 @@ struct FxUnitReplayTests {
     let live = try loopMasterSet(blocks: blocks, script)
     #expect(live.session.events.contains { $0.kind == .action(.fxKill(deck: "L", on: true, onBeat: true)) })
     let replay = try SessionPlayer(session: live.session).render()
-    #expect(replay.left == live.audio.left && replay.right == live.audio.right, "session replay")
+    #expect(sameSamples(replay.left, live.audio.left) == .identical, "session replay")
+    #expect(sameSamples(replay.right, live.audio.right) == .identical, "session replay")
     let j = try Journal.replay(live.journal, endFrame: blocks * 128, render: true)
     let audio = try #require(j.audio)
     let n = min(audio.frames, live.audio.frames)
     #expect(n > blocks * 128 - 1024)
-    #expect(Array(audio.left.prefix(n)) == Array(live.audio.left.prefix(n)), "journal replay")
+    #expect(
+      sameSamples(Array(audio.left.prefix(n)), Array(live.audio.left.prefix(n))) == .identical,
+      "journal replay")
     let dry = try loopMasterSet(blocks: blocks) { _, _, _ in }
-    #expect(dry.audio.left != live.audio.left, "the unit was heard")
+    #expect(sameSamples(dry.audio.left, live.audio.left) != .identical, "the unit was heard")
     let before = 2 * 344 * 128
-    #expect(Array(dry.audio.left.prefix(before)) == Array(live.audio.left.prefix(before)))
+    #expect(
+      sameSamples(Array(dry.audio.left.prefix(before)), Array(live.audio.left.prefix(before)))
+        == .identical)
   }
 }

@@ -263,8 +263,8 @@ struct StageWanderRenderTests {
     savePNG(
       StageScene(model: rig.model, context: context(rig, wander: [deck])),
       width: Int(rig.width), height: Int(rig.height), name: "stage-wander-scene")
-    #expect(off.rgba == today.rgba, "the ∿ button off draws nothing")
-    #expect(on.rgba != today.rgba, "and on, the walk is drawn")
+    #expect(sameSamples(off.rgba, today.rgba) == .identical, "the ∿ button off draws nothing")
+    #expect(sameSamples(on.rgba, today.rgba) != .identical, "and on, the walk is drawn")
 
     // and a solo visualizer hides it like the button does
     var solo = context(rig, wander: [deck])

@@ -129,7 +129,9 @@ struct LoopLibraryTests {
     func samples(_ c: LoopClip) -> [Float] {
       Array(UnsafeBufferPointer(start: c.buffer.left, count: c.buffer.length))
     }
-    #expect(samples(seq) == samples(a) + samples(a) + samples(b), "exactly, sample for sample")
+    #expect(
+      sameSamples(samples(seq), samples(a) + samples(a) + samples(b)) == .identical,
+      "exactly, sample for sample")
     #expect(seq.title == "seq 1×2→2")
   }
 

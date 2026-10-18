@@ -163,7 +163,7 @@ struct TurntableBrakeTests {
       })
     #expect(activeWhileStopped, "vinyl-brake stays in activeMasterMacros while braking")
     // nothing before the fire changes
-    #expect(out[0][..<fire] == out[1][..<fire])
+    #expect(sameSamples(out[0][..<fire], out[1][..<fire]) == .identical)
     // the stop: exact silence from r = 0 to the release
     let silent = (fire + Int(stopFrames.rounded(.up)))..<release
     #expect(out[0][silent].allSatisfy { $0 == 0 }, "silent while stopped")
@@ -248,7 +248,9 @@ struct TurntableBrakeTests {
         if b == fireBlock + 60 { during = position(ref) - position(src) }
       })
     #expect(during == 0, "no varispeed: the net clock keeps the tempo")
-    #expect(out[0][(fireBlock * block + 2000)...] != out[1][(fireBlock * block + 2000)...])
+    #expect(
+      sameSamples(out[0][(fireBlock * block + 2000)...], out[1][(fireBlock * block + 2000)...])
+        != .identical)
     #expect(src.activeMasterMacros.isEmpty)
   }
 
@@ -269,7 +271,7 @@ struct TurntableBrakeTests {
         })[0]
     }
     let a = once()
-    #expect(a == once())
+    #expect(sameSamples(a, once()) == .identical)
     #expect(a.allSatisfy { $0.isFinite })
   }
 

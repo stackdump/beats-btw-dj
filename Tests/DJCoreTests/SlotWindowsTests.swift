@@ -169,7 +169,7 @@ struct SlotWindowsTests {
       let part = NoteLog.captureAll(DJMusicality.partOnly(p, ids), ticks: NoteLog.length(p))
         .controls.filter { ids.contains($0.target) }
       #expect(!full.isEmpty || ids.count <= 1, "\(genre) \(role)")
-      #expect(part.map(\.tick) == full.map(\.tick), "\(genre) \(role)")
+      #expect(sameSamples(part.map(\.tick), full.map(\.tick)) == .identical, "\(genre) \(role)")
       #expect(part.map(\.target) == full.map(\.target), "\(genre) \(role)")
       #expect(part.map(\.action) == full.map(\.action), "\(genre) \(role)")
       #expect(part.map(\.net) == full.map(\.net), "\(genre) \(role)")

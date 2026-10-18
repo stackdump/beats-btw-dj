@@ -91,7 +91,10 @@ struct BandStopTests {
     #expect(DJMusicality.bandStops(muted).isEmpty, "a muted lead plays nothing")
     #expect(DJMusicality.bandStops(verseAndChorus()) == [60])
     let p = verseAndChorus(melody: lead([0, 4]))
-    #expect(render(p, options([], genre: "funk")) == render(p, options(.bandStop, genre: "funk")))
+    #expect(
+      sameSamples(
+        render(p, options([], genre: "funk")), render(p, options(.bandStop, genre: "funk")))
+        == .identical)
   }
 
   /// Only the song family stops; an unknown genre (raw nets, parity) does not.
@@ -122,7 +125,9 @@ struct BandStopTests {
           == RestSchedule.build(edm, fixes: .all.subtracting(.bandStop), genre: "edm"))
     }
     let p = verseAndChorus()
-    #expect(render(p, options([], genre: "edm")) == render(p, options(.bandStop, genre: "edm")))
+    #expect(
+      sameSamples(render(p, options([], genre: "edm")), render(p, options(.bandStop, genre: "edm")))
+        == .identical)
   }
 
   /// In the stop the band (kick, bass, pad, the fill's snare) is ≥ 15 dB under the beat before,
@@ -149,6 +154,6 @@ struct BandStopTests {
     let downbeat = rmsDB(stopped, chorus, chorus + step)
     let earlier = rmsDB(stopped, 56 * step, 57 * step)
     #expect(abs(downbeat - earlier) < 1, "chorus downbeat \(downbeat) dB, bar 4's \(earlier) dB")
-    #expect(Array(plain[0..<stop]) == Array(stopped[0..<stop]))
+    #expect(sameSamples(Array(plain[0..<stop]), Array(stopped[0..<stop])) == .identical)
   }
 }

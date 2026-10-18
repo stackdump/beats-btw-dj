@@ -93,13 +93,13 @@ struct DropGapTests {
     let downbeat = rmsDB(gapped, drop, drop + step)
     let earlier = rmsDB(gapped, 56 * step, 57 * step)
     #expect(abs(downbeat - earlier) < 1, "drop downbeat \(downbeat) dB, bar 4's \(earlier) dB")
-    #expect(Array(plain[0..<gap]) == Array(gapped[0..<gap]))
+    #expect(sameSamples(Array(plain[0..<gap]), Array(gapped[0..<gap])) == .identical)
   }
 
   /// Pads (and everything that is not kick, snare, hats or bass) play through the gap.
   @Test func padsPlayThrough() {
     let p = buildupAndDrop(rhythm: false, pad: true)
-    #expect(render(p, []) == render(p, .dropGap))
+    #expect(sameSamples(render(p, []), render(p, .dropGap)) == .identical)
   }
 
   /// An open hat followed by a closed hat in the same net: choked, the open hat's tail is gone
@@ -117,7 +117,7 @@ struct DropGapTests {
     let ringing = render(p, .openHats, seconds: 1)
     let choked = render(p, [.openHats, .choke], seconds: 1)
     let closed = 3 * step + 1
-    #expect(Array(ringing[0..<closed]) == Array(choked[0..<closed]))
+    #expect(sameSamples(Array(ringing[0..<closed]), Array(choked[0..<closed])) == .identical)
     let a = closed + Int(0.02 * sr)
     let b = closed + Int(0.1 * sr)
     let tail = rmsDB(ringing, a, b)
@@ -130,7 +130,9 @@ struct DropGapTests {
     var q = Project()
     q.tempo = 120
     q.nets["hihat"] = closedOnly
-    #expect(render(q, .openHats, seconds: 1) == render(q, [.openHats, .choke], seconds: 1))
+    #expect(
+      sameSamples(render(q, .openHats, seconds: 1), render(q, [.openHats, .choke], seconds: 1))
+        == .identical)
   }
 }
 

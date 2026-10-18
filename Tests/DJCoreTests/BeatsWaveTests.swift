@@ -186,7 +186,7 @@ struct WaveAudioTests {
         }
       }
       #expect(maxDiff < 1e-5, "\(tag): max |Δ| \(maxDiff) at sample \(at)")
-      #expect(got.left == got.right, "\(tag) mono → stereo identical")
+      #expect(sameSamples(got.left, got.right) == .identical, "\(tag) mono → stereo identical")
       #expect(got.graphTick == c["graphTick"]!.int!, "\(tag) graph tick")
       #expect(got.tempoAtEnd == c["tempoAtEnd"]!.double!, "\(tag) tempo")
       #expect(got.stopped == c["stopped"]!.bool!, "\(tag) stopped")
@@ -209,6 +209,6 @@ struct WaveAudioTests {
 
   @Test func renderingIsDeterministic() throws {
     let c = try wave()["renders"]!.array![0]
-    #expect(renderWaveCase(c).left == renderWaveCase(c).left)
+    #expect(sameSamples(renderWaveCase(c).left, renderWaveCase(c).left) == .identical)
   }
 }

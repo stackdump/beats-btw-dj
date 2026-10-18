@@ -251,6 +251,7 @@ struct StagePaintTests {
     }
     let fb = box(a)
     #expect(fb.ink > 100 && fb.w > 4 * fb.h, "a line of text, wider than tall: \(fb)")
-    #expect(a.rgba == b.rgba, "turning the diagram does not turn the message")
+    #expect(
+      sameSamples(a.rgba, b.rgba) == .identical, "turning the diagram does not turn the message")
   }
 }

@@ -457,11 +457,13 @@ struct JournalReplayTests {
     #expect(a.state == b.state)
     let audioA = try #require(a.audio)
     let audioB = try #require(b.audio)
-    #expect(audioA.left == audioB.left && audioA.right == audioB.right)
+    #expect(sameSamples(audioA.left, audioB.left) == .identical)
+    #expect(sameSamples(audioA.right, audioB.right) == .identical)
     #expect(audioA.left.reduce(0) { max($0, abs($1)) } > 0.05, "it plays")
     // and it is the live audio, from the checkpoint on
     let n = min(audioA.frames, live.audio.frames)
-    #expect(Array(audioA.left.prefix(n)) == Array(live.audio.left.prefix(n)))
+    #expect(
+      sameSamples(Array(audioA.left.prefix(n)), Array(live.audio.left.prefix(n))) == .identical)
   }
 
   @Test func aCrashedJournalStillReplaysToItsLastWholeLine() throws {

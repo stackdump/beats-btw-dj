@@ -92,9 +92,9 @@ struct DriftTests {
     let other = (0..<2048).map { Drift.pink(Drift.key(seed: 43), net: 1, stream: 0, tick: $0) }
     let net2 = (0..<2048).map { Drift.pink(key, net: 2, stream: 0, tick: $0) }
     let timing = (0..<2048).map { Drift.pink(key, net: 1, stream: 1, tick: $0) }
-    #expect(other != forward)
-    #expect(net2 != forward)
-    #expect(timing != forward)
+    #expect(sameSamples(other, forward) != .identical)
+    #expect(sameSamples(net2, forward) != .identical)
+    #expect(sameSamples(timing, forward) != .identical)
     let sd = (forward.map { $0 * $0 }.reduce(0, +) / Double(forward.count)).squareRoot()
     #expect(sd > 0.2 && sd < 0.5, "SD \(sd)")
   }
@@ -176,8 +176,8 @@ struct DriftTests {
     let b = render(p, fixes: [.feel, .drift], feel: lofi, seed: 42)
     let c = render(p, fixes: [.feel, .drift], feel: lofi, seed: 43)
     #expect(a.hits == b.hits)
-    #expect(a.audio == b.audio)
-    #expect(a.hits.map(\.velocity) != c.hits.map(\.velocity))
+    #expect(sameSamples(a.audio, b.audio) == .identical)
+    #expect(sameSamples(a.hits.map(\.velocity), c.hits.map(\.velocity)) != .identical)
   }
 
   /// Seekable: a project prepared from tick 64 (a section launch) plays the hits the whole song
@@ -223,14 +223,17 @@ struct DriftTests {
     ]
     for (fixes, feel) in cases {
       #expect(
-        render(p, fixes: fixes, feel: feel, seed: 1, bars: 4).audio
-          == render(p, fixes: fixes, feel: feel, seed: 2, bars: 4).audio, "\(fixes)")
+        sameSamples(
+          render(p, fixes: fixes, feel: feel, seed: 1, bars: 4).audio,
+          render(p, fixes: fixes, feel: feel, seed: 2, bars: 4).audio) == .identical, "\(fixes)")
     }
     #expect(DJMusicality.Fixes.all.contains(.drift))
     #expect(DJMusicality.Fixes.named["drift"] == .drift)
     // with no humanize there is nothing to drift
     let still = hats(tempo: 110, humanize: 0)
     #expect(
-      render(still, fixes: [.drift], bars: 4).audio == render(still, fixes: [], bars: 4).audio)
+      sameSamples(
+        render(still, fixes: [.drift], bars: 4).audio, render(still, fixes: [], bars: 4).audio)
+        == .identical)
   }
 }

@@ -120,7 +120,8 @@ struct PaletteDataTests {
     let spec = TrackSpec(genre: "house", seed: 11, structure: "standard")
     let synth = renderSpec(spec.withPalette("synth"), seconds: 6)
     let plain = renderSpec(spec, seconds: 6, sampled: false)
-    #expect(synth.left == plain.left && synth.right == plain.right)
+    #expect(sameSamples(synth.left, plain.left) == .identical)
+    #expect(sameSamples(synth.right, plain.right) == .identical)
     #expect(synth.left.contains { $0 != 0 })
   }
 
