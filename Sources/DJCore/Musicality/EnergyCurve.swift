@@ -111,6 +111,44 @@ public struct EnergyCurve: Sendable, Equatable {
   }
 }
 
+extension EnergyCurve {
+  /// How far through a ramp section (a buildup) `step` is: 0 on its first step, rising
+  /// linearly towards 1 at the next section; nil outside one. Allocation-free: `.sweep` reads it
+  /// at every synth note-on.
+  @inline(__always)
+  public func rampProgress(step: Int) -> Double? {
+    var k = 0
+    while k + 1 < start.count && start[k + 1] <= step { k += 1 }
+    guard ramp[k], step >= start[k], k + 1 < start.count else { return nil }
+    return Double(step - start[k]) / Double(start[k + 1] - start[k])
+  }
+}
+
+/// `DJMusicality.Fixes.sweep`: the resonance sweep of a buildup. A subtractive voice
+/// (`FilterEnvelope`) struck in a ramp section has its filter's resting point (`base`, × the
+/// note's frequency) scaled from `baseFrom` at the section's start to `baseTo` at its end, and
+/// its Q raised towards `qTo` (accelerating, so it rings most in the last bars); the next section
+/// plays the stock envelope again. Per note, at note-on: a held note keeps its colour. Synth
+/// lanes only: sampled instruments keep the tonal bus lowpass `.energy` already sweeps.
+public enum BuildupSweep {
+  public static let baseFrom = 0.6
+  public static let baseTo = 2.0
+  public static let qTo = 2.5
+
+  /// The filter base at ramp progress `x` (0…1) for a voice whose own base is `stock`.
+  @inline(__always)
+  public static func base(_ stock: Double, x: Double) -> Double {
+    stock * baseFrom * pow(baseTo / baseFrom, max(0, min(1, x)))
+  }
+
+  /// The filter Q at ramp progress `x` for a voice whose own Q is `stock` (never below it).
+  @inline(__always)
+  public static func q(_ stock: Double, x: Double) -> Double {
+    let x = max(0, min(1, x))
+    return stock + (max(stock, qTo) - stock) * x * x
+  }
+}
+
 /// The sampled instruments' bus made mono below `hz` (`DJMusicality.Fixes.stereo`): EXS
 /// instruments carry stereo samples, upright and electric basses included, so their low end
 /// came out of both sides differently. The side signal goes through a fourth-order highpass

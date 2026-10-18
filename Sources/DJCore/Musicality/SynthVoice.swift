@@ -135,6 +135,36 @@ public enum KickTuning {
   }
 }
 
+/// Brushes on the snare, for jazz under `DJMusicality.Fixes.backbeat` (`WaveOptions.brushes`):
+/// `.backbeat` brings jazz's snare in on a soft 2 and 4, and beats' snare is a stick's crack (a
+/// 1 ms attack, a 180 Hz tone under the noise) where a jazz drummer plays brushes. The brush is
+/// band-passed noise and nothing else — no tonal body — rising over about 25 ms (two
+/// exponentials, 20 ms up and 70 ms down: the peak at 35 ms, 10–90 % in about 20 ms) and
+/// swishing out over about 200 ms (−20 dB at 220 ms). A dj voice: beats' kits
+/// (`drumVoice`, WaveSynth.swift) never play it, and `WaveOptions()` never sets it.
+public enum Brush {
+  /// Whether a track of `genre` plays brushes.
+  public static func forGenre(_ genre: String) -> Bool { genre == "jazz" }
+
+  /// The synth brush.
+  public static var voice: VoiceSpec {
+    var v = VoiceSpec(kind: "snare", carrier: "noise")
+    v.filter = "bandpass"
+    v.fc = 2500
+    v.q = 0.6
+    v.pulse = pulse(attack: attack, decay: decay)
+    v.level = 0.7
+    return v
+  }
+  /// The envelope's rise and fall time constants, seconds.
+  static let attack = 0.02
+  static let decay = 0.07
+
+  /// A sampled kit whose bank has no Brush kit plays its own snare this much softer (−8 dB as
+  /// a velocity, `DrumKits.velocityScale`).
+  public static let stockVelocity = DrumKits.velocityScale(-8)
+}
+
 /// Band-limited wavetables, one per octave of fundamental (a mip map), for
 /// `DJMusicality.Fixes.subtractive`: as many partials as fit under Nyquist for the highest note
 /// each table plays (up to 128), where beats' tables have 8 for every note. Flattened: table `k`
