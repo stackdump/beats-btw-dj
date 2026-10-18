@@ -278,6 +278,25 @@ struct SurfaceControllerTests {
     #expect(s.blackout().count == 80)
   }
 
+  /// A sample deck runs the master macros on its own bus, so the APC's master-macro pads light
+  /// for it as for a net deck: in their group's colour, full while one runs. Net macros and the
+  /// vinyl brake (no brake on a sample deck's bus yet) stay dark.
+  @Test func masterMacroLedsLightOnASampleDeck() throws {
+    let (dj, s) = try make()
+    let a = try #require(dj["A"])
+    #expect(a.mode == .sample && dj.focus == "A")
+    let leds = try #require(s.profile.leds)
+    let cyan = SurfaceController.color(.sweepLp)
+    let first = s.ledFrame(now: 100)
+    #expect(first.contains([leds.rgbDimStatus, 8, cyan]), "sweep-lp (pad 8): lit dim, idle")
+    #expect(first.contains([leds.rgbDimStatus, 35, 0]), "vinyl-brake (pad 35): dark")
+    #expect(first.contains([leds.rgbDimStatus, 0, 0]), "a net macro pad: dark")
+    send(s, [0x90, 8, 0x7F], now: 100)  // press sweep-lp on the aimed (sample) deck
+    #expect(a.isMasterActive(.sweepLp))
+    let next = s.ledFrame(now: 101)  // past the press flash
+    #expect(next.contains([leds.rgbFullStatus, 8, cyan]), "sweep-lp: full while it runs")
+  }
+
   @Test func mpkHasNoLEDs() throws {
     let (_, s) = try make(.mpkMiniMK2)
     #expect(s.ledFrame().isEmpty)
