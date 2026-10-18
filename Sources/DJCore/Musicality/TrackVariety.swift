@@ -87,10 +87,29 @@ extension DJMusicality {
   /// pad, above E1) and the bars still lead into each other as `.bassLine` placed them.
   static func varyFigures(_ p: inout Project, genre: GenreDef, spec: TrackSpec) {
     if p.cohesion == "v2" {
-      var bassRng = varietyRandom("bass", genre: genre.name, seed: spec.seed)
+      var bassRng = varietyRandom("bass", genre: genre.name, seed: spec.seed(forPart: "bass"))
       varyBassFigure(&p, genre: genre, rng: &bassRng)
     }
-    varyDrums(&p, genre: genre, seed: spec.seed)
+    varyDrums(&p, genre: genre, seed: spec.seed, partSeeds: spec.partSeeds)
+  }
+
+  // MARK: part seeds
+
+  /// A seeded melody (`TrackSpec.partSeeds["melody"]`) plays the melody its own seed composes:
+  /// each melody net of `p` whose id is in that seed's compose with the same transitions takes
+  /// that net's bindings (bindings only, as every pass). beats draws only the melody from the
+  /// seed, so the donor's melody sits on the same chord plan; `.key` and `.variety` then move
+  /// it with the rest of the track. Runs first in `apply`.
+  static func transplantSeededMelody(_ p: inout Project, spec: TrackSpec) {
+    guard let seed = spec.partSeeds["melody"], seed != spec.seed else { return }
+    let donor = PartSeedDonors.shared.melody(spec, seed: seed)
+    for id in p.nets.keys {
+      guard var nb = p.nets[id], nb.role != "control", part(nb) == "melody",
+        let from = donor[id], from.transitions.keys == nb.transitions.keys
+      else { continue }
+      nb.bindings = from.bindings
+      p.nets[id] = nb
+    }
   }
 
   // MARK: key
@@ -327,10 +346,14 @@ extension DJMusicality {
   /// from the backbeat; and outside four-on-the-floor genres sometimes one ghost kick on a
   /// free eighth. Ghosts are soft (a third to a half of the part's velocity) and never on the
   /// downbeat or next to a hit already there.
-  static func varyDrums(_ p: inout Project, genre: GenreDef, seed: Double) {
-    let hats = varietyRandom("hihat", genre: genre.name, seed: seed)
-    let snares = varietyRandom("snare", genre: genre.name, seed: seed)
-    let kicks = varietyRandom("kick", genre: genre.name, seed: seed)
+  ///
+  /// A part in `partSeeds` (`kick`, `snare`, `hihat`) draws from its own seed instead.
+  static func varyDrums(
+    _ p: inout Project, genre: GenreDef, seed: Double, partSeeds: [String: Double] = [:]
+  ) {
+    let hats = varietyRandom("hihat", genre: genre.name, seed: partSeeds["hihat"] ?? seed)
+    let snares = varietyRandom("snare", genre: genre.name, seed: partSeeds["snare"] ?? seed)
+    let kicks = varietyRandom("kick", genre: genre.name, seed: partSeeds["kick"] ?? seed)
     let steady = fourOnTheFloor(genre)
     for id in p.nets.keys {
       guard var nb = p.nets[id], let role = drumRole(nb, id: id) else { continue }
@@ -389,6 +412,59 @@ extension DJMusicality {
       }
       p.nets[id] = nb
     }
+  }
+}
+
+extension TrackSpec {
+  /// The parts `partSeeds` can seed on their own: the bass figure, each drum part's detail,
+  /// the melody (transplanted from its seed's compose) and the arp figure.
+  public static let seedableParts = ["bass", "kick", "snare", "hihat", "melody", "arp"]
+
+  /// The seed `part`'s seeded decisions are drawn from: its own (`partSeeds`), else the track's.
+  public func seed(forPart part: String) -> Double { partSeeds[part] ?? seed }
+}
+
+/// The melody nets each donor spec composes (genre, structure, settings and layers of the
+/// track, the part's seed), kept so a recompile — a section jump, another part reseeded — does
+/// not compose the donor again. A few songs' worth (melody nets only); oldest out first.
+final class PartSeedDonors: @unchecked Sendable {
+  static let shared = PartSeedDonors()
+  static let capacity = 8
+
+  private let lock = NSLock()
+  private var entries: [(key: String, nets: [String: NetBundle])] = []
+  private var composed = 0
+  /// How many donors have been composed (tests read it to see the cache work).
+  var composedCount: Int { lock.withLock { composed } }
+
+  func melody(_ spec: TrackSpec, seed: Double) -> [String: NetBundle] {
+    var donor = spec
+    donor.seed = seed
+    donor.partSeeds = [:]
+    let key = donor.payload.canonicalJS
+    lock.lock()
+    if let i = entries.firstIndex(where: { $0.key == key }) {
+      let hit = entries.remove(at: i)
+      entries.append(hit)
+      lock.unlock()
+      return hit.nets
+    }
+    lock.unlock()
+    let project = donor.project()
+    var nets: [String: NetBundle] = [:]
+    for id in project.nets.keys {
+      guard let nb = project.nets[id], nb.role != "control", DJMusicality.part(nb) == "melody"
+      else { continue }
+      nets[id] = nb
+    }
+    lock.lock()
+    defer { lock.unlock() }
+    composed += 1
+    if !entries.contains(where: { $0.key == key }) {
+      entries.append((key, nets))
+      if entries.count > Self.capacity { entries.removeFirst() }
+    }
+    return nets
   }
 }
 

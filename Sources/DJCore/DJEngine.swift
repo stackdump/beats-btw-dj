@@ -38,6 +38,10 @@ public final class DJEngine {
   var clipMutes: Set<String> = []
   var clipSolos: Set<String> = []
   var clipKeyLocks: [String: Bool] = [:]
+  /// Clips' own launch boundary (beats) and fade, where they have one (LoopLaunch.swift,
+  /// LoopSound.swift); the rest follow `loopQuantum` / `loopFade`.
+  var clipQuanta: [String: Int] = [:]
+  var clipFades: [String: LoopFade] = [:]
   public internal(set) var loopKeyLock = false
   public internal(set) var loopFade = LoopFade.declick
   var stretchCache: [String: (bpm: Double, buffer: SampleBuffer)] = [:]
@@ -268,8 +272,13 @@ public final class Deck: JogClock {
   public var tap: ScopeTap { renderer.tap }
   /// Stereo history after the EQ, always on: what LOOP record takes its bars from.
   let capture: CaptureTap
-  /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads.
-  public internal(set) var clipID: String?
+  /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads (and
+  /// with it the clip's FX go: `setClipFx`).
+  public internal(set) var clipID: String? {
+    didSet { if clipID == nil { setClipFx(.off, now: true) } }
+  }
+  /// Whether the deck's FX chain was last told to be on (main thread's view).
+  private var clipFxOn = false
   /// The audio file the sample on the deck was loaded from (set by the app after a file or
   /// stock-loop load; nil for nets, clips and the demo loop): what a favorite of it reloads.
   public var sourceFile: URL? { didSet { if let sourceFile { onSourceFile?(sourceFile) } } }
@@ -484,6 +493,17 @@ public final class Deck: JogClock {
 
   deinit { capture.detach() }
 
+  /// Main thread. Play the deck's clip through `fx` (`LoopFx.swift`: the loop row's chain, on
+  /// this deck). `now`: start clean at them (a clip being loaded); otherwise a playing deck
+  /// changes over smoothly. Sample mode only; the loop channel ignores it (its voices have
+  /// their own).
+  func setClipFx(_ fx: LoopFX, now: Bool = false) {
+    let p = LoopFxParams(fx, sampleRate: turntable.sampleRate)
+    guard bank == nil, p.active || clipFxOn else { return }
+    clipFxOn = p.active
+    renderer.sendFx(p, sounding: !now && playing)
+  }
+
   /// Puts `buffer` on the turntable. `level`: give it the deck's auto-gain (`autoGain`,
   /// `SampleLevel`); a clip (`loadClip`) plays at the level it was taken at instead.
   public func load(_ buffer: SampleBuffer, title: String, level: Bool = true) {
@@ -630,6 +650,31 @@ public final class Deck: JogClock {
     load(DemoLoop.make(sampleRate: turntable.sampleRate), title: "demo loop")
     beatGrid = BeatGrid(bpm: DemoLoop.bpm, offset: 0, confidence: 1)  // known, not measured
     isDemo = true
+  }
+
+  /// Take what is on the deck off it, stopped, as a fresh deck has nothing (`journalSource` says
+  /// `.none`; `DJEngine.reset(to:clip:)`). The turntable keeps its old buffer, silent, until the
+  /// next load retires it through the ring; a net deck's project stays installed but paused.
+  func eject() {
+    leaveNetMode()
+    setPlaying(false)
+    turntable.send(.loopOff)
+    currentSpec = nil
+    currentRawNets = nil
+    seedTarget = nil
+    clipID = nil
+    sourceFile = nil
+    waveform = nil
+    loaded = nil
+    levelSource = nil
+    beatGrid = nil
+    isDemo = false
+    title = "—"
+    hotCues = [:]
+    cuePoint = 0
+    loopStart = nil
+    loopEnd = nil
+    looping = false
   }
 
   public func setPlaying(_ on: Bool) {

@@ -131,6 +131,22 @@ public struct MusicalityReport: Sendable {
   /// that has one; nil without a genre, for a style with no beat (ambient), or a song with no
   /// such section.
   public var hasBeat: Double?
+  /// M1 (ROADMAP 6.2): part changes heard on a 4-bar line (step ≡ 0 mod 64; a change fired on
+  /// tick T is heard from step T, so `.timing`'s `gap - 1` delays count as on time); nil when
+  /// the song has none.
+  public var structureOn4Bars: Double?
+  /// The most sixteenths a part change is heard after the bar line before it (0 = every change
+  /// on a bar; the accumulator's drift without `.timing`, mod a bar); nil without changes.
+  public var maxLatenessTicks: Int?
+  /// The distinct lengths, in bars, between consecutive structure events (section starts and
+  /// part changes, as heard) and the song's end, ascending; empty for a loop.
+  public var phraseBars: [Double] = []
+  /// Bars of the first section when it is an intro, of the last when it is an outro; nil
+  /// otherwise (and for a loop).
+  public var introBars: Int?
+  public var outroBars: Int?
+  /// The song's length at its tempo; nil for a loop (no structure).
+  public var songSeconds: Double?
 
   public init() {}
 
@@ -559,6 +575,29 @@ public struct MusicalityReport: Sendable {
       if let lo = perBar.min(), let hi = perBar.max() { sectionContrast = hi / max(lo, 1) }
     }
 
+    // M1 form: changes on 4-bar lines, how late they land, phrase / intro / outro lengths
+    if !controls.isEmpty {
+      structureOn4Bars =
+        Double(controls.filter { $0.tick % 64 == 0 }.count) / Double(controls.count)
+      maxLatenessTicks = controls.map { c in
+        let start = sectionStarts.last { $0 <= c.tick } ?? 0
+        return (c.tick - start) % 16
+      }.max()
+    }
+    if !sections.isEmpty {
+      let total = sections.reduce(0) { $0 + $1.steps }
+      let events = Set(sectionStarts + controls.map(\.tick).filter { $0 > 0 && $0 < total })
+        .sorted()
+      let spans = zip(events, events.dropFirst() + [total]).map { Double($1 - $0) / 16 }
+      phraseBars = Set(spans.filter { $0 > 0 }).sorted()
+      if sections.first!.name == "intro" { introBars = sections.first!.steps / 16 }
+      if sections.count > 1, sections.last!.name == "outro" {
+        outroBars = sections.last!.steps / 16
+      }
+      let tempo = project.tempo > 0 ? project.tempo : 120
+      songSeconds = Double(total) * 60 / (tempo * 4)
+    }
+
     // A beat: kick and snare where the style has them
     var beatStart = 0
     for s in sections {
@@ -625,6 +664,12 @@ public struct MusicalityReport: Sendable {
       }
     }
     if let v = hasBeat { d["hasBeat"] = round3(v) }
+    if let v = structureOn4Bars { d["structureOn4Bars"] = round3(v) }
+    if let v = maxLatenessTicks { d["maxLatenessTicks"] = v }
+    if !phraseBars.isEmpty { d["phraseBars"] = phraseBars.map(round3) }
+    if let v = introBars { d["introBars"] = v }
+    if let v = outroBars { d["outroBars"] = v }
+    if let v = songSeconds { d["songSeconds"] = round3(v) }
     return d
   }
 }

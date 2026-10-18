@@ -170,3 +170,30 @@ func writeLoopFxWavs() -> [String] {
   }
   return written
 }
+
+/// The next `frames` frames of `deck` (an engine that is never started), in 512-frame blocks.
+func renderDeck(_ deck: Deck, _ frames: Int) -> (left: [Float], right: [Float]) {
+  var outL: [Float] = []
+  var outR: [Float] = []
+  var l = [Float](repeating: 0, count: 512)
+  var r = [Float](repeating: 0, count: 512)
+  var done = 0
+  while done < frames {
+    let n = min(512, frames - done)
+    l.withUnsafeMutableBufferPointer { lp in
+      r.withUnsafeMutableBufferPointer { rp in
+        deck.renderBlock(frames: n, left: lp.baseAddress!, right: rp.baseAddress!)
+      }
+    }
+    outL += l[0..<n]
+    outR += r[0..<n]
+    done += n
+  }
+  return (outL, outR)
+}
+
+/// How far `x` is from `reference`: the difference's RMS against the reference's, dB.
+func residualDB(_ x: [Float], _ reference: [Float]) -> Double {
+  let diff = zip(x, reference).map { $0 - $1 }
+  return dB(max(rms(diff), 1e-12) / max(rms(reference), 1e-12))
+}
