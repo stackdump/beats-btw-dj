@@ -15,7 +15,7 @@
 //                                     plays each file at, and the spread before / after
 //                                     (LevelSurvey, LevelMatch.swift); --stock: N stock loops
 //                                     per category
-//   djctl measure <file> [--start S] [--seconds N] [--note N]
+//   djctl measure <file> [--start S] [--seconds N] [--note N] [--sections [--kernel K]]
 //                                     any audio file through render's audio block (LUFS, LRA,
 //                                     true peak, spectrum) as JSON, named by basename + sha256;
 //                                     --note: its pitch against that MIDI note (FileMeasure.swift)
@@ -752,7 +752,7 @@ case "levels":
   try line(["summary": survey.summary])
 
 case "measure":
-  // djctl measure <file> [--start S] [--seconds N] [--note N] (MeasureCommand.swift)
+  // djctl measure <file> [--start S] [--seconds N] [--note N] [--sections] (MeasureCommand.swift)
   measureCommand()
 
 case "minecraft":
