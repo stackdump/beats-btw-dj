@@ -121,4 +121,35 @@ public struct RestSchedule: Equatable, Sendable {
   public func mask(at step: Int) -> Class {
     entries.first { $0.from <= step && step < $0.to }?.mask ?? []
   }
+
+  /// This schedule with a mix-out tail's rest on top (`MixOutTail.entry`).
+  public func with(tail: MixOutTail) -> RestSchedule {
+    RestSchedule(merging: entries + [tail.entry])
+  }
+}
+
+/// A mix-out tail (ROADMAP 6.2, performable form; `WaveOptions.tail`): from `fromTick` the deck
+/// plays only its drums-forward lanes (kick, drums, bass: the melodic classes rest) for `bars`
+/// bars, plays on past the song's own `stop-transport`, and stops on `endTick`. `fromTick` is a
+/// bar line (the caller picks it), so `endTick` is one too. Fills, crashes, stingers and the
+/// live keys play on, as they do through every rest.
+///
+/// The stop is the transport's: voices already sounding release, and the room and echo ring
+/// out after it (as at the end of a song), so the last bar does not cut off dry.
+public struct MixOutTail: Equatable, Sendable {
+  public var fromTick: Int
+  public var bars: Int
+
+  public init(fromTick: Int, bars: Int = 16) {
+    self.fromTick = fromTick
+    self.bars = bars
+  }
+
+  /// The tick the deck stops on: `bars` bars after `fromTick`.
+  public var endTick: Int { fromTick + max(0, bars) * 16 }
+
+  /// What rests: the melodic lanes, from `fromTick` to the stop.
+  public var entry: RestSchedule.Entry {
+    RestSchedule.Entry(from: fromTick, to: endTick, mask: RestSchedule.Class.melodic)
+  }
 }
