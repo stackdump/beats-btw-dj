@@ -261,6 +261,8 @@ final class Lane {
   var chokeMul = 1.0
   /// `.space`: how much of the lane goes to the reverb send (`SpaceSpec.send`).
   var send = 0.0
+  /// `.shimmer`: how much goes to the pad shimmer (`Shimmer`; synth pads only, as `send`).
+  var shimmerSend = 0.0
   /// `.echo`: how much goes to the echo (`EchoSpec.send`).
   var echoSend = 0.0
   /// `.hfTilt`: a lowpass biquad after a noise lane's own filter (hat, open hat, crash;
@@ -907,6 +909,7 @@ private func buildLanes(
   let tilt = opts.musicality.contains(.hfTilt) ? opts.hfTilt : nil
   let stereo = opts.musicality.contains(.stereo)
   let space = opts.musicality.contains(.space)
+  let shimmer = space && opts.musicality.contains(.shimmer) && (opts.space?.shimmer ?? 0) > 0
   let subtractive = opts.musicality.contains(.subtractive)
   let unison = opts.musicality.contains(.unison)
   let subOctave = opts.subOctave && opts.musicality.contains(.subOctave)
@@ -1039,6 +1042,9 @@ private func buildLanes(
         }
         if space {
           lane.send = SpaceSpec.send(kind: key, group: tr.group ?? n.bundle.riffGroup)
+          if shimmer && SpaceSpec.shimmers(kind: key, group: tr.group ?? n.bundle.riffGroup) {
+            lane.shimmerSend = lane.send
+          }
         }
         // (a sampled lane's too: it is used if the lane plays its synth voice instead)
         if echo {
@@ -1317,6 +1323,12 @@ public final class WaveRunner {
   // during the next block (a block's delay, inside the room's pre-delay).
   private let reverb: FDNReverb?
   private var accSend = 0.0
+  /// `.shimmer`: the synth pads' send (`accShimmer`) through `Shimmer`, an octave up, into the
+  /// room's input.
+  private let shimmer: Shimmer?
+  private var accShimmer = 0.0
+  /// `SpaceSpec.samplerSend`, read at init (the table is not touched on the audio thread).
+  private let samplerSend: Double
   private var sendFifo = [Float](repeating: 0, count: 8192)
   private var fifoRead = 0
   private var fifoCount = 0
@@ -1341,6 +1353,9 @@ public final class WaveRunner {
     self.sampleRate = sampleRate
     self.opts = opts
     reverb = opts.musicality.contains(.space) ? FDNReverb(sampleRate: sampleRate) : nil
+    shimmer =
+      opts.musicality.isSuperset(of: [.space, .shimmer]) ? Shimmer(sampleRate: sampleRate) : nil
+    samplerSend = SpaceSpec.samplerSend
     echoFx = opts.musicality.contains(.echo) ? PingPong(sampleRate: sampleRate) : nil
     samplers = opts.samplers
     samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
@@ -1456,6 +1471,7 @@ public final class WaveRunner {
     next.riser?.reset()
     riserStep = Int.min
     reverb?.tune(next.space)
+    shimmer?.tune(next.space)
     echoFx?.tune(next.echo, bpm: next.graph.tempo)
     setTempo(next.graph.tempo)
   }
@@ -2262,7 +2278,7 @@ public final class WaveRunner {
   /// take during the next block. They join the voices at the track gain alone (the voices go
   /// through the master gain as well), so the send is lifted by that to match.
   private func queueSamplerSend(frames: Int) {
-    let level = Float(SpaceSpec.samplerSend / max(0.05, masterGain))
+    let level = Float(samplerSend / max(0.05, masterGain))
     for i in 0..<frames where fifoCount < sendFifo.count {
       var w = fifoRead + fifoCount
       if w >= sendFifo.count { w -= sendFifo.count }
@@ -2571,6 +2587,7 @@ public final class WaveRunner {
       uside *= duckGain
     }
     accSend += out * lane.send
+    accShimmer += out * lane.shimmerSend
     accEcho += out * lane.echoSend
     // a spread lane has no post chain (`buildLanes`), so its voices' side sum is still in step;
     // nor has a wide unison one
@@ -2859,6 +2876,7 @@ public final class WaveRunner {
       accS = 0
       accToneS = 0
       accSend = 0
+      accShimmer = 0
       accEcho = 0
       if let proj = current {
         for lane in proj.lanes {
@@ -2906,6 +2924,7 @@ public final class WaveRunner {
           fifoRead = fifoRead + 1 == sendFifo.count ? 0 : fifoRead + 1
           fifoCount -= 1
         }
+        if let shimmer, shimmer.isOn { x += shimmer.process(accShimmer) }
         let (wl, wr) = reverb.process(x)
         let mid = 0.5 * (wl + wr)
         let side = 0.5 * (wl - wr)

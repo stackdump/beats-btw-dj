@@ -133,7 +133,7 @@ struct SpaceTests {
         > SpaceSpec.send(kind: "snare", group: "drums"))
     let track = PreparedTrack(
       spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: 22_050)
-    #expect(track.prepared.space == SpaceSpec.forGenre("trance"))
+    #expect(track.prepared.space == SpaceSpec.forGenre("trance", shimmer: true))
     #expect(
       WaveRunner.prepare(padOnce(), sampleRate: 22_050, opts: WaveOptions()).space == nil)
   }

@@ -486,6 +486,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `djctl measure --sections` + ffmpeg cross-check, cached in `.build/references`): median, p10–p90,
   source `ref:<family>/<sha8> (n=K, djctl <build>)` — hashes, never a path or name.
   `musicality-matrix.py --targets PATH` prints each track's distance from its family's band.
+- Room from the table (6.6): `space.sends` are `SpaceSpec.send` / `samplerSend` (read at prepare /
+  runner init); a family's `space.families.<f>.returnDB` band rescales `wet` of genres whose room has
+  a measured `returnDB` (return is linear in wet), empty band = unchanged bytes. `.shimmer`
+  (`Shimmer`, in Space.swift): synth pad lanes' send, octave-up with feedback, into the room at
+  the family's `shimmer` level; allocated at runner init, level 0 = bit-identical.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
