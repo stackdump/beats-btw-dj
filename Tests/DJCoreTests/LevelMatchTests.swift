@@ -406,8 +406,9 @@ struct LevelSurveyTests {
 
   /// The loop channel ("L") at its defaults against a deck at the centred crossfader, on the
   /// master: a take of a net deck (the deck's own level, `aTakeOfANetDeckPlaysAtTheDecksLevel`)
-  /// looped on L alone, against the deck alone. Measured, not changed: A/B take the crossfader's
-  /// equal-power −3 dB at the centre and L takes none (`DJEngine.crossfadeGain`).
+  /// looped on L alone, against the deck alone. A/B take the crossfader's equal-power −3 dB at
+  /// the centre and L none (`DJEngine.crossfadeGain`); L's trim starts at −3 dB to match
+  /// (`DJEngine.loopChannelGain`; 2.9 LU over A before it, `LoopChannelLevelTests` holds it).
   @Test(.enabled(if: surveying, "a measurement: DJ_LEVEL_SURVEY=1"))
   func theLoopChannelAgainstACentredDeck() async throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: sr)

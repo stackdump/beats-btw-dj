@@ -113,6 +113,7 @@ public final class SessionPlayer {
     }
     dj.crossfader = session.crossfader
     dj.master = session.master
+    dj.loopChannel.gain = session.loopGain
     try dj.start()
     defer { dj.stop() }
 

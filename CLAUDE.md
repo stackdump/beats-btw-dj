@@ -391,7 +391,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
   percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
   each file's level and auto-gain, then the spread before / after against each one's target and
-  the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp).
+  the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp). The loop channel
+  starts at trim −3 dB (`DJEngine.loopChannelGain` = gain 0.25, trim 1/√2: the centred
+  crossfader's gain on A/B, which L doesn't take), so a take sits level with its deck. Recorded:
+  `Session.loopGain` (`mixer.loopGain`, written only off the legacy 0.5, absent = unity, so old
+  sessions keep text, CID and sound) and the journal's `loopChannel.gain` (`LoopChannelLevelTests`).
 - Runner rests are one `RestSchedule` (`WaveProject.rests`): disjoint (from, to, class mask)
   stretches built at prepare from `.dropGap` and 6.2's `.layerBudget` / `.bandStop` / `.kickOut`
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in

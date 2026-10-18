@@ -235,11 +235,19 @@ public struct Session: Equatable, Sendable {
   public var params: [String: DeckParams]
   public var crossfader: Double
   public var master: Double
+  /// The loop channel's trim knob at the start (`Deck.gain` of "L"). Sessions from before it
+  /// was recorded played L at unity (`legacyLoopGain`), which is what they decode to; written
+  /// only when it differs, so their canonical text and CID stay the same.
+  public var loopGain: Double
   public var events: [SessionEvent]
+
+  /// L's trim before `DJEngine.loopChannelGain`: unity.
+  public static let legacyLoopGain = 0.5
 
   public init(
     sampleRate: Double, frames: Int, decks: [String: DeckSourceDescriptor],
-    params: [String: DeckParams], crossfader: Double, master: Double, events: [SessionEvent]
+    params: [String: DeckParams], crossfader: Double, master: Double, events: [SessionEvent],
+    loopGain: Double = Session.legacyLoopGain
   ) {
     self.sampleRate = sampleRate
     self.frames = frames
@@ -247,6 +255,7 @@ public struct Session: Equatable, Sendable {
     self.params = params
     self.crossfader = crossfader
     self.master = master
+    self.loopGain = loopGain
     self.events = events
   }
 
@@ -627,14 +636,12 @@ extension Session {
           ("source", decks[name]!.json), ("params", (params[name] ?? DeckParams()).json),
         ]))
     }
+    var mixer = JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))])
+    if loopGain != Self.legacyLoopGain { mixer["loopGain"] = .number(loopGain) }
     return .object(
       JSONObject([
         ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
-        ("frames", .int(frames)), ("decks", .object(decksObj)),
-        (
-          "mixer",
-          .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
-        ),
+        ("frames", .int(frames)), ("decks", .object(decksObj)), ("mixer", .object(mixer)),
         ("events", .array(events.map(\.json))),
       ]))
   }
@@ -666,7 +673,8 @@ extension Session {
     self.init(
       sampleRate: sr, frames: frames, decks: decks, params: params,
       crossfader: v["mixer"]?["crossfader"]?.double ?? 0.5,
-      master: v["mixer"]?["master"]?.double ?? 0.8, events: events)
+      master: v["mixer"]?["master"]?.double ?? 0.8, events: events,
+      loopGain: v["mixer"]?["loopGain"]?.double ?? Self.legacyLoopGain)
   }
 
   /// Parse envelope text; with `cid`, the content must hash to it.

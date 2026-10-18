@@ -143,7 +143,7 @@ public struct JournalState: Equatable, Sendable {
   public static let schema = "dj-vevr-se/state/v1"
   public var sampleRate: Double
   public var decks: [String: DeckCheckpoint]
-  /// The loop channel's strip: volume, reverb (in `params`) and mute.
+  /// The loop channel's strip: volume, trim, reverb (in `params`) and mute.
   public var loopChannel: DeckParams
   public var loopMute: Bool
   public var crossfader: Double
@@ -161,7 +161,8 @@ public struct JournalState: Equatable, Sendable {
   public static func == (a: Self, b: Self) -> Bool { a.json == b.json }
 
   public init(
-    sampleRate: Double, decks: [String: DeckCheckpoint] = [:], loopChannel: DeckParams = DeckParams(),
+    sampleRate: Double, decks: [String: DeckCheckpoint] = [:],
+    loopChannel: DeckParams = DeckParams(),
     loopMute: Bool = false, crossfader: Double = 0.5, master: Double = 0.8,
     loopSettings: [DeckAction] = [], clips: [ClipCheckpoint] = [],
     scenes: [LoopScene] = [], removed: [(id: String, index: Int)] = [], locked: [String] = [],
@@ -262,7 +263,9 @@ public struct JournalState: Equatable, Sendable {
         (
           "removed",
           .array(
-            removed.map { .object(JSONObject([("id", .string($0.id)), ("index", .int($0.index))])) })
+            removed.map {
+              .object(JSONObject([("id", .string($0.id)), ("index", .int($0.index))]))
+            })
         ),
         ("locked", .array(locked.map { .string($0) })),
         ("stores", stores.json),
@@ -330,7 +333,11 @@ public struct JournalState: Equatable, Sendable {
     for a in loopSettings { dj.applyAction(a) }
     var found: [LoopClip] = []
     for c in clips {
-      if let lc = clip(c.id) { found.append(lc) } else { warnings.append("clip \(c.id) has no audio") }
+      if let lc = clip(c.id) {
+        found.append(lc)
+      } else {
+        warnings.append("clip \(c.id) has no audio")
+      }
     }
     dj.restoreClips(found)
     for c in clips where dj.clip(c.id) != nil {
@@ -365,6 +372,7 @@ public struct JournalState: Equatable, Sendable {
     }
     for (name, d) in decks { if let l = d.leader { dj[name]?.follow(dj.decks[l]) } }
     dj.loopChannel.volume = loopChannel.volume
+    dj.loopChannel.gain = loopChannel.gain  // the run's trim, not the engine's default
     dj.loopChannel.reverb.wet = loopChannel.reverbWet
     dj.loopChannel.reverb.size = loopChannel.reverbSize
     dj.loopChannel.reverb.tone = loopChannel.reverbTone

@@ -171,6 +171,7 @@ public final class DJEngine {
       decks[name] = deck
     }
     wire(loopChannel)
+    loopChannel.gain = Self.loopChannelGain
     loopChannel.onMasterMacro = { [weak self] m, bars in
       if let m { self?.fireLoopMaster(m, bars: bars) }
     }
@@ -206,6 +207,13 @@ public final class DJEngine {
 
   /// Every deck the engine renders: A, B, … and the loop channel.
   public var allDecks: [Deck] { decks.values.sorted { $0.name < $1.name } + [loopChannel] }
+
+  /// The loop channel's trim knob in a new engine: −3 dB (trim 1/√2), the crossfader's
+  /// equal-power gain at the centre, so a take on L sits level with the deck it came from at a
+  /// centred crossfader (before: L took no crossfader gain and played 2.9 LU over A). Not on
+  /// the wire as a default: a session records L's trim (`Session.loopGain`, absent = the old
+  /// unity) and a journal its `loopChannel` params, so old files replay as they were.
+  public static let loopChannelGain = 0.25
 
   /// Crossfader gain for a deck (1 for decks other than A/B).
   public func crossfadeGain(_ deck: String) -> Double {
