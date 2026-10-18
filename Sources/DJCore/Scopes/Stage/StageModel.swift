@@ -189,7 +189,8 @@ public final class StageModel {
       selection: settings.visualizer, visualizer: visualizer, overlays: settings.overlays,
       scale: settings.scale, expandVariants: settings.expandVariants, bgMode: settings.bgMode,
       cardOnChange: settings.cardOnChange, showBacks: settings.showBacks,
-      showLabels: settings.showLabels, vizLevel: level, epoch: epoch, trackChanged: trackChanged,
+      showLabels: settings.showLabels, showWander: settings.showWander, vizLevel: level,
+      epoch: epoch, trackChanged: trackChanged,
       stats: statsText(views: views), wander: wanderDecks(feed))
     context = ctx
     for layer in layers.all { layer.advance(ctx) }

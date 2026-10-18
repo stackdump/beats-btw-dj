@@ -2,11 +2,16 @@
 """Render a fixed set of tracks offline and summarise how musical / well-staged they are.
 
     scripts/musicality-matrix.py OUTDIR [--seconds 75] [--sampled] [--fixes key,timing,…]
-                                 [--djctl PATH]
+                                 [--djctl PATH] [--targets PATH]
 
 Each track goes through `djctl render` (compose + the deck's net source, nothing on the
 speakers); integrated loudness comes from ffmpeg's ebur128. Writes OUTDIR/<genre>-<seed>.wav
 and .json, OUTDIR/summary.json and prints a table. Compare two runs with --compare A B.
+
+--targets PATH (Sources/DJCore/Resources/beats/targets.json, or a scratch copy) adds how far each
+track sits from its family's reference band (scripts/references.py --write): 0 inside, else the
+signed distance to the nearer edge; `·` where the band is not measured yet. With --compare it
+prints both runs' distances and the mean |distance| before → after.
 """
 import json
 import os
@@ -112,6 +117,7 @@ def flat(doc):
         "lowSideDB": a.get("lowSideDB"),
         "balanceErrorDB": a.get("balanceErrorDB"),
         "slopeDBPerOct": a.get("slopeDBPerOct"),
+        "truePeakDBTP": a.get("truePeakDBTP"),
         "hfBumpDB": a.get("hfBumpDB"),
         "monoFoldDB": a.get("monoFoldDB"),
     }
@@ -150,7 +156,53 @@ def table(rows):
         print(name.ljust(15) + " ".join(fmt(row.get(k), f) for k, _, f in COLUMNS))
 
 
-def run(outdir, seconds, sampled, djctl, fixes=None):
+# targets.json band name → this script's row key (references.py measures the same keys)
+BAND_KEYS = [("lufs", "lufs"), ("lra", "lra"), ("truePeak", "truePeakDBTP"),
+             ("slope", "slopeDBPerOct"), ("side", "sideDB")]
+FAMILIES = ["dance", "song", "jazz", "chill"]  # BeatsTables.family(of:) index order
+
+
+def load_targets(path):
+    """(bands, genre → family) from targets.json and the tables.json beside it."""
+    with open(path) as f:
+        bands = json.load(f).get("bands", {})
+    tables = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Sources", "DJCore",
+                          "Resources", "beats", "tables.json")
+    with open(tables) as f:
+        fam = json.load(f)["structure"]["genreFamilies"]
+    return bands, {g: FAMILIES[i] for g, i in fam.items()}
+
+
+def band_distance(v, band):
+    """0 inside [lo, hi], else the signed distance to the nearer edge."""
+    lo, hi = band
+    return 0.0 if lo <= v <= hi else (v - hi if v > hi else v - lo)
+
+
+def distances(summary, targets):
+    """{track: {metric: distance | None}}; the genre is the track name before its seed."""
+    bands, family = targets
+    out = {}
+    for name, row in summary.items():
+        fam = family.get(name.rsplit("-", 1)[0], "song")  # beats' default family
+        d = {}
+        for metric, key in BAND_KEYS:
+            b = bands.get(metric, {}).get(fam, {}).get("band")
+            v = row.get(key)
+            d[metric] = band_distance(v, b) if b and len(b) == 2 and v is not None else None
+        out[name] = d
+    return out
+
+
+def band_table(dist):
+    print("\ndistance from the family's reference band (0 = inside)")
+    print("track          " + " ".join(m.rjust(8) for m, _ in BAND_KEYS))
+    for name, d in dist.items():
+        print(name.ljust(15) + " ".join(
+            (f"{d[m]:8.2f}" if d[m] is not None else "       ·") for m, _ in BAND_KEYS))
+
+
+def run(outdir, seconds, sampled, djctl, fixes=None, targets=None):
     os.makedirs(outdir, exist_ok=True)
     summary = {}
     for g in GENRES:
@@ -167,12 +219,18 @@ def run(outdir, seconds, sampled, djctl, fixes=None):
             with open(os.path.join(outdir, name + ".json"), "w") as f:
                 json.dump(doc, f, indent=1, sort_keys=True)
             summary[name] = flat(doc)
+    if targets:
+        for name, d in distances(summary, targets).items():
+            for m, v in d.items():
+                summary[name]["band." + m] = v
     with open(os.path.join(outdir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=1, sort_keys=True)
     table(summary.items())
+    if targets:
+        band_table(distances(summary, targets))
 
 
-def compare(a, b):
+def compare(a, b, targets=None):
     sa = json.load(open(os.path.join(a, "summary.json")))
     sb = json.load(open(os.path.join(b, "summary.json")))
     for name in sa:
@@ -186,12 +244,29 @@ def compare(a, b):
     for k, h, f in COLUMNS:
         x, y = mean(sa, k), mean(sb, k)
         print(f"  {h:6} {fmt(x, f)} → {fmt(y, f)}")
+    if targets:
+        da, db = distances(sa, targets), distances(sb, targets)
+        band_table(da)
+        band_table(db)
+        print("\nmean |distance from band| (before → after)")
+        for m, _ in BAND_KEYS:
+            x = [abs(d[m]) for d in da.values() if d[m] is not None]
+            y = [abs(d[m]) for d in db.values() if d[m] is not None]
+            if x or y:
+                mx = f"{sum(x) / len(x):6.2f}" if x else "     ·"
+                my = f"{sum(y) / len(y):6.2f}" if y else "     ·"
+                print(f"  {m:8} {mx} → {my}")
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    targets = None
+    if "--targets" in args:
+        i = args.index("--targets")
+        targets = load_targets(args[i + 1])
+        del args[i:i + 2]
     if args and args[0] == "--compare":
-        compare(args[1], args[2])
+        compare(args[1], args[2], targets)
         sys.exit(0)
     seconds = 75
     djctl = ".build/release/djctl"
@@ -210,4 +285,4 @@ if __name__ == "__main__":
         del args[i:i + 2]
     sampled = "--sampled" in args
     args = [a for a in args if a != "--sampled"]
-    run(args[0], seconds, sampled, djctl, fixes)
+    run(args[0], seconds, sampled, djctl, fixes, targets)
