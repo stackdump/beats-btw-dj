@@ -389,7 +389,7 @@ struct WanderDeckTests {
 struct WanderReplayTests {
   /// A set with wander on, at a fast tempo so phrases go by: performed live (recorded), then
   /// replayed. Returns the live log and audio and the session.
-  static func perform(blocks: Int) throws -> (Session, [WanderMove], RenderedAudio) {
+  static func perform(blocks: Int) throws -> (Session, [WanderMove], RenderedAudio, Trace) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
     dj.deterministic = true
     let spec = TrackSpec(
@@ -407,6 +407,7 @@ struct WanderReplayTests {
     let conductor = OfflineConductor(engine: dj, router: router)
     var l: [Float] = []
     var r: [Float] = []
+    var trace = Trace()
     for b in 0..<blocks {
       let (bl, br) = try conductor.step {
         switch b {
@@ -420,14 +421,117 @@ struct WanderReplayTests {
       }
       l += bl
       r += br
+      trace.note(frame: l.count, dj)
     }
     return (
-      recorder.finish(), dj["A"]!.wander.log, RenderedAudio(sampleRate: rate, left: l, right: r)
+      recorder.finish(), dj["A"]!.wander.log, RenderedAudio(sampleRate: rate, left: l, right: r),
+      trace
     )
   }
 
+  /// Where a render was, block by block: each deck's tick at a block's end, and what every lane
+  /// of the project it last handed over plays (a sampler source, or "synth") whenever that
+  /// changes. Enough to say, of a replay that parts from its live set, at which bar and whether
+  /// a lane's sound differs (a pick, or a sampler that loaded on one side only).
+  struct Trace {
+    struct Sounds {
+      var frame: Int
+      var generation: Int32
+      var lanes: [String]
+    }
+    var ends: [Int] = []
+    var ticks: [String: [Int]] = [:]
+    var sounds: [String: [Sounds]] = [:]
+
+    mutating func note(frame: Int, _ dj: DJEngine) {
+      ends.append(frame)
+      for (name, d) in dj.decks {
+        ticks[name, default: []].append(d.wave.tick)
+        guard let p = d.wave.latest, sounds[name]?.last?.generation != p.generation else {
+          continue
+        }
+        let lanes = p.lanes.enumerated().map { i, lane in
+          "\(i) \(lane.netId): "
+            + (p.samplers?.source(of: lane.samplerSlot).map(\.description) ?? "synth")
+        }
+        sounds[name, default: []].append(
+          Sounds(frame: frame, generation: p.generation, lanes: lanes))
+      }
+    }
+
+    /// The block `frame` falls in.
+    func block(of frame: Int) -> Int { ends.firstIndex { $0 > frame } ?? max(0, ends.count - 1) }
+
+    /// What `deck`'s lanes played at `frame`.
+    func lanes(_ deck: String, at frame: Int) -> [String] {
+      sounds[deck]?.last { $0.frame <= frame }?.lanes ?? sounds[deck]?.first?.lanes ?? []
+    }
+  }
+
+  /// nil if the two renders are the same; else where they part: the first frame that differs,
+  /// each deck's bar there, and any lane whose sound differs.
+  static func divergence(
+    live: RenderedAudio, _ lt: Trace, replay: RenderedAudio, _ rt: Trace
+  ) -> String? {
+    let n = min(live.frames, replay.frames)
+    let first = (0..<n).first {
+      live.left[$0] != replay.left[$0] || live.right[$0] != replay.right[$0]
+    }
+    guard let f = first ?? (live.frames == replay.frames ? nil : n) else { return nil }
+    var out = [
+      "frames \(live.frames) live, \(replay.frames) replay; first difference at frame \(f)"
+    ]
+    if f < n {
+      out.append(
+        String(
+          format: "  live %.6f/%.6f, replay %.6f/%.6f", live.left[f], live.right[f], replay.left[f],
+          replay.right[f]))
+    }
+    let lb = lt.block(of: f)
+    let rb = rt.block(of: f)
+    for deck in lt.ticks.keys.sorted() {
+      let tl = lt.ticks[deck].map { $0[min(lb, $0.count - 1)] } ?? -1
+      let tr = rt.ticks[deck].map { $0[min(rb, $0.count - 1)] } ?? -1
+      out.append(
+        "  deck \(deck): live bar \(tl / 16) (tick \(tl)), replay bar \(tr / 16) (tick \(tr))")
+      let a = lt.lanes(deck, at: f)
+      let b = rt.lanes(deck, at: f)
+      for i in 0..<max(a.count, b.count) {
+        let x = i < a.count ? a[i] : "-"
+        let y = i < b.count ? b[i] : "-"
+        if x != y { out.append("    lane differs: live \(x) | replay \(y)") }
+      }
+      if a == b { out.append("    every lane's sound matches (\(a.count) lanes)") }
+    }
+    return out.joined(separator: "\n")
+  }
+
+  @Test func aPartingNamesItsFrameBarAndLane() throws {
+    func trace(_ sound: String) -> Trace {
+      var t = Trace()
+      t.ends = [100, 200, 300]
+      t.ticks = ["A": [15, 16, 17]]
+      t.sounds = [
+        "A": [
+          .init(frame: 100, generation: 1, lanes: ["0 kick: synth", "1 bass-0: synth"]),
+          .init(frame: 200, generation: 2, lanes: ["0 kick: synth", "1 bass-0: " + sound]),
+        ]
+      ]
+      return t
+    }
+    let a = RenderedAudio(
+      sampleRate: rate, left: [Float](repeating: 0, count: 300),
+      right: [Float](repeating: 0, count: 300))
+    var b = a
+    #expect(Self.divergence(live: a, trace("gm:33"), replay: b, trace("gm:33")) == nil)
+    b.left[250] = 0.5
+    let m = try #require(Self.divergence(live: a, trace("gm:33"), replay: b, trace("synth")))
+    #expect(m.contains("frame 250") && m.contains("bar 1 (tick 17)"), "\(m)")
+    #expect(m.contains("lane differs: live 1 bass-0: gm:33 | replay 1 bass-0: synth"), "\(m)")
+  }
+
   @Test func aReplayWalksTheSamePath() throws {
-    let (session, log, live) = try Self.perform(blocks: 1400)
+    let (session, log, live, liveTrace) = try Self.perform(blocks: 1400)
     #expect(log.count >= 2, "\(log.map(\.detail))")
     #expect(session.params["A"]?.wander.locks == ["genre", "instruments"])
     #expect(
@@ -436,8 +540,11 @@ struct WanderReplayTests {
         return false
       }, "the moves are derived, not recorded")
     let player = SessionPlayer(session: session)
+    var replayTrace = Trace()
+    player.onBlock = { dj, frames in replayTrace.note(frame: frames, dj) }
     let replay = try player.render()
     #expect(player.wanderLogs["A"] == log)
-    #expect(replay.left == live.left && replay.right == live.right, "and sounds the same")
+    let parted = Self.divergence(live: live, liveTrace, replay: replay, replayTrace)
+    #expect(parted == nil, "and sounds the same:\n\(parted ?? "")")
   }
 }
