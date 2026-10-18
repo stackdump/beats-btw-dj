@@ -368,7 +368,8 @@ its copy; the two are now independent. Rules inherited from that split:
   end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
   `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
   shares) measured once per buffer (`SampleBuffer.level`, cached; on first read, so only with
-  auto-gain on; the app's decode task reads it off the main thread; ten minutes take ~0.16 s in
+  auto-gain on; the app's favorite / stock-loop decode tasks read it off the main thread, a plain
+  file load (`AppModel.load(_:url:)`) decodes and measures on it; ten minutes take ~0.16 s in
   release, so a load never measures in the background or glides in), auto-gain toward the reference
   (−4 LU for a one-band loop: bass / kick / hats), ±12 dB, never lifting the peak past −1 dBFS;
   applied by the turntable (`TurntableCommand.gain`). Derived from the audio, so never recorded;

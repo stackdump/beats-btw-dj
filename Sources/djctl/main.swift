@@ -685,7 +685,12 @@ case "levels":
   // plays it at (`SampleLevel`, LevelMatch.swift), one JSON object per line, then the spread
   // before / after against each one's target (`LevelSurvey.summary`). --stock N: N stock loops
   // from each category (`LevelSurvey.pick`).
-  let perCategory = option("--stock").map { max(1, Int($0)) }
+  let stock = option("--stock")
+  if let stock, !stock.isFinite || stock < 1 || stock > 10_000 {
+    stderr("usage: djctl levels [file…] [--stock N]   (N: loops per category, 1 or more)")
+    exit(2)
+  }
+  let perCategory = stock.map { Int($0) }
   var files = positional.map { (name: $0, category: "", url: URL(fileURLWithPath: $0)) }
   if let perCategory {
     files += LevelSurvey.pick(StockLoopLibrary().load(), perCategory: perCategory).map {

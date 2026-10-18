@@ -181,11 +181,13 @@ struct SampleAutoGainTests {
       entry(ref + 4),  // −4 dB: lands
       entry(ref - 20, peak: -30),  // past the ±12 dB clamp: 8 LU short
       entry(ref - 6, peak: -3),  // the peak allows only +2 dB: 4 LU short
+      entry(ref - 20, peak: 0),  // past the clamp too, but the peak allows no boost: 20 LU short
+      entry(ref - 20, peak: -12),  // past the clamp, the peak allows +11 dB: 9 LU short, peak
       entry(nil),  // silence: not counted
     ])
     #expect(s.spreadBefore == 24)
-    #expect(abs((s.spreadAfter ?? 0) - 8) < 1e-9)
-    #expect(s.exceptions.map(\.limitedBy) == ["maxGain", "peak"])
+    #expect(abs((s.spreadAfter ?? 0) - 20) < 1e-9)
+    #expect(s.exceptions.map(\.limitedBy) == ["maxGain", "peak", "peak", "peak"])
     #expect(s.summary["within"] as? Int == 2)
     #expect(s.summary["silent"] as? Int == 1)
     // a partial loop is measured against its own target (4 LU under)

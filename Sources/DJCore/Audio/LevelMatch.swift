@@ -146,14 +146,18 @@ public struct LevelSurvey: Sendable {
     public var errorBefore: Double? { level.lufs.map { $0 - level.targetLUFS } }
     /// LU off its target as a deck plays it, auto-gain on.
     public var errorAfter: Double? { errorBefore.map { $0 + level.autoGainDB } }
-    /// What kept it off its target: `maxGain` (the ±12 dB clamp) or `peak` (a boost cut back
-    /// to the peak ceiling); nil when it lands within the tolerance or is silent.
+    /// What kept it off its target: `peak` (the boost it wanted, after the ±12 dB clamp, was
+    /// cut back to the peak ceiling) or `maxGain` (the clamp itself); nil when it lands within
+    /// the tolerance or is silent. Decided from the gain actually applied: a sample past the
+    /// clamp whose peak allowed less than the clamp is `peak`.
     public var limitedBy: String? {
-      guard let e = errorAfter, abs(e) > LevelSurvey.toleranceLU, let before = errorBefore else {
+      guard let e = errorAfter, abs(e) > LevelSurvey.toleranceLU, let lufs = level.lufs else {
         return nil
       }
-      if abs(before) > LevelMatch.maxGainDB { return "maxGain" }
-      return "peak"
+      let m = LevelMatch.maxGainDB
+      let want = min(m, max(-m, level.targetLUFS - lufs))
+      let peakCap = max(0, LevelMatch.samplePeakCeilingDB - level.peakDB)
+      return want > peakCap ? "peak" : "maxGain"
     }
 
     public var dictionary: [String: Any] {
