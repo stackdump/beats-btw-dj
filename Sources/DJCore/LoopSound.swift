@@ -249,6 +249,7 @@ extension DJEngine {
     clipKeyLocks[id] = nil
     clipQuanta[id] = nil
     clipFades[id] = nil
+    clipFollows[id] = nil
     stretchCache[id] = nil
     if clipSolos.remove(id) != nil { pushClipLevels() }
   }
@@ -260,6 +261,7 @@ extension DJEngine {
     if let k = clipKeyLocks.removeValue(forKey: old) { clipKeyLocks[new] = k }
     if let q = clipQuanta.removeValue(forKey: old) { clipQuanta[new] = q }
     if let f = clipFades.removeValue(forKey: old) { clipFades[new] = f }
+    if let f = clipFollows.removeValue(forKey: old) { clipFollows[new] = f }
     stretchCache[old] = nil
   }
 }

@@ -495,6 +495,113 @@ struct LoopLaunchTests {
     #expect(lib.loadLaunch().isEmpty)
     #expect(try String(contentsOf: lib.indexFile, encoding: .utf8) == plain, "byte for byte")
   }
+
+  // MARK: a clip's own tempo follow
+
+  @Test func aClipFollowingItsOwnDeckIgnoresTheLouderOne() async throws {
+    let rig = try Rig()
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)  // both from A at 120
+    let b = try #require(rig.dj["B"])
+    await b.generate(TrackSpec(genre: "house", seed: 3, extra: JSONObject([("bpm", .number(126))])))
+    b.volume = 1
+    b.setPlaying(true)
+    func tempo(_ c: LoopClip) -> Double? {
+      rig.dj.loopVoices.first { $0.clipID == c.id }?.targetBPM
+    }
+    #expect(rig.dj.loopFollow == .louder)
+    rig.dj.perform(.clipFollow(id: one.id, mode: "source"))
+    #expect(rig.dj.clipFollow(one.id) == .source && rig.dj.clipFollow(two.id) == nil)
+    #expect(rig.dj.follow(for: one.id) == .source && rig.dj.follow(for: two.id) == .louder)
+    rig.dj.perform(.crossfader(1))  // all B
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.dominantDeck == "B")
+    #expect(abs((tempo(two) ?? 0) - 126) < 1e-6, "the row's: the louder deck")
+    #expect(abs((tempo(one) ?? 0) - 120) < 1e-6, "its own deck, not the louder")
+
+    // the other way round: the row follows each loop's own deck, one clip the louder
+    rig.dj.perform(.clipFollow(id: one.id, mode: nil))
+    rig.dj.perform(.loopFollow(mode: "source"))
+    rig.dj.perform(.clipFollow(id: two.id, mode: "louder"))
+    rig.dj.perform(.clipFollow(id: two.id, mode: "quieter"))  // not a follow: ignored
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.dominantDeck == "B", "kept up while a clip follows it")
+    #expect(abs((tempo(two) ?? 0) - 126) < 1e-6, "its own: the louder deck")
+    #expect(abs((tempo(one) ?? 0) - 120) < 1e-6, "the row's: its own deck")
+    #expect(rig.dj.loopClock(for: two).ref === b && rig.dj.loopClock(for: one).ref === rig.dj["A"])
+
+    // null follows the row again
+    rig.dj.perform(.clipFollow(id: two.id, mode: nil))
+    try rig.run(to: rig.dj.frame + 4096)
+    #expect(rig.dj.clipFollow(two.id) == nil)
+    #expect(abs((tempo(two) ?? 0) - 120) < 1e-6, "back on its own deck")
+  }
+
+  @Test func aClipsFollowRoundTripsRecordsAndGoesWithIt() throws {
+    for a in [
+      DeckAction.clipFollow(id: "abc", mode: "source"), .clipFollow(id: "abc", mode: nil),
+    ] {
+      #expect(DeckAction(json: a.json) == a, "\(a.json.canonicalJS)")
+      #expect(a.clipIDs == ["abc"])
+    }
+    #expect(
+      DeckAction.clipFollow(id: "x", mode: nil).json.canonicalJS
+        == #"{"id":"x","mode":null,"op":"clipFollow"}"#)
+    #expect(JournalEvent.action(.clipFollow(id: "x", mode: "louder")).foldKey == "follow.x")
+
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let c = testClip(1)
+    let d = testClip(2)
+    dj.restoreClips([c, d])
+    let rec = try SessionRecorder.start(on: dj)
+    dj.perform(.clipFollow(id: c.id, mode: "source"))
+    let events = rec.finish().events.map(\.kind)
+    #expect(events == [.action(.clipFollow(id: c.id, mode: "source"))])
+    let replay = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    replay.restoreClips([c, d])
+    for case .action(let a) in events { replay.perform(a) }
+    #expect(replay.clipFollow(c.id) == .source && replay.clipFollow(d.id) == nil)
+
+    // kept with the launch overrides, through a removal and the library
+    #expect(dj.clipLaunch == [c.id: ClipLaunch(follow: .source)], "only clips with one")
+    dj.removeClip(c.id)
+    #expect(dj.clipFollow(c.id) == nil && dj.follow(for: c.id) == .louder)
+    #expect(dj.removedClips.first?.sound == ClipSound(follow: .source))
+    dj.restoreClip(c.id)
+    #expect(dj.clipFollow(c.id) == .source)
+    let fresh = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    fresh.restoreClips([c, d])
+    fresh.restoreClipLaunch([
+      c.id: ClipLaunch(follow: .louder), "gone": ClipLaunch(follow: .source),
+    ])
+    #expect(fresh.clipFollow(c.id) == .louder && fresh.clipLaunch.keys.sorted() == [c.id])
+
+    // a journal checkpoint holds it, and says nothing for clips without one
+    let state = JournalState(engine: dj)
+    #expect(state.clips.first { $0.id == c.id }?.follow == .source)
+    #expect(state.clips.first { $0.id == d.id }?.follow == nil)
+    let back = try #require(JournalState(json: try JSONValue.parse(state.json.canonicalJS)))
+    #expect(back.clips == state.clips)
+    let restored = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    state.restore(into: restored) { $0 == c.id ? c : $0 == d.id ? d : nil }
+    #expect(restored.clipFollow(c.id) == .source && restored.clipFollow(d.id) == nil)
+    let plain = JournalState(sampleRate: 48_000, clips: [ClipCheckpoint(id: "abc", title: "x")])
+    #expect(!plain.json.canonicalJS.contains("\"follow\""))
+  }
+
+  @Test func aClipsFollowSurvivesTheLibraryAndIsLeftOutWithout() throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let row = [testClip(1), testClip(2)]
+    try lib.save(row)
+    let plain = try String(contentsOf: lib.indexFile, encoding: .utf8)
+    #expect(!plain.contains("\"follow\""), "nothing when unset")
+    let launch = [row[1].id: ClipLaunch(fade: .bar, follow: .source)]
+    try lib.save(row, launch: launch)
+    #expect(lib.loadLaunch() == launch)
+    try lib.save(row, launch: [:])
+    #expect(try String(contentsOf: lib.indexFile, encoding: .utf8) == plain, "byte for byte")
+  }
 }
 
 /// A one-bar clip at 120 bpm whose samples say which clip it is.

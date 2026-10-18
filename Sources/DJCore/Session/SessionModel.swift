@@ -172,6 +172,9 @@ public enum DeckAction: Equatable, Sendable {
   /// One clip's own fade (a `LoopFade` raw value); nil follows the row's
   /// (`DJEngine.setClipFade`).
   case clipFade(id: String, mode: String?)
+  /// Whose tempo one clip follows (a `LoopFollow` raw value: "louder" | "source"); nil follows
+  /// the row's (`DJEngine.setClipFollow`).
+  case clipFollow(id: String, mode: String?)
   /// How many bars a quick tap of a controller's LOOP button records (1…64), or nil for none
   /// (a tap records to the next downbeat) (`DJEngine.setTapTakeBars`).
   case tapBars(bars: Int?)
@@ -516,6 +519,8 @@ extension DeckAction {
       return o("clipQuantize", [("id", .string(id)), ("beats", beats.map { .int($0) } ?? .null)])
     case .clipFade(let id, let mode):
       return o("clipFade", [("id", .string(id)), ("fade", mode.map { .string($0) } ?? .null)])
+    case .clipFollow(let id, let mode):
+      return o("clipFollow", [("id", .string(id)), ("mode", mode.map { .string($0) } ?? .null)])
     case .tapBars(let bars): return o("tapBars", [("bars", bars.map { .int($0) } ?? .null)])
     case .voiceTweak(let deck, let channel, let params):
       return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
@@ -562,7 +567,8 @@ extension DeckAction {
     "clipGain", "clipSequence", "clipCrop", "clipRemove", "clipRestore", "clipForget",
     "clipRename", "clipColor", "loopQuantize", "loopFollow", "sceneSave", "sceneLaunch",
     "sceneRename", "sceneDelete", "clipMute", "clipSolo", "clipKeyLock", "loopKeyLock",
-    "loopFade", "clipQuantize", "clipFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove",
+    "loopFade", "clipQuantize", "clipFade", "clipFollow", "tapBars", "voiceTweak", "voiceSynth",
+    "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
     "setRoleVoice", "clipImport", "mixOut", "mixIn",
   ]
@@ -634,6 +640,7 @@ extension DeckAction {
     case "loopFade": self = .loopFade(mode: v["fade"]?.string ?? LoopFade.declick.rawValue)
     case "clipQuantize": self = .clipQuantize(id: v["id"]?.string ?? "", beats: v["beats"]?.int)
     case "clipFade": self = .clipFade(id: v["id"]?.string ?? "", mode: v["fade"]?.string)
+    case "clipFollow": self = .clipFollow(id: v["id"]?.string ?? "", mode: v["mode"]?.string)
     case "tapBars": self = .tapBars(bars: v["bars"]?.int)
     case "voiceTweak":
       guard let ch = v["channel"]?.int else { return nil }

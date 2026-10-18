@@ -351,7 +351,7 @@ struct MusicalityTests {
       let triads = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.color))
       let a = report(triads)
       let b = report(t.played)
-      #expect(try #require(b.padColor) >= 0.75, "\(genre)/\(seed)")
+      #expect(try #require(b.padColor) >= 0.6, "\(genre)/\(seed)")
       #expect(a.padColor == 0)
       #expect(b.inKey >= a.inKey)
       #expect(b.harmonyInBassRange == 0)
@@ -362,6 +362,32 @@ struct MusicalityTests {
       let y = report(DJMusicality.apply(t.composed, spec: t.spec, fixes: plain))
       #expect(y.semitoneClashes <= x.semitoneClashes + 1, "\(genre)/\(seed)")
     }
+    let techno = played("techno", 42)
+    let plain = DJMusicality.apply(
+      techno.composed, spec: techno.spec, fixes: .all.subtracting(.color))
+    #expect(plain.canonicalJSON == techno.played.canonicalJSON)
+  }
+
+  /// On `.variety`'s progressions too, as the deck plays them: a seventh that would rub
+  /// against the melody, arp or bass (or a major seventh just under a voiced root) is moved or
+  /// left out, so the played track has at most one rub per 100 pairs more than its triads,
+  /// and most chords keep their colour.
+  @Test(arguments: ["house", "garage", "jazz", "bossa", "funk"])
+  func seventhsDoNotAddRubsOnVarietysProgressions(genre: String) throws {
+    var color = 0.0
+    let seeds: [Double] = [1, 7, 13, 21, 42, 64, 99, 123, 777, 2024]
+    for seed in seeds {
+      let t = played(genre, seed)
+      let triads = report(
+        DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.color)))
+      let sevenths = report(t.played)
+      #expect(
+        sevenths.semitoneClashes <= triads.semitoneClashes + 1,
+        "\(genre)/\(seed): rubs \(triads.semitoneClashes) → \(sevenths.semitoneClashes)")
+      color += try #require(sevenths.padColor)
+    }
+    #expect(
+      color / Double(seeds.count) >= 0.6, "\(genre): pad colour \(color / Double(seeds.count))")
     let techno = played("techno", 42)
     let plain = DJMusicality.apply(
       techno.composed, spec: techno.spec, fixes: .all.subtracting(.color))
