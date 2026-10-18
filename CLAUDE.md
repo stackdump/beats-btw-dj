@@ -140,7 +140,10 @@ its copy; the two are now independent. Rules inherited from that split:
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
-  (GO-DIVERGENCE.md §5).
+  (GO-DIVERGENCE.md §5). `Resources/beats/grooves.json` (`GrooveTemplate`: per family, offset
+  ms 0…15 and velocity scale per drum voice × 16 steps, tempo-scaled Linn swing) is averaged
+  from the Groove MIDI Dataset (CC BY 4.0, attributed in README) by `make groove-templates`
+  (sha256-pinned fetch into `.build/gmd`); regenerate, never hand-edit the numbers.
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 

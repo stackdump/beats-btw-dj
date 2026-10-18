@@ -135,6 +135,15 @@ Sweetwater, APC mini mk2 from Akai) — approximate, not measured.
   installing: `sudo xcode-select -s /Applications/Xcode.app`.
 - Go 1.25+ and node (for the Go CLI and the web lab tests).
 
+## Data and attribution
+
+- `Sources/DJCore/Resources/beats/grooves.json` (the groove templates, `make groove-templates`)
+  is derived from the [Groove MIDI Dataset](https://magenta.tensorflow.org/datasets/groove)
+  by Jon Gillick, Adam Roberts, Jesse Engel, Douglas Eck and David Bamman (Google Magenta),
+  licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): per-position timing and
+  velocity averages only, no MIDI from the dataset is in this repo. Gillick et al., "Learning
+  to Groove with Inverse Sequence Transformations", ICML 2019.
+
 ## Native ↔ browser bridge
 
 The learner (`web/jog/learn.js`) is still JavaScript. The Go CLI records raw
