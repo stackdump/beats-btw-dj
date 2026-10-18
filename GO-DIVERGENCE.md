@@ -129,6 +129,11 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
      seed. dj moves each track to its own key, progression, bass figure and drum detail,
      seeded from the seed (`.variety`, `TrackVariety.swift`). In beats it would change what a
      seed composes, so a new cohesion version (`v3`) rather than an edit to v2.
+     Per-part seeds (`TrackSpec.partSeeds`: a bass, drum part, melody or arp that keeps its own
+     seed's figure while the rest of the track follows the track seed) are dj-only deck state:
+     written beside the share in a session, never in `extra`, `layers` or the share payload, so
+     the share, its CID and `compose()` are the same with or without them (beats never sees
+     the key). Not for beats unless it wants the same lock in its own UI.
 
 5. **vinyl-brake is a turntable brake** (`TurntableBrake.swift`, `WaveOptions.turntableBrake`, on
    in `.extended`). beats' catalog makes it a compound of tape-stop (0 ms) and octave-down

@@ -148,6 +148,10 @@ its copy; the two are now independent. Rules inherited from that split:
   ms 0…15 and velocity scale per drum voice × 16 steps, tempo-scaled Linn swing) is averaged
   from the Groove MIDI Dataset (CC BY 4.0, attributed in README) by `make groove-templates`
   (sha256-pinned fetch into `.build/gmd`); regenerate, never hand-edit the numbers.
+  `.feel` plays it in the runner (`WaveOptions.feel`, set by `forGenre`; `WaveProject.feelTable`):
+  in place of the project's swing / humanize, a drum is late by its offset + (2r − 1) × half a pair
+  (a sixteenth; jazz an eighth) on its off-beat, r at the tempo playing, its velocity scaled; tonal lanes
+  swing only. Without the flag (or the template) the template is never read.
   `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
   b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
   4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
@@ -440,6 +444,10 @@ its copy; the two are now independent. Rules inherited from that split:
   outros hold 2 bars per chord (pad rings of 2 or 4 bars only), a buildup's last half-bar is the V
   (else ♭VII) of what follows, the bar into a chorus plays 2 chords; drops untouched. Section ends
   are `tail` (2 half-bar slots overriding the cycle). `.sectionHarmony` alone is the old plan.
+- `TrackSpec.partSeeds` (bass / kick / snare / hihat / melody / arp → seed) are dj-only: the
+  session writes them beside the share, never in `extra` / `layers` / the payload, so the share
+  CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
+  transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -507,8 +515,11 @@ its copy; the two are now independent. Rules inherited from that split:
   crossfade through dry over 10 ms. Measured allocation-free (`LoopFxRealTimeTests`).
 - Persistence: library.json entries (`fx`, only when set), removed/, the journal checkpoint's
   clips (the run's FX win over the library's on restore). A crop keeps its clip's FX; a new
-  sequence starts off (its steps' audio is dry), an edited one keeps its own; a clip on deck A/B
-  plays dry; scenes don't recall FX. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
+  sequence starts off (its steps' audio is dry), an edited one keeps its own; scenes don't recall
+  FX. A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
+  `LoopFxVoice` + limiter (made at init, fed by `DeckFxCommand` through an SPSC ring, run in sample
+  mode only while the chain is in the path, so a dry deck is the turntable's bytes); `loadClip`
+  sends the clip's FX, `setClipFx` forwards to a deck playing it, any other load drops them. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
   Crunch, Fuzz, Crush, Loud), Settings… ▸ FX, the tile's FX popover; an FX badge when active.
 
 ## Control socket and MCP

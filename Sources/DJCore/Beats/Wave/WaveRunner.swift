@@ -102,6 +102,9 @@ public struct WaveOptions {
   /// The track's genre, set by `forGenre`; nil (raw nets, parity) = unknown, and the gestures
   /// a genre gates (`.bandStop`: the song family) stay off.
   public var genre: String?
+  /// The family's groove template the drums play (`DJMusicality.Fixes.feel`), set from the
+  /// track's genre (`GrooveTemplate.forGenre`); nil = none, even with `.feel` on.
+  public var feel: GrooveTemplate?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -526,6 +529,43 @@ private func detune(_ lane: Lane, group: String, wide: Bool, _ sr: Double) {
   lane.uniHP = biquad(type: "highpass", fc: Unison.sideHz, q: 0.7071, sr: sr)
 }
 
+/// `.feel` as the runner reads it: a family's `GrooveTemplate` flattened into fixed arrays
+/// (`voice × 16 + step`) when a project is prepared. The swing is not folded in (unlike
+/// `GrooveTemplate.Prepared`): it is worked out per hit at the tempo playing, so a tempo
+/// change or a tempo macro moves it. Reading it never allocates.
+struct FeelTable: Sendable {
+  let offsetMs: [Double]
+  let velocity: [Double]
+  let swing: GrooveTemplate.Swing
+
+  init(_ t: GrooveTemplate) {
+    var off = [Double](
+      repeating: 0, count: GrooveTemplate.Voice.allCases.count * GrooveTemplate.steps)
+    var vel = [Double](repeating: 1, count: off.count)
+    for v in GrooveTemplate.Voice.allCases {
+      for s in 0..<GrooveTemplate.steps {
+        off[Self.cell(v, s)] = max(0, t.offsetMs(v, step: s))
+        vel[Self.cell(v, s)] = t.velocity(v, step: s)
+      }
+    }
+    offsetMs = off
+    velocity = vel
+    swing = t.swing
+  }
+
+  @inline(__always) static func cell(_ voice: GrooveTemplate.Voice, _ step: Int) -> Int {
+    voice.rawValue * GrooveTemplate.steps + (step & (GrooveTemplate.steps - 1))
+  }
+
+  /// The swing delay (ms) of bar step `step` at `bpm`: (2r − 1) sixteenths on the off-beat
+  /// sixteenth of each pair (twice that on the off-beat eighth of the jazz family's), 0 elsewhere.
+  @inline(__always) func swingMs(step: Int, bpm: Double) -> Double {
+    let pair = swing.pairSteps
+    guard step % pair == pair / 2, bpm > 0 else { return 0 }
+    return swing.delayMs(bpm: bpm)
+  }
+}
+
 /// A compiled project plus its voices: everything the audio thread needs, built off the
 /// audio thread (`WaveRunner.prepare`) and handed over whole. Reference-counted so the
 /// runner can pass it to a retire hook instead of freeing it on the audio thread.
@@ -585,6 +625,9 @@ public final class WaveProject: @unchecked Sendable {
   public let echo: EchoSpec?
   /// The parts' trims it plays with (`.balance`), dB; nil = none.
   public let balance: [String: Double]?
+  /// The groove template it plays (`.feel`); nil = none. `feelTable` is what the runner reads.
+  public let feel: GrooveTemplate?
+  let feelTable: FeelTable?
   /// `vinyl-brake` brakes the deck while this project plays (`WaveOptions.turntableBrake`).
   public internal(set) var turntableBrake = false
   private static let generations = Atomic<Int>(0)
@@ -596,9 +639,11 @@ public final class WaveProject: @unchecked Sendable {
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
     rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
     space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil,
-    harmony: SectionHarmony? = nil
+    harmony: SectionHarmony? = nil, feel: GrooveTemplate? = nil
   ) {
     self.gain = gain
+    self.feel = feel
+    feelTable = feel.map(FeelTable.init)
     self.harmony = harmony
     self.echo = echo
     self.balance = balance
@@ -841,7 +886,8 @@ private func buildLanes(
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, rests: rests,
     songRests: songRests, tail: tail, space: space ? opts.space ?? .room : nil,
-    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony)
+    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony,
+    feel: opts.musicality.contains(.feel) ? opts.feel : nil)
   project.sampledGroups = sampledGroups
   return project
 }
@@ -1637,24 +1683,41 @@ public final class WaveRunner {
   /// 0…15 ms × h late on the beat) and velocity (±15 × h). Never early, so a note never
   /// leaves its tick. The jitter is a hash of (tick, net, transition), not a random draw: a
   /// replay plays the same groove.
+  ///
+  /// With `.feel` (the project has a `feelTable`) the family's template plays instead of the
+  /// project's swing and humanize: a drum is late by its template offset at (voice, bar step)
+  /// plus the swing delay, (2r − 1) × the swing grid's half pair on its off-beat member, r the
+  /// family's ratio at the tempo playing; its velocity is scaled by the template. Tonal lanes
+  /// (and drums the template has no voice for) get the swing only.
   private func grooveHit(
     _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, lane li: Int, note: Int
   ) {
-    let p = proj.graph.project
     let step = proj.graph.tick - 1
-    let tickMs = 60000 / (clock[clkTempo] * ppq)
-    let h = p.humanize / 100
-    var r = grooveHash(step, n.index, t)
-    let r1 = Double(r & 0xFFFF) / 65535 * 2 - 1
-    r >>= 16
-    let r2 = Double(r & 0xFFFF) / 65535 * 2 - 1
     var delayMs = 0.0
-    if step % 2 == 1 {
-      delayMs = max(0, p.swing / 100 * tickMs * 0.5 + r1 * h * 30)
-    } else if h > 0 {
-      delayMs = max(0, r1 * h * 15)
+    var vel = n.vel[t]
+    if let feel = proj.feelTable {
+      let bar = step & (GrooveTemplate.steps - 1)
+      delayMs = feel.swingMs(step: bar, bpm: clock[clkTempo])
+      if !lane.isTonal, let v = GrooveTemplate.Voice(note: note) {
+        let c = FeelTable.cell(v, bar)
+        delayMs += feel.offsetMs[c]
+        vel = max(1, min(127, Int((Double(vel) * feel.velocity[c]).rounded())))
+      }
+    } else {
+      let p = proj.graph.project
+      let tickMs = 60000 / (clock[clkTempo] * ppq)
+      let h = p.humanize / 100
+      var r = grooveHash(step, n.index, t)
+      let r1 = Double(r & 0xFFFF) / 65535 * 2 - 1
+      r >>= 16
+      let r2 = Double(r & 0xFFFF) / 65535 * 2 - 1
+      if step % 2 == 1 {
+        delayMs = max(0, p.swing / 100 * tickMs * 0.5 + r1 * h * 30)
+      } else if h > 0 {
+        delayMs = max(0, r1 * h * 15)
+      }
+      if h > 0 { vel = max(1, min(127, Int((Double(vel) + r2 * h * 15).rounded()))) }
     }
-    let vel = h > 0 ? max(1, min(127, Int((Double(n.vel[t]) + r2 * h * 15).rounded()))) : n.vel[t]
     let delay = delayMs / 1000 * sampleRate
     guard delay >= 1, grooveCount < Self.grooveCapacity else {
       hit(lane, n, t, note: note, velocity: vel)
@@ -2224,7 +2287,9 @@ public final class WaveRunner {
     // The tick's anchor goes out before its fires (`advance` is exactly one tick): a reader
     // that looks at the fires first and the anchors second finds the anchor of every fire.
     anchor(proj, tick: g.tick + 1, swap: false)
-    let groove = grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
+    let groove =
+      proj.feelTable != nil
+      || grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
     // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
     let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
     let step = g.tick
