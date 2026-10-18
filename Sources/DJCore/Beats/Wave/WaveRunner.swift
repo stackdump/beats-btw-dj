@@ -267,6 +267,11 @@ final class Lane {
   var fBase = 0.0
   var fMul = 0.0
   var fK = 1.0
+  var fQ = 1.0
+  /// `.sweep`: each voice's `fBase` and `fK` as struck (the lane's own outside a buildup;
+  /// `BuildupSweep` inside one), so a note keeps the colour it started with.
+  var fBaseV: [Double] = []
+  var fKV: [Double] = []
   var fEnv: [Double] = []
   var fVel: [Double] = []
   var fz1: [Double] = []
@@ -522,6 +527,9 @@ private func shapeVoice(_ lane: Lane, group: String, plucked: Set<String>, _ sr:
   lane.fBase = f.base
   lane.fMul = exp(-1 / (f.seconds * sr))
   lane.fK = 1 / f.q
+  lane.fQ = f.q
+  lane.fBaseV = [Double](repeating: f.base, count: lane.poly)
+  lane.fKV = [Double](repeating: 1 / f.q, count: lane.poly)
   lane.fEnv = [Double](repeating: 0, count: lane.poly)
   lane.fVel = [Double](repeating: 0, count: lane.poly)
   lane.fz1 = [Double](repeating: 0, count: lane.poly)
@@ -1075,6 +1083,10 @@ public final class WaveRunner {
   // lowpass leaves the drums alone; level and cutoff follow the project's `EnergyCurve`,
   // smoothed once a block.
   private let energyOn: Bool
+  // `.sweep`: how far through a buildup the note being struck is (`EnergyCurve.rampProgress`),
+  // -1 outside one; set before each tonal note-on, read by `strike`.
+  private let sweepOn: Bool
+  private var sweepX = -1.0
   private var splitTone = false
   private var accTone = 0.0
   private var toneL = [Float](repeating: 0, count: 4096)
@@ -1131,6 +1143,7 @@ public final class WaveRunner {
     grooveOn = opts.musicality.contains(.groove)
     onHit = opts.onHit
     energyOn = opts.musicality.contains(.energy)
+    sweepOn = opts.musicality.contains(.sweep)
     stereoOn = opts.musicality.contains(.stereo)
     samplerSide = SideHighpass(hz: 150, sampleRate: sampleRate)
     masterGain = opts.masterGain
@@ -1165,8 +1178,10 @@ public final class WaveRunner {
     // plays on samplers (each sits at its sampler's level, not its synth voice's)
     let measureGain = opts.trackGain == nil && opts.musicality.contains(.loudness)
     let gain = opts.trackGain ?? 1
+    // (`.sweep` reads the curve's ramps too; the level and lowpass stay `.energy`'s)
     let energy =
-      opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
+      opts.musicality.contains(.energy) || opts.musicality.contains(.sweep)
+      ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     let songRests =
       opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
@@ -1505,7 +1520,9 @@ public final class WaveRunner {
       }
     }
     let cur = lane.sd[v] + lane.sa[v]
+    if sweepOn { sweepX = sweepProgress(tick: -1) }
     strike(lane, v, note: note)
+    sweepX = -1
     if lane.fAmount > 0 { lane.fVel[v] = w * w }
     lane.md[v] = exp(-lane.st[slotInvSr] / 0.3)  // release time constant, used after noteOff
     lane.hold[v] = true
@@ -1684,7 +1701,18 @@ public final class WaveRunner {
     }
     let steps = n.durSteps[t]
     let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
+    if sweepOn { sweepX = sweepProgress(tick: tick) }
     trigger(lane, note: note, w: w, durMs: durMs)
+    sweepX = -1
+  }
+
+  /// `.sweep`: the ramp progress of the step a note was due on (`tick` is the graph's counter
+  /// after it; -1 = now), or -1 outside a buildup.
+  @inline(__always)
+  private func sweepProgress(tick: Int) -> Double {
+    guard let proj = current, let curve = proj.energy else { return -1 }
+    let step = (tick >= 0 ? tick : proj.graph.tick) - 1
+    return curve.rampProgress(step: max(0, step)) ?? -1
   }
 
   /// `onHit`'s record of a hit (offline only: it builds strings). `note`: as played.
@@ -1990,7 +2018,18 @@ public final class WaveRunner {
       while k < lane.mipTop.count - 1 && lane.mipTop[k] < hz * 1.06 { k += 1 }
       lane.mipBase[v] = k * (waveTableSize + 1)
     }
-    if lane.fAmount > 0 { lane.fEnv[v] = 1 }
+    if lane.fAmount > 0 {
+      lane.fEnv[v] = 1
+      // `.sweep`: a buildup's notes struck darker at first, brighter and more resonant as it
+      // goes; any other note gets the lane's own values (bit-identical renders outside one)
+      if sweepX >= 0 {
+        lane.fBaseV[v] = BuildupSweep.base(lane.fBase, x: sweepX)
+        lane.fKV[v] = 1 / BuildupSweep.q(lane.fQ, x: sweepX)
+      } else {
+        lane.fBaseV[v] = lane.fBase
+        lane.fKV[v] = lane.fK
+      }
+    }
     if lane.uniWide {
       // centred at A3 and below (the pair's beating would widen the low mids), full from C5
       lane.uniWidth[v] = lane.uniMax * min(1, max(0, Double(note - 57) / 15))
@@ -2304,12 +2343,12 @@ public final class WaveRunner {
   private func filterSample(_ lane: Lane, _ k: Int, _ x: Double, hz: Double) -> Double {
     let e = lane.fEnv[k]
     lane.fEnv[k] = e * lane.fMul
-    let fc = min(hz * lane.fBase + lane.fAmount * lane.fVel[k] * e, 0.3 * sampleRate)
+    let fc = min(hz * lane.fBaseV[k] + lane.fAmount * lane.fVel[k] * e, 0.3 * sampleRate)
     // tan(π fc / sr), to a few percent below 0.3 sr (its Taylor series to x⁵)
     let w = Double.pi * fc * lane.st[slotInvSr]
     let w2 = w * w
     let g = w * (1 + w2 * (1.0 / 3 + w2 * (2.0 / 15)))
-    let a1 = 1 / (1 + g * (g + lane.fK))
+    let a1 = 1 / (1 + g * (g + lane.fKV[k]))
     let a2 = g * a1
     let a3 = g * a2
     let ic1 = lane.fz1[k]
