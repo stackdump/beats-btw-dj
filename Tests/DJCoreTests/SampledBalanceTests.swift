@@ -108,14 +108,15 @@ struct SampledBalanceTests {
   }
 
   /// The sampled path of `--balance`: the deck's own instruments soloed against the mix sit
-  /// within 2 dB (standard deviation) of `MixBalance.targetDB`'s balance.
+  /// within 2 dB (standard deviation) of their family's balance (`MixBalance.targets(family:)`).
   @Test(arguments: ["techno", "house", "lofi", "jazz", "country", "funk"])
   func sampledMixIsBalanced(genre: String) throws {
     let bank = SamplerBank(sampleRate: sr, partLevelCache: tempPartLevelCache())
     let t = track(genre, 42, bank: bank, fixes: .all)
     try #require(!sampledLanes(t.prepared).isEmpty, "\(genre): a sampled part")
     let levels = MixBalance.measure(t.played, opts: t.opts, bars: 4, samplers: bank)
-    let e = try #require(MixBalance.error(levels), "\(genre): \(levels)")
+    let e = try #require(
+      MixBalance.error(levels, family: MixBalance.family(genre: genre)), "\(genre): \(levels)")
     print("\(genre) sampled balance error \(e) dB:", levels.sorted { $0.key < $1.key })
     #expect(e <= 2, "\(genre): sampled balance error \(e) dB, \(levels)")
   }

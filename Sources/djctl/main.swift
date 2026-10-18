@@ -694,9 +694,13 @@ case "render":
   if balance {
     let levels = MixBalance.measure(
       track.played, opts: track.opts, samplers: synth ? nil : source.samplers)
+    let report = MixBalance.Report(levels: levels, genre: spec.genre)
     audio["balanceDB"] = levels.mapValues(round3)
     audio["balanceSampled"] = !synth
-    if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
+    // the targets.json entry the error is against (the family's, else the default)
+    audio["balanceTargets"] = report.entry
+    audio["balanceTargetDB"] = report.targets
+    if let e = report.errorDB { audio["balanceErrorDB"] = round3(e) }
   }
   // --layers: the melodic parts sounding in each section, from solo renders (synth voices)
   if layers {

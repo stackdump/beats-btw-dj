@@ -71,18 +71,50 @@ public enum MixBalance {
   /// among the parts they have. `targets.json`'s `balance.default` (`MixTargets`): kick 0,
   /// bass −3, lead −4, snare −6, pad −7, arp −8, hats −10.
   public static let targetDB: [String: Double] = MixTargets.shared.balanceDB()
+  /// The targets.json balance entry a family plays to (`GrooveTemplate.familyNames`): its own
+  /// `balance.families` block when there is one, else jazz borrows chill's (the
+  /// [RULE-OF-THUMB] jazz / lofi entry: bass −1, pad −4, lead −4, snare −8, hats −14, kick −2,
+  /// arp the default's), else "default". nil family (raw nets, no genre) = "default".
+  public static func entry(family: String?) -> String {
+    let blocks = MixTargets.shared.balance.families
+    guard let family else { return "default" }
+    if blocks[family] != nil { return family }
+    if let f = borrowed[family], blocks[f] != nil { return f }
+    return "default"
+  }
+  /// Families with no block of their own that play to another's.
+  static let borrowed = ["jazz": "chill"]
+
+  /// The balance targets for `family`: `targetDB` with its entry's parts (`entry(family:)`).
+  public static func targets(family: String?) -> [String: Double] {
+    let e = entry(family: family)
+    return e == "default" ? targetDB : MixTargets.shared.balanceDB(family: e)
+  }
+
+  /// The family a genre's balance is looked up under (`BeatsTables.family(of:)`'s name); nil
+  /// for no genre.
+  public static func family(genre: String?) -> String? {
+    guard let genre else { return nil }
+    let i = BeatsTables.shared.family(of: genre)
+    let names = GrooveTemplate.familyNames
+    return names.indices.contains(i) ? names[i] : nil
+  }
+
   /// A part moves at most this far (`balance.maxTrimDB`).
   public static let maxTrimDB = MixTargets.shared.balance.maxTrimDB.value!
   /// The rate the parts are measured at for `trims`.
   static let probeRate = 22_050.0
 
-  /// The trim (dB) for each part of `project` that puts the parts in `targetDB`'s relation, as
+  /// The trim (dB) for each part of `project` that puts the parts in `family`'s targets'
+  /// relation (`targets(family:)`; nil = `targetDB`), as
   /// near as `maxTrimDB` allows: each part soloed through the loudness probe (`Loudness.measure`:
   /// two bars of the busiest section, the voices `fixes` shape, at `probeRate`), then moved toward its target
   /// around the median of where they all are (so the mix as a whole moves little; `.loudness`
   /// sets its level after). Empty when fewer than two parts play.
-  public static func trims(for project: Project, fixes: DJMusicality.Fixes = []) -> [String: Double]
-  {
+  public static func trims(
+    for project: Project, fixes: DJMusicality.Fixes = [], family: String? = nil
+  ) -> [String: Double] {
+    let targetDB = targets(family: family)
     let start = Loudness.busiestStart(project)
     var level: [String: Double] = [:]
     for name in parts {
@@ -103,9 +135,11 @@ public enum MixBalance {
     return out
   }
 
-  /// How far a mix is from `targetDB`'s balance, dB: the standard deviation of each part's
-  /// level less its target (0 = every part exactly where it should be against the others).
-  public static func error(_ levels: [String: Double]) -> Double? {
+  /// How far a mix is from `family`'s balance (`targets(family:)`; nil = `targetDB`), dB: the
+  /// standard deviation of each part's level less its target (0 = every part exactly where it
+  /// should be against the others).
+  public static func error(_ levels: [String: Double], family: String? = nil) -> Double? {
+    let targetDB = targets(family: family)
     let d = levels.compactMap { k, v in targetDB[k].map { v - $0 } }
     guard d.count >= 2 else { return nil }
     let mean = d.reduce(0, +) / Double(d.count)
@@ -137,7 +171,7 @@ public enum MixBalance {
       o.trackEnergy = EnergyCurve(project: played)
     }
     if o.musicality.contains(.balance) && o.trackBalance == nil {
-      o.trackBalance = trims(for: played, fixes: o.musicality)
+      o.trackBalance = trims(for: played, fixes: o.musicality, family: family(genre: o.genre))
     }
     func level(_ p: Project) -> Double? {
       let runner = WaveRunner(sampleRate: sampleRate, opts: o)
@@ -173,6 +207,26 @@ public enum MixBalance {
       if let l = level(solo(played, name)) { out[name] = l - mix }
     }
     return out
+  }
+}
+
+extension MixBalance {
+  /// What `djctl render --balance` reports: the parts' levels against the mix, the genre's
+  /// family, the targets.json entry it was held to (`entry(family:)`) and how far off it is.
+  public struct Report: Equatable, Sendable {
+    public var levels: [String: Double]
+    public var family: String?
+    public var entry: String
+    public var targets: [String: Double]
+    public var errorDB: Double?
+
+    public init(levels: [String: Double], genre: String?) {
+      self.levels = levels
+      family = MixBalance.family(genre: genre)
+      entry = MixBalance.entry(family: family)
+      targets = MixBalance.targets(family: family)
+      errorDB = MixBalance.error(levels, family: family)
+    }
   }
 }
 

@@ -47,7 +47,34 @@
         "source": "rule-of-thumb (pre-6.1): the hat level, about 10 dB under the kick"
       }
     },
-    "families": {},
+    "families": {
+      "chill": {
+        "kick": {
+          "value": -2,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "bass": {
+          "value": -1,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "lead": {
+          "value": -4,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "snare": {
+          "value": -8,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "pad": {
+          "value": -4,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "hats": {
+          "value": -14,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        }
+      }
+    },
     "maxTrimDB": {
       "value": 6.0,
       "source": "rule-of-thumb (pre-6.1)"
