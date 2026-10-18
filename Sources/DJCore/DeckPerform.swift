@@ -71,18 +71,34 @@ extension Deck {
   }
 
   /// Move the net to a tick (the swap lands on the next bar). Off the main thread by
-  /// default; inline in `deterministic` (replay) mode.
-  public func relocate(toTick tick: Int) {
+  /// default; inline in `deterministic` (replay) mode. `tail` / `rest`: the project from there
+  /// on plays that mix-out tail, or that extra rest on top of the song's (`mixOut`, `mixIn`).
+  public func relocate(toTick tick: Int, tail: MixOutTail? = nil, rest: RestSchedule.Entry? = nil) {
     guard mode == .net, let project = netProject else { return }
     if deterministic {
       wave.load(
         WaveRunner.prepare(
-          project, sampleRate: wave.sampleRate, opts: sameSongOptions(waveOptions),
+          project, sampleRate: wave.sampleRate,
+          opts: movedOptions(waveOptions, project, tail: tail, rest: rest),
           startTick: max(0, tick), trackSerial: wave.latest?.trackSerial))
       applyNetTempo()
     } else {
-      Task { @MainActor in await self.jumpToTick(tick) }
+      Task { @MainActor in await self.jumpToTick(tick, tail: tail, rest: rest) }
     }
+  }
+
+  /// `sameSongOptions(opts)` with a new mix-out tail and / or one more rest (in song ticks).
+  private func movedOptions(
+    _ opts: WaveOptions, _ project: Project, tail: MixOutTail?, rest: RestSchedule.Entry?
+  ) -> WaveOptions {
+    var o = sameSongOptions(opts)
+    if let tail { o.tail = tail }
+    if let rest {
+      let song =
+        o.trackRests ?? RestSchedule.build(project, fixes: o.musicality, genre: o.genre)
+      o.trackRests = song.with(rest: rest)
+    }
+    return o
   }
 
   /// `opts` for another start of the song this deck plays: it keeps the playing project's
@@ -132,14 +148,17 @@ extension Deck {
 
   /// Jump the net to an exact tick (quantised to the next bar by the swap).
   @MainActor @discardableResult
-  public func jumpToTick(_ tick: Int) async -> Bool {
+  public func jumpToTick(
+    _ tick: Int, tail: MixOutTail? = nil, rest: RestSchedule.Entry? = nil
+  ) async -> Bool {
     guard mode == .net, let project = netProject else { return false }
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = voicingSeed
     let filter = roleFilter
     let song = wave.latest?.trackSerial
-    let opts = sameSongOptions(.extended(samplers: bank, seed: seed, roleFilter: filter))
+    let opts = movedOptions(
+      .extended(samplers: bank, seed: seed, roleFilter: filter), project, tail: tail, rest: rest)
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
@@ -150,6 +169,62 @@ extension Deck {
     wave.load(prepared)
     applyNetTempo()
     return true
+  }
+
+  // MARK: mix out / mix in (ROADMAP 6.2, performable form)
+
+  /// Where a change made "from the next bar" starts: the tick to prepare from (the swap's,
+  /// `nextSwapTick`, on a playing deck: it carries on where the playing project would be) and
+  /// the bar line the change begins on.
+  var nextBarStart: (tick: Int, bar: Int) {
+    if wave.isPlaying {
+      let t = nextSwapTick
+      return (t, t + 1)
+    }
+    let t = max(0, wave.tick)
+    return (t, (t + 15) / 16 * 16)
+  }
+
+  /// Mix the deck out (`DeckAction.mixOut`): at the next bar it jumps to the song's outro (or,
+  /// already in it or with none, plays on from where it is) and from that bar line plays only
+  /// its drums-forward lanes for `bars` bars, then stops on a bar line (`MixOutTail`; the room
+  /// rings out). Section jumps, kit and palette changes keep the tail (`sameSongOptions`); a
+  /// new track drops it. The relocation is part of the action, never recorded on its own.
+  /// Returns the tail, nil on a deck not playing a net.
+  @discardableResult
+  public func mixOut(bars: Int = MixOutTail.defaultBars) -> MixOutTail? {
+    guard mode == .net, netProject != nil else { return nil }
+    var (tick, bar) = nextBarStart
+    if let outro = sections.last(where: { $0.name == "outro" }), outro.startTick >= bar {
+      tick = outro.startTick
+      bar = outro.startTick
+    }
+    let tail = MixOutTail(fromTick: bar, bars: max(1, bars))
+    relocate(toTick: tick, tail: tail)
+    return tail
+  }
+
+  /// Bring the deck in drums-forward (`DeckAction.mixIn`): from the next bar its melodic lanes
+  /// (the mix-out tail's mask) rest for `bars` bars and come back on the bar line after, the
+  /// song carrying on where it is. The rest joins the song's schedule (in song ticks: a jump
+  /// back across that stretch rests it again). Returns it, nil on a deck not playing a net.
+  @discardableResult
+  public func mixIn(bars: Int) -> RestSchedule.Entry? {
+    guard mode == .net, netProject != nil, bars > 0 else { return nil }
+    let (tick, bar) = nextBarStart
+    let rest = RestSchedule.mixIn(fromTick: bar, bars: bars)
+    relocate(toTick: tick, rest: rest)
+    mixInEndTick = rest.to
+    return rest
+  }
+
+  /// A mix-out tail plays on the sounding project (it stops on its bar line).
+  public var isMixingOut: Bool { mode == .net && wave.tailEndTick != nil }
+
+  /// A mix-in's rest is still to come or playing.
+  public var isMixingIn: Bool {
+    guard mode == .net, let end = mixInEndTick else { return false }
+    return wave.tick < end
   }
 
   // MARK: roles
