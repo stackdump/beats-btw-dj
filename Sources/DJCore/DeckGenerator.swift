@@ -108,6 +108,9 @@ public final class PreparedTrack: @unchecked Sendable {
   /// `opts.musicality` asks), or `project` itself for a raw-`nets` share or without fixes.
   public let played: Project
   public let prepared: WaveProject
+  /// What `prepared` was prepared with (the genre's and palette's settings applied), and at.
+  let opts: WaveOptions
+  let sampleRate: Double
 
   /// The composed track's spec; nil for a raw-`nets` share.
   public var spec: TrackSpec? {
@@ -173,7 +176,38 @@ public final class PreparedTrack: @unchecked Sendable {
     if case .net(let spec) = source {
       o = o.forGenre(spec.genre).forPalette(project.palette, genre: spec.genre)
     }
+    self.opts = o
+    self.sampleRate = sampleRate
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o, startTick: startTick)
+  }
+
+  private init(restarting track: PreparedTrack, prepared: WaveProject) {
+    source = track.source
+    project = track.project
+    played = track.played
+    opts = track.opts
+    sampleRate = track.sampleRate
+    self.prepared = prepared
+  }
+
+  /// This track starting at `tick` instead (clamped as `init(spec:startTick:)` does): the same
+  /// project and options, and the loudness, energy, duck depth, room, echo, part trims and rest
+  /// schedule `prepared` measured (as `Deck.sameSongOptions` keeps them), so nothing is composed
+  /// or measured again; only the net is replayed to the new tick.
+  public func restarted(atTick tick: Int) -> PreparedTrack {
+    let length = played.structure.reduce(0) { $0 + $1.steps }
+    var o = opts
+    o.trackGain = prepared.gain
+    if let e = prepared.energy { o.trackEnergy = e }
+    o.duckDepth = prepared.duckDepth
+    if let s = prepared.space { o.space = s }
+    if let e = prepared.echo { o.echo = e }
+    if let b = prepared.balance { o.trackBalance = b }
+    o.trackRests = prepared.rests
+    let again = WaveRunner.prepare(
+      played, sampleRate: sampleRate, opts: o, startTick: tick > 0 && tick < length ? tick : 0,
+      trackSerial: prepared.trackSerial)
+    return PreparedTrack(restarting: self, prepared: again)
   }
 }
 
@@ -262,6 +296,12 @@ extension Deck {
   /// `startTick` (a song swapped in while one plays): where it starts, so the transport keeps
   /// going (`PreparedTrack.init(spec:startTick:)`); `.nextBar` reads the deck's tick on the
   /// compose thread just before it prepares, and starts the song at the bar after it.
+  ///
+  /// A `.tick` the deck has already reached by the time the compose finishes (a Wander swap
+  /// composed slower than its phrase's last bar) would install at the next bar a bar or more
+  /// back in the song; it is prepared again (`PreparedTrack.restarted`, nothing composed or
+  /// measured again) to start at the bar after the deck's tick then. Such a late swap lands a
+  /// bar (or more) later than the Wander log says.
   @MainActor @discardableResult
   public func generate(_ spec: TrackSpec, startTick: SwapStart = .top) async -> Bool {
     generation += 1
@@ -270,12 +310,19 @@ extension Deck {
     let bank = wave.samplers
     let filter = roleFilter
     let wave = self.wave
-    let track = await Task.detached(priority: .userInitiated) {
+    var track = await Task.detached(priority: .userInitiated) {
       PreparedTrack(
         spec: spec, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter),
         startTick: startTick.tick(wave.tick))
     }.value
     guard mine == generation else { return false }
+    if case .tick(let t) = startTick, t > 0, track.prepared.startTick == t, wave.tick >= t {
+      let late = track
+      track = await Task.detached(priority: .userInitiated) {
+        late.restarted(atTick: SwapStart.nextBar.tick(wave.tick))
+      }.value
+      guard mine == generation else { return false }
+    }
     loadNet(track)
     return true
   }
