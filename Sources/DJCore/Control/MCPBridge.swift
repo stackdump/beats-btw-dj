@@ -119,8 +119,13 @@ public struct MCPBridge {
         + "track, level: the deck's short-term / momentary LUFS, autoGain on/off and the "
         + "autoGainDB a sample plays at, the sample's own LUFS when levelled, a net deck's "
         + "limiter), crossfader, master, the LOOP-record clips, the ones removed from the row and the "
-        + "loop channel (loops), "
-        + "connected controllers, recording, status line, and the "
+        + "loop channel (loops; loops.follow: the Tempo mode and the deck followed), "
+        + "connected controllers, recording, status line, locked (buttons disabled by "
+        + "right-click, by lock key), headphones (mix, level, pfl per deck), inpulseOutput "
+        + "(the Inpulse's audio device and whether it is routed, or null), awake (screen kept "
+        + "awake), view (which panels are open), scope (open, kind, source, measured), stage "
+        + "(window open and its toolbar settings), crates, saved voice variations by "
+        + "instrument, and the "
         + "app's build (id, version, build = git commit, date).",
       [:]),
     tool(

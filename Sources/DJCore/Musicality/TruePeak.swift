@@ -5,8 +5,33 @@ import Foundation
 /// the peaks between samples that a sample-peak meter misses (an fs/4 sine at 45° reads 3 dB
 /// over its samples). `TruePeak.Detector` is the streaming form, one per channel: a fixed
 /// 12-sample history, nothing allocated per sample, so a limiter can run it on the audio thread
-/// (its output lags the input by 6 samples, the FIR's centre).
+/// (its output lags the input by `delay` samples, the FIR's centre). `PeakLimiter` runs the
+/// same FIR (`interpolatedPeak`) on its own buffers, to hold a true-peak ceiling.
 public enum TruePeak {
+  /// Taps per phase.
+  public static let taps = 12
+  /// Samples the oversampled output lags the input: the FIR's centre.
+  public static let delay = 6
+  /// `phases`, phase-major (4 × `taps`).
+  public static let flatCoefficients: [Double] = phases.flatMap { $0 }
+
+  /// The largest magnitude of the four oversampled outputs for one input: `coefficients` is
+  /// `flatCoefficients`, `history[k]` the input `k` samples ago (`taps` of them, newest first).
+  /// Allocates nothing.
+  @inline(__always)
+  public static func interpolatedPeak(
+    _ coefficients: UnsafePointer<Double>, _ history: UnsafePointer<Double>
+  ) -> Double {
+    let n = taps
+    var m = 0.0
+    for p in 0..<4 {
+      var y = 0.0
+      for k in 0..<n { y += coefficients[p * n + k] * history[k] }
+      m = max(m, abs(y))
+    }
+    return m
+  }
+
   /// The annex's coefficients, phase by phase.
   static let phases: [[Double]] = [
     [
@@ -34,7 +59,7 @@ public enum TruePeak {
   /// One channel's 4× oversampled peak, fed a sample at a time. Make it off the audio thread;
   /// `process` and `reset` then never allocate.
   public struct Detector {
-    static let taps = 12
+    static let taps = TruePeak.taps
     private var coefficients: [Double]  // 4 × 12, phase-major
     // the last 12 inputs, twice over, so a read never wraps: newest at `head` and `head + 12`
     private var history: [Double]
@@ -43,7 +68,7 @@ public enum TruePeak {
     public private(set) var peak: Double = 0
 
     public init() {
-      coefficients = TruePeak.phases.flatMap { $0 }
+      coefficients = TruePeak.flatCoefficients
       history = [Double](repeating: 0, count: 2 * Self.taps)
     }
 
@@ -55,15 +80,11 @@ public enum TruePeak {
       head = head == 0 ? n - 1 : head - 1
       history[head] = x
       history[head + n] = x
-      var m = 0.0
-      coefficients.withUnsafeBufferPointer { c in
+      let at = head
+      let m = coefficients.withUnsafeBufferPointer { c in
+        // h[head + k] is the input k samples ago
         history.withUnsafeBufferPointer { h in
-          // h[head + k] is the input k samples ago
-          for p in 0..<4 {
-            var y = 0.0
-            for k in 0..<n { y += c[p * n + k] * h[head + k] }
-            m = max(m, abs(y))
-          }
+          TruePeak.interpolatedPeak(c.baseAddress!, h.baseAddress! + at)
         }
       }
       peak = max(peak, m)
