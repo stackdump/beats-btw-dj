@@ -199,11 +199,11 @@ struct LoopFxTests {
     dj.perform(.clipFx(id: c.id, fx: warm))
     #expect(dj.clipFx(c.id) == warm)
     #expect(dj.clip(c.id)?.fx == warm)
-    // a crop keeps it; a new sequence starts off, an edited one keeps its own
+    // a crop keeps it; a new sequence of it takes it, an edited one keeps its own
     let cropped = try #require(dj.cropClip(c.id, from: 0, to: 2))
     #expect(dj.clipFx(cropped) == warm)
     let seq = try #require(dj.makeSequence([SequenceStep(clipID: cropped, repeats: 2)]))
-    #expect(dj.clipFx(seq) == LoopFX())
+    #expect(dj.clipFx(seq) == warm)
     dj.setClipFx(seq, LoopFX.presets[3].fx)
     let edited = try #require(
       dj.makeSequence([SequenceStep(clipID: cropped, repeats: 3)], replacing: seq))
@@ -213,6 +213,80 @@ struct LoopFxTests {
     #expect(dj.clipFx(cropped) == warm)
     dj.restoreClip(cropped)
     #expect(dj.clipFx(cropped) == warm)
+  }
+
+  @Test @MainActor func aNewSequenceTakesTheFxItsStepsShare() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let a = fxTestClip(1)
+    let b = fxTestClip(2)
+    dj.restoreClips([a, b])
+    let steps = [SequenceStep(clipID: a.id, repeats: 2), SequenceStep(clipID: b.id)]
+    // the id is the dry audio's: the same with or without the steps' FX
+    let dry = try #require(dj.makeSequence(steps))
+    #expect(dj.clipFx(dry) == LoopFX())
+    dj.removeClip(dry)
+    let warm = LoopFX.presets[1].fx
+    dj.setClipFx(a.id, warm)
+    dj.setClipFx(b.id, warm)
+    let seq = try #require(dj.makeSequence(steps))
+    #expect(seq == dry)
+    #expect(dj.clipFx(seq) == warm)
+    // a step whose clip is gone does not count
+    let one = try #require(
+      dj.makeSequence([SequenceStep(clipID: a.id), SequenceStep(clipID: "gone")]))
+    #expect(dj.clipFx(one) == warm)
+  }
+
+  @Test @MainActor func aNewSequenceOfMixedFxStartsDry() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let a = fxTestClip(1)
+    let b = fxTestClip(2)
+    let c = fxTestClip(3)
+    dj.restoreClips([a, b, c])
+    dj.setClipFx(a.id, LoopFX.presets[1].fx)
+    dj.setClipFx(b.id, LoopFX.presets[3].fx)
+    let mixed = try #require(
+      dj.makeSequence([SequenceStep(clipID: a.id), SequenceStep(clipID: b.id)]))
+    #expect(dj.clipFx(mixed) == LoopFX())
+    // one step with FX and one without is mixed too
+    let half = try #require(
+      dj.makeSequence([SequenceStep(clipID: a.id), SequenceStep(clipID: c.id)]))
+    #expect(dj.clipFx(half) == LoopFX())
+    // FX that change nothing (bypassed) are not shared FX
+    var bypassed = LoopFX.presets[1].fx
+    bypassed.bypass = true
+    dj.setClipFx(a.id, bypassed)
+    dj.setClipFx(c.id, bypassed)
+    let quiet = try #require(
+      dj.makeSequence([SequenceStep(clipID: a.id, repeats: 2), SequenceStep(clipID: c.id)]))
+    #expect(dj.clipFx(quiet) == LoopFX())
+  }
+
+  @Test @MainActor func anEditedSequenceKeepsItsOwnFx() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let a = fxTestClip(1)
+    let b = fxTestClip(2)
+    dj.restoreClips([a, b])
+    let warm = LoopFX.presets[1].fx
+    dj.setClipFx(a.id, warm)
+    dj.setClipFx(b.id, warm)
+    let seq = try #require(
+      dj.makeSequence([SequenceStep(clipID: a.id), SequenceStep(clipID: b.id)]))
+    #expect(dj.clipFx(seq) == warm)
+    // turned off on the sequence, an edit of it stays off though its steps share FX
+    dj.setClipFx(seq, LoopFX())
+    let edited = try #require(
+      dj.makeSequence(
+        [SequenceStep(clipID: a.id, repeats: 2), SequenceStep(clipID: b.id)], replacing: seq))
+    #expect(edited != seq)
+    #expect(dj.clipFx(edited) == LoopFX())
+    // and its own FX survive an edit onto steps with other FX
+    let own = LoopFX.presets[3].fx
+    dj.setClipFx(edited, own)
+    dj.setClipFx(a.id, LoopFX())
+    let again = try #require(
+      dj.makeSequence([SequenceStep(clipID: a.id)], replacing: edited))
+    #expect(dj.clipFx(again) == own)
   }
 
   @Test func theLibraryKeepsAClipsFx() throws {
