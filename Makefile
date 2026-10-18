@@ -4,7 +4,7 @@ PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test swift-test-filter swift-shots swift-rt-test swift-rt-test-filter app run-app app-release run-app-release djctl \
-        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check
+        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check groove-templates
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -165,6 +165,11 @@ clean:
 BEATS_PUBLIC ?= $(HOME)/Workspace/beats-bitwrap-io/public
 beats-tables:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-tables.mjs
+
+# Groove templates (ROADMAP 6.5): the Groove MIDI Dataset (MIDI-only, CC BY 4.0) is fetched into
+# .build/gmd, sha256-pinned in the script, and averaged into Resources/beats/grooves.json.
+groove-templates:
+	python3 scripts/groove-templates.py
 
 fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-parity.mjs
