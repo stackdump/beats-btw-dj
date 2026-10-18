@@ -151,6 +151,10 @@ its copy; the two are now independent. Rules inherited from that split:
   ms 0…15 and velocity scale per drum voice × 16 steps, tempo-scaled Linn swing) is averaged
   from the Groove MIDI Dataset (CC BY 4.0, attributed in README) by `make groove-templates`
   (sha256-pinned fetch into `.build/gmd`); regenerate, never hand-edit the numbers.
+  `.feel` plays it in the runner (`WaveOptions.feel`, set by `forGenre`; `WaveProject.feelTable`):
+  in place of the project's swing / humanize, a drum is late by its offset + (2r − 1) × half a pair
+  (a sixteenth; jazz an eighth) on its off-beat, r at the tempo playing, its velocity scaled; tonal lanes
+  swing only. Without the flag (or the template) the template is never read.
   `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
   b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
   4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
@@ -343,10 +347,13 @@ its copy; the two are now independent. Rules inherited from that split:
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
-  `djctl measure <file> [--start S] [--seconds N] [--note N]` runs any local audio file
-  (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
+  `djctl measure <file> [--start S] [--seconds N] [--note N] [--sections [--kernel K]]`
+  runs any local audio file (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
   decoded by `Deck.decode` at the file's rate), named by basename + sha256 prefix, never
-  copied; `--note` adds `PitchMeasure` (wraps the sampler's `pitchClassError`, unmoved).
+  copied; `--note` adds `PitchMeasure` (wraps the sampler's `pitchClassError`, unmoved);
+  `--sections` adds `SectionSegmenter` (per-bar bands + chroma + RMS on `BeatTracker`'s
+  downbeats, cosine self-similarity, Foote novelty, `--kernel` bars a side, 4): boundaries in
+  the file's own bars.
 - Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
@@ -377,7 +384,9 @@ its copy; the two are now independent. Rules inherited from that split:
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
   toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
   --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
-  Per-genre settings come from `WaveOptions.forGenre`.
+  Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
+  arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
+  `WaveProject.voiceDesign`).
 - Part G adds `.variety` (`TrackVariety.swift`): beats draws only the melody from the seed, so
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
@@ -396,8 +405,8 @@ its copy; the two are now independent. Rules inherited from that split:
   and fader. Net decks: `.loudness` (`Loudness.targetDB` = reference − 0.4, calibrated on whole
   songs; the probe plays sampled parts at `Loudness.sampledPartDB` under their synth voice) and,
   with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
-  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
-  `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
+  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBTP from BS.1770's 4× FIR,
+  `lookahead` 1.5 ms + 12 samples, uncompensated; preallocated, `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
   shares) measured once per buffer (`SampleBuffer.level`, cached; on first read, so only with
   auto-gain on; the app's favorite / stock-loop decode tasks read it off the main thread, a plain
   file load (`AppModel.load(_:url:)`) decodes and measures on it; ten minutes take ~0.16 s in
@@ -411,7 +420,7 @@ its copy; the two are now independent. Rules inherited from that split:
   nil / −200 for silence) and its short-term form `LoudnessMeter`. Clips on a deck (`loadClip`) keep their level: a take is the deck
   after its EQ. `Deck.shortTermLUFS` / `momentaryLUFS` (pre-EQ meter in `DeckRenderer`) and
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
-  percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
+  percentiles, output `truePeakDBTP`); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
   each file's level and auto-gain, then the spread before / after against each one's target and
   the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp). The loop channel
   starts at trim −3 dB (`DJEngine.loopChannelGain` = gain 0.25, trim 1/√2: the centred
@@ -438,6 +447,15 @@ its copy; the two are now independent. Rules inherited from that split:
   tonal lane (`Lane.harmonyGroup`) plays through, mapped at the fire's step (the groove queue
   carries the mapped note); `FireEvent.note` is mapped, live keys aren't, net views show the
   bound note. Measure with `NoteLog.capture(…, harmony:)` (what `djctl render` does).
+- `.harmonicRhythm` (6.3) rides the same plan (`SectionHarmony(project:fixes:)`; built under either
+  flag): a slot's shift makes the band play a chosen chord over the pad's — intros / breakdowns /
+  outros hold 2 bars per chord (pad rings of 2 or 4 bars only), a buildup's last half-bar is the V
+  (else ♭VII) of what follows, the bar into a chorus plays 2 chords; drops untouched. Section ends
+  are `tail` (2 half-bar slots overriding the cycle). `.sectionHarmony` alone is the old plan.
+- `TrackSpec.partSeeds` (bass / kick / snare / hihat / melody / arp → seed) are dj-only: the
+  session writes them beside the share, never in `extra` / `layers` / the payload, so the share
+  CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
+  transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -505,8 +523,11 @@ its copy; the two are now independent. Rules inherited from that split:
   crossfade through dry over 10 ms. Measured allocation-free (`LoopFxRealTimeTests`).
 - Persistence: library.json entries (`fx`, only when set), removed/, the journal checkpoint's
   clips (the run's FX win over the library's on restore). A crop keeps its clip's FX; a new
-  sequence starts off (its steps' audio is dry), an edited one keeps its own; a clip on deck A/B
-  plays dry; scenes don't recall FX. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
+  sequence starts off (its steps' audio is dry), an edited one keeps its own; scenes don't recall
+  FX. A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
+  `LoopFxVoice` + limiter (made at init, fed by `DeckFxCommand` through an SPSC ring, run in sample
+  mode only while the chain is in the path, so a dry deck is the turntable's bytes); `loadClip`
+  sends the clip's FX, `setClipFx` forwards to a deck playing it, any other load drops them. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
   Crunch, Fuzz, Crush, Loud), Settings… ▸ FX, the tile's FX popover; an FX badge when active.
 
 ## Control socket and MCP
@@ -556,6 +577,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `toSeq`/`endFrame` (`startSeq`), folding line 0's stores and the store events before it;
   `fromStart` forces line 0. Same state as a full replay, not the same audio (loops restart,
   tails and router state start fresh) — byte-identical audio needs `fromStart`.
+- `DJEngine.reset(to:clip:)` (JournalRewind.swift) rewinds a running engine in place: row,
+  scenes and removed list cleared (not remembered as removed), decks stopped, ejected,
+  unfollowed, tweaks / disabled roles / knobs / locks / mixer / row settings to defaults, then
+  `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
+  and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
+  (`JournalRewindRealTimeTests`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),

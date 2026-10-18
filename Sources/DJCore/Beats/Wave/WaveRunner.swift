@@ -89,6 +89,9 @@ public struct WaveOptions {
   /// The echo (`DJMusicality.Fixes.echo`), set from the track's genre (`EchoSpec.forGenre`);
   /// nil = none.
   public var echo: EchoSpec?
+  /// Per-genre sound design under `.subtractive` / `.unison` / `.stereo` (`VoiceDesign.forGenre`,
+  /// set by `forGenre`): which parts are plucked, how wide the pads are.
+  public var voiceDesign = VoiceDesign()
   /// The parts' trims (`DJMusicality.Fixes.balance`, dB by `MixBalance` part) to prepare with
   /// instead of measuring them: another start of the same song reuses the playing project's.
   public var trackBalance: [String: Double]?
@@ -102,6 +105,9 @@ public struct WaveOptions {
   /// The track's genre, set by `forGenre`; nil (raw nets, parity) = unknown, and the gestures
   /// a genre gates (`.bandStop`: the song family) stay off.
   public var genre: String?
+  /// The family's groove template the drums play (`DJMusicality.Fixes.feel`), set from the
+  /// track's genre (`GrooveTemplate.forGenre`); nil = none, even with `.feel` on.
+  public var feel: GrooveTemplate?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -234,8 +240,8 @@ final class Lane {
   /// step's mask holds its class. Empty (never rests): crashes, stingers, overrides, the live
   /// keys.
   var restClass: RestSchedule.Class = []
-  /// `.sectionHarmony`: the lane's group in `WaveProject.harmony` (-1: not moved, e.g. drums
-  /// and the live keys).
+  /// `.sectionHarmony` / `.harmonicRhythm`: the lane's group in `WaveProject.harmony` (-1: not
+  /// moved, e.g. drums and the live keys).
   var harmonyGroup = -1
   /// `.choke`: the open hat a hit on this (closed hat) lane chokes; on the open hat lane,
   /// whether it is being choked and how fast it dies then (per sample).
@@ -271,6 +277,8 @@ final class Lane {
   var uniWidth: [Double] = []
   /// …and their difference is highpassed (`Unison.sideHz`), so the low mids stay mono.
   var uniHP: [Double] = []
+  /// The pair's width at full spread (`Unison.width`, × `VoiceDesign.padWidth` on a pad).
+  var uniMax = Unison.width
   var uz1 = 0.0
   var uz2 = 0.0
   // post chain on the voice sum: lowpass biquad (`post`, 5 coefficients on every tonal lane,
@@ -497,8 +505,10 @@ private func tonalLane(
 }
 
 /// `.subtractive`: give a saw / square lane its band-limited tables and filter envelope.
-private func shapeVoice(_ lane: Lane, group: String, _ sr: Double) {
-  guard !lane.isPluck, let f = FilterEnvelope.forVoice(lane.voice, group: group) else { return }
+private func shapeVoice(_ lane: Lane, group: String, plucked: Set<String>, _ sr: Double) {
+  guard !lane.isPluck,
+    let f = FilterEnvelope.forVoice(lane.voice, group: group, plucked: plucked)
+  else { return }
   let tables = MipTables.shared(lane.voice.wave, sampleRate: sr)
   lane.mip = tables.samples
   lane.mipTop = tables.top
@@ -516,14 +526,56 @@ private func shapeVoice(_ lane: Lane, group: String, _ sr: Double) {
 
 /// `.unison`: play a pad / saw lead lane's voices as detuned pairs; spread wide under `.stereo`
 /// when the pair is unfiltered (a filtered pair shares one filter: its difference would not be).
-private func detune(_ lane: Lane, group: String, wide: Bool, _ sr: Double) {
+private func detune(
+  _ lane: Lane, group: String, wide: Bool, design: VoiceDesign = VoiceDesign(), _ sr: Double
+) {
   guard !lane.isPluck, let c = Unison.cents(lane.voice, group: group) else { return }
   lane.uniDown = pow(2, -c / 1200)
   lane.uniUp = pow(2, c / 1200)
   lane.phase2 = (0..<lane.poly).map { 0.25 + 0.13 * Double($0) }
   lane.uniWide = wide && lane.fAmount == 0
   lane.uniWidth = [Double](repeating: 0, count: lane.poly)
-  lane.uniHP = biquad(type: "highpass", fc: Unison.sideHz, q: 0.7071, sr: sr)
+  let pad = group == "harmony" || group == "pad"
+  lane.uniMax = Unison.width * (pad ? design.padWidth : 1)
+  lane.uniHP = biquad(
+    type: "highpass", fc: pad ? design.padSideHz : Unison.sideHz, q: 0.7071, sr: sr)
+}
+
+/// `.feel` as the runner reads it: a family's `GrooveTemplate` flattened into fixed arrays
+/// (`voice × 16 + step`) when a project is prepared. The swing is not folded in (unlike
+/// `GrooveTemplate.Prepared`): it is worked out per hit at the tempo playing, so a tempo
+/// change or a tempo macro moves it. Reading it never allocates.
+struct FeelTable: Sendable {
+  let offsetMs: [Double]
+  let velocity: [Double]
+  let swing: GrooveTemplate.Swing
+
+  init(_ t: GrooveTemplate) {
+    var off = [Double](
+      repeating: 0, count: GrooveTemplate.Voice.allCases.count * GrooveTemplate.steps)
+    var vel = [Double](repeating: 1, count: off.count)
+    for v in GrooveTemplate.Voice.allCases {
+      for s in 0..<GrooveTemplate.steps {
+        off[Self.cell(v, s)] = max(0, t.offsetMs(v, step: s))
+        vel[Self.cell(v, s)] = t.velocity(v, step: s)
+      }
+    }
+    offsetMs = off
+    velocity = vel
+    swing = t.swing
+  }
+
+  @inline(__always) static func cell(_ voice: GrooveTemplate.Voice, _ step: Int) -> Int {
+    voice.rawValue * GrooveTemplate.steps + (step & (GrooveTemplate.steps - 1))
+  }
+
+  /// The swing delay (ms) of bar step `step` at `bpm`: (2r − 1) sixteenths on the off-beat
+  /// sixteenth of each pair (twice that on the off-beat eighth of the jazz family's), 0 elsewhere.
+  @inline(__always) func swingMs(step: Int, bpm: Double) -> Double {
+    let pair = swing.pairSteps
+    guard step % pair == pair / 2, bpm > 0 else { return 0 }
+    return swing.delayMs(bpm: bpm)
+  }
 }
 
 /// A compiled project plus its voices: everything the audio thread needs, built off the
@@ -574,7 +626,8 @@ public final class WaveProject: @unchecked Sendable {
   public let tail: MixOutTail?
   /// Where the audio thread is in `rests`; reset when the project is installed or stopped.
   var restCursor = RestSchedule.Cursor()
-  /// The section plan the tonal lanes play through (`.sectionHarmony`); nil = as bound.
+  /// The section plan the tonal lanes play through (`.sectionHarmony`, `.harmonicRhythm`); nil =
+  /// as bound.
   public let harmony: SectionHarmony?
   /// The room this project plays in (`.space`); nil = dry.
   public let space: SpaceSpec?
@@ -584,8 +637,14 @@ public final class WaveProject: @unchecked Sendable {
   public let echo: EchoSpec?
   /// The parts' trims it plays with (`.balance`), dB; nil = none.
   public let balance: [String: Double]?
+  /// The groove template it plays (`.feel`); nil = none. `feelTable` is what the runner reads.
+  public let feel: GrooveTemplate?
+  let feelTable: FeelTable?
   /// `vinyl-brake` brakes the deck while this project plays (`WaveOptions.turntableBrake`).
   public internal(set) var turntableBrake = false
+  /// The sound design it was prepared with (`WaveOptions.voiceDesign`): another start of the
+  /// same song keeps it.
+  public internal(set) var voiceDesign = VoiceDesign()
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
@@ -595,9 +654,11 @@ public final class WaveProject: @unchecked Sendable {
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
     rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
     space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil,
-    harmony: SectionHarmony? = nil
+    harmony: SectionHarmony? = nil, feel: GrooveTemplate? = nil
   ) {
     self.gain = gain
+    self.feel = feel
+    feelTable = feel.map(FeelTable.init)
     self.harmony = harmony
     self.echo = echo
     self.balance = balance
@@ -730,8 +791,11 @@ private func buildLanes(
             lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: picked,
             option: option)
           if lane.samplerSlot >= 0 { sampledGroups[n.id] = tr.group ?? n.bundle.riffGroup }
-          if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
-          if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
+          let part = tr.group ?? n.bundle.riffGroup
+          if subtractive {
+            shapeVoice(lane, group: part, plucked: opts.voiceDesign.pluckGroups, sr)
+          }
+          if unison { detune(lane, group: part, wide: stereo, design: opts.voiceDesign, sr) }
         } else {
           var voice = drumVoice(kind: key, instrument: tr.instrument)
           if key == "kick", let hz = kickHz {
@@ -757,9 +821,11 @@ private func buildLanes(
           let at = DJMusicality.stereoPlacement(
             kind: key, group: tr.group ?? n.bundle.riffGroup)
           lane.pan = at.pan
+          let part = tr.group ?? n.bundle.riffGroup
+          let spread = at.spread * (part == "harmony" ? opts.voiceDesign.padWidth : 1)
           // (a voice post chain — lowpass, distortion — runs on the voice sum: one pan for all)
-          if at.spread > 0 && lane.isTonal && !lane.postOn && lane.voice.distortion == 0 {
-            lane.voiceSpread = (0..<lane.poly).map { $0 % 2 == 0 ? at.spread : -at.spread }
+          if spread > 0 && lane.isTonal && !lane.postOn && lane.voice.distortion == 0 {
+            lane.voiceSpread = (0..<lane.poly).map { $0 % 2 == 0 ? spread : -spread }
             lane.voicePan = [Double](repeating: at.pan, count: lane.poly)
           }
         }
@@ -827,7 +893,7 @@ private func buildLanes(
   let live = tonalLane(liveVoice, sr, 8, tables: &tables, seed: lanes.count)
   let liveOption = melody.flatMap { geometry?.nets[$0.id]?.track.sound.option }
   bindSampler(live, liveInstrument, "melody", opts, option: liveOption)
-  if subtractive { shapeVoice(live, group: "melody", sr) }
+  if subtractive { shapeVoice(live, group: "melody", plucked: [], sr) }
   if unison { detune(live, group: "melody", wide: stereo, sr) }
   live.netId = "<live>"
   if space { live.send = SpaceSpec.send(kind: "tonal", group: "melody") }
@@ -840,8 +906,10 @@ private func buildLanes(
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, rests: rests,
     songRests: songRests, tail: tail, space: space ? opts.space ?? .room : nil,
-    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony)
+    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony,
+    feel: opts.musicality.contains(.feel) ? opts.feel : nil)
   project.sampledGroups = sampledGroups
+  project.voiceDesign = opts.voiceDesign
   return project
 }
 
@@ -1080,8 +1148,9 @@ public final class WaveRunner {
     let songRests =
       opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
-    // `.sectionHarmony`: the band moves with the section (a pure function of the played
-    // project, cheap: rebuilt on section jumps rather than carried)
+    // `.sectionHarmony` / `.harmonicRhythm`: the band moves with the section and its chords
+    // (a pure function of the played project, cheap: rebuilt on section jumps rather than
+    // carried)
     let harmony = SectionHarmony.playing(project, fixes: opts.musicality)
     let prepared = buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
@@ -1635,24 +1704,41 @@ public final class WaveRunner {
   /// 0…15 ms × h late on the beat) and velocity (±15 × h). Never early, so a note never
   /// leaves its tick. The jitter is a hash of (tick, net, transition), not a random draw: a
   /// replay plays the same groove.
+  ///
+  /// With `.feel` (the project has a `feelTable`) the family's template plays instead of the
+  /// project's swing and humanize: a drum is late by its template offset at (voice, bar step)
+  /// plus the swing delay, (2r − 1) × the swing grid's half pair on its off-beat member, r the
+  /// family's ratio at the tempo playing; its velocity is scaled by the template. Tonal lanes
+  /// (and drums the template has no voice for) get the swing only.
   private func grooveHit(
     _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, lane li: Int, note: Int
   ) {
-    let p = proj.graph.project
     let step = proj.graph.tick - 1
-    let tickMs = 60000 / (clock[clkTempo] * ppq)
-    let h = p.humanize / 100
-    var r = grooveHash(step, n.index, t)
-    let r1 = Double(r & 0xFFFF) / 65535 * 2 - 1
-    r >>= 16
-    let r2 = Double(r & 0xFFFF) / 65535 * 2 - 1
     var delayMs = 0.0
-    if step % 2 == 1 {
-      delayMs = max(0, p.swing / 100 * tickMs * 0.5 + r1 * h * 30)
-    } else if h > 0 {
-      delayMs = max(0, r1 * h * 15)
+    var vel = n.vel[t]
+    if let feel = proj.feelTable {
+      let bar = step & (GrooveTemplate.steps - 1)
+      delayMs = feel.swingMs(step: bar, bpm: clock[clkTempo])
+      if !lane.isTonal, let v = GrooveTemplate.Voice(note: note) {
+        let c = FeelTable.cell(v, bar)
+        delayMs += feel.offsetMs[c]
+        vel = max(1, min(127, Int((Double(vel) * feel.velocity[c]).rounded())))
+      }
+    } else {
+      let p = proj.graph.project
+      let tickMs = 60000 / (clock[clkTempo] * ppq)
+      let h = p.humanize / 100
+      var r = grooveHash(step, n.index, t)
+      let r1 = Double(r & 0xFFFF) / 65535 * 2 - 1
+      r >>= 16
+      let r2 = Double(r & 0xFFFF) / 65535 * 2 - 1
+      if step % 2 == 1 {
+        delayMs = max(0, p.swing / 100 * tickMs * 0.5 + r1 * h * 30)
+      } else if h > 0 {
+        delayMs = max(0, r1 * h * 15)
+      }
+      if h > 0 { vel = max(1, min(127, Int((Double(vel) + r2 * h * 15).rounded()))) }
     }
-    let vel = h > 0 ? max(1, min(127, Int((Double(n.vel[t]) + r2 * h * 15).rounded()))) : n.vel[t]
     let delay = delayMs / 1000 * sampleRate
     guard delay >= 1, grooveCount < Self.grooveCapacity else {
       hit(lane, n, t, note: note, velocity: vel)
@@ -1876,7 +1962,7 @@ public final class WaveRunner {
     if lane.fAmount > 0 { lane.fEnv[v] = 1 }
     if lane.uniWide {
       // centred at A3 and below (the pair's beating would widen the low mids), full from C5
-      lane.uniWidth[v] = Unison.width * min(1, max(0, Double(note - 57) / 15))
+      lane.uniWidth[v] = lane.uniMax * min(1, max(0, Double(note - 57) / 15))
     }
     guard lane.isPluck else { return }
     let period = 1 / lane.inc[v]
@@ -2222,7 +2308,9 @@ public final class WaveRunner {
     // The tick's anchor goes out before its fires (`advance` is exactly one tick): a reader
     // that looks at the fires first and the anchors second finds the anchor of every fire.
     anchor(proj, tick: g.tick + 1, swap: false)
-    let groove = grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
+    let groove =
+      proj.feelTable != nil
+      || grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
     // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
     let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
     let step = g.tick

@@ -5,7 +5,7 @@ import Synchronization
 /// a deck, a take of either. Each lands at `referenceLUFS` (integrated, BS.1770) at unity knobs
 /// (trim centred, EQ flat), before the channel fader:
 ///  * net decks (`WaveOptions.extended`): the track's loudness gain (`Loudness.targetDB`,
-///    calibrated to this) and the deck's `PeakLimiter` (peaks ≤ −1 dBFS);
+///    calibrated to this) and the deck's `PeakLimiter` (true peaks ≤ −1 dBTP);
 ///  * sample decks: `SampleLevel.autoGainDB`, measured when the audio loads (derived from the
 ///    audio alone, so a replay reproduces it), off per deck (`Deck.autoGain`);
 ///  * takes record the deck after its EQ, so they come out at the level the deck played.

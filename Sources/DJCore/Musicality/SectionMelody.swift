@@ -66,9 +66,10 @@ extension DJMusicality {
 
 extension SectionHarmony {
   /// The plan a deck plays `project` (the played project) through with `fixes`: nil without
-  /// `.sectionHarmony` or when the song has none. What `WaveRunner.prepare` builds and what
-  /// `djctl render` hands `NoteLog`, so the report hears what the runner plays.
+  /// `.sectionHarmony` or `.harmonicRhythm`, or when the song has nothing to move. What
+  /// `WaveRunner.prepare` builds and what `djctl render` hands `NoteLog`, so the report hears
+  /// what the runner plays.
   public static func playing(_ project: Project, fixes: DJMusicality.Fixes) -> SectionHarmony? {
-    fixes.contains(.sectionHarmony) ? SectionHarmony(project: project) : nil
+    SectionHarmony(project: project, fixes: fixes)
   }
 }

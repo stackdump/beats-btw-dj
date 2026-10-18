@@ -49,6 +49,20 @@ extension DJEngine {
     loopQuantum = beats
   }
 
+  /// Clip `id`'s own launch boundary in beats, if it has one (nil: it follows the row's).
+  public func clipQuantum(_ id: String) -> Int? { clipQuanta[id] }
+
+  /// What clip `id` starts and stops on, in beats: its own boundary, else the row's
+  /// (`loopQuantum`). Scenes switch on the row's whatever their clips say (`launchScene`).
+  public func quantum(for id: String?) -> Int { id.flatMap { clipQuanta[$0] } ?? loopQuantum }
+
+  /// Give clip `id` a launch boundary of its own (any of `launchQuanta`; anything else is
+  /// refused); nil: it follows the row's again. Pending starts and stops keep theirs.
+  public func setClipQuantum(_ id: String, _ beats: Int?) {
+    if let beats, !Self.launchQuanta.contains(beats) { return }
+    clipQuanta[id] = beats
+  }
+
   public static let defaultTapTakeBars = 2
 
   /// How many bars a quick tap of a controller's LOOP records (1…64; nil: none, a tap is a short
@@ -75,6 +89,12 @@ extension DJEngine {
     .loopKeyLock(on: false), .tapBars(bars: defaultTapTakeBars),
     .loopFollow(mode: LoopFollow.louder.rawValue),
   ]
+
+  /// The row-wide settings back to a fresh engine's (`defaultLoopSettings`, FX link off).
+  func resetLoopSettings() {
+    for a in Self.defaultLoopSettings { applyAction(a) }
+    setLoopFxLink(false)
+  }
 
   // MARK: countdown
 
@@ -140,7 +160,8 @@ extension DJEngine {
   }
 
   /// Bring exactly `clips` in at their levels and take every other loop out, all at one frame:
-  /// the next launch boundary of the clock the first of them lines up with. A clip already in
+  /// the next launch boundary (the row's, `loopQuantum`, not any clip's own) of the clock the
+  /// first of them lines up with. A clip already in
   /// stays in (its level changes on the boundary); clips no longer on the row are left out.
   /// Returns the boundary.
   @discardableResult
@@ -167,6 +188,9 @@ extension DJEngine {
   }
 
   public func deleteScene(_ name: String) { scenes.removeAll { $0.name == name } }
+
+  /// Every scene gone (a reset, `DJEngine.reset(to:clip:)`).
+  func clearScenes() { scenes = [] }
 
   /// Put saved scenes back (after any already there; a name already taken is skipped).
   public func restoreScenes(_ restored: [LoopScene]) {
