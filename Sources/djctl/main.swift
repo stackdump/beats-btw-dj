@@ -642,6 +642,11 @@ case "render":
   }
   let dips = render.preDropDips(track.played)
   if !dips.isEmpty { audio["preDropDipDB"] = round3(dips.reduce(0, +) / Double(dips.count)) }
+  // `.riser`: the high band's climb into each drop (`RiserRise`)
+  if let r = render.riserSummary(track.played) {
+    audio["riserRiseDB"] = round3(r.riseDB)
+    audio["riserSpearman"] = round3(r.spearman)
+  }
   // --room: render it again without `.space`; what the room adds, against the dry mix
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts

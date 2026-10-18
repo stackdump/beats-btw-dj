@@ -97,6 +97,21 @@ public struct OfflineRender {
     return out
   }
 
+  /// How the high band climbs through each riser window of `project` the render holds whole
+  /// (`RiserRise`, `.riser`).
+  public func riserRises(_ project: Project) -> [RiserRise] {
+    RiserRise.measure(left: left, right: right, sampleRate: sampleRate, project: project)
+  }
+
+  /// The riser windows' mean rise (last beat over the first, high band, dB) and mean Spearman
+  /// ρ, as `djctl render` reports them; nil without a window in the render.
+  public func riserSummary(_ project: Project) -> (riseDB: Double, spearman: Double)? {
+    let rises = riserRises(project)
+    guard !rises.isEmpty else { return nil }
+    let n = Double(rises.count)
+    return (rises.map(\.riseDB).reduce(0, +) / n, rises.map(\.spearman).reduce(0, +) / n)
+  }
+
   /// 16-bit PCM WAV, stereo.
   public func wav() -> Data {
     var d = Data()

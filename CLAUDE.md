@@ -411,6 +411,13 @@ its copy; the two are now independent. Rules inherited from that split:
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
   `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
   `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
+- `.riser` (6.2, `Riser.swift`): `WaveProject.riser` (`RiserVoice`, built at prepare from
+  `DJMusicality.riserWindows`: last 2 bars of a buildup into a drop / chorus) is a stinger-class
+  lane rendered into `acc` (never rested, ducked or energy-lowpassed): seeded xorshift noise, SVF
+  lowpass 300 Hz → 8 kHz, −30 → −12 dB, cut at the drop, side under `.stereo`, send under `.space`.
+  Its place is the step `doTick` played (`riserStep`), so a jump starts it in phase; it returns
+  false while silent, so bytes before a window are unchanged. `djctl render` prints `riserRiseDB`
+  / `riserSpearman` (`RiserRise`: ≥ 4 kHz per beat).
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
