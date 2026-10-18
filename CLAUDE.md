@@ -53,8 +53,9 @@ under structural rules, rather than editing audio freely.
   family), instruments (no instrument moves; every new spec carries the deck's instruments in
   its `tracks` override), arrangement (no mutes / STEMS), fx (no macros / stingers), palette
   (no palette hops; the instruments lock stops them too), and
-  `keep:<role>` (its instrument rides along, never muted or re-picked; its notes still change
-  with the seed until beats has per-part seeds). Everything locked: wander says so and stands
+  `keep:<role>` (its instrument rides along, never muted or re-picked; a seedable part keeps
+  its line too: same-genre swaps carry `partSeeds[role]` = its part seed or the seed it played
+  under, a genre hop or a freed keep drops it — `Wander.carry`). Everything locked: wander says so and stands
   still. **Steering**: the browser wheel steps the seed (loops and now songs, swapped at the
   next bar) and pauses a wandering deck until a whole phrase passes with no turn; SHIFT + wheel
   sets the pace, the browser push toggles it (both `[MIXXX]`, uncaptured). Sample decks don't

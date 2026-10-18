@@ -27,8 +27,10 @@ public enum WanderLock {
   public static let tempoTolerance = 0.06
 
   /// The lock that keeps `role` ("keep the bass"): its instrument goes with every new seed, and
-  /// no move mutes it or picks it another instrument. (Its notes still change with the seed:
-  /// beats has no per-part seeds yet.)
+  /// no move mutes it or picks it another instrument. A seedable part (`TrackSpec.seedableParts`)
+  /// keeps its line too: every same-genre swap carries its part seed (`TrackSpec.partSeeds`);
+  /// a genre hop drops it (another genre's figures), and freeing the keep drops it at the next
+  /// swap.
   public static func keep(_ role: String) -> String { keepPrefix + role }
 
   /// The role a `keep:` lock names, nil for any other.
@@ -514,13 +516,22 @@ public enum Wander {
       extra: c.spec.extra)
   }
 
-  /// What the locks carry into a new spec: the pinned key, and the instruments the user keeps
-  /// (all of them under the instruments lock, else the kept roles'), so they arrive with the
-  /// swap. A new genre is composed once to find which channel each kept role plays on there.
+  /// What the locks carry into a new spec: the pinned key, the kept parts' seeds (same genre
+  /// only), and the instruments the user keeps (all of them under the instruments lock, else
+  /// the kept roles'), so they arrive with the swap. A new genre is composed once to find which
+  /// channel each kept role plays on there.
   static func carry(
     _ c: WanderContext, _ s: inout TrackSpec, sameGenre: Bool, keepLayers: Bool = false
   ) {
     if !keepLayers { s.layers = JSONObject() }
+    // a kept part plays its line on through new seeds: its own seed, else the one it played
+    // under (the track's); only kept parts' seeds go on, so a freed keep drops its seed here
+    s.partSeeds = [:]
+    if sameGenre {
+      for r in c.kept where TrackSpec.seedableParts.contains(r) {
+        s.partSeeds[r] = c.spec.seed(forPart: r)
+      }
+    }
     if let key = c.key, c.locked("key") { s.extra["keyOffset"] = .number(Double(key.offset)) }
     // the deck's sound — palette, kit pick, role overrides — goes with every new track (the
     // palette lock only stops palette hops)
