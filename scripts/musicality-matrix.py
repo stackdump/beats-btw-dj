@@ -61,6 +61,12 @@ COLUMNS = [
     ("harmonicCadences", "cad", "{:4.2f}"),
     ("progressions", "prog", "{:4d}"),
     ("sectionChordAgreement", "secCT", "{:5.2f}"),
+    ("answerPhrases", "ans", "{:4.2f}"),
+    ("hookRecurrence", "hook", "{:4.2f}"),
+    ("barOneChordTones", "b1ct", "{:4.2f}"),
+    ("bassIdeaRepeats", "bidea", "{:5.2f}"),
+    ("melodyPeakPosition", "peak", "{:4.2f}"),
+    ("leapRecovery", "leapR", "{:5.2f}"),
 ]
 
 
@@ -103,7 +109,8 @@ def flat(doc):
               "arpChordTones", "arpDoublesMelody", "buildupsBuild",
               "crashOnSections", "bassLeap", "bassStepwise", "melodyLegato",
               "phraseEndsOnChordTones", "melodyIdeaRepeats", "harmonicCadences",
-              "progressions", "sectionChordAgreement"):
+              "progressions", "sectionChordAgreement", "answerPhrases", "hookRecurrence",
+              "barOneChordTones", "bassIdeaRepeats", "melodyPeakPosition", "leapRecovery"):
         row[k] = m.get(k)
     return row
 

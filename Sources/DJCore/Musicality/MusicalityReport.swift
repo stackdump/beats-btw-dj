@@ -101,6 +101,29 @@ public struct MusicalityReport: Sendable {
   /// does not — and the lowest of them; nil without a harmony part.
   public var sectionChordAgreement: Double?
   public var sectionChordAgreementBySection: [(section: String, agreement: Double)] = []
+  /// 8-bar melody pairs (one net, bars 1–8, 9–16, … on the song's grid, both halves playing)
+  /// whose first half ends open and whose second ends closed: a question and its answer. A half
+  /// ends closed when its last note is the key's tonic (pitch class of `rootNote`); nil without
+  /// a pair.
+  public var answerPhrases: Double?
+  /// The hook is the song's first melody bar with two notes or more. Of the sections with
+  /// melody after the one it first plays in, the share with a bar on the hook's rhythm (the
+  /// same sixteenths) and shape (the same moves up / down / level, or all of them turned: an
+  /// inversion); nil without a later melodic section.
+  public var hookRecurrence: Double?
+  /// Melody notes in the first bar of each 4-bar phrase (bar 1, 5, 9, … on the song's grid)
+  /// that are tones of the bar's chord: where a hook is stated; nil without a harmony part.
+  public var barOneChordTones: Double?
+  /// 4-bar bass phrases (one net, on the 4-bar grid, the first bar two notes or more, the second
+  /// playing) whose second bar repeats the first's rhythm (the same sixteenths).
+  public var bassIdeaRepeats: Double?
+  /// Where in each 4-bar melody phrase (one net, two notes or more) its highest note first
+  /// sounds, as a share of the phrase (0 = its first sixteenth, 63/64 its last), averaged:
+  /// a peak near two-thirds is the classic arch.
+  public var melodyPeakPosition: Double?
+  /// Melody leaps (a fourth or more, at most half a bar apart, one net) followed within half a
+  /// bar by a step (1–2 semitones) the other way, of the leaps followed by a note at all.
+  public var leapRecovery: Double?
 
   public init() {}
 
@@ -382,6 +405,96 @@ public struct MusicalityReport: Sendable {
       sectionChordAgreement = sectionChordAgreementBySection.map(\.agreement).min()
     }
 
+    // 6.4: phrases that answer, a hook that comes back, bass ideas, contour
+    let tonic = ((project.rootNote ?? 60) % 12 + 12) % 12
+    let melodyByNet = Dictionary(grouping: tonal.filter { $0.group == "melody" }, by: \.net)
+      .sorted { $0.key < $1.key }.map { $0.value.sorted { $0.tick < $1.tick } }
+    var pairs8 = 0
+    var answered = 0
+    var peaks: [Double] = []
+    var leapsTaken = 0
+    var recovered = 0
+    for line in melodyByNet {
+      for (_, block) in Dictionary(grouping: line, by: { ($0.tick - 1) / 128 }) {
+        let first = block.filter { ($0.tick - 1) % 128 < 64 }.max { $0.tick < $1.tick }
+        let second = block.filter { ($0.tick - 1) % 128 >= 64 }.max { $0.tick < $1.tick }
+        guard let first, let second else { continue }
+        pairs8 += 1
+        if first.note % 12 != tonic && second.note % 12 == tonic { answered += 1 }
+      }
+      for (_, block) in Dictionary(grouping: line, by: { ($0.tick - 1) / 64 })
+      where block.count >= 2 {
+        let top = block.map(\.note).max()!
+        let peak = block.filter { $0.note == top }.map(\.tick).min()!
+        peaks.append(Double((peak - 1) % 64) / 64)
+      }
+      for k in 0..<max(0, line.count - 2) {
+        let a = line[k]
+        let b = line[k + 1]
+        let c = line[k + 2]
+        guard b.tick - a.tick <= 8, abs(b.note - a.note) >= 5, c.tick - b.tick <= 8 else {
+          continue
+        }
+        leapsTaken += 1
+        let back = c.note - b.note
+        if (1...2).contains(abs(back)) && back.signum() == -(b.note - a.note).signum() {
+          recovered += 1
+        }
+      }
+    }
+    if pairs8 > 0 { answerPhrases = Double(answered) / Double(pairs8) }
+    if !peaks.isEmpty { melodyPeakPosition = peaks.reduce(0, +) / Double(peaks.count) }
+    if leapsTaken > 0 { leapRecovery = Double(recovered) / Double(leapsTaken) }
+
+    func rhythm(_ x: [NoteEvent]) -> [Int] { x.map { ($0.tick - 1) % 16 } }
+    func moves(_ x: [NoteEvent]) -> [Int] {
+      zip(x, x.dropFirst()).map { ($1.note - $0.note).signum() }
+    }
+    let melodyBarNotes = Dictionary(
+      grouping: tonal.filter { $0.group == "melody" }, by: { ($0.tick - 1) / 16 }
+    ).mapValues { $0.sorted { ($0.tick, $0.note) < ($1.tick, $1.note) } }
+    if let hookBar = melodyBarNotes.keys.sorted().first(where: { melodyBarNotes[$0]!.count >= 2 }) {
+      let hook = melodyBarNotes[hookBar]!
+      let shape = moves(hook)
+      let home = section(16 * hookBar)
+      var later = 0
+      var heard = 0
+      for s in sectionStarts.indices where s > home {
+        let lo = sectionStarts[s] / 16
+        let hi = (sectionStarts[s] + project.structure[s].steps) / 16
+        let bars = (lo..<hi).compactMap { melodyBarNotes[$0] }
+        guard !bars.isEmpty else { continue }
+        later += 1
+        if bars.contains(where: { bar in
+          rhythm(bar) == rhythm(hook) && (moves(bar) == shape || moves(bar) == shape.map { -$0 })
+        }) {
+          heard += 1
+        }
+      }
+      if later > 0 { hookRecurrence = Double(heard) / Double(later) }
+    }
+    if !chord.isEmpty {
+      let onOne = tonal.filter { $0.group == "melody" && ($0.tick - 1) / 16 % 4 == 0 }
+        .compactMap { e in chord[(e.tick - 1) / 16].map { (e, $0) } }
+      if !onOne.isEmpty {
+        let tones = onOne.filter { e, c in c.contains { $0 % 12 == e.note % 12 } }
+        barOneChordTones = Double(tones.count) / Double(onOne.count)
+      }
+    }
+    var bassPhrases = 0
+    var bassEchoes = 0
+    for (_, es) in Dictionary(grouping: bass, by: \.net) {
+      for (_, block) in Dictionary(grouping: es, by: { ($0.tick - 1) / 64 }) {
+        let sorted = block.sorted { $0.tick < $1.tick }
+        let a = sorted.filter { ($0.tick - 1) % 64 < 16 }
+        let b = sorted.filter { ($0.tick - 1) % 64 >= 16 && ($0.tick - 1) % 64 < 32 }
+        guard a.count >= 2, !b.isEmpty else { continue }
+        bassPhrases += 1
+        if Set(rhythm(a)) == Set(rhythm(b)) { bassEchoes += 1 }
+      }
+    }
+    if bassPhrases > 0 { bassIdeaRepeats = Double(bassEchoes) / Double(bassPhrases) }
+
     // Form
     let sections = project.structure
     if sections.count > 1 {
@@ -471,6 +584,12 @@ public struct MusicalityReport: Sendable {
     if let v = melodyIdeaRepeats { d["melodyIdeaRepeats"] = round3(v) }
     if let v = harmonicCadences { d["harmonicCadences"] = round3(v) }
     if let v = progressions { d["progressions"] = v }
+    if let v = answerPhrases { d["answerPhrases"] = round3(v) }
+    if let v = hookRecurrence { d["hookRecurrence"] = round3(v) }
+    if let v = barOneChordTones { d["barOneChordTones"] = round3(v) }
+    if let v = bassIdeaRepeats { d["bassIdeaRepeats"] = round3(v) }
+    if let v = melodyPeakPosition { d["melodyPeakPosition"] = round3(v) }
+    if let v = leapRecovery { d["leapRecovery"] = round3(v) }
     if let v = sectionChordAgreement {
       d["sectionChordAgreement"] = round3(v)
       d["sectionChordAgreementBySection"] = sectionChordAgreementBySection.map {
