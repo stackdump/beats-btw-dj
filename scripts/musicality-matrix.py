@@ -58,6 +58,9 @@ COLUMNS = [
     ("slopeDBPerOct", "slope", "{:5.1f}"),
     ("hfBumpDB", "hfBump", "{:6.1f}"),
     ("monoFoldDB", "monoLoss", "{:8.1f}"),
+    ("harmonicCadences", "cad", "{:4.2f}"),
+    ("progressions", "prog", "{:4d}"),
+    ("sectionChordAgreement", "secCT", "{:5.2f}"),
 ]
 
 
@@ -99,7 +102,8 @@ def flat(doc):
               "fillsBeforeSections", "slotsFromTheTop", "padMotion", "melodyRepeats", "padColor",
               "arpChordTones", "arpDoublesMelody", "buildupsBuild",
               "crashOnSections", "bassLeap", "bassStepwise", "melodyLegato",
-              "phraseEndsOnChordTones", "melodyIdeaRepeats"):
+              "phraseEndsOnChordTones", "melodyIdeaRepeats", "harmonicCadences",
+              "progressions", "sectionChordAgreement"):
         row[k] = m.get(k)
     return row
 

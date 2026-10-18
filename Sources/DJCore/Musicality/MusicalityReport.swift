@@ -89,6 +89,18 @@ public struct MusicalityReport: Sendable {
   /// otherwise: a beat note bent onto the new chord). A phrase that states an idea and
   /// repeats it.
   public var melodyIdeaRepeats: Double?
+  /// 4-bar lines (bar 4 → 5, 8 → 9, … on the song's grid, both bars with a chord) where the
+  /// chord's root falls a fifth (V → I) or rises a whole step (♭VII → i, IV → V) into the next
+  /// bar's: harmonic phrase ends; nil without a harmony part or a line to count.
+  public var harmonicCadences: Double?
+  /// Distinct 4-bar root sequences (bars 1–4, 5–8, … with a chord in every bar; roots as pitch
+  /// classes from `rootNote`): one loop for the whole song is 1. nil without a full block.
+  public var progressions: Int?
+  /// Melody, arp and bass notes on a beat that are tones of the bar's chord, per section (in
+  /// song order; sections with no such notes are left out) — where a part moves and the pad
+  /// does not — and the lowest of them; nil without a harmony part.
+  public var sectionChordAgreement: Double?
+  public var sectionChordAgreementBySection: [(section: String, agreement: Double)] = []
 
   public init() {}
 
@@ -336,6 +348,40 @@ public struct MusicalityReport: Sendable {
     }
     if phrases > 0 { melodyIdeaRepeats = Double(restated) / Double(phrases) }
 
+    // Harmonic motion: cadences at 4-bar lines, progressions per 4-bar block, and how well
+    // each section's parts agree with its chords
+    if !chord.isEmpty {
+      var lines = 0
+      var cadences = 0
+      for (b, c) in chord where b % 4 == 3 {
+        guard let last = c.first, let next = chord[b + 1]?.first else { continue }
+        lines += 1
+        let up = ((next - last) % 12 + 12) % 12
+        if up == 5 || up == 2 { cadences += 1 }
+      }
+      if lines > 0 { harmonicCadences = Double(cadences) / Double(lines) }
+      var blocks = Set<[Int]>()
+      for k in Set(chord.keys.map { $0 / 4 }) {
+        let roots = (4 * k..<4 * k + 4).compactMap { chord[$0]?.first }
+        if roots.count == 4 { blocks.insert(roots.map { (($0 - root) % 12 + 12) % 12 }) }
+      }
+      if !blocks.isEmpty { progressions = blocks.count }
+      var agreeing = [Int](repeating: 0, count: max(1, sectionStarts.count))
+      var onBeats = [Int](repeating: 0, count: max(1, sectionStarts.count))
+      for e in tonal
+      where ["melody", "arp", "bass"].contains(e.group) && (e.tick - 1) % 4 == 0 {
+        guard let c = chord[(e.tick - 1) / 16] else { continue }
+        let s = section(e.tick - 1)
+        onBeats[s] += 1
+        if c.contains(where: { $0 % 12 == e.note % 12 }) { agreeing[s] += 1 }
+      }
+      for s in onBeats.indices where onBeats[s] > 0 {
+        let name = s < project.structure.count ? project.structure[s].name : "song"
+        sectionChordAgreementBySection.append((name, Double(agreeing[s]) / Double(onBeats[s])))
+      }
+      sectionChordAgreement = sectionChordAgreementBySection.map(\.agreement).min()
+    }
+
     // Form
     let sections = project.structure
     if sections.count > 1 {
@@ -423,6 +469,14 @@ public struct MusicalityReport: Sendable {
     if let v = melodyLegato { d["melodyLegato"] = round3(v) }
     if let v = phraseEndsOnChordTones { d["phraseEndsOnChordTones"] = round3(v) }
     if let v = melodyIdeaRepeats { d["melodyIdeaRepeats"] = round3(v) }
+    if let v = harmonicCadences { d["harmonicCadences"] = round3(v) }
+    if let v = progressions { d["progressions"] = v }
+    if let v = sectionChordAgreement {
+      d["sectionChordAgreement"] = round3(v)
+      d["sectionChordAgreementBySection"] = sectionChordAgreementBySection.map {
+        ["section": $0.section, "agreement": round3($0.agreement)] as [String: Any]
+      }
+    }
     return d
   }
 }
