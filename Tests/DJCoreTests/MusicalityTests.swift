@@ -203,7 +203,10 @@ struct MusicalityTests {
   /// genres that were 10 dB apart to within 1.5 dB of the target, and the deck applies it.
   @Test func tracksPlayAtOneLoudness() {
     var raw: [Double] = []
-    for genre in ["techno", "lofi", "ambient", "edm"] {
+    // Metal, not edm: since adfc733 (instrument levels) and `.variety` the dance genres sit
+    // within ~5 dB of lofi / jazz (seed 42: edm −13.3, techno −14.1, ambient −17.7, lofi
+    // −18.2 dB), while metal still starts ~8 dB above lofi (−10.1).
+    for genre in ["techno", "lofi", "ambient", "metal"] {
       let p = played(genre, 42).played
       guard let db = Loudness.measure(p) else {
         Issue.record("\(genre) measured silent")
