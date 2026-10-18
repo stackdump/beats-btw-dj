@@ -648,7 +648,8 @@ case "render":
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   let groove = GrooveReport(hits.records, sampleRate: sr, bpm: track.played.tempo)
   // AudioMetrics, BS.1770 integrated loudness, EBU loudness range and true peak (the block
-  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift)
+  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift:
+  // GR percentiles, grP95DB among them, and its output truePeakDBTP)
   var audio = FileMeasure.audioBlock(left: render.left, right: render.right, sampleRate: sr)
   if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
   if let limiter = source.limiter { audio["limiter"] = limiter.statistics().dictionary }
