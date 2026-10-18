@@ -150,6 +150,15 @@ extension DJEngine {
       sampleLibrary[id] = buffer
       recorded = .load(deck: deck, source: .sample(id: id, title: title, grid: nil))
     }
+    // Outside audio on the row is named by its content id too (and the tempo it was given).
+    if case .clipImport(_, let title, let bpm, let beats, let provenance) = action, let buffer {
+      let id = buffer.contentID
+      sampleLibrary[id] = buffer
+      recorded = .clipImport(
+        id: id, title: title,
+        bpm: bpm > 0 ? bpm : DJEngine.importTempo(buffer, beats: beats), beats: beats,
+        provenance: provenance)
+    }
     // A saved scene is named by what is in it, so a replay doesn't need the scene library.
     if case .sceneLaunch(let name, nil) = action, let scene = scene(name) {
       recorded = .sceneLaunch(name: name, clips: scene.clips)
@@ -293,6 +302,12 @@ extension DJEngine {
     case .clipFx(let id, let fx): setClipFx(id, fx)
     case .loopFxLink(let on): setLoopFxLink(on)
     case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
+    case .clipImport(let id, let title, let bpm, let beats, let provenance):
+      if let b = buffer ?? sampleLibrary[id] ?? sampleResolver?(id) {
+        importClip(
+          buffer: b, title: title, bpm: bpm > 0 ? bpm : nil, beats: beats,
+          provenance: provenance)
+      }
     }
     return nil
   }

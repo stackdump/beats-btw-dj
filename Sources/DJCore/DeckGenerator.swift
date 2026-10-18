@@ -171,9 +171,11 @@ public final class PreparedTrack: @unchecked Sendable {
 
 extension WaveOptions {
   /// These options with the settings a track of `genre` plays with, for the fixes they hold:
-  /// the duck depth, the room, the echo, the voice design (`VoiceDesign.forGenre`).
+  /// the duck depth, the room, the echo, the voice design (`VoiceDesign.forGenre`); and the genre
+  /// itself (`genre`: the rests it gates).
   public func forGenre(_ genre: String) -> WaveOptions {
     var o = self
+    o.genre = genre
     if !musicality.isDisjoint(with: [.subtractive, .unison, .stereo]) {
       o.voiceDesign = VoiceDesign.forGenre(genre)
     }

@@ -14,6 +14,7 @@ struct StageToolActionTests {
     var backs: Bool
     var labels: Bool
     var card: Bool
+    var wander: Bool
 
     @MainActor init(_ s: StageSettings) {
       overlays = s.overlays
@@ -21,6 +22,7 @@ struct StageToolActionTests {
       backs = s.showBacks
       labels = s.showLabels
       card = s.cardOnChange
+      wander = s.showWander
     }
   }
 
@@ -35,6 +37,7 @@ struct StageToolActionTests {
     (.backs, { $0.backs.toggle() }),
     (.labels, { $0.labels.toggle() }),
     (.card, { $0.card.toggle() }),
+    (.wander, { $0.wander.toggle() }),
   ]
 
   @Test func eachButtonFlipsItsOwnFlagAndNothingElse() {
@@ -59,32 +62,35 @@ struct StageToolActionTests {
       action.toggle(s)
       #expect(action.isOn(s) == !was, "\(action)")
     }
-    // the defaults of stage.js: flow, pulse, flame and bolts on; the rest off
+    // the defaults of stage.js: flow, pulse, flame and bolts on; the rest off (and dj's wander on)
     let s = StageSettings()
     let on = StageToolAction.allCases.filter { $0.isOn(s) }
-    #expect(Set(on) == [.flow, .pulse, .flame, .bolts])
+    #expect(Set(on) == [.flow, .pulse, .flame, .bolts, .wander])
   }
 
   @Test func theToolbarOrderIsStageJS() {
-    // the four data-viz buttons, expand, backs, labels | card | bolts | help
+    // the four data-viz buttons, expand, backs, labels | card | bolts | help (and dj's wander)
     #expect(
       StageToolAction.beforeCard == [.flow, .pulse, .flame, .tilt, .expand, .backs, .labels])
-    let laidOut = StageToolAction.beforeCard + [.card, .bolts]
-    #expect(Set(laidOut) == Set(StageToolAction.allCases) && laidOut.count == 9)
+    let laidOut = StageToolAction.beforeCard + [.card, .bolts, .wander]
+    #expect(Set(laidOut) == Set(StageToolAction.allCases) && laidOut.count == 10)
     #expect(StageToolAction.beforeCard.map(\.glyph) == ["◌", "◎", "▼", "⊝", "⇄", "■", "A"])
     #expect(StageToolAction.card.glyph == "✎" && StageToolAction.bolts.glyph == "⚡\u{FE0E}")
-    #expect(Set(StageToolAction.allCases.map(\.glyph)).count == 9, "no two buttons look alike")
+    #expect(StageToolAction.wander.glyph == "∿")
+    #expect(Set(StageToolAction.allCases.map(\.glyph)).count == 10, "no two buttons look alike")
     #expect(StageToolAction.allCases.allSatisfy { !$0.help.isEmpty })
   }
 
   @Test func aSoloVisualizerHidesEveryButtonButTheCard() {
-    // .viz-solo hides [data-viz], .pn-stage-expand, -backs, -labels, -bolts
+    // .viz-solo hides [data-viz], .pn-stage-expand, -backs, -labels, -bolts; and the wander button
+    #expect(StageToolAction.hiddenWhileSolo.contains(.wander))
     #expect(StageToolAction.hiddenWhileSolo == Set(StageToolAction.allCases).subtracting([.card]))
   }
 
   @Test func theOverlayButtonsAreTheOverlays() {
     #expect(StageToolAction.flow.overlay == .flow && StageToolAction.bolts.overlay == .bolts)
     #expect(StageToolAction.expand.overlay == nil && StageToolAction.card.overlay == nil)
+    #expect(StageToolAction.wander.overlay == nil, "wander is a setting, not an overlay")
     #expect(Set(StageToolAction.allCases.compactMap(\.overlay)) == Set(StageOverlay.allCases))
   }
 }

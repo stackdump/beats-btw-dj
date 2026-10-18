@@ -33,11 +33,16 @@ public struct SessionBundle: Sendable {
 
   /// `renderedAt` is passed in (not read from the clock) so bundles are reproducible.
   /// A session that plays local-only sounds (`Session.localOnlySounds`: the Minecraft bank) is
-  /// refused — draft or not, a CID on the CDN is public — unless `allowLocalOnly`.
+  /// refused — draft or not, a CID on the CDN is public — unless `allowLocalOnly`. One that puts
+  /// stock loops on the row (`Session.importedClips`) is refused, with no override.
   public init(
     session: Session, title: String? = nil, audioWAV: [UInt8]? = nil, renderedAt: String,
     draft: Bool = false, allowLocalOnly: Bool = false
   ) throws {
+    // stock loops on the row: never, override or not (Apple's licence covers playing them in
+    // your own music, not handing them out, and a set re-renders only with its audio)
+    let imported = session.importedClips
+    guard imported.isEmpty else { throw PublishError.importedClips(imported) }
     let local = session.localOnlySounds
     guard local.isEmpty || allowLocalOnly else { throw PublishError.localOnlySounds(local) }
     let cid = session.cid
@@ -103,6 +108,8 @@ public enum PublishError: Error, Equatable, CustomStringConvertible {
   case commandFailed(String, Int32, String)
   /// The session plays sounds that may only be played on this Mac (what, where).
   case localOnlySounds([String])
+  /// The session puts outside audio (stock loops) on the loop row (what, where). No override.
+  case importedClips([String])
 
   public var description: String {
     switch self {
@@ -110,6 +117,10 @@ public enum PublishError: Error, Equatable, CustomStringConvertible {
     case .localOnlySounds(let what):
       "refusing to publish: the set plays sounds built from local game assets, for this Mac only ("
         + what.joined(separator: "; ") + "); pass the override to publish anyway"
+    case .importedClips(let what):
+      "refusing to publish: the set puts stock loops on the loop row ("
+        + what.joined(separator: "; ")
+        + "); their licence covers playing them, not publishing them"
     case .commandFailed(let c, let s, let e): "\(c) exited \(s): \(e)"
     }
   }
@@ -391,4 +402,22 @@ extension Session {
   }
 
   static func isLocalOnly(kit: String) -> Bool { SoundPalette.isLocalOnly(option: kit) }
+}
+
+extension Session {
+  /// The outside audio the set puts on the loop row (`DeckAction.clipImport`: stock loops), one
+  /// line each: what and when. Every import counts, whatever its provenance says (one without
+  /// any is of unknown origin). Empty for a set that may be published.
+  public var importedClips: [String] {
+    var out: [String] = []
+    for e in events {
+      guard case .action(.clipImport(let id, let title, _, _, let provenance)) = e.kind else {
+        continue
+      }
+      let kind = provenance?["kind"]?.string ?? "outside"
+      let name = title.isEmpty ? String(id.prefix(10)) : title
+      out.append("\(kind) loop \(name) @\(e.frame)")
+    }
+    return out
+  }
 }

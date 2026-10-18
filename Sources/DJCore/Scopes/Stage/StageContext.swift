@@ -31,6 +31,8 @@
 //   * The toolbar state: `selection` (the visualizer select, may be .shuffle) and `visualizer`
 //     (what is showing; never .shuffle), `overlays`, `scale`, `expandVariants`, `bgMode`,
 //     `cardOnChange`, `showBacks`, `showLabels`.
+//   * `wander`: each source deck's walk (Wander.swift), read on the main actor once per frame
+//     (`StageWanderDeck`): on, paused, pace, countdown, the bar in the phrase, the last moves.
 //   * `epoch` changes whenever the panels were rebuilt (a new track, the expand toggle, a
 //     source switch): a layer that tracks panels or fires forgets its state then (the model
 //     also calls `reset()` on the layers that stage.js clears on a rebuild). `trackChanged` is
@@ -337,6 +339,50 @@ public struct StagePanel: Sendable {
   }
 }
 
+/// One source deck's walk as the stage shows it (`Deck.wander`, read by `StageModel.advance` on
+/// the main actor, never from a view or the audio thread).
+public struct StageWanderDeck: Equatable, Sendable {
+  public var deck: String
+  public var on: Bool
+  /// The browser wheel grabbed the walk: it waits for a quiet phrase.
+  public var paused: Bool
+  /// Bars per move (`WanderState.paces`).
+  public var pace: Int
+  /// Bars until the next move (paused: until it resumes); nil when off or not a net
+  /// (`Deck.wanderCountdown`).
+  public var countdown: Int?
+  /// 0-based bar of the deck's clock within the current phrase (paused: quiet bars so far), in
+  /// 0..<pace; nil whenever `countdown` is.
+  public var barInPhrase: Int?
+  /// Moves taken so far (`WanderState.step`).
+  public var step: Int
+  /// The last `StageWanderDeck.moveLimit` moves of the log, oldest first.
+  public var moves: [WanderMove]
+
+  /// Moves a context carries per deck.
+  public static let moveLimit = 4
+
+  public init(
+    deck: String, on: Bool, paused: Bool = false, pace: Int = WanderState.defaultPace,
+    countdown: Int? = nil, barInPhrase: Int? = nil, step: Int = 0, moves: [WanderMove] = []
+  ) {
+    self.deck = deck
+    self.on = on
+    self.paused = paused
+    self.pace = pace
+    self.countdown = countdown
+    self.barInPhrase = barInPhrase
+    self.step = step
+    self.moves = Array(moves.suffix(Self.moveLimit))
+  }
+
+  /// Phrase progress 0...1 (`barInPhrase / pace`); nil when the walk has no phrase to show.
+  public var phraseProgress: Double? {
+    guard let barInPhrase, pace > 0 else { return nil }
+    return Double(barInPhrase) / Double(pace)
+  }
+}
+
 /// Everything a layer reads for one frame. See the header. (Not `Sendable`: it carries the
 /// main-actor feed.)
 public struct StageContext {
@@ -354,6 +400,8 @@ public struct StageContext {
   public var fires: [StageFire]
 
   // Engine facts.
+  /// The source decks' walks, sorted by deck (empty in a synthetic context).
+  public var wander: [StageWanderDeck]
   /// A macro is running on the lead deck (`WaveRunner.macroActive`).
   public var macroRunning: Bool
   /// Is any net deck behind the source?
@@ -407,7 +455,7 @@ public struct StageContext {
     overlays: Set<StageOverlay> = StageOverlay.defaults, scale: StageScale = .loop,
     expandVariants: Bool = false, bgMode: StageBackground = .void, cardOnChange: Bool = false,
     showBacks: Bool = false, showLabels: Bool = false, vizLevel: Int = 0, epoch: Int = 0,
-    trackChanged: Bool = false, stats: String = ""
+    trackChanged: Bool = false, stats: String = "", wander: [StageWanderDeck] = []
   ) {
     self.width = width
     self.height = height
@@ -435,6 +483,7 @@ public struct StageContext {
     self.epoch = epoch
     self.trackChanged = trackChanged
     self.stats = stats
+    self.wander = wander
   }
 }
 

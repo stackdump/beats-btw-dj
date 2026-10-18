@@ -87,7 +87,8 @@ extension Deck {
 
   /// `opts` for another start of the song this deck plays: it keeps the playing project's
   /// loudness gain, energy curve, duck depth, room, echo, part trims, rest schedule and voice
-  /// design instead of measuring them again.
+  /// design instead of measuring them again, and its mix-out tail (in song ticks, so a jump
+  /// inside or before it still stops on the same bar line) unless `opts` brings one.
   func sameSongOptions(_ opts: WaveOptions) -> WaveOptions {
     var o = opts
     if let g = wave.latest?.gain { o.trackGain = g }
@@ -96,7 +97,8 @@ extension Deck {
     if let s = wave.latest?.space { o.space = s }
     if let e = wave.latest?.echo { o.echo = e }
     if let b = wave.latest?.balance { o.trackBalance = b }
-    if let r = wave.latest?.rests { o.trackRests = r }
+    if let r = wave.latest?.songRests { o.trackRests = r }
+    if o.tail == nil, let t = wave.latest?.tail { o.tail = t }
     if let v = wave.latest?.voiceDesign { o.voiceDesign = v }
     // a palette changed on the same song brings its room and echo
     if let genre = currentSpec?.genre { o = o.forPalette(netProject?.palette, genre: genre) }

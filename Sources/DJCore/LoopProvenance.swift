@@ -25,7 +25,7 @@ extension Deck {
   }
 }
 
-enum LoopProvenance {
+public enum LoopProvenance {
   /// The deck as LOOP went down on it, at beat `startBeat` (the take's first downbeat).
   static func capture(_ d: Deck, startBeat: Double, build: String) -> JSONObject {
     var o = JSONObject([
@@ -79,6 +79,30 @@ enum LoopProvenance {
       src["id"] = .string(buffer.contentID)
       o["source"] = .object(src)
     }
+    return .object(o)
+  }
+
+  /// A stock loop (an installed Apple Loop) put on the row as it is (`DJEngine.importClip`):
+  /// the file and its Apple Loops metadata. `id` is the decoded audio's content id; the source
+  /// names it as a sample with the loop's own tempo as its grid, so it can go on a deck whole.
+  /// `kind: "stock"` is what `Session.importedClips` and the publish refusal look for.
+  public static func stock(_ loop: StockLoop, id: String, build: String = BuildInfo.current.build)
+    -> JSONValue
+  {
+    var o = JSONObject([
+      ("op", .string("import")), ("kind", .string("stock")),
+      ("recorded", .string(iso.string(from: Date()))), ("build", .string(build)),
+      ("title", .string(loop.name)), ("path", .string(loop.path)), ("pack", .string(loop.pack)),
+      ("category", .string(loop.category)), ("subcategory", .string(loop.subcategory)),
+      ("genre", .string(loop.genre)), ("beats", .int(loop.beats)), ("bpm", .number(loop.bpm)),
+      (
+        "source",
+        DeckSourceDescriptor.sample(
+          id: id, title: loop.name, grid: BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)
+        ).json
+      ),
+    ])
+    if let k = loop.key { o["key"] = .string(k) }
     return .object(o)
   }
 
