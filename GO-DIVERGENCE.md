@@ -196,5 +196,23 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
    the pattern drifts a beat every bar); a 16-step ring would let jazz play a true 2 and 4, which
    dj's 12-step fallback (snare on every beat) cannot.
 
+9. **Harmony that moves per section, and cadences** (`.harmonicCadence`, `.sectionHarmony`,
+   `.harmonicRhythm`; `HarmonicCadence.swift`, `SectionHarmony.swift`, `SectionMelody.swift`;
+   ROADMAP 6.3). beats' cohesion-v2 pad is one unslotted ring looping a single 4-bar
+   progression at one chord per bar for the whole song, and a bridge / solo (`TrackTheme.
+   harmonic` +5 / +4) moves only the melody / arp motif, so it leaves a pad and bass that stay
+   put; whether the loop's last chord leads into its first is luck of `chordProgs` (no cadence
+   at all in bossa, dnb, funk, jazz, lofi, metal, speedcore, trance at seed 42). dj resolves the
+   cycle's phrase end (V, else ♭VII, into the next bar), plays the whole band through a
+   per-section diatonic shift in the runner (bridge +5, solo +4, breakdown to the relative key;
+   beats' shifted bridge / solo melody nets moved back home so it isn't shifted twice) and
+   gives each section a harmonic rhythm (2 bars a chord in intros / breakdowns / outros, a V at
+   the end of a buildup, 2 chords in the bar into a chorus). Nets, `compose()` and the CID are
+   beats'; the parity path has none of it. For beats (a new cohesion, `v3`, since it changes
+   what a seed composes): slot the pad (`harmony-N`) so each section carries its own
+   progression, draw progressions per family from a chord-transition table (McGill Billboard,
+   CC0; RS200, CC BY) with the cadence at bar 4 / 8 as a constraint, move pad and bass with the
+   melody in `harmonic` sections, and add 7ths / 9ths per genre at compose time.
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `scope-model.js` models Tone's `rolloff: -48` as four biquads; Tone cascades three.

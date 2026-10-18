@@ -860,3 +860,97 @@ change was built without renders). Families are `BeatsTables.family(of:)`'s
 | jazz | sampled | (pending) | | | |
 | chill | synth | (pending) | | | |
 | chill | sampled | (pending) | | | |
+
+## 15. 6.3 harmony that goes somewhere (2026-10-18)
+
+The complaint (ROADMAP 6.3, open since part C): one 4-chord loop at one chord per bar for the
+whole song, and the pad a single unslotted ring, so beats' bridge / solo melody (`harmonic` +5 /
++4) moves away from a pad and bass that stay put. The dj half, three flags, all in `Fixes.all` /
+`Fixes.named` and off in `WaveOptions()` (parity unchanged):
+
+| flag | where | what |
+|---|---|---|
+| `.harmonicCadence` | pass (`HarmonicCadence.swift`), after `.variety`'s progression | each pad bar ending a 4-bar line whose root does not already rise a fourth or a whole step into the next moves to the next bar's V, else its ♭VII (♭VII first in minor dance genres); `reharmonize` moves the bass and melody / arp beat notes with it. Bindings only |
+| `.sectionHarmony` | pass (`SectionMelody.swift`) + runner (`SectionHarmony`, `WaveProject.harmony`) | bridge +5, solo +4, breakdown to vi (major-third keys) or III (minor-third): the runner maps every tonal lane's note at the fire's step through the section's shift (octave per group, E1…C8), so the band moves together; the pass moves beats' bridge / solo-only melody / arp slot nets back home by the same table so the melody isn't shifted twice |
+| `.harmonicRhythm` | runner, through `SectionHarmony(project:fixes:)`'s half-bar slots | intros / breakdowns / outros hold each chord 2 bars; a buildup's last half-bar plays the V (else ♭VII) of the next section's first chord; the bar before a chorus (not from a drop or chorus) plays 2 chords, ending on that V; drops keep 1 chord a bar |
+
+Metrics (`MusicalityReport`, matrix columns cad / prog / secCT / padMv / rub / clip):
+`harmonicCadences` (4-bar lines whose root falls a fifth or rises a whole step into the next),
+`progressions` (distinct 4-bar root sequences relative to `rootNote`), `sectionChordAgreement`
+(melody / arp / bass beat notes on the bar's chord, per section and the minimum), `padMotion`
+(mean semitones per pad change), `semitoneClashesPer100`, `clippedSamples`. `djctl render`
+captures the `NoteLog` through the same `SectionHarmony` the runner plays, so the report hears
+the shifted sections.
+
+### Baseline (before 6.3, from `HarmonyReportTests`)
+
+Seed 42, standard structure, `--fixes all`, integrate/roadmap ad884c1: one progression in every
+genre but blues (3; its 12 bars are three blocks); cad 1.0 in ambient, country, dubstep, edm,
+garage, house, reggae, synthwave, techno, trap and 0.0 in bossa, dnb, funk, jazz, lofi, metal,
+speedcore, trance (blues 0.27); secCT's lowest section 0.125 (blues outro) … 1.0. With one 4-bar
+loop per song, cad is all or nothing per genre.
+
+### Matrix before / after
+
+Not yet run (built in fast mode, without renders). To fill, on a quiet machine (not alongside
+other test runs):
+
+```
+scripts/musicality-matrix.py OUT/before --fixes "$BEFORE"
+scripts/musicality-matrix.py OUT/after
+scripts/musicality-matrix.py OUT/before-s --sampled --fixes "$BEFORE"
+scripts/musicality-matrix.py OUT/after-s --sampled
+scripts/musicality-matrix.py --compare OUT/before OUT/after
+```
+
+`$BEFORE` is every name in `Fixes.named` except `harmonicCadence`,
+`sectionHarmony`, `harmonicRhythm` (or integrate/roadmap before d588f56 / c5e0337 / c236ce3
+built with `--djctl`). The matrix renders the standard structure, which has no bridge in the
+dance family: whole songs with a bridge or solo come from `djctl render <g> <seed> --structure
+extended --synth` (dance: techno, house, trance; song: synthwave, funk; jazz / bossa standard has
+a solo, lofi / ambient standard a bridge), seeds 42 and 7.
+
+| genre | cad before → after | prog | padMv | rub /100 | clip |
+|---|---|---|---|---|---|
+| (pending) | | | | | |
+
+Exit (ROADMAP 6.3): cad ≥ 0.9, prog ≥ 2 in a song with a bridge, padMv ≤ 4, rub not up, clip 0.
+Expected where it can't move: ambient, lofi, blues (pentatonic / blues keys keep their plan
+under `.harmonicCadence`; `SectionHarmony` is nil for keys that aren't seven notes), so their
+cad / prog are beats' and only the gates above on the seven-note genres are the claim.
+
+### What was dropped or differs from the roadmap
+
+- **Harmonic rhythm is in the runner, not a rebinding of the pad ring.** The roadmap said
+  "rebinding the pad ring"; the ring is shared by every section (one unslotted 64-step net), so
+  a per-section rhythm can't live in its bindings. The runner's half-bar shift slots play it
+  instead; nets and bindings are unchanged by it, so `NetSnapshot` and the visuals show beats'
+  pad chord, not the held / pushed one.
+- **The breakdown moves to the relative key, not a new progression**: the same loop a third
+  away. A section's own progression is the beats half (slotted `harmony-N` pads, cohesion v3).
+- **Live keys are not mapped** (`DeckPerform`'s keys play the home key in a bridge).
+- **Pentatonic and blues genres** keep beats' plan (as with `.variety`).
+- **7ths / 9ths at compose time, Markov progressions with a cadence constraint, chord-
+  transition tables**: beats-side (GO-DIVERGENCE §5.9); `.color` still adds the seventh after
+  the fact.
+
+### Listen checklist (`djctl render <g> <seed> --structure extended --out f.wav`, or the app in release)
+
+Ear-gated: the numbers above are the claim, not that it sounds better.
+
+- techno / trance 42 `extended`: does the bridge read as a new place with the bass under it,
+  and does the band come home cleanly at the next drop (no octave jump in the bass)?
+- synthwave / funk 42 `extended`: the bar before each chorus — two chords pushing into it, the
+  second a V: a lift, or a hiccup?
+- jazz / bossa 42 standard: the solo +4 with pad and bass moving with it — still in the genre's
+  colour, or a key change that sounds like a mistake?
+- house / edm 42: breakdown at the relative key holding each chord 2 bars — calmer, or static?
+- trance / dnb 7: the pad cycle's last bar now a V / ♭VII into the loop — does it resolve, or
+  sound like a wrong chord against the melody?
+- any track with a sampled pad or bass (`--synth` off): the shifted section played by the
+  sampler, at its mapped notes — in tune, and no sample stretched out of its range?
+
+Rows for Matt to add to `docs/listening-log.md` after listening (genre, seed, build, device;
+verdict and first wrong are his): techno 42, trance 42, synthwave 42, funk 42, jazz 42, bossa 42,
+house 42, lofi 42, dnb 7 — the four the exit names (jazz, lofi, house, trance) first: 6.3 is done
+when the log stops naming *harmony* first for them.
