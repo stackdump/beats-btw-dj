@@ -568,14 +568,21 @@ chords, so every trance seed had the same arp (13 distinct arp bars in 30 seeds,
 - **Key** (`transposeTrack`): every tonal note −5…+6 semitones, the project's `rootNote` with it
   (so `.kickTune`, `DeckPerform`'s keys and every later fix read the new key). `.register` then
   puts each part back in its octave.
-- **Progression** (`reharmonize`, cohesion v2, seven-note keys): a root per bar from
-  `progressionTable` (by scale: minor, major, dorian, mixolydian, phrygian; 5–8 each; beats'
+- **Progression** (`reharmonize`, cohesion v2, seven-note and pentatonic keys): a root per bar
+  from `progressionTable` (by scale: minor, major, dorian, mixolydian, phrygian, 5–8 each; minor
+  and major pentatonic, 2–3 each, in five-degree space; beats'
   own `chordProgs` for the genre join the pool first). Each bar's pad chord and bass move along
   the key by the shortest number of scale steps that puts the root there (triads stay triads);
   a walking bass's chromatic approach is re-aimed a semitone from the moved next note; melody
   and arp notes on the beat that are no longer chord tones go to the nearest one that does not
-  repeat a neighbour (beats snaps its motif's beats the same way). Pentatonic / blues genres
-  (ambient, lofi, blues) only change key: beats' degree arithmetic is mod 7 there.
+  repeat a neighbour (beats snaps its motif's beats the same way). Pentatonic genres (lofi:
+  minor, ambient: major) move in five-degree space (2026-10-18): beats' mod-7 roots are wrapped
+  mod 5 as `degreeToMidi` plays them, dj's tables add e.g. minor 1–5–4–b7 / 1–4–5–1 / 1–b7–5–4
+  and major 1–5–6–3 / 1–3–5–2; a chord two pentatonic steps apart is a sus / quartal shape
+  and stays in key, each move at most two steps. Blues (six notes) only changes key. The bass
+  figure, `.harmonicCadence` and `SectionHarmony` stay seven-note (`sevenNoteKey`; the figure's
+  fifth falls back to the perfect fifth). Measure: (pending, matrix compare on lofi / ambient).
+  Whether the quartal shapes sound like lofi needs an ear.
 - **Bass figure** (`varyBassFigure`, after `.register` and `.bassLine`, root-per-bar basses
   only): rhythm (as composed / a pickup into every second bar, on the 16th before the downbeat
   in four-on-the-floor genres, else the last off-beat eighth, never on a kick / every other hit
@@ -954,3 +961,110 @@ Rows for Matt to add to `docs/listening-log.md` after listening (genre, seed, bu
 verdict and first wrong are his): techno 42, trance 42, synthwave 42, funk 42, jazz 42, bossa 42,
 house 42, lofi 42, dnb 7 — the four the exit names (jazz, lofi, house, trance) first: 6.3 is done
 when the log stops naming *harmony* first for them.
+
+## 16. 6.4 a hook, and an answer (2026-10-18): the write-up
+
+The complaint (ROADMAP 6.4): the melody is one 4-bar cell — nothing at 8 bars, no hook that
+survives a section change, and an interval profile of mostly repeats (54 % in the audit). Six
+flags, all in `Fixes.all` / `Fixes.named` and off in `WaveOptions()` (parity unchanged), every one
+a pass stage (bindings only; `compose()` and the CID stay beats'). §11 has the metrics they are
+judged by and the bass motif's own notes.
+
+| flag | where (pass order) | what |
+|---|---|---|
+| `.shape` | `MelodyShape.swift`, after `.contour`, before `.cadence` | off-beat repeats and passing tones go to the degree RS200's bigram table (`MelodyBigrams.default.moves`, `Resources/beats/melody-bigrams.json`) finds likeliest after the note before, within a major third; a 4-bar phrase that peaks before 0.55 gets a higher off-beat note in 0.56–0.8; a leap of a fourth or more is followed by a step back. Only off-beat notes move, onto the key, never a semitone against the pad chord. Diatonic keys only |
+| `.hook` | `Hook.swift`, after `.cadence`, before `.motif` | one seeded 1-bar chord-tone hook (`buildHook`, genre + seed) on the first bar of every melody slot window (`slotWindows`): Play in verses / drops / choruses, Transposed (a third up) in buildups, Inverted in bridges; Fragment (intros / breakdowns / outros) and Augmented (solos) state it whole first and vary it on the window's third bar. Notes snap to the bar's pad chord keeping the hook's moves. Off when compose's own `hook` technique is on |
+| `.answer` | `Answer.swift`, after `.motif` | per section, 8-bar pairs from its start where the melody plays both halves: the last note of bars 1–4 (in bars 3–4) goes to the chord's fifth (else third, never the tonic), the last of bars 5–8 to the tonic (else the chord's root), on the ring step `slotWindows` says sounds there; a ring step several windows ask for takes the majority note. Bars 1–2 (`.motif`'s idea) untouched |
+| `.bassMotif` | `BassMotif.swift`, after `.answer`, before `.approach` | bar 2 of each 4-bar bass phrase takes bar 1's rhythm, each note the same scale steps from bar 2's root; walking and bossa grooves exempt (§11) |
+| `.arpStyle` | `ArpFigure.seeded(_:variant:genre:)`, in `arpeggiate` | per-genre pools: trance up-and-down sixteenths over 4–6 tones from a seeded phase, synthwave eighths with each tone answered an octave up, edm up or broken sixteenths; other genres keep `.arpeggio`'s full pool (house has no arp role, so no off-beat stabs) |
+| `.arpDensity` | `arpDensityRates`; `arpeggiate` moves after `.legato` | each arp ring bar's rate from the melody's bar: sixteenths under 5+ onsets, eighths under fewer, quarters where it rests; the section's energy where no melody slot plays; a step busier in each phrase's fourth bar and in buildups. Direction (follow / answer) is one constant, `arpDensityDirection` (1 = follow), since it is an ear call. Needs `.arpeggio` |
+
+Groundwork the flags stand on: `slotWindows` (`SlotWindows.swift`, p64-slot-windows) — which slot
+net of a role plays which bars of each section, and where its ring is when it comes in. Its spike
+is why `.answer` is pass-side: bars 5–8 of an 8-bar section are always a different slot net from
+bars 1–4, so the answer can be a binding. The roadmap's runner-side version (alternate ring cycles
+transposed through `SectionHarmony`, p64-answer-runner) was the fallback and was not built; it is
+not needed unless the matrix below shows `ans` short of the exit with the pass alone.
+
+### Exit numbers against the targets
+
+Not yet measured: every 6.4 change was built in fast mode (compiled, no test runs, no renders).
+The targets, and where each number will come from:
+
+| target (ROADMAP 6.4 exit, plus the stage's own) | metric (matrix column) | where it is asserted |
+|---|---|---|
+| `melodyIdeaRepeats` stays 1.0 | idea | matrix only |
+| `answerPhrases` ≥ 0.9 in song-form genres | ans | `AnswerTests` (9 genres × seeds; inKey and rub hold) |
+| melody repeats ≤ 0.30 | rep | `MelodyShapeTests.contourMeetsTheCorpusTargets` (mean) |
+| melody steps ≥ 0.45 | `melodySteps` (render JSON, no column) | same |
+| leaps recovered ≥ 0.8, peak 0.55–0.8 | leapR, peak | same |
+| hook heard in ≥ 0.9 of later sections, bar-1 chord tones ≥ 0.95 | hook, b1ct | `HookTests` (song genres) |
+| bass bar 2 repeats bar 1 ≥ 0.95, root no lower | bidea, root | `BassMotifTests` (11 figure genres × 2 seeds) |
+| arp rate correlates with melody density r ≥ 0.5 | — | `ArpDensityTests` |
+| *hummable* for at least half the genres at seed 42 | — | the listening log, Matt's only |
+
+To fill, on a quiet machine (not alongside other test runs):
+
+```
+make swift-test-filter FILTER='AnswerTests|HookTests|MelodyShapeTests|BassMotifTests|ArpStyleTests|ArpDensityTests|PhraseMetricsTests|SlotWindowsTests'
+scripts/musicality-matrix.py OUT/before --fixes "$BEFORE"
+scripts/musicality-matrix.py OUT/after
+scripts/musicality-matrix.py OUT/before-s --sampled --fixes "$BEFORE"
+scripts/musicality-matrix.py OUT/after-s --sampled
+scripts/musicality-matrix.py --compare OUT/before OUT/after
+```
+
+`$BEFORE` is every name in `Fixes.named` except `answer`, `hook`, `shape`, `bassMotif`,
+`arpStyle`, `arpDensity` — the same set is §11's 6.4 baseline, so filling this table fills that
+one. One flag's own effect is `all` minus that flag against `after` (the bass motif's keep-or-drop
+call in §11 is `--fixes` without `bassMotif`).
+
+| genre | ans before → after | idea | rep | leapR | peak | hook | b1ct | bidea | rub /100 | key |
+|---|---|---|---|---|---|---|---|---|---|---|
+| (pending) | | | | | | | | | | |
+
+Gates beyond the targets: inKey and rub no worse than before (every flag moves notes onto the
+key and off semitones against the pad, so a rise in rub is a bug), clip 0, `WaveOptions()` parity
+bit-identical (the parity filter).
+
+### Found, not fixed
+
+- **The question can't be its own transposed cycle.** The roadmap's first idea (alternate cycles
+  of one ring a step up / at the dominant) needs a per-cycle map in `WaveRunner.hit()`; with
+  slot nets per phrase the pass covers it with bindings, so the runner path stays unbuilt.
+- **A slot net shared by several windows is one set of bindings.** A melody slot that plays every
+  verse's question gets the majority note (`.answer`) or the first window's hook bar (`.hook`):
+  where two sections want different notes on one ring step, one of them loses. Fixing that is
+  beats-side slot topology (an 8-bar ring per slot, beats v3).
+- **House has no arp role**, so the roadmap's "house off-beat stabs" have nothing to rebind; it
+  would be a new part, not a rewrite.
+- **Contour by family is one table.** The roadmap wanted a bigram table per family; only RS200
+  (rock vocals) is checked in, so every diatonic genre reads the same table, and pentatonic /
+  blues keys (not seven degrees) skip `.shape`'s first step.
+- **Net views show the bindings**, so the hook, the answer's tonic and the shaped notes are all
+  visible in `NetSnapshot` (no runner-side mapping in 6.4).
+
+### Listen checklist (`djctl render <g> 42 --out f.wav`, or the app in release)
+
+Ear-gated: the numbers above are the claim, not that it sounds better. A/B one flag at a time
+with `--fixes` (all names but the one against all).
+
+- techno / trance / edm 42: can you hum the hook after the first drop, and is it there again
+  (or inverted, in a bridge) after the breakdown? `--fixes` without `hook` for the A.
+- synthwave / funk / house 42: bars 4 and 8 of each verse — does the first sound like a question
+  and the second like it lands? Without `answer` for the A.
+- lofi / jazz / bossa 42: fewer hammered repeats and a phrase that climbs to a peak late — a line,
+  or busier for nothing? Without `shape` for the A.
+- dnb / dubstep / techno 7: the bass saying its bar twice — a riff, or monotonous? Without
+  `bassMotif` for the A (the call in §11).
+- trance / synthwave / edm 42: the arp's figure — a trance roll, a synthwave octave climb — and
+  its rate following the melody bar by bar; does the rate change read as phrasing or as the arp
+  stumbling? Without `arpDensity` (then without `arpStyle`) for the A; if it stumbles, try
+  `arpDensityDirection = -1` (the arp answers the melody instead of following it).
+- any sampled-lead track (`--synth` off): the hook's notes on the sampler — in tune, in range?
+
+Rows for Matt to add to `docs/listening-log.md` after listening (genre, seed, build, device;
+verdict and first wrong are his, left blank here): techno 42, house 42, edm 42, trance 42,
+dnb 42, dubstep 42, synthwave 42, lofi 42, jazz 42, funk 42, bossa 42, ambient 42 — every matrix
+genre at seed 42, since the exit is *hummable* for at least half of them; 6.4 is done when the log
+says so, not when the table above is green.
