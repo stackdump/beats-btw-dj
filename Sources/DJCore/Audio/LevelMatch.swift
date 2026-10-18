@@ -25,6 +25,17 @@ public enum LevelMatch {
   /// …and never lifts a sample's peak over this (dBFS): samples have no limiter, so a boost
   /// that would clip is cut back to the headroom the audio has.
   public static let samplePeakCeilingDB = -1.0
+  /// The integrated target for a genre's tracks (`MixTargets.integratedLUFS`): its family's
+  /// `lufs` band once measured, else `referenceLUFS` (every family, today).
+  public static func targetLUFS(genre: String?) -> Double {
+    MixTargets.shared.integratedLUFS(family: MixTargets.family(genre: genre))
+  }
+  /// Exit M7 (ROADMAP 6.6): whole songs of every genre, synth or sampled, land within this of
+  /// each other (max − min, LU; `LoudnessSpreadTests`)…
+  public static let maxSpreadLU = 2.0
+  /// …and a centred A→B crossfade within this of either deck alone (equal-power: −3 dB each,
+  /// two uncorrelated tracks at one loudness sum back to it).
+  public static let crossfadeToleranceLU = 1.0
 }
 
 /// How loud a sample is and the auto-gain that puts it at the app's reference

@@ -102,6 +102,25 @@ public struct MixTargets: Sendable {
     bands[metric]?[family]?.range
   }
 
+  /// A genre's family name (`GrooveTemplate.familyNames`, by `BeatsTables.family(of:)`); nil
+  /// genre (raw nets, parity) has none.
+  public static func family(genre: String?) -> String? {
+    guard let genre else { return nil }
+    let i = BeatsTables.shared.family(of: genre)
+    let names = GrooveTemplate.familyNames
+    return names.indices.contains(i) ? names[i] : nil
+  }
+
+  /// The integrated loudness (LUFS) a family's tracks are brought to (ROADMAP 6.6): the middle
+  /// of its `lufs` band once the reference corpus has measured one, else the app's single
+  /// reference, `LevelMatch.referenceLUFS`. Every band is empty so far, so every family plays
+  /// at −12: one level is what a crossfade between two families needs (a level jump at the
+  /// fader is the thing 6.6 removes), and a per-family target only replaces it with numbers.
+  public func integratedLUFS(family: String?) -> Double {
+    guard let family, let r = band("lufs", family: family) else { return LevelMatch.referenceLUFS }
+    return (r.lowerBound + r.upperBound) / 2
+  }
+
   // MARK: table
 
   public static let shared: MixTargets = {

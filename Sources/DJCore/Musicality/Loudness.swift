@@ -18,6 +18,11 @@ public enum Loudness {
   /// `loudness.probeOffsetDB` (`MixTargets`).
   public static let targetDB =
     LevelMatch.referenceLUFS + MixTargets.shared.loudness.probeOffsetDB.value!
+  /// `targetDB` for a genre: its family's integrated target (`LevelMatch.targetLUFS`) plus the
+  /// same probe offset. Equal to `targetDB` while `targets.json` has no `lufs` bands.
+  public static func targetDB(genre: String?) -> Double {
+    LevelMatch.targetLUFS(genre: genre) + MixTargets.shared.loudness.probeOffsetDB.value!
+  }
   /// The gain stays within −12…+18 dB (the sparsest genres — lofi, ambient — need about +13 at
   /// the app's reference): `targets.json`'s `loudness.gainRange`.
   public static let range = (
@@ -62,9 +67,10 @@ public enum Loudness {
   /// on samplers, at each slot's measured part level and gain: `WaveRunner.prepare`).
   /// `subOctave`: the deck's `WaveOptions.subOctave` (the genre's), so the probe hears the
   /// sub the deck plays.
+  /// `genre`: the deck's (`WaveOptions.genre`), for its family's target (`targetDB(genre:)`).
   public static func gain(
     for project: Project, fixes: DJMusicality.Fixes = [], balance: [String: Double]? = nil,
-    sampled: [String: Double] = [:], subOctave: Bool = false
+    sampled: [String: Double] = [:], subOctave: Bool = false, genre: String? = nil
   ) -> Double {
     guard
       let db = measure(
@@ -72,7 +78,7 @@ public enum Loudness {
     else {
       return 1
     }
-    let g = pow(10, (targetDB - db) / 20)
+    let g = pow(10, (targetDB(genre: genre) - db) / 20)
     return min(range.max, max(range.min, g))
   }
 
