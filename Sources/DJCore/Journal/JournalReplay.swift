@@ -164,6 +164,12 @@ extension Journal {
       where dj.clip(id) == nil && !dj.removedClips.contains(where: { $0.clip.id == id }) {
         if let c = clips(id) { dj.restoreClips([c]) }
       }
+      // an import's audio comes by content id: the library, `samples`, or a `sampleFile` path
+      if case .clipImport(let id, let title, _, _, _) = a, dj.clip(id) == nil,
+        dj.sampleResolver?(id) == nil
+      {
+        warnings.append("imported clip \(title.isEmpty ? id : title) has no audio")
+      }
       dj.applyAction(a)
     case .midi(let port, let bytes):
       if !attached.contains(port) {
@@ -235,7 +241,8 @@ extension DeckAction {
     switch self {
     case .clip(_, let id), .clipLoop(let id, _), .clipGain(let id, _), .clipCrop(let id, _, _),
       .clipRemove(let id), .clipRename(let id, _), .clipColor(let id, _), .clipMute(let id, _),
-      .clipSolo(let id, _), .clipKeyLock(let id, _), .clipFx(let id, _):
+      .clipSolo(let id, _), .clipKeyLock(let id, _), .clipFx(let id, _),
+      .clipQuantize(let id, _), .clipFade(let id, _):
       return [id]
     case .clipMove(let id, let before): return [id] + (before.map { [$0] } ?? [])
     case .clipSequence(let steps, let replacing):

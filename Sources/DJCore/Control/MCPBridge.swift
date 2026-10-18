@@ -181,8 +181,15 @@ public struct MCPBridge {
       bits 1…16, downsample 1…32, tone 0…1 (1 open), mix 0…1, trim −24…12 dB, autoLevel, \
       bypass}}: after effects on a loop under the mixer, on top of its dry audio (missing fields \
       default; {} is off; dj_state.loops.clips[].fx) · \
+      clipImport {id, title, bpm, beats, provenance?}: outside audio already in the sample \
+      library (by content id) onto the row as a clip, looping from the next launch boundary; the \
+      same audio twice is one clip (dj_stock_loops addToRow is the way in for a stock loop; a \
+      set with one is never published) · \
       loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
-      off|10ms|beat|bar}: how loops come in and go out (default 10ms) · tapBars {bars: 1-64 or \
+      off|10ms|beat|bar}: how loops come in and go out (default 10ms) · clipQuantize {id, beats: \
+      1|4|8|16|32 or null}: one loop's own launch boundary (null: the row's loopQuantize; a scene \
+      switches on the row's) · clipFade {id, fade: off|10ms|beat|bar or null}: one loop's own \
+      fade (null: the row's loopFade) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
       app's) · voiceTweak {deck, channel, params}: shape a net deck's channel's synth voice \
       live, on the song playing (no reload; channel from dj_state.voices[].channel): params \
@@ -302,11 +309,14 @@ public struct MCPBridge {
       (default) filters by `category` (Drums, Bass, Keyboards…; the reply lists them) and \
       `query` words, nearest in tempo to `near` BPM (or the other deck's when `deck` is given) \
       first, up to `limit` (20); load {deck, path} puts one on a deck as a sample with its own \
-      tempo as the beat grid (does not start playback).
+      tempo as the beat grid (does not start playback); addToRow {path} puts one on the loop \
+      row as a clip (dj_state.loops.clips, provenance kind stock), looping under the mixer from \
+      the next launch boundary in time with the decks; the same loop twice is one clip. A set \
+      with a stock loop on the row is never published.
       """,
       [
-        "action": prop("string", "list | load"),
-        "deck": prop("string", "A or B"),
+        "action": prop("string", "list | load | addToRow"),
+        "deck": prop("string", "A or B (load)"),
         "path": prop("string", "A loop's path, from list"),
         "category": prop("string", "e.g. Drums, Bass, Keyboards"),
         "query": prop("string", "Words to match in name, pack, genre, subcategory"),
