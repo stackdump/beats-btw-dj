@@ -69,6 +69,7 @@ struct StageLayerStack: View {
       }
 
       StageSoloLayer(context: context, model: models.solo)
+      StageMinecraftLayer(context: context, model: models.minecraft)
       StageCardLayer(context: context, model: models.card)
     }
   }

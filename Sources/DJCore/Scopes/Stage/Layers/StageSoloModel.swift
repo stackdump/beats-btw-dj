@@ -10,6 +10,7 @@
 //   corona  StageCoronaModel.swift   the master's FFT as 128 bars (audio-driven)
 //   sonar   StageSonarModel.swift    an expanding ring per fire (beat-driven)
 //   petal   StagePetalModel.swift    one petal per panel, breathing with its fires (beat-driven)
+//   blocks  StageMinecraftModel.swift (its own slot in the registry; nothing to paint here)
 //   shuffle StageShuffle.swift       every 64 fires a new one of the four; the arrow keys cycle
 //
 // Everything the view draws is a value (`StageSoloPaint`) computed here from the context, so the
@@ -119,7 +120,7 @@ public final class StageSoloModel: StageLayerModel {
       corona.rest()
       for fire in fires { petals.fire(PetalKey(deck: fire.deck, netId: fire.netId)) }
       petals.decay(dt: context.dt)
-    case .constellation, .shuffle:
+    case .constellation, .minecraft, .shuffle:
       corona.rest()
     }
   }
@@ -165,7 +166,7 @@ public final class StageSoloModel: StageLayerModel {
           channels: context.panels.map(\.channel),
           keys: context.panels.map { PetalKey(deck: $0.deck, netId: $0.netId) },
           center: context.ringCenter, width: context.width, height: context.height))
-    case .constellation, .shuffle: .none
+    case .constellation, .minecraft, .shuffle: .none
     }
   }
 }

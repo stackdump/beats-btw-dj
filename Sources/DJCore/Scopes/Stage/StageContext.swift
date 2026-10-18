@@ -46,6 +46,8 @@ public enum StageVisualizer: String, CaseIterable, Sendable {
   case corona
   case sonar
   case petal
+  /// The "Blocks" world, orchestrated by the control track (`StageMinecraftModel`).
+  case minecraft
   case shuffle
 
   /// The select's option text.
@@ -55,22 +57,23 @@ public enum StageVisualizer: String, CaseIterable, Sendable {
     case .corona: "Corona"
     case .sonar: "Sonar"
     case .petal: "Petal"
+    case .minecraft: "Blocks"
     case .shuffle: "🔀 Shuffle"
     }
   }
 
-  /// Corona, sonar and petal own the whole window: stage.js hides the panel grid and the flame
+  /// Corona, sonar, petal and blocks own the whole window: stage.js hides the panel grid and the flame
   /// canvas (`viz-solo`) while one is showing.
   public var isSolo: Bool {
     switch self {
-    case .corona, .sonar, .petal: true
+    case .corona, .sonar, .petal, .minecraft: true
     case .constellation, .shuffle: false
     }
   }
 
-  /// The four real visualizers, in the order the arrow keys cycle through them
-  /// (`['mandala', 'corona', 'sonar', 'petal']`) and shuffle picks from.
-  public static let real: [StageVisualizer] = [.constellation, .corona, .sonar, .petal]
+  /// The real visualizers, in the order the arrow keys cycle through them
+  /// (stage.js `['mandala', 'corona', 'sonar', 'petal']`, then dj's blocks) and shuffle picks from.
+  public static let real: [StageVisualizer] = [.constellation, .corona, .sonar, .petal, .minecraft]
 }
 
 /// The independent toolbar toggles. `flow`, `pulse`, `flame` and `tilt` are the `data-viz`
