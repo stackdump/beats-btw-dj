@@ -5,8 +5,8 @@ import SwiftUI
 /// The Soundboard: every loop on the row as one big pad, the saved scenes along the top. A
 /// click brings a loop in or out on the next launch boundary (⌥-click solos it, ⇧-click mutes
 /// it); right-click has the quick settings and "Settings…", the clip's full editor. With the
-/// mouse over the board the arrow keys move a focus between the pads and Return / Space toggle
-/// the focused one.
+/// mouse over the board the arrow keys move a focus between the pads (↑ / ↓ a row) and Return /
+/// Space toggle the focused one.
 ///
 /// A panel in the main window (the bottom bar's "Soundboard", View ▸ Soundboard, ⇧⌘B), like
 /// Controllers: it sits right under the decks, above the Loops row it is a simpler view of.
@@ -22,6 +22,8 @@ struct SoundboardView: View {
   /// The pad being renamed (from its menu), and the name typed so far.
   @State private var renaming: String?
   @State private var newName = ""
+  /// The grid's width, for its column count (↑ / ↓ move a row).
+  @State private var gridWidth: CGFloat = 0
 
   var body: some View {
     let pads = model.soundPads
@@ -43,7 +45,8 @@ struct SoundboardView: View {
               .onTapGesture {
                 let flags = NSEvent.modifierFlags
                 focus = pad.id
-                model.padClick(pad.id, option: flags.contains(.option), shift: flags.contains(.shift))
+                model.padClick(
+                  pad.id, option: flags.contains(.option), shift: flags.contains(.shift))
               }
               .onHover { if $0 { focus = pad.id } }
               .contextMenu {
@@ -70,8 +73,14 @@ struct SoundboardView: View {
                   + "· right-click for its settings")
           }
         }
+        .onGeometryChange(for: CGFloat.self) {
+          $0.size.width
+        } action: {
+          gridWidth = $0
+        }
         .arrowKeys(
-          pads.map(\.id), current: focus, select: { focus = $0 },
+          pads.map(\.id), columns: SoundboardLayout.columns(count: pads.count, width: gridWidth),
+          current: focus, select: { focus = $0 },
           activate: { if let f = focus { model.soundboard(.toggle, f) } })
       }
     }
