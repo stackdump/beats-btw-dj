@@ -117,29 +117,46 @@ struct StereoTests {
   /// included (lofi, jazz).
   @Test(arguments: ["trance", "lofi", "jazz"])
   func aTrackIsWideAboveAndMonoBelow(genre: String) {
-    let track = PreparedTrack(
-      spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr)
-    // the deck (its limiter holds the peaks the track's loudness gain brings)
-    let source = WaveDeckSource(sampleRate: sr, opts: .extended)
-    source.load(track.prepared)
-    source.play()
-    var l = [Float](repeating: 0, count: Int(12 * sr))
-    var r = l
-    l.withUnsafeMutableBufferPointer { lb in
-      r.withUnsafeMutableBufferPointer { rb in
-        var off = 0
-        while off < lb.count {
-          let n = min(512, lb.count - off)
-          source.render(frames: n, left: lb.baseAddress! + off, right: rb.baseAddress! + off)
-          off += n
-        }
-      }
-    }
-    let m = AudioMetrics(left: l, right: r, sampleRate: sr)
+    let m = deckMetrics(genre)
     #expect(m.sideDB > -25 && m.sideDB < -5, "\(genre): side \(m.sideDB) dB")
     #expect(m.lowSideDB < -30, "\(genre): low side \(m.lowSideDB) dB")
     #expect(m.clipped == 0)
   }
+
+  /// Ambient's pads sit low and long: narrower (`VoiceDesign.padWidth`) and with the unison
+  /// pair's side highpassed higher (`padSideHz`), the low end stays mono (side 35 dB or more
+  /// under mid below 150 Hz, where full width left it at −26) while the mix is still wide.
+  @Test func ambientPadsKeepTheirLowsMono() {
+    let design = WaveOptions.extended.forGenre("ambient").voiceDesign
+    #expect(design.padWidth < 1 && design.padSideHz > Unison.sideHz)
+    let m = deckMetrics("ambient")
+    #expect(m.lowSideDB <= -35, "ambient: low side \(m.lowSideDB) dB")
+    #expect(m.sideDB >= -20, "ambient: side \(m.sideDB) dB")
+    #expect(m.clipped == 0)
+  }
+}
+
+/// Twelve seconds of `genre` seed 42 through the deck's options and the deck (its limiter holds
+/// the peaks the track's loudness gain brings).
+private func deckMetrics(_ genre: String) -> AudioMetrics {
+  let track = PreparedTrack(
+    spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr)
+  let source = WaveDeckSource(sampleRate: sr, opts: .extended)
+  source.load(track.prepared)
+  source.play()
+  var l = [Float](repeating: 0, count: Int(12 * sr))
+  var r = l
+  l.withUnsafeMutableBufferPointer { lb in
+    r.withUnsafeMutableBufferPointer { rb in
+      var off = 0
+      while off < lb.count {
+        let n = min(512, lb.count - off)
+        source.render(frames: n, left: lb.baseAddress! + off, right: rb.baseAddress! + off)
+        off += n
+      }
+    }
+  }
+  return AudioMetrics(left: l, right: r, sampleRate: sr)
 }
 
 #if DEBUG
