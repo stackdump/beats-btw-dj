@@ -480,7 +480,7 @@ struct SceneStrip: View {
     HStack(alignment: .top, spacing: DJStyle.m) {
       Button("Save scene") { model.saveScene() }
         .controlSize(.small).disabled(model.loopChannel.looping == 0)
-        .help("Keep the loops playing now (and their levels) as a scene")
+        .help("Keep the loops playing now (and their levels and FX) as a scene")
       FlowRow(spacing: 4) {
         ForEach(model.scenes) { scene in SceneChip(scene: scene, model: model, rename: rename) }
       }

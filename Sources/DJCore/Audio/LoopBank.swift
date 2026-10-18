@@ -16,8 +16,11 @@ enum LoopBankCommand: BitwiseCopyable {
   /// sounding, changed on the launch boundary), ramped to like `gain`. A plain `gain` cancels it.
   case gainAt(voice: Int, Float, frame: Int)
   /// The voice's after effects (`LoopFx.swift`): smoothed and crossfaded while it sounds, at
-  /// once while it is silent.
+  /// once while it is silent. A plain `fx` cancels a pending `fxAt`.
   case fx(voice: Int, LoopFxParams)
+  /// Voice `voice`'s after effects from deck frame `frame` (a scene's FX for a clip already
+  /// sounding, changed on the launch boundary), taken like `fx`.
+  case fxAt(voice: Int, LoopFxParams, frame: Int)
 }
 
 /// The loop channel's source: several clips looping at once, each on its own voice (a
@@ -67,6 +70,10 @@ final class LoopBank: @unchecked Sendable {
   /// A level change waiting for its frame (`gainAt`): the level, and the frame (-1: none).
   private var pendingGains: [Float]
   private var gainFrames: [Int]
+  /// FX waiting for their frame (`fxAt`): the settings, and the frame (-1: none). Filled at init,
+  /// so a command only copies into them.
+  private var pendingFx: [LoopFxParams]
+  private var fxFrames: [Int]
   /// The fade envelope, 0…1, its step per sample (> 0 fading in, < 0 fading out) and the
   /// samples to go.
   private var envelope: [Float]
@@ -95,6 +102,8 @@ final class LoopBank: @unchecked Sendable {
     levelLeft = Array(repeating: 0, count: n)
     pendingGains = Array(repeating: 1, count: n)
     gainFrames = Array(repeating: -1, count: n)
+    pendingFx = Array(repeating: LoopFxParams(), count: n)
+    fxFrames = Array(repeating: -1, count: n)
     envelope = Array(repeating: 1, count: n)
     envelopeStep = Array(repeating: 0, count: n)
     envelopeLeft = Array(repeating: 0, count: n)
@@ -147,6 +156,7 @@ final class LoopBank: @unchecked Sendable {
       var from = 0
       // a voice that is not sounding takes a level change due in this block at once
       if !active[v], gainFrames[v] >= 0, gainFrames[v] < s + n { applyPendingGain(v) }
+      if !active[v], fxFrames[v] >= 0, fxFrames[v] < s + n { applyPendingFx(v) }
       if !active[v] {
         guard startAt[v] >= 0, startAt[v] < s + n else { continue }
         from = max(0, startAt[v] - s)
@@ -164,7 +174,7 @@ final class LoopBank: @unchecked Sendable {
         stopAt[v] = -1
         if stopFade[v] > 0 {
           // sound on to the stop, then fall from wherever the envelope is to 0 over the fade
-          stops = mixAcrossGain(v, from: from, to: at, start: s, left: left, right: right)
+          stops = mixAcross(v, from: from, to: at, start: s, left: left, right: right)
           ramp(v, to: 0, over: stopFade[v])
           from = stops ? n : at
         } else {
@@ -172,7 +182,7 @@ final class LoopBank: @unchecked Sendable {
           stops = true
         }
       }
-      if from < to, mixAcrossGain(v, from: from, to: to, start: s, left: left, right: right) {
+      if from < to, mixAcross(v, from: from, to: to, start: s, left: left, right: right) {
         stops = true
       }
       if stops {
@@ -212,8 +222,33 @@ final class LoopBank: @unchecked Sendable {
       pendingGains[v] = g
       gainFrames[v] = f
     case .fx(let v, let p):
+      fxFrames[v] = -1
       fx[v].set(p, sounding: active[v])
+    case .fxAt(let v, let p, let f):
+      pendingFx[v] = p
+      fxFrames[v] = f
     }
+  }
+
+  private func applyPendingFx(_ v: Int) {
+    fx[v].set(pendingFx[v], sounding: active[v])
+    fxFrames[v] = -1
+  }
+
+  /// `mixAcrossGain`, with an `fxAt` due inside `from..<to` (block starting at deck frame `s`)
+  /// taking effect on its frame: the part before it through the old FX, the rest through the new.
+  private func mixAcross(
+    _ v: Int, from: Int, to: Int, start s: Int, left: UnsafeMutablePointer<Float>,
+    right: UnsafeMutablePointer<Float>?
+  ) -> Bool {
+    let f = fxFrames[v]
+    guard f >= 0, f - s < to else {
+      return mixAcrossGain(v, from: from, to: to, start: s, left: left, right: right)
+    }
+    let k = min(max(from, f - s), to)
+    if mixAcrossGain(v, from: from, to: k, start: s, left: left, right: right) { return true }
+    applyPendingFx(v)
+    return mixAcrossGain(v, from: k, to: to, start: s, left: left, right: right)
   }
 
   /// Head voice `v`'s level for `g`: over the ramp while it sounds, at once while it is silent
