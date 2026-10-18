@@ -3,7 +3,8 @@
     "about": "Mix targets the musicality fixes aim at (ROADMAP 6.1), as data that names where each number came from. Loaded once by MixTargets (Bundle.main first, then Bundle.module), at prepare, never on the audio thread.",
     "editing": "Hand-edited, not generated: make beats-tables writes only tables.json. A value replaced by a measurement says so in its source (corpus, tool, date).",
     "families": "beats' structure.js family order (BeatsTables.family(of:)): dance, song, jazz, chill",
-    "bands": "scripts/references.py --write fills them from $DJ_REFERENCES/<family>/ (local files, never committed): value = median, band = [p10, p90], source 'ref:<family>/<sha8> (n=K, djctl <build>)', sha8 hashing the files' sha256s. Never a path or a file name."
+    "bands": "scripts/references.py --write fills them from $DJ_REFERENCES/<family>/ (local files, never committed): value = median, band = [p10, p90], source 'ref:<family>/<sha8> (n=K, djctl <build>)', sha8 hashing the files' sha256s. Never a path or a file name.",
+    "hfTilt": "Lowpass cutoff (Hz) on the synth hat, open hat and crash under .hfTilt (HFTilt.forGenre), by family; default for a family without one."
   },
   "loudness": {
     "probeOffsetDB": {
@@ -277,6 +278,28 @@
       "chill": {
         "source": "unmeasured (6.1)"
       }
+    }
+  },
+  "hfTilt": {
+    "default": {
+      "value": 9500,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "dance": {
+      "value": 10000,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "song": {
+      "value": 9500,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "jazz": {
+      "value": 9000,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "chill": {
+      "value": 8000,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
     }
   }
 }

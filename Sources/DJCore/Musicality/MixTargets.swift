@@ -4,7 +4,7 @@ import Foundation
 /// `Resources/beats/targets.json`. Per part, genre or family each number carries a `source`
 /// (`"rule-of-thumb (pre-6.1)"` until a measurement replaces it) and, where a reference corpus
 /// gives one, a `band` (the range it should fall in). `Loudness`, `MixBalance`, `SpaceSpec` and
-/// `DJMusicality.stereoPlacement` read their numbers from here.
+/// `DJMusicality.stereoPlacement` and `HFTilt` read their numbers from here.
 ///
 /// Hand-edited, not generated (`make beats-tables` writes only `tables.json`). Loaded once
 /// (`shared`, a static let) at prepare: never touch it first on the audio thread.
@@ -71,6 +71,9 @@ public struct MixTargets: Sendable {
   /// Reference bands per metric (`lufs`, `lra`, `truePeak`, `slope`, `side`) and family, to be
   /// filled from a reference corpus; empty (a source, no value) until then.
   public var bands: [String: [String: Target]]
+  /// `.hfTilt`'s lowpass on the bright drum voices (`HFTilt`), Hz, by family, with a
+  /// `default` for a family that has none.
+  public var hfTilt: [String: Target]
 
   public static let metrics = ["lufs", "lra", "truePeak", "slope", "side"]
 
@@ -103,6 +106,23 @@ public struct MixTargets: Sendable {
     bands[metric]?[family]?.range
   }
 
+  /// `.hfTilt`'s cutoff for `family`, else the default's.
+  public func hfTiltHz(family: String) -> Double? {
+    hfTilt[family]?.value ?? hfTilt["default"]?.value
+  }
+
+  /// What the mix's long-term slope (`Spectrum.slopeDBPerOct`) should fall in for `family`: the
+  /// measured band when the corpus gives one, else research M7's rule of thumb (falling: −6 …
+  /// −1 dB/oct; realism-2026-10.md).
+  public func slopeBand(family: String) -> ClosedRange<Double> {
+    band("slope", family: family) ?? Self.slopeRuleOfThumb
+  }
+
+  /// [RULE-OF-THUMB] M7: a falling slope (mastered records sit about −2.5 … −4.5 dB/oct).
+  public static let slopeRuleOfThumb: ClosedRange<Double> = -6 ... -1
+  /// [RULE-OF-THUMB] M7: "no HF bump": 12.5 / 16 kHz at most this far over the slope's fit.
+  public static let maxHFBumpDB = 2.0
+
   // MARK: table
 
   public static let shared: MixTargets = {
@@ -125,6 +145,7 @@ public struct MixTargets: Sendable {
     var space: Rooms
     var stereo: [String: Placement]
     var bands: [String: [String: Target]]
+    var hfTilt: [String: Target]
   }
 
   static func parse(_ data: Data) throws -> MixTargets {
@@ -143,7 +164,12 @@ public struct MixTargets: Sendable {
     for (name, t) in f.bands.values.flatMap(\.self) where t.band != nil && t.range == nil {
       throw bad("bands \(name)")
     }
+    guard let hz = f.hfTilt["default"]?.value, hz > 0 else { throw bad("hfTilt.default") }
+    for (name, t) in f.hfTilt where !(t.value.map { $0 > 0 } ?? true) {
+      throw bad("hfTilt.\(name)")
+    }
     return MixTargets(
-      loudness: f.loudness, balance: f.balance, space: f.space, stereo: f.stereo, bands: f.bands)
+      loudness: f.loudness, balance: f.balance, space: f.space, stereo: f.stereo, bands: f.bands,
+      hfTilt: f.hfTilt)
   }
 }

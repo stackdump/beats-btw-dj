@@ -115,6 +115,9 @@ public struct WaveOptions {
   /// A sine an octave under the synth basses (`SubOctave`, `DJMusicality.Fixes.subOctave`).
   /// Set by `forGenre` (dnb, dubstep, trap); false = beats' bass (parity, every other genre).
   public var subOctave = false
+  /// The lowpass on the bright drum voices (`HFTilt`, `DJMusicality.Fixes.hfTilt`), set by
+  /// `forGenre` from the family's cutoff; nil = beats' hats (parity, and with the fix off).
+  public var hfTilt: HFTilt?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -260,6 +263,12 @@ final class Lane {
   var send = 0.0
   /// `.echo`: how much goes to the echo (`EchoSpec.send`).
   var echoSend = 0.0
+  /// `.hfTilt`: a lowpass biquad after a noise lane's own filter (hat, open hat, crash;
+  /// `HFTilt`), 5 coefficients used while `tiltOn`, and its state.
+  var tilt: [Double] = []
+  var tiltOn = false
+  var tz1 = 0.0
+  var tz2 = 0.0
   /// `.subtractive`: band-limited tables by octave (`MipTables`; empty = `table` for every
   /// note) and the table each voice reads (`mipBase`); a two-pole lowpass per voice (`fz1`,
   /// `fz2`) whose cutoff is `fBase` × the note's frequency plus `fAmount` × velocity²
@@ -895,6 +904,7 @@ private func buildLanes(
   let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup, .crash])
   let voiceCrash = opts.musicality.contains(.crash)
   let voiceOpenHats = opts.musicality.contains(.openHats)
+  let tilt = opts.musicality.contains(.hfTilt) ? opts.hfTilt : nil
   let stereo = opts.musicality.contains(.stereo)
   let space = opts.musicality.contains(.space)
   let subtractive = opts.musicality.contains(.subtractive)
@@ -985,6 +995,12 @@ private func buildLanes(
             voice.f1 = hz
           }
           lane = gateLane(voice, sr, lanes.count)
+          // `.hfTilt`: the noise voices that carry the top end, lowpassed (a sampled kit's lane
+          // keeps it for when it plays its synth voice)
+          if let tilt, let hz = tilt.lowpassHz(kind: key), lane.carrier == .noise, !brushed {
+            lane.tilt = biquad(type: "lowpass", fc: min(hz, 0.45 * sr), q: tilt.q, sr: sr)
+            lane.tiltOn = true
+          }
           if let kit {
             if brushed, let brush = DrumKits.brushKit(for: kit),
               bindKit(lane, kind: key, brush, opts)
@@ -2415,9 +2431,16 @@ public final class WaveRunner {
         lane.rng = x
         let nz = Double(x) / 2_147_483_648
         let b = lane.bq
-        let y = b[0] * nz + lane.st[slotZ1]
+        var y = b[0] * nz + lane.st[slotZ1]
         lane.st[slotZ1] = b[1] * nz - b[3] * y + lane.st[slotZ2]
         lane.st[slotZ2] = b[2] * nz - b[4] * y
+        if lane.tiltOn {
+          let t = lane.tilt
+          let w = t[0] * y + lane.tz1
+          lane.tz1 = t[1] * y - t[3] * w + lane.tz2
+          lane.tz2 = t[2] * y - t[4] * w
+          y = w
+        }
         c = y
         if lane.carrier == .noiseTone {
           var ph = lane.st[slotPhase] + lane.st[slotToneInc]
