@@ -4,7 +4,7 @@ PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test swift-test-filter swift-shots swift-rt-test swift-rt-test-filter app run-app app-release run-app-release djctl \
-        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check groove-templates
+        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check groove-templates melody-bigrams
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -170,6 +170,11 @@ beats-tables:
 # .build/gmd, sha256-pinned in the script, and averaged into Resources/beats/grooves.json.
 groove-templates:
 	python3 scripts/groove-templates.py
+
+# Melody degree bigrams (ROADMAP 6.4): the RS200 melodic transcriptions (CC BY 4.0) are fetched
+# into .build/rs200, sha256-pinned in the script, and counted into Resources/beats/melody-bigrams.json.
+melody-bigrams:
+	python3 scripts/melody-bigrams.py
 
 fixtures-beats:
 	BEATS_PUBLIC=$(BEATS_PUBLIC) node scripts/beats-parity.mjs
