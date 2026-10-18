@@ -37,8 +37,9 @@ mcp = MCPServer(
         "(sha256 identity, LUFS / peak / band / side deltas with pass flags); "
         "djtest_level_check renders genres × seeds and reports the LUFS spread. `lufs` is "
         "always Swift's BS.1770 loudness; `ffmpegLufs` is ffmpeg ebur128, the matrix's. "
-        "djtest_swift_test runs one filtered swift test (never unfiltered) under a lock shared "
-        "by every worktree, so runs never overlap; djtest_lock says who holds it. "
+        "djtest_swift_test runs one filtered swift test (never unfiltered); release runs hold a "
+        "lock shared by every worktree (filtered debug runs go in parallel); djtest_lock says "
+        "who holds it. "
         "djtest_shots returns the view tests' PNGs. "
         "Report numbers; never claim a render sounds better."
     ),
@@ -139,34 +140,37 @@ def djtest_level_check(genres: list[str], seeds: list[float], seconds: float = 2
 
 @mcp.tool()
 def djtest_swift_test(filter: str, release: bool = False, timeout: float = st.TEST_TIMEOUT,
-                      worktree: str = "") -> dict:
+                      worktree: str = "", lock: bool | None = None) -> dict:
     """Run `make swift-test-filter FILTER=<filter>` (release: `make swift-rt-test-filter`, the
     optimised build the audio-thread allocation tests need) and parse swift-testing's output:
     status, passed / failed / skipped / issues, seconds, the `Test run with N tests` line, and
     each failure with its recorded issues, tagged known_failing / flaky_under_load (ROADMAP's
     lists, known_tests.json) or new. filter is required (a suite or test name, `A|B` for
-    several). Runs one at a time across every worktree (a lock in ~/Library/Caches/dj-vevr-se):
-    a call waits for the one before it, and `lock.waited_seconds` / `waited_for` say so. The
-    full transcript is at `log`. timeout: seconds for the run itself (it builds first).
+    several). Release runs hold the lock shared by every worktree (~/Library/Caches/dj-vevr-se),
+    as do the Makefile's full-suite and RT targets: a call waits for the one before it, and
+    `lock.waited_seconds` / `waited_for` say so. Filtered debug runs run in parallel unless
+    lock=true. The full transcript is at `log`. timeout: seconds for the run itself (it builds first).
     worktree: another checkout of this repo (a git worktree path) to work in instead of the server's own; its files go under that tree's build/testmcp. The lock is the same for every worktree."""
     return st.swift_test(filter, release=release, timeout=timeout, worktree=worktree)
 
 
 @mcp.tool()
 def djtest_lock() -> dict:
-    """Whether a djtest_swift_test / djtest_shots run holds the swift test lock and, if so,
+    """Whether a run holds the swift test lock (a release djtest_swift_test, or a full-suite /
+    RT make target) and, if so,
     whose: pid (and whether it is alive), worktree root, filter, started, held_seconds. The
-    lock covers this server's runs only, not a `make swift-test` typed in a terminal."""
+    lock is shared with `make swift-test` / `swift-rt-test` / `swift-rt-test-filter`."""
     return st.lock_status()
 
 
 @mcp.tool()
-def djtest_shots(filter: str, limit: int = sh.DEFAULT_LIMIT, worktree: str = ""):
-    """Run the view tests matching filter with DJ_SHOT_DIR set (`make swift-shots`), under the
-    same lock as djtest_swift_test, and return up to `limit` of the PNGs they wrote as images
+def djtest_shots(filter: str, limit: int = sh.DEFAULT_LIMIT, worktree: str = "",
+                 lock: bool = False):
+    """Run the view tests matching filter with DJ_SHOT_DIR set (`make swift-shots`; lock=true
+    holds djtest_swift_test's lock), and return up to `limit` of the PNGs they wrote as images
     you can see, then a JSON summary (test counts, every PNG's path). e.g. filter
     "WindowShotTests". worktree: another checkout of this repo (a git worktree path) to work in instead of the server's own; its files go under that tree's build/testmcp."""
-    r = sh.shots(filter, limit, worktree=worktree)
+    r = sh.shots(filter, limit, worktree=worktree, lock=lock)
     meta = {"summary": r["summary"], "shot_dir": r["shot_dir"], "total_pngs": r["total_pngs"],
             "images": [{"path": i["path"], "bytes": i["bytes"]} for i in r["images"]]}
     return [*(Image(data=i["data"], format="png") for i in r["images"]),

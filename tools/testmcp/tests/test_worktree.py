@@ -73,8 +73,8 @@ class SwiftTestWorktreeTests(WorktreeEnv):
         def peek(argv):
             seen.update(st.lock_status())
             return PASSING
-        self.fake.answers = {"swift-test-filter": peek}
-        st.swift_test("BuildInfoTests", worktree=str(self.wt))
+        self.fake.answers = {"swift-rt-test-filter": peek}
+        st.swift_test("BuildInfoTests", release=True, worktree=str(self.wt))
         self.assertTrue(seen["held"])
         self.assertEqual(seen["holder"]["root"], str(self.wt))
         self.assertEqual(Path(seen["path"]), self.lock)

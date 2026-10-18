@@ -729,9 +729,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
 - `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
   never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
-  limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
-  under an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`; dies with its
-  holder, so never stale; MCP runs only — a terminal `make` ignores it); `djtest_lock` says who
+  limit}` (`make swift-shots`, PNGs back as images) run filtered debug tests in parallel; what
+  must run alone holds an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`;
+  dies with its holder, so never stale): release `djtest_swift_test` runs (`lock=true` forces it on
+  others) and `make swift-test` / `swift-rt-test` / `swift-rt-test-filter` from any worktree or
+  terminal (`TEST_LOCK`, `djtest_mcp/locked.py`; a lock an ancestor holds doesn't block); `djtest_lock` says who
   holds it. Failures are tagged known_failing / flaky_under_load / new from
   `djtest_mcp/known_tests.json`, a copy of ROADMAP's Release checks lists — edit both.
 - Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s
