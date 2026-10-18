@@ -535,6 +535,10 @@ its copy; the two are now independent. Rules inherited from that split:
   (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
   `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.
   It builds the `EnergyCurve` without `.energy`. Synth lanes only; samplers keep `.energy`'s bus LP.
+- A raw-`nets` share deck gets no pass: `PreparedTrack` plays it with `opts.musicality ∩
+  Fixes.runnerOnly` and `forGenre` of the payload's genre (none known: neutral), and records
+  `fixes` / `passApplied` on the `Deck` (`dj_state.decks.X.fixes`); `sameSongOptions` keeps that
+  set on jumps. A new runner-only flag goes in `runnerOnly` too; a flag with any pass half doesn't.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)

@@ -117,7 +117,9 @@ public struct MCPBridge {
       "dj_state",
       "Snapshot of the app: per deck (title, mode sample|net, playing, bpm, position, sections "
         + "and the current one, roles and which are on, volume/filter/pitch, quantize, next "
-        + "track, level: the deck's short-term / momentary LUFS, autoGain on/off and the "
+        + "track, fixes {pass: whether dj's musicality pass rewrote the net — false for a "
+        + "raw-nets share, which plays the runner-only fixes —, names: the fixes it plays "
+        + "with}, level: the deck's short-term / momentary LUFS, autoGain on/off and the "
         + "autoGainDB a sample plays at, the sample's own LUFS when levelled, a net deck's "
         + "limiter), crossfader, master, the LOOP-record clips, the ones removed from the row and the "
         + "loop channel (loops; loops.follow: the Tempo mode and the deck followed), "

@@ -374,6 +374,33 @@ struct AppControlTests {
     #expect(s["build"]?["id"]?.string == BuildInfo.current.id)
   }
 
+  /// ROADMAP 6.7: a raw-`nets` share deck says it plays the runner's fixes and not the pass.
+  @Test func stateReportsTheFixesADeckPlaysWith() async throws {
+    let rows = try beatsFixture("share-urls")["rawNets"]!.array!
+    let row = try #require(rows.first { $0["payload"]?["name"]?.string == "Hand Made" })
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    let a = try #require(dj["A"])
+    a.loadNet(
+      try #require(
+        PreparedTrack(rawNets: row["payload"]!, sampleRate: dj.sampleRate, opts: a.waveOptions)))
+    let b = try #require(dj["B"])
+    b.loadNet(
+      PreparedTrack(
+        spec: TrackSpec(genre: "house", seed: 3, structure: "minimal"),
+        sampleRate: dj.sampleRate, opts: b.waveOptions))
+    try dj.start()
+    let m = AppModel(engine: dj)
+    m.start()
+    let s = try await call(m, "state")
+    let raw = s["decks"]?["A"]?["fixes"]
+    #expect(raw?["pass"]?.bool == false)
+    #expect(raw?["names"]?.array?.compactMap(\.string) == DJMusicality.Fixes.runnerOnly.names)
+    let net = s["decks"]?["B"]?["fixes"]
+    #expect(net?["pass"]?.bool == true)
+    #expect(net?["names"]?.array?.compactMap(\.string) == DJMusicality.Fixes.all.names)
+    #expect(s["decks"]?["A"]?["mode"]?.string == "net")
+  }
+
   @Test func stateReportsLocksFollowHeadphonesAndView() async throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
     dj["A"]!.loadDemo()

@@ -108,6 +108,8 @@ extension Deck {
   /// one.
   func sameSongOptions(_ opts: WaveOptions) -> WaveOptions {
     var o = opts
+    // the fixes the song was loaded with (a raw-`nets` share: the runner's only)
+    if let f = fixes { o.musicality.formIntersection(f) }
     if let g = wave.latest?.gain { o.trackGain = g }
     if let e = wave.latest?.energy { o.trackEnergy = e }
     if let d = wave.latest?.duckDepth { o.duckDepth = d }
