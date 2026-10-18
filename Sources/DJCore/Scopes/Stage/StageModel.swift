@@ -190,7 +190,7 @@ public final class StageModel {
       scale: settings.scale, expandVariants: settings.expandVariants, bgMode: settings.bgMode,
       cardOnChange: settings.cardOnChange, showBacks: settings.showBacks,
       showLabels: settings.showLabels, vizLevel: level, epoch: epoch, trackChanged: trackChanged,
-      stats: statsText(views: views))
+      stats: statsText(views: views), wander: wanderDecks(feed))
     context = ctx
     for layer in layers.all { layer.advance(ctx) }
     for layer in observers { layer.advance(ctx) }
@@ -199,6 +199,22 @@ public final class StageModel {
   }
 
   // MARK: engine reads
+
+  /// The source decks' walks (main actor: `Deck.wander` is main-thread state).
+  private func wanderDecks(_ feed: ScopeFeed) -> [StageWanderDeck] {
+    deckNames(feed).compactMap { name in
+      guard let d = hub.engine.decks[name] else { return nil }
+      let w = d.wander
+      let countdown = d.wanderCountdown
+      var bar: Int?
+      if countdown != nil, w.pace > 0 {
+        bar = w.paused ? min(w.pace - 1, w.quietBars) : (d.wave.tick / 16) % w.pace
+      }
+      return StageWanderDeck(
+        deck: name, on: w.on, paused: w.paused, pace: w.pace, countdown: countdown,
+        barInPhrase: bar, step: w.step, moves: Array(w.log.suffix(StageWanderDeck.moveLimit)))
+    }
+  }
 
   /// One net deck's marking and the static facts of the layout it belongs to.
   private struct DeckView {

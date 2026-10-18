@@ -1043,6 +1043,37 @@ public final class AppModel {
     }
   }
 
+  /// Put a stock loop on the loop row as a clip, looping under the mixer from the next launch
+  /// boundary (`DJEngine.importClip`): decoded off the main thread, recorded as a `clipImport`
+  /// with `LoopProvenance.stock` (so the set is never published), and its file noted in the
+  /// journal so a replay finds the audio. The same loop twice is one clip. Returns its id.
+  @discardableResult
+  func addStockLoopToRow(_ loop: StockLoop) async -> String? {
+    guard let dj else { return nil }
+    let sr = dj.sampleRate
+    status = "loading \(loop.name)…"
+    do {
+      let buffer = try await Task.detached(priority: .userInitiated) {
+        try Deck.decode(loop.url, sampleRate: sr)
+      }.value
+      let id = buffer.contentID
+      _ = dj.journal?.record(.sampleFile(id: id, path: loop.path))
+      dj.perform(
+        .clipImport(
+          id: "", title: loop.name, bpm: 0, beats: loop.beats,
+          provenance: LoopProvenance.stock(loop, id: id)), buffer: buffer)
+      guard dj.clip(id) != nil else {
+        status = "\(loop.name): could not go on the row"
+        return nil
+      }
+      status = "\(loop.name) on the row"
+      return id
+    } catch {
+      status = "\(loop.name): \(error)"
+      return nil
+    }
+  }
+
   /// The tempo a deck's stock loops are sorted by: the other deck's, when it has one.
   func loopTempo(for deck: String) -> Double? {
     let other = deck == "A" ? "B" : "A"
@@ -1327,6 +1358,14 @@ public final class AppModel {
   /// reachable by its CID). No credentials are involved: it stages over the existing ssh key.
   func publishLastSession() {
     guard let session = lastSessionValue, dj != nil, !publishState.isWorking else { return }
+    // stock loops on the row: refused outright, nothing to ask
+    let imported = session.importedClips
+    guard imported.isEmpty else {
+      let why = "\(PublishError.importedClips(imported))"
+      publishState = .failed(why)
+      status = why
+      return
+    }
     let alert = NSAlert()
     alert.messageText = "Publish this set to cdn.stackdump.com?"
     alert.informativeText =
