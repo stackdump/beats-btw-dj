@@ -1005,8 +1005,17 @@ public final class AppModel {
         return
       }
     }
-    let tags = favorites.first { $0.cid == cid }?.tags ?? []
-    if !tags.contains(crate) { setFavoriteTags(cid, tags + [crate]) }
+    addFavoriteToCrate(cid, crate)
+  }
+
+  /// Put a favorite (by cid) in a crate, made if new. False if no favorite has that cid.
+  @discardableResult
+  func addFavoriteToCrate(_ cid: String, _ crate: String) -> Bool {
+    guard let f = favorites.first(where: { $0.cid == cid }) else { return false }
+    newCrate(crate)
+    let n = crate.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !n.isEmpty, !f.tags.contains(n) { setFavoriteTags(cid, f.tags + [n]) }
+    return true
   }
 
   /// Take a favorite out of a crate (it stays starred).
@@ -1281,6 +1290,7 @@ public final class AppModel {
     do {
       let f = Favorite(title: generateTrackName(genre: name, seed: spec.seed), source: .net(spec))
       favorites = try favoritesStore.add(f)
+      journal?.record(.favoriteAdd(f))
       return f
     } catch {
       status = "favorites: \(error)"

@@ -7,7 +7,8 @@
 // - a crop keeps its clip's FX (it is the same loop, shorter);
 // - a sequence is rendered from its steps' dry audio, back to back, so its steps' FX are not in
 //   it (they would have to be baked in, which is the destructive edit this avoids): a new
-//   sequence starts with its own FX off, and an edited one keeps the FX it had;
+//   sequence whose steps all share the same active FX takes them (it sounds as they did), one
+//   of mixed steps starts with its FX off, and an edited one keeps the FX it had;
 // - a clip moved onto deck A or B keeps them: the deck has a chain of its own (`DeckRenderer`),
 //   set at the load and changed with the clip's; anything else loaded there plays dry;
 // - scenes recall levels and which clips play, not FX: FX are the clip's, like its colour.
