@@ -720,6 +720,11 @@ public final class WaveProject: @unchecked Sendable {
   let sendSlots: UInt64
   /// The echo this project plays (`.echo`); nil = none.
   public let echo: EchoSpec?
+  /// The sampler slots of lanes that send to the echo (`EchoSpec.send` > 0), and each one's send
+  /// (64 entries; a slot two lanes share takes the larger). Rendered one at a time through the
+  /// scratch pair, their send reaches the echo a block late.
+  let echoSlots: UInt64
+  let slotEcho: [Float]
   /// The parts' trims it plays with (`.balance`), dB; nil = none.
   public let balance: [String: Double]?
   /// The groove template it plays (`.feel`); nil = none. `feelTable` is what the runner reads.
@@ -770,12 +775,20 @@ public final class WaveProject: @unchecked Sendable {
     self.space = space
     var slots: UInt64 = 0
     var sending: UInt64 = 0
+    var echoing: UInt64 = 0
+    var echoes = [Float](repeating: 0, count: 64)
     for lane in lanes where lane.samplerSlot >= 0 && lane.samplerSlot < 64 {
       if lane.ducks { slots |= 1 << UInt64(lane.samplerSlot) }
       if lane.send > 0 { sending |= 1 << UInt64(lane.samplerSlot) }
+      if lane.echoSend > 0 {
+        echoing |= 1 << UInt64(lane.samplerSlot)
+        echoes[lane.samplerSlot] = max(echoes[lane.samplerSlot], Float(lane.echoSend))
+      }
     }
     duckSlots = slots
     sendSlots = space == nil ? 0 : sending
+    echoSlots = echo == nil || samplers == nil ? 0 : echoing
+    slotEcho = echoes
     let gen = Int32(truncatingIfNeeded: Self.generations.add(1, ordering: .relaxed).newValue)
     let track =
       trackSerial ?? Int32(truncatingIfNeeded: Self.tracks.add(1, ordering: .relaxed).newValue)
@@ -1240,9 +1253,16 @@ public final class WaveRunner {
   private var sendBuf = [Float](repeating: 0, count: 4096)
   private var sendingSlots: UInt64 = 0
   // Echo (`DJMusicality.Fixes.echo`): each sample's echo send (`accEcho`); the repeats join the
-  // mix as mid and side, and go on into the room.
+  // mix as mid and side, and go on into the room. Sampled leads send as they do to the room:
+  // a slot at a time into `echoBuf`, then through `echoFifo` during the next block.
   private let echoFx: PingPong?
   private var accEcho = 0.0
+  private var echoFifo = [Float](repeating: 0, count: 8192)
+  private var echoRead = 0
+  private var echoCount = 0
+  private var echoBuf = [Float](repeating: 0, count: 4096)
+  private var echoingSlots: UInt64 = 0
+  private var slotEchoBuf = [Float](repeating: 0, count: 64)
   /// `.riser`: the song step the current project is playing (its riser's place), or `Int.min`
   /// for none (stopped, or the tick a queued project took over on, which plays nothing).
   private var riserStep = Int.min
@@ -2090,38 +2110,44 @@ public final class WaveRunner {
     }
     evCount = 0
     let fits = frames <= duckL.count
-    // slots with a gain go one at a time (each with its own duck and send); the rest by group
-    let gained = fits ? live & gainedSlots : 0
-    let ducked = fits ? live & duckingSlots & ~gained : 0
-    let sent = fits ? live & sendingSlots & ~gained : 0
-    let sending = sent | (gained & sendingSlots)
-    bank.renderAll(live & ~ducked & ~sent & ~gained, frames: frames, left, right)
+    // slots with a gain or an echo send go one at a time (each with its own duck and sends);
+    // the rest by group
+    let single = fits ? live & (gainedSlots | echoingSlots) : 0
+    let ducked = fits ? live & duckingSlots & ~single : 0
+    let sent = fits ? live & sendingSlots & ~single : 0
+    let sending = sent | (single & sendingSlots)
+    let echoing = single & echoingSlots
+    bank.renderAll(live & ~ducked & ~sent & ~single, frames: frames, left, right)
     // the slots that duck, send, or both, a group at a time through the scratch pair
     if sending != 0 { for i in 0..<frames { sendBuf[i] = 0 } }
+    if echoing != 0 { for i in 0..<frames { echoBuf[i] = 0 } }
     for group in 0..<3 {
       let mask = group == 0 ? ducked & ~sent : group == 1 ? sent & ~ducked : ducked & sent
       guard mask != 0 else { continue }
       renderScratch(
         bank, mask, gain: 1, ducks: group != 1, sends: group != 0, left, right, frames: frames)
     }
-    var m = gained
+    var m = single
     while m != 0 {
       let i = m.trailingZeroBitCount
       m &= m - 1
       let bit: UInt64 = 1 << UInt64(i)
       renderScratch(
-        bank, bit, gain: slotGainBuf[i], ducks: duckingSlots & bit != 0,
-        sends: sendingSlots & bit != 0, left, right, frames: frames)
+        bank, bit, gain: gainedSlots & bit != 0 ? slotGainBuf[i] : 1,
+        ducks: duckingSlots & bit != 0, sends: sendingSlots & bit != 0,
+        echo: echoingSlots & bit != 0 ? slotEchoBuf[i] : 0, left, right, frames: frames)
     }
     bank.endBlock()
     if sending != 0 { queueSamplerSend(frames: frames) }
+    if echoing != 0 { queueSamplerEcho(frames: frames) }
   }
 
   /// Render `mask`'s slots into the cleared scratch pair, then add them to the block at `gain`,
-  /// ducked (`duckBuf`) and into the room's send (`sendBuf`) as asked. Inside `flushSamplers`.
+  /// ducked (`duckBuf`), into the room's send (`sendBuf`) as asked and, `echo` > 0, that much
+  /// into the echo's (`echoBuf`). Inside `flushSamplers`.
   @inline(__always)
   private func renderScratch(
-    _ bank: SamplerBank, _ mask: UInt64, gain: Float, ducks: Bool, sends: Bool,
+    _ bank: SamplerBank, _ mask: UInt64, gain: Float, ducks: Bool, sends: Bool, echo: Float = 0,
     _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
   ) {
     for i in 0..<frames {
@@ -2139,7 +2165,9 @@ public final class WaveRunner {
       let r = duckR[i] * g
       left[i] += l
       right?[i] += r
-      if sends { sendBuf[i] += right == nil ? l : 0.5 * (l + r) }
+      let mono = right == nil ? l : 0.5 * (l + r)
+      if sends { sendBuf[i] += mono }
+      if echo > 0 { echoBuf[i] += mono * echo }
     }
   }
 
@@ -2153,6 +2181,18 @@ public final class WaveRunner {
       if w >= sendFifo.count { w -= sendFifo.count }
       sendFifo[w] = sendBuf[i] * level
       fifoCount += 1
+    }
+  }
+
+  /// The sampled leads' echo send of the block just rendered, into `echoFifo` for the echo to
+  /// take during the next block, lifted by the master gain as `queueSamplerSend` is.
+  private func queueSamplerEcho(frames: Int) {
+    let level = Float(1 / max(0.05, masterGain))
+    for i in 0..<frames where echoCount < echoFifo.count {
+      var w = echoRead + echoCount
+      if w >= echoFifo.count { w -= echoFifo.count }
+      echoFifo[w] = echoBuf[i] * level
+      echoCount += 1
     }
   }
 
@@ -2660,6 +2700,17 @@ public final class WaveRunner {
     duckingSlots = depth > 0 ? current?.duckSlots ?? 0 : 0
     sendingSlots = reverb != nil && frames <= sendBuf.count ? current?.sendSlots ?? 0 : 0
     gainedSlots = frames <= duckL.count ? current?.gainSlots ?? 0 : 0
+    let echoOn = echoFx?.isOn == true
+    echoingSlots = echoOn && frames <= echoBuf.count ? current?.echoSlots ?? 0 : 0
+    if !echoOn { echoCount = 0 }
+    if echoingSlots != 0, let p = current {
+      var m = echoingSlots
+      while m != 0 {
+        let i = m.trailingZeroBitCount
+        m &= m - 1
+        slotEchoBuf[i] = p.slotEcho[i]
+      }
+    }
     if gainedSlots != 0, let p = current {
       var m = gainedSlots
       while m != 0 {
@@ -2718,7 +2769,13 @@ public final class WaveRunner {
         }
       }
       if let echoFx, echoFx.isOn {
-        let (el, er) = echoFx.process(accEcho)
+        var x = accEcho
+        if echoCount > 0 {
+          x += Double(echoFifo[echoRead])
+          echoRead = echoRead + 1 == echoFifo.count ? 0 : echoRead + 1
+          echoCount -= 1
+        }
+        let (el, er) = echoFx.process(x)
         let mid = 0.5 * (el + er)
         let side = 0.5 * (el - er)
         accSend += mid * EchoSpec.roomSend

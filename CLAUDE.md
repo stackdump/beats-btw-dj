@@ -398,7 +398,8 @@ its copy; the two are now independent. Rules inherited from that split:
   band-limited per octave with beats' fundamental level, and `FilterEnvelope`, a per-voice SVF
   lowpass opened by velocity²), `.unison` (detuned pairs; a pad's pair spreads under `.stereo`,
   its side highpassed at 300 Hz), `.echo` (`Echo.swift`: `PingPong`, tempo-synced, set by genre
-  like the room, synth lanes only), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
+  like the room; sampled leads' slots — `WaveProject.echoSlots` — render one at a time and reach
+  it a block late through `echoFifo`, as the room's `sendFifo`), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
   pass's `.motif` (bar 2 of each 4-bar melody phrase restates bar 1 as a diatonic sequence; runs
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
   toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
