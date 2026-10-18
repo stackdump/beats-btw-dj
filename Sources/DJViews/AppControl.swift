@@ -59,7 +59,7 @@ extension AppModel {
         let d = try requireDeck(deck)
         let netOnly = [
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
-          "setPalette", "setRoleVoice", "mixOut", "mixIn",
+          "setPalette", "setRoleVoice", "mixOut", "mixIn", "stemMute",
         ]
         // the loop channel and the sample decks take the master macros and panic (their master
         // FX bus; a sample deck's has no vinyl brake yet)
@@ -100,6 +100,21 @@ extension AppModel {
             throw ControlRequestError.bad("\(a["op"]?.string ?? "mix") bars must be 1-64")
           }
         default: break
+        }
+        if case .stemMute(_, let stem, _) = action, !Deck.stemNames.contains(stem) {
+          throw ControlRequestError.bad(
+            "stemMute stem must be one of \(Deck.stemNames.joined(separator: ", "))")
+        }
+        // the master FX sliders: on a net's chain, a sample deck's bus, or the loops' ("L")
+        if case .masterFx(_, let key, let value) = action {
+          guard MasterFxKey(id: key) != nil else {
+            throw ControlRequestError.bad(
+              "unknown master FX key \(key) (one of: "
+                + MasterFxKey.allCases.map(\.id).joined(separator: ", ") + ")")
+          }
+          guard value.isFinite, (0...1).contains(value) else {
+            throw ControlRequestError.bad("masterFx value must be 0…1 (the slider's travel)")
+          }
         }
         if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
           throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")

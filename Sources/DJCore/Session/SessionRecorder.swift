@@ -317,6 +317,12 @@ extension DJEngine {
     case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
     case .mixOut(let n, let bars): deck(n)?.mixOut(bars: bars)
     case .mixIn(let n, let bars): deck(n)?.mixIn(bars: bars)
+    case .rewind(let n): deck(n)?.rewind()
+    case .focus(let n): if deck(n) != nil { focus = n }
+    case .stemMute(let n, let stem, let on):
+      if let d = deck(n), d.isStemMuted(stem) != on { d.toggleStem(stem) }
+    case .masterFx(let n, let key, let value):
+      if let d = deck(n), let k = MasterFxKey(id: key) { d.setMasterFx(k, k.sliderValue(value)) }
     case .clipImport(let id, let title, let bpm, let beats, let provenance):
       if let b = buffer ?? sampleLibrary[id] ?? sampleResolver?(id) {
         importClip(

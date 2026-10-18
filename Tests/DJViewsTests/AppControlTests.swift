@@ -304,6 +304,55 @@ struct AppControlTests {
     #expect(dj["A"]?.beatGrid?.bpm == 96)
   }
 
+  /// The controls only a controller had (rewind, deck focus, STEMS, a master FX slider) are
+  /// dj_perform ops, recorded as actions, checked like the rest.
+  @Test func controllerOnlyControlsGoThroughPerform() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    _ = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    let rec = try SessionRecorder.start(on: dj)
+    _ = try await call(m, "perform", #"{"action":{"op":"focus","deck":"L"}}"#)
+    #expect(dj.focus == "L")
+    _ = try await call(m, "perform", #"{"action":{"op":"focus","deck":"B"}}"#)
+    #expect(dj.focus == "B")
+    #expect(try await call(m, "state")["focus"]?.string == "B")
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"masterFx","deck":"B","key":"lp-freq","value":0.25}}"#)
+    #expect(dj["B"]?.wave.masterFxSet[.lpFreq] == 25)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"masterFx","deck":"B","key":"master-pitch","value":1}}"#)
+    #expect(dj["B"]?.wave.masterFxSet[.masterPitch] == 12)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"stemMute","deck":"B","stem":"music","on":true}}"#)
+    #expect(dj["B"]?.isStemMuted("music") == true)
+    // asking for the state it is already in changes nothing
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"stemMute","deck":"B","stem":"music","on":true}}"#)
+    #expect(dj["B"]?.isStemMuted("music") == true)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"stemMute","deck":"B","stem":"music","on":false}}"#)
+    #expect(dj["B"]?.isStemMuted("music") == false)
+    _ = try await call(m, "perform", #"{"action":{"op":"rewind","deck":"A"}}"#)
+    let kinds = rec.finish().events.map(\.kind)
+    #expect(kinds.contains(.action(.focus(deck: "L"))))
+    #expect(kinds.contains(.action(.masterFx(deck: "B", key: "lp-freq", value: 0.25))))
+    #expect(kinds.contains(.action(.stemMute(deck: "B", stem: "music", on: true))))
+    #expect(kinds.contains(.action(.rewind(deck: "A"))))
+    for (params, words) in [
+      (#"{"action":{"op":"focus","deck":"C"}}"#, "no deck"),
+      (#"{"action":{"op":"stemMute","deck":"A","stem":"music","on":true}}"#, "needs a net deck"),
+      (#"{"action":{"op":"stemMute","deck":"B","stem":"drums","on":true}}"#, "stem must be"),
+      (#"{"action":{"op":"masterFx","deck":"B","key":"wobble","value":0.5}}"#, "master FX key"),
+      (#"{"action":{"op":"masterFx","deck":"B","key":"lp-freq","value":1.5}}"#, "0…1"),
+      (#"{"action":{"op":"masterFx","deck":"B","value":0.5}}"#, "known `op`"),
+    ] {
+      await #expect {
+        try await call(m, "perform", params)
+      } throws: { "\($0)".contains(words) }
+    }
+  }
+
   @Test func generateLoadsALiveNetAndMacrosThenWork() async throws {
     let m = try model()
     let b = try await call(
