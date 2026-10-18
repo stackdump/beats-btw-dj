@@ -139,6 +139,8 @@ public final class AppModel {
   var headphoneLevel = 0.7
   var inpulseOutput: AudioOutputDevice?
   var inpulseRouted = false
+  /// Finds the Inpulse's audio device; tests swap it so they never route (or restart) the real one.
+  @ObservationIgnored var findInpulse: () -> AudioOutputDevice? = { AudioDevices.inpulse() }
   var padLights: [String: [PadLight]] = [:]
   /// Every attached controller's LEDs by profile name, for the device map (SPEC 25).
   var deviceLights: [String: DeviceLights] = [:]
@@ -425,7 +427,7 @@ public final class AppModel {
     master = dj.master
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
-    inpulseOutput = AudioDevices.inpulse()
+    inpulseOutput = findInpulse()
     // with Shift down the mirror shows the loop page a shift-click reaches
     let shiftLayer: Bool? = showPads && shiftKeyHeld() ? true : nil
     if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name, shift: shiftLayer) {
@@ -795,25 +797,28 @@ public final class AppModel {
   /// Master → the Inpulse's outputs 1/2, headphone cue → 3/4. Restarts the engine; if the
   /// device refuses, the stereo path comes back.
   func toggleInpulseOutput() {
-    guard let dj else { return }
-    Task { @MainActor in
-      dj.stop()
-      do {
-        if inpulseRouted {
-          try dj.disableCueRouting()
-          inpulseRouted = false
-        } else if let dev = AudioDevices.inpulse() {
-          try await dj.enableCueOutput(device: dev)
-          inpulseRouted = true
-        }
-        try dj.start()
-        status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
-      } catch {
-        status = "cue output: \(error)"
-        try? dj.disableCueRouting()
+    Task { @MainActor in await routeInpulseOutput(!inpulseRouted) }
+  }
+
+  /// Route to the Inpulse (on) or back to stereo (off); a no-op when already there.
+  func routeInpulseOutput(_ on: Bool) async {
+    guard let dj, on != inpulseRouted else { return }
+    dj.stop()
+    do {
+      if inpulseRouted {
+        try dj.disableCueRouting()
         inpulseRouted = false
-        try? dj.start()
+      } else if let dev = findInpulse() {
+        try await dj.enableCueOutput(device: dev)
+        inpulseRouted = true
       }
+      try dj.start()
+      status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
+    } catch {
+      status = "cue output: \(error)"
+      try? dj.disableCueRouting()
+      inpulseRouted = false
+      try? dj.start()
     }
   }
 
