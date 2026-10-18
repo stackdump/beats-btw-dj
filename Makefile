@@ -4,7 +4,7 @@ PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
         swift-build swift-test swift-test-filter swift-shots swift-rt-test swift-rt-test-filter app run-app app-release run-app-release djctl \
-        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check groove-templates melody-bigrams
+        mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check groove-templates melody-bigrams listen
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
 # installed but not on the default search path. Point at it; harmless with Xcode.
@@ -158,6 +158,17 @@ serve:
 
 clean:
 	rm -rf $(BINARY) .build build
+
+# --- Listening panel (ROADMAP 6.1) ---------------------------------------------
+
+# Renders only (offline, never the speakers): 12 genres x seed 42 plus the log's seeds, 90 s each,
+# `--fixes all` and the previous part (PREV_FIXES, default all minus part F), plus a stem set per
+# genre, into .build/listen/ (never committed). Takes minutes: not part of any test target.
+# make listen GENRES=techno SECONDS=5   then   scripts/listen-ab.py .build/listen  (plays, blind)
+listen:
+	swift build -c release --product djctl
+	python3 scripts/listen-panel.py .build/listen $(if $(GENRES),--genres '$(GENRES)') \
+	  $(if $(SECONDS),--seconds '$(SECONDS)') $(if $(PREV_FIXES),--prev-fixes '$(PREV_FIXES)')
 
 # --- beats parity fixtures (ROADMAP Phase 2) ----------------------------------
 
