@@ -137,6 +137,10 @@ its copy; the two are now independent. Rules inherited from that split:
   each distinct offending stack with a hit count (up to 16; the rest count as `unrecorded`).
 - Projects are composed and compiled off the audio thread (`TrackSpec` →
   `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
+- Mix-out tail (`WaveOptions.tail` = `MixOutTail(fromTick, bars)`, nil on parity): a
+  `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
+  the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
+  `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
@@ -255,6 +259,11 @@ its copy; the two are now independent. Rules inherited from that split:
   purpose (guitar round robin, tape/chime modulation): sessions with them are not
   byte-identical on replay; GM programs always are. `make sampler-sweep` runs the sound
   checks over every installed sound (minutes); the default suite takes one per category.
+- Part levels (`SamplerPartLevels`): after `normalize` a tonal load also plays part probes
+  (pad chords, bass eighths, lead, arp; 3 passes, K-weighted) against the group's synth voice
+  → `SamplerBank.slotPartLevelDB(slot, group:)`. Unity-gain levels are cached by (file, size,
+  mtime, rate, probe `version`) in `Application Support/DJApp/sampler-part-levels.json`
+  (`$DJ_SAMPLER_PART_CACHE`; empty = memory only); bump `version` when a probe changes.
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and
@@ -527,8 +536,14 @@ its copy; the two are now independent. Rules inherited from that split:
   edit functions (`FavoritesStore.adding`…). Deterministic offline; a live journal replays as
   exactly as live timing allows (async composes and sampled round robin can shift a take —
   then clip events fall back to the library's clip by id). `djctl journal list | show |
-  replay [--to SEQ|--at S] [--render f.wav] | export-session --from --to` (a slice → a normal
-  `Session`, starting at rest: playheads and the row at `from` are not in it).
+  replay [--to SEQ|--at S] [--from-start] [--render f.wav] | export-session --from --to` (a
+  slice → a normal `Session`, starting at rest: playheads and the row at `from` are not in it).
+- Mid-file checkpoints: `AppModel.pollJournal` calls `Journal.checkpointIfDue` (60 engine s or
+  2000 entries, and only after something was recorded); they keep the decks' playheads and no
+  `stores` key (`JournalState.hasStores`). A replay starts from the last checkpoint within
+  `toSeq`/`endFrame` (`startSeq`), folding line 0's stores and the store events before it;
+  `fromStart` forces line 0. Same state as a full replay, not the same audio (loops restart,
+  tails and router state start fresh) — byte-identical audio needs `fromStart`.
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
