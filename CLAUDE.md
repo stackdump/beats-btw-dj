@@ -128,7 +128,11 @@ its copy; the two are now independent. Rules inherited from that split:
   audio thread (hand them back through the retire ring), AUSampler building its
   AUParameterCache on the render thread at the first note-on after any AVAudioMixerNode is
   connected in the process (`SamplerInstrument.init` pre-builds it with a throwaway parameter
-  listener; `samplersDoNotAllocateWhenAnotherEngineIsBuilt` guards it).
+  listener; `samplersDoNotAllocateWhenAnotherEngineIsBuilt` guards it). Not fixable: that
+  note-on report walks AudioToolbox's listener map, and the walk leaving last frees nodes an
+  engine teardown on another thread removed (a few frees, no mallocs;
+  `SamplerConcurrentEngineRealTimeTests`), so `swift-rt-test` runs `--no-parallel`.
+  `countAllocations(stacks: true)` keeps the first 8 offending stacks for the failure message.
 - Projects are composed and compiled off the audio thread (`TrackSpec` →
   `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with

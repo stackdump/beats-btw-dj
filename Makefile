@@ -49,12 +49,16 @@ swift-shots:
 # debug build they fail by design: the unoptimised render path makes millions of mallocs. The app
 # that `make run-app` builds is a debug one; `make run-app-release` is the one this vouches for.)
 # The filter is a regex: name every new audio-thread test suite `…RealTime…` to include it.
+# One test at a time (--no-parallel, ~5 s slower): a sampler's render frees AudioToolbox
+# listener-map nodes that another thread's engine teardown left behind, so a parallel test
+# tearing down its engine shows up as frees in another's measurement
+# (SamplerConcurrentEngineRealTimeTests has the stacks).
 swift-rt-test:
-	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
+	swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
 
 # One RT suite or test, same release build: make swift-rt-test-filter FILTER='AllocationCounterTests'
 swift-rt-test-filter:
-	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
+	swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
 
 # make djctl ARGS="monitor inpulse"
 djctl:

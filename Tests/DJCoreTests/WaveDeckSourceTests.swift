@@ -19,6 +19,30 @@ struct AllocationCounterTests {
     #expect(r.allocations >= 50, "the hook must actually fire (got \(r.allocations))")
     #expect(keep.count == 50)
   }
+
+  @Test func recordingStacksAllocatesNothingItself() {
+    let r = countAllocations(stacks: true) {}
+    #expect(r.allocations == 0 && r.frees == 0, "the hook allocated: \(r)\(r.stackText)")
+    #expect(r.stacks.isEmpty)
+  }
+
+  @Test func stacksSayWhereAllocationsCameFrom() {
+    var keep: [Box] = []
+    let r = countAllocations(stacks: true) {
+      for i in 0..<20 { keep.append(Box(i)) }
+    }
+    #expect(r.allocations >= 20)
+    #expect(r.stacks.count == maxStacks, "the first \(maxStacks) kept, the rest only counted")
+    #expect(r.stacks[0].hasPrefix("#1 malloc"), "\(r.stackText)")
+    // the allocation goes through the Swift runtime's object allocator
+    #expect(r.stacks.contains { $0.contains("swift_allocObject") }, "\(r.stackText)")
+    #expect(keep.count == 20)
+  }
+}
+
+private final class Box {
+  let v: Int
+  init(_ v: Int) { self.v = v }
 }
 
 private func project(_ genre: String, _ seed: Double, _ structure: String) -> Project {
@@ -521,7 +545,7 @@ extension WaveDeckSourceTests {
       }
     }
     run(100)
-    let report = countAllocations {
+    let report = countAllocations(stacks: true) {
       for c in cmds {
         src.send(c)
         run(20)
@@ -533,8 +557,9 @@ extension WaveDeckSourceTests {
       for c in reset { src.send(c) }
       run(200)
     }
-    #expect(report.allocations == 0, "render allocated \(report.allocations) times")
-    #expect(report.frees == 0, "render freed \(report.frees) times")
+    #expect(
+      report.allocations == 0, "render allocated \(report.allocations) times\(report.stackText)")
+    #expect(report.frees == 0, "render freed \(report.frees) times\(report.stackText)")
   }
 
   @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
