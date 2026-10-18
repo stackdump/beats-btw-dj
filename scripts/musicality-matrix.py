@@ -62,6 +62,11 @@ COLUMNS = [
     ("progressions", "prog", "{:4d}"),
     ("sectionChordAgreement", "secCT", "{:5.2f}"),
     ("hasBeat", "beat", "{:4.2f}"),
+    # M6 (ROADMAP 6.5): the groove as played (`djctl render`'s groove block, GrooveReport)
+    ("distinctVelocitiesPerPosition", "velPos", "{:6.2f}"),
+    ("grooveConsistency", "gCons", "{:5.2f}"),
+    ("swingRatio", "swing", "{:5.3f}"),
+    ("microtimingMs", "uTime", "{:5.1f}"),
 ]
 
 
@@ -95,6 +100,11 @@ def flat(doc):
         "hfBumpDB": a.get("hfBumpDB"),
         "monoFoldDB": a.get("monoFoldDB"),
     }
+    g = doc.get("groove", {})
+    row["distinctVelocitiesPerPosition"] = g.get("distinctVelocitiesPerPosition")
+    row["grooveConsistency"] = g.get("consistency")
+    row["swingRatio"] = g.get("swingRatio")
+    row["microtimingMs"] = g.get("microtimingMs")
     bal = a.get("balanceDB", {})
     if "kick" in bal and "bass" in bal:
         row["kickMinusBass"] = bal["kick"] - bal["bass"]
