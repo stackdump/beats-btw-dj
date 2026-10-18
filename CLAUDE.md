@@ -467,6 +467,10 @@ its copy; the two are now independent. Rules inherited from that split:
   `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
   reference bands (lufs, lra, truePeak, slope, side; empty until measured). Every number names its
   `source` — retune there, saying where the new value came from; `TargetsTableTests` pins the values.
+  Bands come only from `scripts/references.py --write` (`$DJ_REFERENCES/<family>/*`, local files:
+  `djctl measure --sections` + ffmpeg cross-check, cached in `.build/references`): median, p10–p90,
+  source `ref:<family>/<sha8> (n=K, djctl <build>)` — hashes, never a path or name.
+  `musicality-matrix.py --targets PATH` prints each track's distance from its family's band.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
