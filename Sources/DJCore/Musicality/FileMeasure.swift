@@ -85,6 +85,13 @@ public struct FileMeasure {
     return d
   }
 
+  /// Section boundaries over the part measured, in its own bars (`SectionSegmenter` on
+  /// `BeatTracker`'s downbeats): what `djctl measure --sections` adds as `sections`.
+  public func sections(kernelBars: Int = SectionSegmenter.kernelBars) -> [String: Any] {
+    SectionSegmenter(left: left, right: right, sampleRate: sampleRate, kernelBars: kernelBars)
+      .dictionary
+  }
+
   /// The level / spectrum part of `djctl render`'s audio block: `AudioMetrics`, BS.1770
   /// integrated loudness, EBU loudness range and true peak. One place, so a render and a file
   /// are measured alike.
