@@ -31,8 +31,10 @@ import Synchronization
 //
 // Sample decks A / B run one each too (`DeckRenderer.master`): the source is the turntable and the
 // clip's FX, the clock the deck's frames rendered in sample mode, macros timed on the deck's bar
-// grid at its tempo (`Deck.sampleMasterFire`), and the brake never fired (it renders straight
-// through).
+// grid at its tempo (`Deck.sampleMasterFire`). The brake slows the turntable (and the clip's FX,
+// the record's own) and the release skips its playhead on by the frames it fell behind
+// (`Turntable.catchUp`), so the sample lands on the deck's beat grid again. A hand on the
+// platter or a transport stop cancels it where it is (`cancelBrake`): the jog wins.
 //
 // Threading: `render` is the audio thread's (from `LoopBank.render`, `DeckRenderer.renderBlock`). `fire`, `setSlider`, `panic`
 // and the mirrors are the main thread's. Real-time: everything is allocated in `init`
@@ -243,6 +245,13 @@ public final class LoopMasterBus: @unchecked Sendable {
     lpCornerBits.store(corners.lp.bitPattern, ordering: .relaxed)
     idleAtomic.store(idle && !brake.isOn, ordering: .relaxed)
   }
+
+  /// Audio thread, before `render`: drop a running brake where it is, without the catch-up (a
+  /// sample deck's jog or transport stop). Waiting brake fires stay waiting.
+  func cancelBrake() { brake.cancel() }
+
+  /// Audio thread: is the brake running (spinning down or stopped, not yet released)?
+  var braking: Bool { brake.isOn }
 
   private func apply(_ c: LoopMasterCommand) {
     switch c {

@@ -36,6 +36,13 @@ struct SoundPad: Equatable, Identifiable {
   var overview: WaveformOverview
   /// Its after effects; `fx.isActive` shows the FX badge.
   var fx: LoopFX
+  /// Its own launch boundary, fade and tempo follow (nil: the row's), as `ClipState` has them;
+  /// `launchBadge` shows them.
+  var quantum: Int?
+  var fade: LoopFade?
+  var follow: LoopFollow?
+  /// Its own rules, short ("bar · fade 1 beat"), for the pad's badge; nil: it follows the row.
+  var launchBadge: String?
 
   init(_ c: ClipState, slot: String?) {
     id = c.id
@@ -56,6 +63,10 @@ struct SoundPad: Equatable, Identifiable {
     isSequence = c.steps != nil
     overview = c.overview
     fx = c.fx
+    quantum = c.quantum
+    fade = c.fade
+    follow = c.follow
+    launchBadge = c.launchBadge
   }
 
   /// A loop pad's LED, as the APC's loop page and the Inpulse's LOOP pads light it
@@ -94,8 +105,14 @@ enum SoundPadCommand: Equatable {
   case keyLock(Bool)
   case color(String?)
   case rename(String)
-  /// How every loop comes in and goes out (the loop channel's, not this clip's alone).
-  case fade(LoopFade)
+  /// How this loop comes in and goes out (nil: as the row's do).
+  case fade(LoopFade?)
+  /// What this loop starts and stops on, in beats (nil: the row's boundary).
+  case quantize(Int?)
+  /// Whose tempo this loop follows (nil: as the row says).
+  case follow(LoopFollow?)
+  /// How every loop comes in and goes out (the loop channel's: "all loops").
+  case loopFade(LoopFade)
   /// Onto deck A or B ("A", "B"), or back under the mixer ("L").
   case move(String)
   /// Off the row, with Undo (`AppModel.removeClip`).
@@ -402,7 +419,10 @@ extension AppModel {
     case .rename(let t):
       let t = t.trimmingCharacters(in: .whitespacesAndNewlines)
       return t.isEmpty ? nil : .clipRename(id: id, title: t)
-    case .fade(let f): return .loopFade(mode: f.rawValue)
+    case .fade(let f): return .clipFade(id: id, mode: f?.rawValue)
+    case .quantize(let beats): return .clipQuantize(id: id, beats: beats)
+    case .follow(let mode): return .clipFollow(id: id, mode: mode?.rawValue)
+    case .loopFade(let f): return .loopFade(mode: f.rawValue)
     case .move(let deck): return .clip(deck: deck, id: id)
     case .remove: return .clipRemove(id: id)
     case .fx(let fx): return .clipFx(id: id, fx: fx)

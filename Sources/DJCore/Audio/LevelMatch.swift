@@ -28,7 +28,7 @@ public enum LevelMatch {
   /// The integrated target for a genre's tracks (`MixTargets.integratedLUFS`): its family's
   /// `lufs` band once measured, else `referenceLUFS` (every family, today).
   public static func targetLUFS(genre: String?) -> Double {
-    MixTargets.shared.integratedLUFS(family: MixTargets.family(genre: genre))
+    MixTargets.shared.integratedLUFS(family: MixBalance.family(genre: genre))
   }
   /// Exit M7 (ROADMAP 6.6): whole songs of every genre, synth or sampled, land within this of
   /// each other (max − min, LU; `LoudnessSpreadTests`)…

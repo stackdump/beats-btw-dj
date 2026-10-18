@@ -250,3 +250,43 @@ public struct MipTables: Sendable {
     top = tops
   }
 }
+
+/// `DJMusicality.Fixes.hfTilt` (ROADMAP 6.6): the mix's top end tilted down at the voices that
+/// carry it, not on the master. beats' hat, open hat and dj's crash are highpassed white noise
+/// (`drumVoice`, WaveSynth.swift): flat from 7 kHz (4.2 kHz for the crash) up to Nyquist, so a
+/// drum genre's long-term spectrum rises again past 10 kHz (research M7: a +6–12 dB bump at
+/// 16 kHz over the 63 Hz … 8 kHz fit, where a mastered record keeps falling). Under the fix those
+/// lanes run a second-order lowpass after their own filter, at a cutoff per family
+/// (`MixTargets.hfTiltHz`, targets.json `hfTilt`): their 7–10 kHz sizzle stays, the air above
+/// falls 12 dB an octave. A dj voice: beats' kit table (`kits`, the synth.js port the parity
+/// fixtures run) is untouched, and `WaveOptions()` never sets it.
+public struct HFTilt: Sendable, Equatable {
+  /// The lowpass's cutoff on hat / open hat lanes, Hz.
+  public var hatHz: Double
+  /// …and on the crash (`.crash`): the same, it is the same noise an octave lower.
+  public var crashHz: Double
+  /// Butterworth: no peak at the cutoff.
+  public var q = 0.5.squareRoot()
+
+  public init(hatHz: Double, crashHz: Double? = nil) {
+    self.hatHz = hatHz
+    self.crashHz = crashHz ?? hatHz
+  }
+
+  /// The cutoff for a drum lane of `kind` (`drumKind`'s, or "crash"); nil for what the tilt
+  /// leaves alone (kick, snare, clap: their noise is band-passed under 4 kHz already).
+  public func lowpassHz(kind: String) -> Double? {
+    switch kind {
+    case "hat", "openhat": return hatHz
+    case "crash": return crashHz
+    default: return nil
+    }
+  }
+
+  /// The tilt a track of `genre` plays with: its family's cutoff from targets.json.
+  public static func forGenre(_ genre: String) -> HFTilt? {
+    let names = GrooveTemplate.familyNames
+    let family = names[min(max(BeatsTables.shared.family(of: genre), 0), names.count - 1)]
+    return MixTargets.shared.hfTiltHz(family: family).map { HFTilt(hatHz: $0) }
+  }
+}

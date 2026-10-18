@@ -189,8 +189,12 @@ its copy; the two are now independent. Rules inherited from that split:
   bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
   wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
   `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
-  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
-  on a sample deck before this (then a no-op) now render differently.
+  `wave.*`. `vinyl-brake` there is the bus's `TurntableBrake` with the `Turntable` as source
+  (lag in output frames; release `Turntable.skip`s them, so the sample lands on its grid); a
+  jog (freeze) or transport stop cancels it — the jog wins. A sample deck shows the Master FX
+  section and lights the master-macro pads (`SurfaceController.playableMaster`), brake included.
+  Sessions that fired a master macro (or the brake) on a sample deck before this (then a no-op)
+  now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
   voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
@@ -385,7 +389,9 @@ its copy; the two are now independent. Rules inherited from that split:
   which span the song from tick 0 to their boundary, so any bar before it can carry a drum
   hit; the runner voices note 49 there as a crash), `.bassLine`, `.openHats` (note 46 → open
   hat in the runner) and `.stereo` (mid/side pan per lane in the runner, `stereoPlacement`; the
-  sampler bus's side highpassed at 150 Hz). Stereo only renders with a right channel: mono
+  sampler bus's side highpassed at 150 Hz; each sampled slot's side scaled by its category,
+  `sampledWidth`: bass 0, keys/pads 1.2 over a 300 Hz side highpass, guitars 0.8, leads 0.6,
+  on the per-slot path with `WaveProject.slotWidth`). Stereo only renders with a right channel: mono
   callers get the old mix.
 - Part E adds `.legato` (melody notes held to the next, ≤ a beat), `.cadence` (phrase ends —
   half a bar of rest, or the last note before a 2-bar line — on a chord tone), `.approach`
@@ -406,8 +412,9 @@ its copy; the two are now independent. Rules inherited from that split:
   it a block late through `echoFifo`, as the room's `sendFifo`), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
   pass's `.motif` (bar 2 of each 4-bar melody phrase restates bar 1 as a diatonic sequence; runs
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
-  toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
-  --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
+  toward the genre family's targets, `MixBalance.targets(family:)`: targets.json's
+  `balance.families` block, jazz borrowing chill's, else the default; `WaveOptions.trackBalance`
+  reused on section jumps; `djctl render --balance` prints the levels and the entry used). `Loudness.voiceFixes` are the fixes its probe must hear.
   Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
   arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
   `WaveProject.voiceDesign`). `.subOctave` (`SubOctave`, `WaveOptions.subOctave` set by
@@ -481,6 +488,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `djctl measure --sections` + ffmpeg cross-check, cached in `.build/references`): median, p10–p90,
   source `ref:<family>/<sha8> (n=K, djctl <build>)` — hashes, never a path or name.
   `musicality-matrix.py --targets PATH` prints each track's distance from its family's band.
+- Room from the table (6.6): `space.sends` are `SpaceSpec.send` / `samplerSend` (read at prepare /
+  runner init); a family's `space.families.<f>.returnDB` band rescales `wet` of genres whose room has
+  a measured `returnDB` (return is linear in wet), empty band = unchanged bytes. `.shimmer`
+  (`Shimmer`, in Space.swift): synth pad lanes' send, octave-up with feedback, into the room at
+  the family's `shimmer` level; allocated at runner init, level 0 = bit-identical.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
@@ -513,6 +525,12 @@ its copy; the two are now independent. Rules inherited from that split:
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
   transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
+- `.backbeat` (6.5, `Backbeat.swift`, after `.timing`, before `.variety`): lofi / jazz / bossa
+  get a kick and snare wherever `beatStyle` expects a beat, as mute / unmute bindings and rebound
+  figures on existing transitions (never topology; slotted parts skipped). Jazz's synth snare plays
+  `Brush` (`WaveOptions.brushes`, via `forGenre`; never in WaveSynth's Kit table). 6.5's exit is
+  `BeatEveryGenreTests`: `hasBeat` = 1 for every genre with a style, and M6 on the played hits
+  (hat velocities > 1 a position, consistency 0.9…0.99, tonal swing within 2 % of the family's).
 - `.sweep` (`BuildupSweep`, in the runner): a subtractive voice struck in a ramp section
   (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
   `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.

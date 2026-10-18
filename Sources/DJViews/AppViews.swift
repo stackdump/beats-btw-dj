@@ -595,7 +595,8 @@ public final class AppModel {
               ?? "missing", repeats: s.repeats)
         }, provenance: described(c).lines, provenanceJSON: described(c).json,
         color: c.color, genre: c.originGenre, originTitle: c.originTitle,
-        canLoadOrigin: canLoadOrigin(c.id, dj), fx: c.fx)
+        canLoadOrigin: canLoadOrigin(c.id, dj), fx: c.fx, quantum: dj.clipQuantum(c.id),
+        fade: dj.clipFade(c.id), follow: dj.clipFollow(c.id))
     }
     let present = Set(row.map(\.id))
     if !selectedClips.isSubset(of: present) { selectedClips.formIntersection(present) }
@@ -698,6 +699,16 @@ public final class AppModel {
   func setClipFx(_ id: String, _ fx: LoopFX) { soundAction(.clipFx(id: id, fx: fx)) }
   func setLoopKeyLock(_ on: Bool) { soundAction(.loopKeyLock(on: on)) }
   func setLoopFade(_ f: LoopFade) { soundAction(.loopFade(mode: f.rawValue)) }
+  /// Clip `id`'s own launch boundary, fade and tempo follow; nil: it follows the row's again.
+  func setClipQuantum(_ id: String, _ beats: Int?) {
+    soundAction(.clipQuantize(id: id, beats: beats))
+  }
+  func setClipFade(_ id: String, _ f: LoopFade?) {
+    soundAction(.clipFade(id: id, mode: f?.rawValue))
+  }
+  func setClipFollow(_ id: String, _ mode: LoopFollow?) {
+    soundAction(.clipFollow(id: id, mode: mode?.rawValue))
+  }
   func setLoopFxLink(_ on: Bool) { soundAction(.loopFxLink(on: on)) }
   private func soundAction(_ a: DeckAction) {
     guard let dj else { return }

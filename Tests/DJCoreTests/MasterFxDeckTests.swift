@@ -83,6 +83,27 @@ private func render(
   return (outL, outR)
 }
 
+/// Sixteenths at 120 bpm, 48 kHz.
+private let clickStep = 6000
+
+/// One bar of a click on every sixteenth (a single full-scale sample), silence between.
+private func clickTrack() -> SampleBuffer {
+  var x = [Float](repeating: 0, count: bar120)
+  for k in stride(from: 0, to: bar120, by: clickStep) { x[k] = 1 }
+  return SampleBuffer(left: x, right: x, sampleRate: sampleRate48)
+}
+
+/// The frames in `range` where a click starts: above 0.1 after at least 1000 quiet frames.
+private func onsets(_ x: [Float], in range: Range<Int>) -> [Int] {
+  var out: [Int] = []
+  var last = Int.min / 2
+  for i in range where i < x.count && abs(x[i]) > 0.1 {
+    if i - last > 1000 { out.append(i) }
+    last = i
+  }
+  return out
+}
+
 /// A low (375 Hz) and a bright (6 kHz) sine together, 2 s of whole periods.
 private func twoTones() -> SampleBuffer {
   let lo = fxSineBuffer(hz: 375, amplitude: 0.2, seconds: 2)
@@ -254,15 +275,77 @@ struct MasterFxDeckTests {
     #expect(deck.isMasterActive(.octaveUp))
   }
 
-  @Test func theVinylBrakeIsANoOpOnASampleDeck() throws {
-    let (_, dryDeck) = try sampleDeck(twoTones())
-    let dry = render(dryDeck, frames: bar120)
-    let (_, deck) = try sampleDeck(twoTones())
-    let wet = render(deck, frames: bar120) { f in
-      if f == 0 { deck.fire(.vinylBrake, duration: 1) }
+  @Test func aSampleDeckBrakesAndLandsOnTheBeat() throws {
+    let clicks = clickTrack()
+    let (_, dryDeck) = try sampleDeck(clicks)
+    let dry = render(dryDeck, frames: 4 * bar120)
+    let (_, deck) = try sampleDeck(clicks)
+    var fire = -1
+    let wet = render(deck, frames: 4 * bar120) { f in
+      if f == 512 {
+        fire = deck.sampleMasterFire().frame  // bar 2
+        deck.fire(.vinylBrake, duration: 1)
+      }
+      if f == 236 * 512 {  // 24 832 frames into the spin-down
+        #expect(deck.isMasterActive(.vinylBrake))
+      }
     }
-    #expect(wet.l == dry.l && wet.r == dry.r)
+    #expect(abs(fire - bar120) <= 1, "\(fire)")
+    #expect(wet.l[..<fire] == dry.l[..<fire], "nothing before its bar")
+    // the spin-down (¾ of the bar): each sixteenth comes later than the last, the rate falling
+    let spin = onsets(wet.l, in: fire..<(fire + 3 * bar120 / 4))
+    #expect(spin.count >= 5, "\(spin)")
+    let gaps = zip(spin.dropFirst(), spin).map { $0 - $1 }
+    for (g0, g1) in zip(gaps, gaps.dropFirst()) { #expect(g1 > g0, "slowing: \(gaps)") }
+    #expect((gaps.last ?? 0) > 3 * clickStep / 2, "well below full speed: \(gaps)")
+    // released a bar after the fire, over 5 ms: the next click is on the unbraked grid
+    let release = fire + bar120
+    let after = onsets(wet.l, in: (release + 240)..<(release + bar120))
+    let grid = onsets(dry.l, in: (release + 240)..<(release + bar120))
+    let first = try #require(after.first)
+    let want = try #require(grid.first)
+    #expect(abs(first - want) <= 48, "within 1 ms of the grid: \(first) vs \(want)")
+    #expect(after.count == grid.count)
     #expect(deck.activeMasterMacros.isEmpty)
+  }
+
+  @Test func panicReleasesABrakingSampleDeck() throws {
+    let clicks = clickTrack()
+    let (_, dryDeck) = try sampleDeck(clicks)
+    let dry = render(dryDeck, frames: 4 * bar120)
+    let (_, deck) = try sampleDeck(clicks)
+    var fire = -1
+    let panicAt = 228 * 512  // under a quarter of a bar into a 2-bar brake (blocks of 512)
+    let wet = render(deck, frames: 4 * bar120) { f in
+      if f == 512 {
+        fire = deck.sampleMasterFire().frame
+        deck.fire(.vinylBrake, duration: 2)
+      }
+      if f == panicAt {
+        #expect(deck.isMasterActive(.vinylBrake))
+        deck.panic()
+      }
+    }
+    #expect(abs(fire - bar120) <= 1, "\(fire)")
+    #expect(deck.activeMasterMacros.isEmpty)
+    // 5 ms out, 5 ms back in: then the clicks are the unbraked deck's, long before the 2 bars
+    let from = panicAt + 2 * 240 + 512
+    let after = onsets(wet.l, in: from..<(from + bar120))
+    let grid = onsets(dry.l, in: from..<(from + bar120))
+    #expect(!after.isEmpty && after.count == grid.count, "\(after) vs \(grid)")
+    for (w, d) in zip(after, grid) { #expect(abs(w - d) <= 48, "\(w) vs \(d)") }
+  }
+
+  @Test func aJogCancelsASampleDecksBrake() throws {
+    let (_, deck) = try sampleDeck(clickTrack())
+    _ = render(deck, frames: bar120 + 20 * 512) { f in
+      if f == 512 { deck.fire(.vinylBrake, duration: 1) }
+    }
+    #expect(deck.isMasterActive(.vinylBrake))
+    deck.freeze()  // a hand on the platter: the jog wins
+    _ = render(deck, frames: 512)
+    #expect(!deck.isMasterActive(.vinylBrake))
+    deck.release()
   }
 
   @Test func aSampleDeckSliderAndPanicReachItsBus() throws {

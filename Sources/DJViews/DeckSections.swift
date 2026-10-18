@@ -42,7 +42,12 @@ struct DeckSections: View {
 
   enum Section: String, CaseIterable {
     case perform, wander, masterfx, reverb, track, favorites, generate, load, notes, history
-    var netOnly: Bool { [.perform, .wander, .masterfx, .track].contains(self) }
+    /// Master FX is not: a sample deck runs the master chain on its own bus. Wander composes
+    /// nets, so it stays net-only.
+    var netOnly: Bool { [.perform, .wander, .track].contains(self) }
+
+    /// The sections a deck's strip shows, in order.
+    static func shown(isNet: Bool) -> [Section] { allCases.filter { isNet || !$0.netOnly } }
   }
 
   private var open: Set<String> { Set(Self.openSections(openList)) }
@@ -54,7 +59,7 @@ struct DeckSections: View {
     }
   }
 
-  private var shown: [Section] { Section.allCases.filter { state.isNet || !$0.netOnly } }
+  private var shown: [Section] { Section.shown(isNet: state.isNet) }
 
   private func label(_ s: Section) -> String {
     switch s {
@@ -99,7 +104,8 @@ struct DeckSections: View {
     case .perform: NetPanel(name: name, state: state, model: model, tint: tint)
     case .wander: WanderPanel(name: name, state: state, model: model, tint: tint)
     case .masterfx:
-      MasterFxPanel(name: name, running: state.masterRunning, model: model, tint: tint)
+      MasterFxPanel(
+        name: name, running: state.masterRunning, model: model, tint: tint, isNet: state.isNet)
     case .reverb: ReverbPanel(name: name, reverb: state.reverb, model: model, tint: tint)
     case .track: TrackPanel(name: name, state: state, model: model, tint: tint)
     case .favorites: FavoritesPanel(name: name, model: model, current: state.sourceCID)
@@ -711,6 +717,13 @@ struct MasterFxPanel: View {
   let running: Set<MasterMacro>
   let model: AppModel
   let tint: Color
+  /// Either mode offers every master macro (a sample deck's bus brakes too).
+  var isNet = true
+
+  /// The macros the panel offers in `group`.
+  static func macros(_ group: String, isNet: Bool) -> [MasterMacro] {
+    MasterMacro.allCases.filter { $0.group == group }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -718,7 +731,7 @@ struct MasterFxPanel: View {
         VStack(alignment: .leading, spacing: 3) {
           Text(group).font(.caption2).foregroundStyle(.secondary)
           FlowRow(spacing: 4) {
-            ForEach(MasterMacro.allCases.filter { $0.group == group }, id: \.rawValue) { m in
+            ForEach(Self.macros(group, isNet: isNet), id: \.rawValue) { m in
               ChoiceButton(label: m.label, selected: running.contains(m), tint: tint, live: true) {
                 model.fire(name, m)
               }

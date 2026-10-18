@@ -65,7 +65,7 @@ private func matrix(sampled: Bool) -> (levels: [String: Double], spread: Double)
   /// and the probe aims at it (the deck's gain is unchanged by the per-family lookup).
   @Test func everyFamilyTakesTheSingleReferenceUntilItsBandIsMeasured() {
     for genre in spreadGenres + [nil] {
-      let family = MixTargets.family(genre: genre)
+      let family = MixBalance.family(genre: genre)
       if genre != nil { #expect(family != nil, "\(genre ?? "nil")") }
       if let family { #expect(MixTargets.shared.band("lufs", family: family) == nil) }
       #expect(LevelMatch.targetLUFS(genre: genre) == LevelMatch.referenceLUFS)
@@ -81,7 +81,7 @@ private func matrix(sampled: Bool) -> (levels: [String: Double], spread: Double)
     #expect(t.integratedLUFS(family: "chill") == -13)
     #expect(t.integratedLUFS(family: "dance") == LevelMatch.referenceLUFS)
     #expect(t.integratedLUFS(family: nil) == LevelMatch.referenceLUFS)
-    #expect(MixTargets.family(genre: "techno") == "dance")
+    #expect(MixBalance.family(genre: "techno") == "dance")
   }
 
   @Test func synthSongsSpreadWithinTwoLU() {
