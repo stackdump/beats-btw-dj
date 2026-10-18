@@ -75,9 +75,10 @@ struct VarietyTests {
     #expect(sum / Double(pairs) <= 0.25, "\(genre): mean pitch Jaccard \(sum / Double(pairs))")
   }
 
-  /// Not only another key: in the seven-note genres the chords themselves change (the pad's
-  /// pattern relative to the track's root differs between seeds).
-  @Test(arguments: ["techno", "house", "trance", "jazz", "dnb"])
+  /// Not only another key: the chords themselves change (the pad's pattern relative to the
+  /// track's root differs between seeds) — in the seven-note genres and the pentatonic ones
+  /// (lofi, ambient: progressions in five-degree space).
+  @Test(arguments: ["techno", "house", "trance", "jazz", "dnb", "lofi", "ambient"])
   func progressionsChangeNotJustTheKey(genre: String) {
     var shapes = Set<[[Int]]>()
     for s in seeds {
@@ -137,7 +138,7 @@ struct VarietyTests {
   /// The key moves with the root: every tonal note in the new key, the project's root
   /// moved by the same offset as the notes (so `.kickTune` tunes the kick to it), the
   /// melody's beat notes still chord tones, and no more semitone rubs than beats' own key.
-  @Test(arguments: ["techno", "house", "trance", "jazz", "dnb", "lofi", "edm"])
+  @Test(arguments: ["techno", "house", "trance", "jazz", "dnb", "lofi", "ambient", "edm"])
   func stillInKeyAndOnTheChords(genre: String) throws {
     var moved = 0
     var retuned = 0
@@ -162,5 +163,48 @@ struct VarietyTests {
     #expect(retuned >= 3, "\(genre): the kick follows the key in \(retuned) of 10")
     #expect(
       clashes.with <= clashes.without + 10, "\(genre): rubs per 100 pairs, ×10 seeds \(clashes)")
+  }
+
+  /// Pentatonic genres change their chords, not only their key: the pad plays at least six
+  /// patterns in 30 seeds, every note stays in the key (the moved chords are the key's sus /
+  /// quartal shapes) and the semitone rubs rise by at most one per 100 pairs.
+  @Test(arguments: ["lofi", "ambient"])
+  func pentatonicProgressionsStayInKey(genre: String) throws {
+    let n = distinct(genre)
+    #expect(try #require(n["harmony"]) >= 6, "\(genre): \(n)")
+    var rubs = (with: 0.0, without: 0.0)
+    let tried = seeds.prefix(10)
+    for s in tried {
+      let spec = TrackSpec(genre: genre, seed: s, structure: "standard")
+      let composed = spec.project()
+      let a = DJMusicality.apply(composed, spec: spec, fixes: .all.subtracting(.variety))
+      let b = DJMusicality.apply(composed, spec: spec)
+      let ra = MusicalityReport(project: a, log: NoteLog.capture(a))
+      let rb = MusicalityReport(project: b, log: NoteLog.capture(b))
+      #expect(rb.inKey == 1.0, "\(genre)/\(s): in key \(rb.inKey)")
+      rubs.with += rb.semitoneClashes
+      rubs.without += ra.semitoneClashes
+    }
+    let rise = (rubs.with - rubs.without) / Double(tried.count)
+    #expect(rise <= 1, "\(genre): rubs per 100 pairs rise \(rise) on average")
+  }
+
+  /// The pool by key size: pentatonic genres draw from beats' plan (its degrees wrapped into
+  /// five notes, as `degreeToMidi` plays them) and dj's five-degree table; blues (six notes)
+  /// keeps its plan.
+  @Test func progressionPoolsByKeySize() throws {
+    let genres = BeatsTables.shared.genres
+    let lofi = DJMusicality.progressions(for: try #require(genres["lofi"]))
+    #expect(lofi.count >= 4)
+    #expect(lofi.allSatisfy { $0.allSatisfy { (0..<5).contains($0) } }, "\(lofi)")
+    #expect(lofi.contains([1, 4, 0, 0]), "beats' plan stays a choice: \(lofi)")
+    let ambient = DJMusicality.progressions(for: try #require(genres["ambient"]))
+    #expect(ambient.count >= 3)
+    #expect(ambient.allSatisfy { $0.allSatisfy { (0..<5).contains($0) } }, "\(ambient)")
+    #expect(DJMusicality.progressions(for: try #require(genres["blues"])).isEmpty)
+    // the seven-note helpers stay seven-note
+    let spec = TrackSpec(genre: "lofi", seed: 42)
+    #expect(DJMusicality.sevenNoteKey(spec.project()) == nil)
+    #expect(DJMusicality.scaleKey(spec.project()).degrees.count == 5)
   }
 }
