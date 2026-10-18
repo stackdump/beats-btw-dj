@@ -328,6 +328,10 @@ its copy; the two are now independent. Rules inherited from that split:
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
+  `djctl measure <file> [--start S] [--seconds N] [--note N]` runs any local audio file
+  (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
+  decoded by `Deck.decode` at the file's rate), named by basename + sha256 prefix, never
+  copied; `--note` adds `PitchMeasure` (wraps the sampler's `pitchClassError`, unmoved).
 - Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
