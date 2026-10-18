@@ -316,8 +316,8 @@ public enum MinecraftImport {
   }
 
   /// A tone program's key zones: the recording an octave down below `root - 6`, as recorded
-  /// from `root - 6` to `root + 6`, an octave up above — no key plays a sample more than six
-  /// semitones from its root. Together they cover 0…127 without overlap.
+  /// from `root - 6` to `root + 6`, an octave up above — no key within 18 semitones of the root
+  /// plays a sample more than six semitones from that sample's root. Together they cover 0…127 without overlap.
   public static func octaveZones(root: Int) -> [(keys: ClosedRange<Int>, shift: Int)] {
     let low = min(127, max(0, root - 6))
     let high = min(127, max(low, root + 6))

@@ -142,14 +142,25 @@ struct MinecraftTests {
       func play(_ note: Int) -> [Float] {
         WaveRunner.audition(
           tonalVoice(instrument: "", group: "melody"), notes: [(note, 0, 0.5)], sampleRate: sr,
-          seconds: 0.4, sampler: (bank, slot))
+          seconds: 0.5, sampler: (bank, slot))
       }
+      let downZoneEnd =
+        MinecraftImport.octaveZones(root: prog.root).first { $0.shift == 0 }?.keys
+        .lowerBound ?? 0
       for note in stride(from: prog.root - 24, through: prog.root + 24, by: 3)
       where (24...108).contains(note) {
         let x = play(note)
-        let e = pitchClassError(x[Int(0.03 * sr)..<Int(0.25 * sr)], note: note, sampleRate: sr)
+        // The octave-down zone plays the recording at half speed, so a held tone's attack (the
+        // flute bends ~10 cents into pitch over its first ~0.12 s, at the root too) lasts twice
+        // as long: measure those keys after it, on the steady loop. Everything else from as it
+        // speaks over 0.44 s: a bass key at 40 Hz needs the length to read to a few cents.
+        let window =
+          prog.loop && note < downZoneEnd
+          ? Int(0.25 * sr)..<Int(0.47 * sr) : Int(0.03 * sr)..<Int(0.47 * sr)
+        let e = pitchClassError(x[window], note: note, sampleRate: sr)
         #expect(e.level > 0, "\(name) @\(note): silent")
-        #expect(abs(e.cents) < 5, "\(name) @\(note): \(e.cents) cents")
+        // within 5 cents, read on `pitchClassError`'s 1-cent grid
+        #expect(abs(e.cents) <= 5, "\(name) @\(note): \(e.cents) cents")
       }
       for z in MinecraftImport.octaveZones(root: prog.root).dropLast() {
         let below = z.keys.upperBound
@@ -251,8 +262,10 @@ struct MinecraftTests {
     #expect(!deck.wave.sampledNets.values.contains { $0.contains(MinecraftBank.fileName) })
   }
 
-  /// The zones cover the keyboard once, and no key within two octaves of the root plays a
-  /// sample more than six semitones from that sample's root.
+  /// The zones cover the keyboard once. Three zones (−1, 0, +1 octave) keep every key within
+  /// 18 semitones of the root at most six semitones from the sample it plays; out to two
+  /// octaves the stretch is at most an octave (one zone each way can't do better, and the
+  /// in-tune check covers ±2 octaves).
   @Test func octaveZonesCoverTheKeyboard() {
     for p in MinecraftBank.programs where p.kind == .tone {
       for root in (p.root - 1)...(p.root + 1) {
@@ -263,7 +276,8 @@ struct MinecraftTests {
           #expect(z.keys.lowerBound == next, "\(p.name): contiguous")
           next = z.keys.upperBound + 1
           for k in z.keys where abs(k - root) <= 24 {
-            #expect(abs(k - (root + 12 * z.shift)) <= 6, "\(p.name) key \(k)")
+            let stretch = abs(k - (root + 12 * z.shift))
+            #expect(stretch <= (abs(k - root) <= 18 ? 6 : 12), "\(p.name) key \(k)")
           }
         }
         #expect(next == 128)

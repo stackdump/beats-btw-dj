@@ -99,6 +99,9 @@ struct AppControlTests {
         m, "perform", "{\"action\":{\"op\":\"clipLoop\",\"id\":\"\(id)\",\"on\":true}}")
     }
     #expect(Set(dj.loopingClips) == Set(ids))
+    // a recording starts with the decks at rest: deck A still plays the demo the takes came
+    // from (the row's clips are not on a deck and keep looping)
+    dj["A"]!.eject()
     let rec = try SessionRecorder.start(on: dj)
     let stopped = try await call(m, "loops", #"{"action":"stopAll"}"#)
     #expect(Set(stopped["stopped"]?.array?.compactMap(\.string) ?? []) == Set(ids))
@@ -434,7 +437,9 @@ struct AppControlTests {
     #expect(s["scope"]?["source"]?.string == "A")
     #expect(s["scope"]?["measured"]?.bool == false)
     #expect(s["stage"]?["open"]?.bool == false)
-    #expect(s["stage"]?["visualizer"]?.string == "constellation")
+    #expect(
+      s["stage"]?["visualizer"]?.string == "mandala",
+      "the raw value; constellation is its display name")
     #expect(m.stageModel?.isAttached == false, "reading the stage does not attach its feed")
     #expect(s["crates"]?.array?.compactMap(\.string) == ["warmup"])
     #expect(s["variations"]?["bass"]?.array?.first?["name"]?.string == "deep")
