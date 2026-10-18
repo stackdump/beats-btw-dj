@@ -131,7 +131,19 @@ public struct RestSchedule: Equatable, Sendable {
 
   /// This schedule with a mix-out tail's rest on top (`MixOutTail.entry`).
   public func with(tail: MixOutTail) -> RestSchedule {
-    RestSchedule(merging: entries + [tail.entry])
+    with(rest: tail.entry)
+  }
+
+  /// This schedule with one more rest on top (a mix-in's, `RestSchedule.mixIn`).
+  public func with(rest: Entry) -> RestSchedule {
+    RestSchedule(merging: entries + [rest])
+  }
+
+  /// A mix-in (ROADMAP 6.2, `Deck.mixIn`): the deck comes in drums-forward, its melodic lanes
+  /// (the mix-out tail's mask) resting from the bar line `fromTick` for `bars` bars, released on
+  /// the bar line after. Fills, crashes, stingers and the live keys play on.
+  public static func mixIn(fromTick: Int, bars: Int) -> Entry {
+    Entry(from: fromTick, to: fromTick + max(0, bars) * 16, mask: MixOutTail.restMask)
   }
 }
 
@@ -147,7 +159,12 @@ public struct MixOutTail: Equatable, Sendable {
   public var fromTick: Int
   public var bars: Int
 
-  public init(fromTick: Int, bars: Int = 16) {
+  /// How long a mix-out plays when nobody says (`DeckAction.mixOut`): 16 bars.
+  public static let defaultBars = 16
+  /// What rests in a tail (and a mix-in): everything but the drums-forward lanes.
+  public static let restMask = RestSchedule.Class.melodic
+
+  public init(fromTick: Int, bars: Int = MixOutTail.defaultBars) {
     self.fromTick = fromTick
     self.bars = bars
   }
@@ -157,6 +174,6 @@ public struct MixOutTail: Equatable, Sendable {
 
   /// What rests: the melodic lanes, from `fromTick` to the stop.
   public var entry: RestSchedule.Entry {
-    RestSchedule.Entry(from: fromTick, to: endTick, mask: RestSchedule.Class.melodic)
+    RestSchedule.Entry(from: fromTick, to: endTick, mask: Self.restMask)
   }
 }

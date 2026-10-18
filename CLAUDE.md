@@ -141,6 +141,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
   the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
   `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
+  The deck control is `DeckAction.mixOut(deck, bars)` (`Deck.mixOut`: the outro at the next bar,
+  else plays on) and `.mixIn(deck, bars)` (`RestSchedule.mixIn`, the same mask, joined to the
+  song's rests): one recorded action each, through `relocate(toTick:tail:rest:)`, never apart.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
@@ -463,6 +466,10 @@ its copy; the two are now independent. Rules inherited from that split:
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
   transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
+- `.sweep` (`BuildupSweep`, in the runner): a subtractive voice struck in a ramp section
+  (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
+  `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.
+  It builds the `EnergyCurve` without `.energy`. Synth lanes only; samplers keep `.energy`'s bus LP.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -590,6 +597,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
   and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
   (`JournalRewindRealTimeTests`).
+- In-app rewind: `AppModel.rewindJournal(toSeq:)` (socket `journal` {action: rewind, seq},
+  `dj_journal`) replays the flushed file off the main actor (`playheads: true`), `reset(to:)`s
+  the engine, `replaceStores`, then appends `rewind <seq>` (`Journal.rewindMark`) and a
+  playhead checkpoint — append-only, line 0 untouched. Nothing before a rewind's checkpoint
+  carries over: replays past it start there even `fromStart`; `exportSession` refuses a slice
+  with a rewind mark (`JournalError.spansRewind`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
