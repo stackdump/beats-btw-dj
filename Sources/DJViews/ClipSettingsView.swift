@@ -55,6 +55,10 @@ struct ClipSettingsView: View {
   @State private var crop: (from: Int, to: Int)?
   /// The instrument whose sound panel is open: (deck, channel).
   @State private var tuning: Tuning?
+  /// "Retune this loop": the instruments picked (MIDI channel → instrument), not yet rendered.
+  @State private var retune: [Int: String] = [:]
+  /// Why the last retune did nothing (`ClipRetune.Refusal.message`).
+  @State private var retuneError: String?
 
   struct Tuning: Equatable {
     var deck: String
@@ -76,6 +80,14 @@ struct ClipSettingsView: View {
     if let index, model.clips.indices.contains(index), model.clips[index].id != id {
       follow(model.clips[index].id)
     }
+  }
+
+  /// Retune clip `id` with `voices` (the editor's "Retune"): rendered off the main thread, the
+  /// retuned clip takes its place on the row under a new id, which `follow` is given.
+  static func retune(
+    _ id: String, voices: [Int: String], in model: AppModel, follow: (String) -> Void
+  ) async throws {
+    if let new = try await model.retuneClip(id, voices: voices), new != id { follow(new) }
   }
 
   var body: some View {
@@ -334,9 +346,12 @@ struct ClipSettingsView: View {
 
   // MARK: tuning
 
-  /// A loop is audio: its sound is tuned on the track it was taken from. With that track on a
-  /// deck, each of its instruments opens the sound panel (`VoiceEditor`); otherwise load it.
+  /// A loop is audio: its sound is tuned on the track it was taken from. "Retune this loop"
+  /// picks other instruments for its parts and renders its bars again with them, no deck needed
+  /// (`AppModel.retuneClip`). With that track on a deck, each of its instruments opens the sound
+  /// panel (`VoiceEditor`); otherwise it can be loaded.
   @ViewBuilder private func tuningEditor(_ clip: ClipState) -> some View {
+    retuneEditor(clip)
     if model.originCID(clip.id) == nil {
       Text(
         clip.steps != nil
@@ -380,6 +395,64 @@ struct ClipSettingsView: View {
         Text(
           "Tuning changes the deck playing the track; take the loop again (LOOP, or ⟲) to keep "
             + "the new sound."
+        )
+        .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  /// "Retune this loop": each part's instrument as a menu of what beats would pick for it; the
+  /// picks render the loop's bars again (`retune`) and the retuned loop takes its place, in
+  /// phase if it is looping. Shown for any net take (no deck has to play its track).
+  @ViewBuilder private func retuneEditor(_ clip: ClipState) -> some View {
+    let voices = model.retuneVoices(clip.id)
+    if !voices.isEmpty {
+      let busy = model.retuningClips.contains(clip.id)
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Retune this loop").font(.caption.bold())
+        FlowRow(spacing: 4) {
+          ForEach(voices, id: \.channel) { v in
+            let picked = retune[v.channel] ?? v.instrument
+            Menu("\(v.role): \(picked)") {
+              ForEach(v.options, id: \.self) { i in
+                Button(i == v.instrument ? "\(i) (as now)" : i) {
+                  if i == v.instrument { retune[v.channel] = nil } else { retune[v.channel] = i }
+                }
+              }
+            }
+            .fixedSize().controlSize(.small)
+            .tint(retune[v.channel] != nil ? LoopRowView.tint : nil)
+            .help("The instrument \(v.role) plays in this loop")
+          }
+        }
+        HStack(spacing: DJStyle.s) {
+          Button("Retune") {
+            let voices = retune
+            retuneError = nil
+            Task {
+              do {
+                try await Self.retune(clip.id, voices: voices, in: model) { id = $0 }
+                retune = [:]
+              } catch let r as ClipRetune.Refusal {
+                retuneError = r.message
+              } catch {
+                retuneError = "\(error)"
+              }
+            }
+          }
+          .disabled(retune.isEmpty || busy)
+          Button("Reset") { retune = [:] }.disabled(retune.isEmpty || busy)
+          Spacer(minLength: 0)
+          if busy { Text("retuning…").font(.caption2).foregroundStyle(.secondary) }
+        }
+        .controlSize(.small)
+        if let retuneError {
+          Text(retuneError).font(.caption2).foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Text(
+          "Renders its bars again with these instruments; the loop keeps its place, level and "
+            + "FX, and carries on in phase."
         )
         .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
       }

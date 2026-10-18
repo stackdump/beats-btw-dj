@@ -175,7 +175,11 @@ public struct MCPBridge {
       playing now (and their levels and FX) as a scene (overwrites one of that name) · sceneLaunch \
       {name}: its loops in, every other out, all on the next launch boundary · sceneRename \
       {name, to} · sceneDelete {name} (dj_state.loops.scenes, .quantize) · \
-      clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \
+      clipCrop {id, from, to}: keep its beats from..<to · clipRetune {id, voices: {"<MIDI \
+      channel>": instrument}}: a loop taken from a net rendered again with those instruments \
+      (the others as taken; channels as dj_state's voices number them), taking its \
+      place as a crop does, in phase if it is looping; refused for samples, sequences and takes \
+      with macros running · clipSequence {steps: [{clip, repeats}], \
       replacing?}: join clips into a sequence (or rewrite one) · clip {deck: L|A|B, id}: move a \
       clip onto a deck (L = under the mixer) · clipRemove {id}: off the row, its audio kept \
       (dj_state.loops.removed; dj_loops undo puts it back, and has the row's load source, \

@@ -17,7 +17,27 @@ extension Deck {
   /// sample deck, and for roles beats has no instrument pool for.
   public var roleVoices: [RoleVoice] {
     guard mode == .net, let project = netProject else { return [] }
-    let genre = currentSpec?.genre ?? ""
+    return RoleVoice.list(project: project, roles: roles, genre: currentSpec?.genre ?? "")
+  }
+
+  /// What a role beats has no instrument list for can play: harmony the sustained families
+  /// (pads first, then strings, keys, organ, choir, bells); any other, every tonal instrument.
+  static func fallbackOptions(_ role: String) -> [String] {
+    let catalog = VoiceCatalog.shared
+    let harmony = [
+      "pad", "strings", "keys.epiano", "keys.piano", "keys.organ", "vocal", "synth.bell",
+    ]
+    let categories =
+      role == "harmony"
+      ? harmony : Array(Set(catalog.categoryOf.values)).sorted().filter { !$0.hasPrefix("bass") }
+    return categories.flatMap { c in catalog.categoryOf.filter { $0.value == c }.keys.sorted() }
+  }
+}
+
+extension RoleVoice {
+  /// `project`'s `roles` (in that order) with an instrument to choose, for a net of `genre`:
+  /// what `Deck.roleVoices` shows for the deck playing it, and `ClipRetune.voices` for a loop.
+  public static func list(project: Project, roles: [String], genre: String) -> [RoleVoice] {
     let sets = BeatsTables.shared.instrumentSets
     var out: [RoleVoice] = []
     for role in roles {
@@ -33,7 +53,7 @@ extension Deck {
       }
       // beats lists no instruments for some roles (harmony): offer what fits it instead of
       // leaving the role out of the Instruments panel
-      if options.isEmpty { options = Self.fallbackOptions(role) }
+      if options.isEmpty { options = Deck.fallbackOptions(role) }
       guard !options.isEmpty else { continue }
       // Roles on one channel (the drum kit) are one choice: `tracks` is keyed by channel.
       if let i = out.firstIndex(where: { $0.channel == net.track.channel }) {
@@ -47,19 +67,6 @@ extension Deck {
           options: options))
     }
     return out
-  }
-
-  /// What a role beats has no instrument list for can play: harmony the sustained families
-  /// (pads first, then strings, keys, organ, choir, bells); any other, every tonal instrument.
-  static func fallbackOptions(_ role: String) -> [String] {
-    let catalog = VoiceCatalog.shared
-    let harmony = [
-      "pad", "strings", "keys.epiano", "keys.piano", "keys.organ", "vocal", "synth.bell",
-    ]
-    let categories =
-      role == "harmony"
-      ? harmony : Array(Set(catalog.categoryOf.values)).sorted().filter { !$0.hasPrefix("bass") }
-    return categories.flatMap { c in catalog.categoryOf.filter { $0.value == c }.keys.sorted() }
   }
 }
 

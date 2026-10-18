@@ -132,6 +132,10 @@ public enum DeckAction: Equatable, Sendable {
   case clipGain(id: String, value: Double)
   /// Crop a clip to its beats `from..<to` (`DJEngine.cropClip`).
   case clipCrop(id: String, from: Int, to: Int)
+  /// Render a net clip's bars again with `voices` (MIDI channel → beats instrument) over the
+  /// instruments it was taken with; the result takes its place, as a crop does
+  /// (`DJEngine.retuneClip`, `ClipRetune`).
+  case clipRetune(id: String, voices: [Int: String])
   /// Join clips into a sequence (`DJEngine.makeSequence`), or rewrite the one `replacing` names.
   case clipSequence(steps: [SequenceStep], replacing: String?)
   /// Take a clip off the row; it can be put back (`DJEngine.removeClip`).
@@ -498,6 +502,8 @@ extension DeckAction {
       return o("clipGain", [("id", .string(id)), ("value", .number(v))])
     case .clipCrop(let id, let from, let to):
       return o("clipCrop", [("id", .string(id)), ("from", .int(from)), ("to", .int(to))])
+    case .clipRetune(let id, let voices):
+      return o("clipRetune", [("id", .string(id)), ("voices", Self.voicesJSON(voices))])
     case .clipSequence(let steps, let replacing):
       return o(
         "clipSequence",
@@ -589,7 +595,23 @@ extension DeckAction {
     "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
     "setRoleVoice", "clipImport", "mixOut", "mixIn", "rewind", "focus", "stemMute", "masterFx",
+    "clipRetune",
   ]
+
+  /// Instruments by MIDI channel as JSON: `{"3": "saw"}`, channels in order.
+  public static func voicesJSON(_ voices: [Int: String]) -> JSONValue {
+    .object(
+      JSONObject(voices.sorted { $0.key < $1.key }.map { ("\($0.key)", .string($0.value)) }))
+  }
+
+  /// `voicesJSON` read back; entries that aren't a channel and an instrument are left out.
+  public static func voices(json v: JSONValue?) -> [Int: String] {
+    var out: [Int: String] = [:]
+    for (k, i) in v?.object?.entries ?? [] {
+      if let ch = Int(k), let name = i.string, !name.isEmpty { out[ch] = name }
+    }
+    return out
+  }
 
   public init?(json v: JSONValue) {
     guard let op = v["op"]?.string else { return nil }
@@ -635,6 +657,8 @@ extension DeckAction {
         steps: [SequenceStep](json: v["steps"]), replacing: v["replacing"]?.string)
     case "clipCrop":
       self = .clipCrop(id: v["id"]?.string ?? "", from: v["from"]?.int ?? 0, to: v["to"]?.int ?? 0)
+    case "clipRetune":
+      self = .clipRetune(id: v["id"]?.string ?? "", voices: Self.voices(json: v["voices"]))
     case "clipRemove": self = .clipRemove(id: v["id"]?.string ?? "")
     case "clipRestore": self = .clipRestore(id: v["id"]?.string ?? "", at: v["at"]?.int)
     case "clipForget": self = .clipForget(id: v["id"]?.string ?? "")

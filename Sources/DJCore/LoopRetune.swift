@@ -28,6 +28,19 @@ public enum ClipRetune {
     case songEnded
     /// The take starts further into the song than a render will go for it.
     case tooFar
+
+    /// For people: why "Retune" did nothing.
+    public var message: String {
+      switch self {
+      case .notANet: "Taken from a sample, not a net: it has no instruments to retune."
+      case .sequence: "A sequence: retune the loops it is made of."
+      case .macros(let m):
+        "Taken with \(m.joined(separator: ", ")) running: take it again without, to retune it."
+      case .noProvenance: "There is no record of the track it was taken from."
+      case .songEnded: "The track ends before the loop's bars."
+      case .tooFar: "Taken too far into its track to render again."
+      }
+    }
   }
 
   /// A clip's bars rendered again.
@@ -73,8 +86,10 @@ public enum ClipRetune {
     }
     let macros = clip.originMacros
     guard macros.isEmpty else { throw Refusal.macros(macros) }
+    // a retuned clip plays its earlier retunes' instruments, under the ones asked for now
     var source = taken
-    for (channel, instrument) in voices.sorted(by: { $0.key < $1.key }) {
+    let all = clip.retunedVoices.merging(voices) { _, now in now }
+    for (channel, instrument) in all.sorted(by: { $0.key < $1.key }) {
       guard let s = source.withInstrument(instrument, channel: channel) else {
         throw Refusal.notANet
       }
@@ -173,12 +188,13 @@ public enum ClipRetune {
   }
 
   /// The provenance of the take `clip` is made of: through crops (their beats are already the
-  /// clip's own `startBeat` and `beats`), never a sequence.
+  /// clip's own `startBeat` and `beats`) and retunes (the same bars; their instruments are
+  /// `LoopClip.retunedVoices`), never a sequence.
   static func takeProvenance(_ clip: LoopClip) throws -> JSONValue {
     var p = clip.provenance
     while let op = p?["op"]?.string {
       switch op {
-      case "crop": p = p?["parent"]
+      case "crop", "retune": p = p?["parent"]
       case "sequence": throw Refusal.sequence
       default: throw Refusal.noProvenance
       }
@@ -186,5 +202,36 @@ public enum ClipRetune {
     guard let p else { throw Refusal.noProvenance }
     if p["mode"]?.string == "sample" { throw Refusal.notANet }
     return p
+  }
+
+  /// The instruments `clip` can be retuned on, without a deck: its track's roles with an
+  /// instrument to choose (`RoleVoice`, as `Deck.roleVoices` lists them), each on the
+  /// instrument the clip plays now (its take's, with any earlier retune's). The roles that were
+  /// off in the take are left out (they are silent in it). Empty for a clip `render` refuses.
+  public static func voices(for clip: LoopClip) -> [RoleVoice] {
+    guard (try? takeProvenance(clip)) != nil, clip.originMacros.isEmpty,
+      let source = clip.originSource
+    else { return [] }
+    let project: Project?
+    let genre: String
+    switch source {
+    case .net(let spec):
+      project = spec.project()
+      genre = spec.genre
+    case .rawNets(let payload):
+      project = Share(payload: payload).project()
+      genre = payload["genre"]?.string ?? ""
+    case .sample, .none: return []
+    }
+    guard let project else { return [] }
+    let off = Set(clip.originRolesOff)
+    let roles = Deck.roleOrder.filter { role in
+      !off.contains(role)
+        && project.nets.keys.contains { id in
+          project.nets[id].map { $0.role != "control" && ($0.riffGroup == role || id == role) }
+            ?? false
+        }
+    }
+    return RoleVoice.list(project: project, roles: roles, genre: genre)
   }
 }

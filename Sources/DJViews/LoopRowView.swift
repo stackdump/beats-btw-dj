@@ -83,6 +83,11 @@ extension ClipState {
       let b = p["beats"]?.array?.compactMap(\.int) ?? []
       let range = b.count == 2 ? "beats \(b[0] + 1)–\(b[1])" : "a crop"
       return ["Cropped to \(range) of:"] + describe(p["parent"]).map { "  " + $0 }
+    case "retune":
+      let v = DeckAction.voices(json: p["voices"]).sorted { $0.key < $1.key }
+        .map { "ch \($0.key) → \($0.value)" }.joined(separator: ", ")
+      return ["Retuned (\(v.isEmpty ? "as taken" : v)) from:"]
+        + describe(p["parent"]).map { "  " + $0 }
     case "sequence":
       let steps = p["steps"]?.array ?? []
       return ["Sequence of \(steps.count) step\(steps.count == 1 ? "" : "s"):"]

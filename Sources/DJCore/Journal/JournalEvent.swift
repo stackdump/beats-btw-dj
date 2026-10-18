@@ -226,6 +226,7 @@ public enum JournalEvent: Equatable, Sendable {
     case .action(.master): "master"
     case .action(.clipGain(let id, _)): "gain.\(id)"
     case .action(.clipFx(let id, _)): "fx.\(id)"
+    case .action(.clipRetune(let id, _)): "retune.\(id)"
     case .action(.clipImport(let id, _, _, _, _)): "import.\(id)"
     case .action(.clipQuantize(let id, _)): "quantize.\(id)"
     case .action(.clipFade(let id, _)): "fade.\(id)"
@@ -271,6 +272,9 @@ extension DeckAction {
     case .focus(let deck): return "focus \(deck)"
     case .stemMute(let deck, let stem, let on):
       return "\(deck) stem \(stem) \(on ? "muted" : "back")"
+    case .clipRetune(let id, let voices):
+      return "clipRetune \(id.prefix(12))…"
+        + voices.sorted { $0.key < $1.key }.map { " ch\($0.key)=\($0.value)" }.joined()
     default:
       // the rest: the op, the deck, then the other fields
       var parts: [String] = []

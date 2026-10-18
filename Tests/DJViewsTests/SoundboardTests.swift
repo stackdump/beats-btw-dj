@@ -378,6 +378,46 @@ struct SoundboardTests {
     #expect(m.decks["A"]?.voices.isEmpty == false, "its instruments, for the sound panel")
   }
 
+  /// "Retune this loop" works with no deck playing the track: the loop's instruments come from
+  /// its provenance, the render runs off the main thread, and the retuned loop takes its place
+  /// (its pad and the settings follow it), keeping its level.
+  @Test func aNetLoopRetunesFromItsSettingsWithNoDeck() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
+    let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
+    m.start()
+    #expect(await m.prepareAndLoad("A", .net(TrackSpec(genre: "techno", seed: 42))))
+    dj["A"]!.wave.setTempo(300)
+    dj["A"]!.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    try run(dj, 40 * 4096)
+    let id = try #require(dj.grabLastBars("A", bars: 1))
+    // another track on the deck: nothing plays the loop's own now
+    #expect(await m.prepareAndLoad("A", .net(TrackSpec(genre: "house", seed: 7))))
+    m.poll()
+    #expect(m.decksPlayingOrigin(id).isEmpty)
+    let voices = m.retuneVoices(id)
+    let v = try #require(voices.first { !$0.role.contains(" · ") })
+    let other = try #require(v.options.first { $0 != v.instrument })
+    m.setClipGain(id, 0.5)
+    m.poll()
+    let index = try #require(m.clips.firstIndex { $0.id == id })
+    var editing = id
+    try await ClipSettingsView.retune(id, voices: [v.channel: other], in: m) { editing = $0 }
+    m.poll()
+    #expect(editing != id && m.clips[index].id == editing, "in its place, followed")
+    #expect(m.clips[index].gain == 0.5, "its level carries over")
+    #expect(m.soundPads.map(\.id) == m.clips.map(\.id) && m.retuningClips.isEmpty)
+    #expect(m.soundPads[index].retuning == false)
+    #expect(m.retuneVoices(editing).first { $0.channel == v.channel }?.instrument == other)
+    #expect(
+      m.clips[index].provenance.first?.hasPrefix("Retuned (ch \(v.channel) → \(other))") == true)
+    // while it renders, its pad says so
+    let pad = SoundPad(m.clips[index], slot: nil, retuning: true)
+    #expect(pad.retuning)
+  }
+
   /// At the window's narrowest the pads fill the width in whole columns for any count.
   @Test func padsLayOutAtTheWindowsMinimumWidth() throws {
     // the window's 720 less its padding (16 each side) and the card's (14 each side)

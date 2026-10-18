@@ -162,6 +162,9 @@ public final class AppModel {
   var stockPadQuery = ""
   /// Stock loops being decoded for the row from their pads (shown as loading).
   var stockPadsLoading: Set<String> = []
+  /// Clips being rendered again with other instruments (`retuneClip`; their pads say
+  /// "retuning…").
+  var retuningClips: Set<String> = []
   /// The crate the Crate page shows (`setSoundboardCrate`), saved in the app's defaults as
   /// `soundboardCrate`; nil (or a crate since deleted) shows the first crate.
   var soundboardCrate: String?

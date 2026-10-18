@@ -43,8 +43,10 @@ struct SoundPad: Equatable, Identifiable {
   var follow: LoopFollow?
   /// Its own rules, short ("bar · fade 1 beat"), for the pad's badge; nil: it follows the row.
   var launchBadge: String?
+  /// Being rendered again with other instruments (`AppModel.retuneClip`).
+  var retuning = false
 
-  init(_ c: ClipState, slot: String?) {
+  init(_ c: ClipState, slot: String?, retuning: Bool = false) {
     id = c.id
     title = c.title
     color = c.color
@@ -67,6 +69,7 @@ struct SoundPad: Equatable, Identifiable {
     fade = c.fade
     follow = c.follow
     launchBadge = c.launchBadge
+    self.retuning = retuning
   }
 
   /// A loop pad's LED, as the APC's loop page and the Inpulse's LOOP pads light it
@@ -281,7 +284,11 @@ struct SoundboardGrid: Layout {
 
 extension AppModel {
   /// One pad per clip on the row, in row order (the Inpulse's loop pads follow the same order).
-  var soundPads: [SoundPad] { clips.map { SoundPad($0, slot: padSlot($0.id)) } }
+  var soundPads: [SoundPad] {
+    clips.map {
+      SoundPad($0, slot: padSlot($0.id), retuning: retuningClips.contains($0.id))
+    }
+  }
 
   /// How many stock loops the Stock page shows at once (search or pick a category for others).
   static let stockPadLimit = 32
@@ -457,6 +464,34 @@ extension AppModel {
     case .net, .rawNets: return source.favoriteCID
     default: return nil
     }
+  }
+
+  /// The instruments clip `id` can be retuned on, with no deck playing its track
+  /// (`ClipRetune.voices`): empty for a sample's loop, a sequence or a take with macros.
+  func retuneVoices(_ id: String) -> [RoleVoice] {
+    guard let c = engine?.clip(id) else { return [] }
+    return ClipRetune.voices(for: c)
+  }
+
+  /// Retune clip `id` (its settings' "Retune this loop"): its bars rendered again off the main
+  /// thread with `voices` (MIDI channel → instrument), then `DeckAction.clipRetune` with the
+  /// render puts the retuned clip in its place (so the journal records the action and a replay
+  /// renders it again). Its pad says "retuning…" meanwhile. Returns the retuned clip's id (nil if
+  /// the clip left the row while it rendered); throws `ClipRetune.Refusal`.
+  @discardableResult
+  func retuneClip(_ id: String, voices: [Int: String]) async throws -> String? {
+    guard let dj = engine, let clip = dj.clip(id), !retuningClips.contains(id) else { return nil }
+    retuningClips.insert(id)
+    defer { retuningClips.remove(id) }
+    let rate = dj.sampleRate
+    let render = try await Task.detached(priority: .userInitiated) {
+      try ClipRetune.render(clip: clip, voices: voices, sampleRate: rate)
+    }.value
+    guard dj.clip(id) != nil else { return nil }
+    let index = dj.clips.firstIndex { $0.id == id }
+    dj.perform(.clipRetune(id: id, voices: voices), buffer: render.buffer)
+    pollLoops(dj)
+    return index.flatMap { dj.clips.indices.contains($0) ? dj.clips[$0].id : nil }
   }
 
   /// The control socket's `view`: show or hide the window's panels (`soundboard`,

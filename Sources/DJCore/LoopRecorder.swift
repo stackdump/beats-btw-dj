@@ -491,6 +491,39 @@ extension DJEngine {
     return cropped.id
   }
 
+  /// Retune clip `id`: its bars rendered again with `voices` (MIDI channel → beats instrument)
+  /// over the instruments it had (`ClipRetune.render`). The retuned clip takes its place as a
+  /// crop's does — its level, colour, FX, sound settings and scenes, and if it was looping under
+  /// the mixer it carries on in phase; sequences that used it use it from now on. `buffer` is
+  /// the render when a live caller has made it off the main thread; without one (a replay) it
+  /// renders here. Returns the new clip's id (the old one when the render is the same audio; nil
+  /// for a clip not on the row, or one `ClipRetune` refuses).
+  @discardableResult
+  public func retuneClip(_ id: String, voices: [Int: String], buffer: SampleBuffer? = nil)
+    -> String?
+  {
+    guard let i = clips.firstIndex(where: { $0.id == id }) else { return nil }
+    let c = clips[i]
+    guard
+      let buffer = buffer
+        ?? (try? ClipRetune.render(clip: c, voices: voices, sampleRate: sampleRate))?.buffer,
+      buffer.length > 0
+    else { return nil }
+    if buffer.contentID == c.id { return c.id }
+    let retuned = LoopClip(
+      id: buffer.contentID, title: c.title, source: c.source, beats: c.beats, bpm: c.bpm,
+      startBeat: c.startBeat, buffer: buffer,
+      waveform: WaveformOverview(buffer: buffer, columns: 400),
+      provenance: LoopProvenance.retune(c, voices: voices), color: c.color, fx: c.fx)
+    replace(at: i, with: retuned)
+    for k in clips.indices {
+      clips[k].steps = clips[k].steps?.map {
+        $0.clipID == id ? SequenceStep(clipID: retuned.id, repeats: $0.repeats) : $0
+      }
+    }
+    return retuned.id
+  }
+
   /// Put `new` where the clip at `i` is: its level, colour and FX carry over, and if it was
   /// looping under the mixer the new one carries on in phase.
   private func replace(at i: Int, with new: LoopClip) {

@@ -269,6 +269,7 @@ extension DJEngine {
     case .clipLoop(let id, let on): setLooping(id, on)
     case .clipGain(let id, let v): setClipGain(id, v)
     case .clipCrop(let id, let from, let to): cropClip(id, from: from, to: to)
+    case .clipRetune(let id, let voices): retuneClip(id, voices: voices, buffer: buffer)
     case .clipSequence(let steps, let replacing): makeSequence(steps, replacing: replacing)
     case .clipRemove(let id): removeClip(id)
     case .clipRestore(let id, let at): restoreClip(id, at: at)
