@@ -108,7 +108,7 @@ struct SynthVoiceTests {
   /// Pads (the soft table), strings (Karplus-Strong) and drums play exactly as before.
   @Test func otherVoicesAreUntouched() {
     let pad = oneNote("harmony", note: 60, steps: 8, channel: 7)
-    #expect(render(pad, []) == render(pad, .subtractive))
+    #expect(sameSamples(render(pad, []), render(pad, .subtractive)) == .identical)
     let guitar = oneNote("melody", note: 64, steps: 4, instrument: "acoustic-guitar")
     var o = WaveOptions()
     o.instruments = .shared
@@ -117,9 +117,11 @@ struct SynthVoiceTests {
         o.instruments!.voice(instrument: "acoustic-guitar", group: "melody"), group: "melody")
         == nil)
     #expect(
-      render(guitar, [], instruments: true) == render(guitar, .subtractive, instruments: true))
+      sameSamples(
+        render(guitar, [], instruments: true), render(guitar, .subtractive, instruments: true))
+        == .identical)
     let kick = oneNote("drums", note: 36, steps: 1, channel: 10)
-    #expect(render(kick, []) == render(kick, .subtractive))
+    #expect(sameSamples(render(kick, []), render(kick, .subtractive)) == .identical)
     #expect(
       FilterEnvelope.forVoice(tonalVoice(instrument: "", group: "bass"), group: "bass") == .bass)
     #expect(
@@ -254,14 +256,14 @@ struct UnisonTests {
   /// Basses and plucks keep one oscillator; saw leads get the pair (mono: they are filtered).
   @Test func whoGetsAPair() {
     let bass = oneNote("bass", note: 33, steps: 8)
-    #expect(render(bass, []) == render(bass, .unison))
+    #expect(sameSamples(render(bass, []), render(bass, .unison)) == .identical)
     #expect(Unison.cents(tonalVoice(instrument: "", group: "melody"), group: "melody") == 6)
     #expect(Unison.cents(tonalVoice(instrument: "piano", group: "melody"), group: "melody") == nil)
     #expect(Unison.cents(tonalVoice(instrument: "", group: "harmony"), group: "harmony") == 7)
     #expect(Unison.cents(tonalVoice(instrument: "", group: "bass"), group: "bass") == nil)
     let lead = oneNote("melody", note: 69, steps: 8)
     let s = renderStereo(lead, [.stereo, .unison, .subtractive])
-    #expect(s.l == s.r)
+    #expect(sameSamples(s.l, s.r) == .identical)
   }
 }
 
@@ -291,7 +293,7 @@ struct KickTuneTests {
   @Test func noKeyNoChange() {
     let p = oneNote("drums", note: 36, steps: 1, channel: 10)
     #expect(p.rootNote == nil)
-    #expect(render(p, []) == render(p, .kickTune))
+    #expect(sameSamples(render(p, []), render(p, .kickTune)) == .identical)
   }
 }
 

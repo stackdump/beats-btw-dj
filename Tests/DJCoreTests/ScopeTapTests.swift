@@ -137,7 +137,9 @@ struct ScopeTapTests {
     let tap = ScopeTap()
     let v: [Float] = [0.5, 0.25, 0.125]
     v.withUnsafeBufferPointer { tap.push(mono: $0, startFrame: 77) }
-    #expect(readAll(tap).samples == v && tap.originFrame == 77 && tap.endFrame == 80)
+    #expect(sameSamples(readAll(tap).samples, v) == .identical)
+    #expect(tap.originFrame == 77)
+    #expect(tap.endFrame == 80)
   }
 
   @Test func aReaderNeverSeesStaleAudioInsideAGapLongerThanTheRing() {

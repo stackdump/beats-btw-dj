@@ -103,7 +103,9 @@ struct ModelDepositTests {
     let before = (m.maxBar, m.modelFrom, m.modelBars)
     add(1024 * 16)  // bar 1024: off the end
     add(-1)  // bar -1: before the start
-    #expect(m.maxBar == before.0 && m.modelFrom == before.1 && m.modelBars == before.2)
+    #expect(m.maxBar == before.0)
+    #expect(m.modelFrom == before.1)
+    #expect(sameSamples(m.modelBars, before.2) == .identical)
     // the spectrogram state still takes the deposit when the bar is out of range
     let n = oneLane()
     n.deposit(lane: 0, note: 60, velocity: 100, durMs: 200, step: -1, tickSec: 0.1)

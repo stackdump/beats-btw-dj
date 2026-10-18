@@ -297,7 +297,8 @@ struct MinecraftTests {
     #expect(down.pcm.count == a4.count * 2)
     #expect(up.loop == 500..<1500)
     #expect(down.loop == 2000..<6000)
-    #expect(MinecraftImport.octaveShift(a4, loop: nil, octaves: 0).pcm == a4)
+    #expect(
+      sameSamples(MinecraftImport.octaveShift(a4, loop: nil, octaves: 0).pcm, a4) == .identical)
     for (x, note) in [(up.pcm, 81), (down.pcm, 57)] {
       let e = pitchClassError(body(x), note: note, sampleRate: rate)
       #expect(e.octave == 0 && abs(e.cents) < 1, "\(note): \(e)")
@@ -313,7 +314,9 @@ struct MinecraftTests {
     let stretched = MinecraftImport.octaveShift(high, loop: nil, octaves: -1).pcm
     #expect(abs(toneLevelDB(body(stretched), freq: 7_500, sampleRate: rate) - ref) < 0.5)
     #expect(toneLevelDB(body(stretched), freq: 14_550, sampleRate: rate) - ref < -60, "no image")
-    #expect(MinecraftImport.octaveShift(high, loop: nil, octaves: 1).pcm == folded)
+    #expect(
+      sameSamples(MinecraftImport.octaveShift(high, loop: nil, octaves: 1).pcm, folded)
+        == .identical)
   }
 
   /// The sidecar records the bank format and the palette records it in its version; a bank
@@ -358,8 +361,9 @@ struct MinecraftTests {
     var o = WaveOptions()
     o.master = "linear"
     #expect(
-      renderRunner(project, opts: o, sampleRate: sr, seconds: 1)
-        == renderRunner(p2, opts: o, sampleRate: sr, seconds: 1))
+      sameSamples(
+        renderRunner(project, opts: o, sampleRate: sr, seconds: 1),
+        renderRunner(p2, opts: o, sampleRate: sr, seconds: 1)) == .identical)
     #expect(try #require(d.withPalette(nil, channels: project.channels)) == .net(spec))
   }
 

@@ -74,7 +74,9 @@ struct ScopeLeftChannelFeedTests {
     rig.hub.pump()
     let got = newest(feed, 256)
     #expect(got.ok)
-    #expect(got.samples == tapNewest(a.leftTap, 256), "the left tap's own newest 256")
+    #expect(
+      sameSamples(got.samples, tapNewest(a.leftTap, 256)) == .identical,
+      "the left tap's own newest 256")
     #expect(got.samples.contains { abs($0) > 0.01 })
     let down = feed.window(count: 256)
     #expect(zip(got.samples, down).contains { abs($0 - $1) > 0.01 }, "history is (L+R)/2")
@@ -93,7 +95,8 @@ struct ScopeLeftChannelFeedTests {
     let got = newest(feed, 1024)
     #expect(got.ok)
     #expect(got.samples[..<512].allSatisfy { $0 == 0 })
-    #expect(Array(got.samples[512...]) == tapNewest(rig.dj["B"]!.leftTap, 512))
+    #expect(
+      sameSamples(Array(got.samples[512...]), tapNewest(rig.dj["B"]!.leftTap, 512)) == .identical)
     #expect(got.samples[512...].contains { abs($0) > 0.001 })
     feed.release()
   }
@@ -109,7 +112,8 @@ struct ScopeLeftChannelFeedTests {
     rig.render(frames: 4096)
     rig.hub.pump()
     let got = newest(feed, 256)
-    #expect(got.ok && got.samples == tapNewest(rig.dj.masterLeftTap, 256))
+    #expect(got.ok)
+    #expect(sameSamples(got.samples, tapNewest(rig.dj.masterLeftTap, 256)) == .identical)
     #expect(got.samples.contains { abs($0) > 0.01 })
     feed.release()
     #expect(!rig.dj.masterLeftTap.isEnabled && !rig.dj.masterTap.isEnabled)
@@ -148,7 +152,7 @@ struct ScopeLeftChannelFeedTests {
     a.setPlaying(false)
     rig.render(frames: 4096 * 4)  // the deck is silent and its left tap is off
     // the ring still holds the old audio ...
-    #expect(tapNewest(a.leftTap, 256) == first.samples)
+    #expect(sameSamples(tapNewest(a.leftTap, 256), first.samples) == .identical)
     // ... which a new lease must not return before the tap has delivered a block
     feed.setLeftChannelWanted(true)
     let stale = newest(feed, 256)
@@ -156,8 +160,11 @@ struct ScopeLeftChannelFeedTests {
     rig.render(frames: 512)
     let live = newest(feed, 256)
     #expect(live.ok, "a block has arrived")
-    #expect(live.samples == tapNewest(a.leftTap, 256), "and it is this lease's, from the tap")
-    #expect(live.samples != first.samples, "not the audio of the first lease")
+    #expect(
+      sameSamples(live.samples, tapNewest(a.leftTap, 256)) == .identical,
+      "and it is this lease's, from the tap")
+    #expect(
+      sameSamples(live.samples, first.samples) != .identical, "not the audio of the first lease")
     feed.release()
   }
 
@@ -178,7 +185,7 @@ struct ScopeLeftChannelFeedTests {
     // the ring holds 4096 older samples of the net, but only the last 512 are this lease's
     #expect(got.ok)
     #expect(got.samples[..<3584].allSatisfy { $0 == 0 }, "nothing from before the lease")
-    #expect(Array(got.samples[3584...]) == tapNewest(b.leftTap, 512))
+    #expect(sameSamples(Array(got.samples[3584...]), tapNewest(b.leftTap, 512)) == .identical)
     #expect(got.samples[3584...].contains { abs($0) > 0.001 })
     feed.release()
   }

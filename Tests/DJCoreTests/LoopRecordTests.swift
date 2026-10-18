@@ -273,7 +273,8 @@ struct LoopRecordTests {
     #expect(c.buffer.length == 2 * perBeat)
     let want = Array(UnsafeBufferPointer(start: one.buffer.left + perBeat, count: 2 * perBeat))
     let got = Array(UnsafeBufferPointer(start: c.buffer.left, count: c.buffer.length))
-    #expect(got == want, "beats 2 and 3 of the original, sample for sample")
+    #expect(
+      sameSamples(got, want) == .identical, "beats 2 and 3 of the original, sample for sample")
     #expect(rig.dj.clipGain(c.id) == 0.5, "its level carries over")
     try rig.run(to: rig.dj.frame + 4096)
     #expect(rig.dj.loopState(one.id) == .off, "the original stopped looping")

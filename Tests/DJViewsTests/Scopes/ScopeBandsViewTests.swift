@@ -346,7 +346,8 @@ struct ScopeBandsPainterTests {
     #expect(cache.builds == 1)
     let again = try render(scene, name: "scope-bands-cache-2", cache: cache)
     #expect(cache.builds == 1, "a held scene is blitted, not drawn again")
-    #expect(fresh.rgba == first.rgba && first.rgba == again.rgba)
+    #expect(sameSamples(fresh.rgba, first.rgba) == .identical)
+    #expect(sameSamples(first.rgba, again.rgba) == .identical)
     // a different scene with a new revision replaces the bitmap
     var other = BandsScene.make(width: 800, input: BandsScene.Input(model: digitModel()))
     other.revision = 8

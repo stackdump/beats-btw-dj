@@ -86,18 +86,24 @@ struct SubOctaveTests {
   /// A note whose sub would sit under 30 Hz (A1, 55 Hz: a 27.5 Hz sub) plays without one.
   @Test func noSubUnderThirtyHertz() {
     let p = bassNote(33)
-    #expect(render(p, .subOctave, sub: false) == render(p, .subOctave, sub: true))
+    #expect(
+      sameSamples(render(p, .subOctave, sub: false), render(p, .subOctave, sub: true)) == .identical
+    )
     // B1 (61.7 Hz) has one
     let q = bassNote(35)
-    #expect(render(q, .subOctave, sub: false) != render(q, .subOctave, sub: true))
+    #expect(
+      sameSamples(render(q, .subOctave, sub: false), render(q, .subOctave, sub: true)) != .identical
+    )
   }
 
   /// Only the bass: a melody note is untouched, and so is everything without the fix.
   @Test func onlyTheBass() {
     let lead = bassNote(57, group: "melody")
-    #expect(render(lead, .subOctave, sub: false) == render(lead, .subOctave, sub: true))
+    #expect(
+      sameSamples(render(lead, .subOctave, sub: false), render(lead, .subOctave, sub: true))
+        == .identical)
     let bass = bassNote(45)
-    #expect(render(bass, [], sub: false) == render(bass, [], sub: true))
+    #expect(sameSamples(render(bass, [], sub: false), render(bass, [], sub: true)) == .identical)
   }
 
   /// A dnb track's synth bass lanes get a sub; a techno track's don't.

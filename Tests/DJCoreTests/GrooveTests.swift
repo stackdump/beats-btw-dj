@@ -75,7 +75,7 @@ struct GrooveTests {
     let tick = 0.125 * sr
     let a = onsets(render(hats(swing: 0, humanize: 40), groove: true))
     let b = onsets(render(hats(swing: 0, humanize: 40), groove: true))
-    #expect(a == b)
+    #expect(sameSamples(a, b) == .identical)
     try #require(a.count == 8)
     let offsets = a.map { Double($0) - (Double($0) / tick).rounded(.down) * tick }
     #expect(Set(offsets.map { Int($0 / sr * 1000) }).count > 2, "the hits move: \(offsets)")
@@ -85,8 +85,9 @@ struct GrooveTests {
   /// A project with neither (most of beats' techno / trance / edm) plays exactly as before.
   @Test func noSwingNoHumanizeIsBitIdentical() {
     #expect(
-      render(hats(swing: 0, humanize: 0), groove: true)
-        == render(hats(swing: 0, humanize: 0), groove: false))
+      sameSamples(
+        render(hats(swing: 0, humanize: 0), groove: true),
+        render(hats(swing: 0, humanize: 0), groove: false)) == .identical)
   }
 }
 

@@ -109,7 +109,7 @@ struct KickOutTests {
     let kickOnly = buildupProject(snare: false, bass: false)
     let out = render(kickOnly, .kickOut)
     let plain = render(kickOnly, [])
-    #expect(Array(out[0..<(48 * step)]) == Array(plain[0..<(48 * step)]))
+    #expect(sameSamples(Array(out[0..<(48 * step)]), Array(plain[0..<(48 * step)])) == .identical)
     let last = rmsDB(out, 48 * step + step / 2, 64 * step)
     #expect(last < -60, "kick in the last buildup bar: \(last) dB")
     #expect(rmsDB(plain, 48 * step + step / 2, 64 * step) > -40)

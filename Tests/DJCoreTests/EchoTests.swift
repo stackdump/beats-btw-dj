@@ -92,7 +92,8 @@ struct EchoTests {
     for group in ["bass", "harmony"] {
       let a = render(leadOnce(group: group), [.stereo], echo: spec)
       let b = render(leadOnce(group: group), [.stereo, .echo], echo: spec)
-      #expect(a.l == b.l && a.r == b.r, "\(group)")
+      #expect(sameSamples(a.l, b.l) == .identical, "\(group)")
+      #expect(sameSamples(a.r, b.r) == .identical, "\(group)")
     }
     #expect(EchoSpec.forGenre("jazz") == nil && EchoSpec.forGenre("techno") == nil)
     #expect(EchoSpec.forGenre("ambient")!.steps > EchoSpec.forGenre("trance")!.steps)

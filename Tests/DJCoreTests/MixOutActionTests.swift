@@ -219,8 +219,10 @@ struct MixOutSessionTests {
       ], "one recorded action each, nothing for the relocations")
     let a = try SessionPlayer(session: session).render()
     let b = try SessionPlayer(session: session).render()
-    #expect(a.left == live.left && a.right == live.right, "the replay is the live set")
-    #expect(a.left == b.left && a.right == b.right, "two renders, same bytes")
+    #expect(sameSamples(a.left, live.left) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, live.right) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.left, b.left) == .identical, "two renders, same bytes")
+    #expect(sameSamples(a.right, b.right) == .identical, "two renders, same bytes")
     // the JSON round-trips with the actions in it
     #expect(try Session.decode(session.canonical, cid: session.cid) == session)
   }

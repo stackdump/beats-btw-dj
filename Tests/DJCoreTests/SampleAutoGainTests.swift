@@ -102,12 +102,15 @@ struct SampleAutoGainTests {
     #expect(!off.session.canonical.contains("autoGain"), "off is the wire default")
     let replay = try SessionPlayer(session: off.session).render()
     #expect(replay.left.contains { $0 != 0 })
-    #expect(replay.left == off.audio.left && replay.right == off.audio.right)
+    #expect(sameSamples(replay.left, off.audio.left) == .identical)
+    #expect(sameSamples(replay.right, off.audio.right) == .identical)
     // it really is off: the same set with it on plays differently, and replays too
     let on = try playDemo(blocks: 120, startOn: true, offAt: nil)
     #expect(on.session.params["B"]?.autoGain == true)
-    #expect(on.audio.left != off.audio.left)
-    #expect(try SessionPlayer(session: on.session).render().left == on.audio.left)
+    #expect(sameSamples(on.audio.left, off.audio.left) != .identical)
+    #expect(
+      try sameSamples(SessionPlayer(session: on.session).render().left, on.audio.left) == .identical
+    )
   }
 
   /// Switched off during the set: the setting is an action, so the replay switches it at the
@@ -121,7 +124,8 @@ struct SampleAutoGainTests {
     }
     #expect(toggles.count == 1)
     let replay = try SessionPlayer(session: live.session).render()
-    #expect(replay.left == live.audio.left && replay.right == live.audio.right)
+    #expect(sameSamples(replay.left, live.audio.left) == .identical)
+    #expect(sameSamples(replay.right, live.audio.right) == .identical)
   }
 
   /// A journal: the checkpoint holds the deck setting, the switch is an action; the replay
@@ -138,7 +142,8 @@ struct SampleAutoGainTests {
     let audio = try #require(replay.audio)
     let n = min(audio.frames, live.audio.frames)
     #expect(n > 0)
-    #expect(Array(audio.left.prefix(n)) == Array(live.audio.left.prefix(n)))
+    #expect(
+      sameSamples(Array(audio.left.prefix(n)), Array(live.audio.left.prefix(n))) == .identical)
   }
 
   // MARK: what gets a level

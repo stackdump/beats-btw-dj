@@ -52,13 +52,15 @@ struct VoiceTweakEngineTests {
     let b = source(p)
     a.play()
     b.play()
-    #expect(render(a, blocks: 150) == render(b, blocks: 150), "the same song, the same audio")
+    #expect(
+      sameSamples(render(a, blocks: 150), render(b, blocks: 150)) == .identical,
+      "the same song, the same audio")
     let gen = b.activeGeneration
     let tick = b.tick
     #expect(b.setVoice(channel: ch, tweak: shaped, useSynth: false))
     let ra = render(a, blocks: 400)
     let rb = render(b, blocks: 400)
-    #expect(ra != rb, "the tweak is heard")
+    #expect(sameSamples(ra, rb) != .identical, "the tweak is heard")
     #expect(b.tick > tick && b.tick == a.tick, "the song kept going: no restart")
     #expect(b.activeGeneration == gen, "the same project: no reload")
     // the lanes on that channel changed, every other lane is as it was
@@ -94,7 +96,7 @@ struct VoiceTweakEngineTests {
     _ = render(b, blocks: 50)
     b.setVoice(channel: ch, tweak: shaped, useSynth: false)
     let ra = render(a, blocks: 300)
-    #expect(ra == render(b, blocks: 300))
+    #expect(sameSamples(ra, render(b, blocks: 300)) == .identical)
     #expect(ra.contains { $0 != 0 }, "the rest of the song plays")
   }
 
@@ -125,7 +127,7 @@ struct VoiceTweakEngineTests {
     d.setVoice(channel: ch, tweak: VoiceTweak(), useSynth: false)
     c.play()
     d.play()
-    #expect(render(c, blocks: 300) == render(d, blocks: 300))
+    #expect(sameSamples(render(c, blocks: 300), render(d, blocks: 300)) == .identical)
   }
 
   @Test func useSynthVoicePlaysASampledChannelsSynthVoiceAndBack() throws {

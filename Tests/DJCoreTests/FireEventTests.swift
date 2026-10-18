@@ -606,7 +606,7 @@ struct FireEventTests {
       }
       got += l2
     }
-    #expect(got == want)
+    #expect(sameSamples(got, want) == .identical)
     #expect(got.contains { $0 != 0 })
   }
 }

@@ -185,7 +185,7 @@ struct FixesUnderGesturesTests {
     }
     #expect(p.lanes.map(\.voiceState) == before)
     #expect(p.gain == gain)
-    #expect(p.slotGain == slots)
+    #expect(sameSamples(p.slotGain, slots) == .identical)
   }
 
   // MARK: master macros on `.energy`

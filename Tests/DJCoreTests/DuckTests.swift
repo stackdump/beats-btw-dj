@@ -89,8 +89,11 @@ struct DuckTests {
         off += n
       }
     }
-    #expect(a == b)
-    #expect(render(kickAndPad(pad: false), depth: 0.5) == render(kickAndPad(pad: false), depth: 0))
+    #expect(sameSamples(a, b) == .identical)
+    #expect(
+      sameSamples(
+        render(kickAndPad(pad: false), depth: 0.5), render(kickAndPad(pad: false), depth: 0))
+        == .identical)
   }
 
   /// Which genres pump: four-on-the-floor dance genres by half, broken dance beats less, the

@@ -196,8 +196,9 @@ struct MusicalityTests {
     // Octaves only: the same notes in the same order, pitch classes unchanged.
     let without = playedWithout(t, .register)
     #expect(
-      NoteLog.capture(without).map { $0.note % 12 }
-        == NoteLog.capture(playedWithout(t)).map { $0.note % 12 })
+      sameSamples(
+        NoteLog.capture(without).map { $0.note % 12 },
+        NoteLog.capture(playedWithout(t)).map { $0.note % 12 }) == .identical)
   }
 
   /// Melodic parts accented by meter: downbeats louder than off-beat sixteenths, velocities
@@ -256,10 +257,11 @@ struct MusicalityTests {
     // House (its own groove), dnb, dubstep keep their bass lines.
     let h = played("house", 42)
     #expect(
-      NoteLog.capture(h.played).filter { $0.group == "bass" }.map(\.tick)
-        == NoteLog.capture(
+      sameSamples(
+        NoteLog.capture(h.played).filter { $0.group == "bass" }.map(\.tick),
+        NoteLog.capture(
           DJMusicality.apply(h.composed, spec: h.spec, fixes: .all.subtracting(.offbeatBass))
-        ).filter { $0.group == "bass" }.map(\.tick))
+        ).filter { $0.group == "bass" }.map(\.tick)) == .identical)
   }
 
   /// Phrase changes on the 2-bar grid from their section's start (the composer's even split
@@ -310,7 +312,8 @@ struct MusicalityTests {
     #expect(after < before, "\(genre): \(before) → \(after)")
     #expect(after <= 5, "\(genre): \(after) semitones per chord change")
     let pad = { (p: Project) in NoteLog.capture(p).filter { $0.group == "harmony" } }
-    #expect(pad(blocks).map { $0.note % 12 } == pad(led).map { $0.note % 12 })
+    #expect(
+      sameSamples(pad(blocks).map { $0.note % 12 }, pad(led).map { $0.note % 12 }) == .identical)
     #expect(try #require(report(t.played).padMotion) <= 5)
     #expect(report(t.played).harmonyInBassRange == 0)
   }
@@ -338,7 +341,7 @@ struct MusicalityTests {
     let onBeats = { (p: Project) in
       NoteLog.capture(p).filter { $0.group == "melody" && ($0.tick - 1) % 4 == 0 }.map(\.note)
     }
-    #expect(onBeats(flat) == onBeats(stepped))
+    #expect(sameSamples(onBeats(flat), onBeats(stepped)) == .identical)
   }
 
   /// Sevenths where the style has them (jazz, bossa, house, garage, funk): most pad chords get
@@ -488,7 +491,9 @@ struct MusicalityTests {
       #expect(after <= before, "\(genre)/\(seed): \(before) → \(after)")
       #expect(after <= 5, "\(genre)/\(seed): \(after) semitones per change")
       let bass = { (p: Project) in NoteLog.capture(p).filter { $0.group == "bass" } }
-      #expect(bass(leaping).map { $0.note % 12 } == bass(stepping).map { $0.note % 12 })
+      #expect(
+        sameSamples(bass(leaping).map { $0.note % 12 }, bass(stepping).map { $0.note % 12 })
+          == .identical)
       #expect(try #require(b.bassOnRoot) >= (a.bassOnRoot ?? 0))
       #expect(b.harmonyInBassRange == 0)
       let median = try #require(b.medianNote["bass"])
@@ -508,8 +513,8 @@ struct MusicalityTests {
     #expect(!hats.contains { ($0.tick - 1) % 4 != 2 && $0.note == DJMusicality.openHatNote })
     let closed = DJMusicality.apply(t.composed, spec: t.spec, fixes: .all.subtracting(.openHats))
     let before = NoteLog.capture(closed).filter { $0.isDrum && $0.net.hasPrefix("hihat") }
-    #expect(
-      before.map(\.tick) == hats.map(\.tick) && before.map(\.velocity) == hats.map(\.velocity))
+    #expect(sameSamples(before.map(\.tick), hats.map(\.tick)) == .identical)
+    #expect(sameSamples(before.map(\.velocity), hats.map(\.velocity)) == .identical)
     let deck = WaveRunner.prepare(t.played, sampleRate: 22_050, opts: .extended)
     #expect(deck.lanes.contains { $0.voice.kind == "openhat" && $0.netId.hasPrefix("hihat") })
     for other in ["dnb", "jazz", "lofi"] {
@@ -535,8 +540,9 @@ struct MusicalityTests {
       let melody = { (p: Project) in NoteLog.capture(p).filter { $0.group == "melody" } }
       let a = melody(blips)
       let b = melody(t.played)
-      #expect(a.map(\.tick) == b.map(\.tick) && a.map(\.note) == b.map(\.note))
-      #expect(a.map(\.velocity) == b.map(\.velocity))
+      #expect(sameSamples(a.map(\.tick), b.map(\.tick)) == .identical)
+      #expect(sameSamples(a.map(\.note), b.map(\.note)) == .identical)
+      #expect(sameSamples(a.map(\.velocity), b.map(\.velocity)) == .identical)
       #expect(b.allSatisfy { $0.steps <= Double(DJMusicality.legatoMax) })
     }
   }
@@ -557,7 +563,7 @@ struct MusicalityTests {
       let melody = { (p: Project) in NoteLog.capture(p).filter { $0.group == "melody" } }
       let a = melody(open)
       let b = melody(closed)
-      #expect(a.map(\.tick) == b.map(\.tick))
+      #expect(sameSamples(a.map(\.tick), b.map(\.tick)) == .identical)
       #expect(zip(a, b).allSatisfy { abs($0.note - $1.note) <= 5 })
       #expect(report(closed).inKey >= report(open).inKey)
     }
@@ -582,7 +588,7 @@ struct MusicalityTests {
       let bass = { (p: Project) in NoteLog.capture(p).filter { $0.group == "bass" } }
       let a = bass(plain)
       let b = bass(t.played)
-      #expect(a.map(\.tick) == b.map(\.tick))
+      #expect(sameSamples(a.map(\.tick), b.map(\.tick)) == .identical)
       let pcs = scalePCs(t.played)
       for (x, y) in zip(a, b) where x.note != y.note {
         #expect((x.tick - 1) % 16 >= 8, "\(genre)/\(seed): moved a first-half note at \(x.tick)")
@@ -625,7 +631,8 @@ struct MusicalityTests {
       }
       let x = other(plain)
       let y = other(t.played)
-      #expect(x.map(\.tick) == y.map(\.tick) && x.map(\.note) == y.map(\.note), "\(genre)/\(seed)")
+      #expect(sameSamples(x.map(\.tick), y.map(\.tick)) == .identical, "\(genre)/\(seed)")
+      #expect(sameSamples(x.map(\.note), y.map(\.note)) == .identical, "\(genre)/\(seed)")
     }
   }
 }

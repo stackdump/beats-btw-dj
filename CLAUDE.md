@@ -115,6 +115,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `Tests/DJCoreTests/Fixtures/captured-messages.json`, and keep the replay test
   green. Mark values not yet seen on a unit `[MIXXX]`/`[UNVERIFIED]`.
 - Tests use `DJEngine(offline: true)` (manual rendering) — never the speakers.
+- Never `#expect` / `#require` `==` or `!=` on sample arrays, renders, pixel buffers or WAV bytes:
+  on failure swift-testing diffs them (GBs per failure; a full run was jetsam-killed at 143 GB).
+  Write `#expect(sameSamples(a, b) == .identical)` (or `!= .identical`; `SampleCompare.swift`).
 
 ## Live net decks (Phase 3)
 

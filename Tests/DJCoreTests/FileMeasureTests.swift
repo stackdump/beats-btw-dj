@@ -35,7 +35,7 @@ struct FileMeasureTests {
     #expect(m.sampleRate == 44_100)
     #expect(m.channels == 1)
     #expect(m.left.count == x.count)
-    #expect(m.left == m.right)
+    #expect(sameSamples(m.left, m.right) == .identical)
     #expect(abs(m.metrics.rmsDB + 20) < 0.1, "\(m.metrics.rmsDB)")
   }
 }

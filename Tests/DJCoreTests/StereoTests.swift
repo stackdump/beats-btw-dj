@@ -64,7 +64,7 @@ struct StereoTests {
   /// sum is the mono mix.
   @Test func partsSitWhereTheyBelong() {
     let kick = render(kitAndPad(hats: false, pad: false), fixes: .stereo)
-    #expect(kick.l == kick.r, "kick in the middle")
+    #expect(sameSamples(kick.l, kick.r) == .identical, "kick in the middle")
     let hats = render(kitAndPad(kick: false, pad: false), fixes: .stereo)
     #expect(energy(hats.l.map(Double.init)) > 2 * energy(hats.r.map(Double.init)), "hats right")
     let pad = render(kitAndPad(kick: false, hats: false), fixes: .stereo)
@@ -108,8 +108,8 @@ struct StereoTests {
   /// Without `.stereo` both channels carry the same signal, exactly as before.
   @Test func offIsMono() {
     let a = render(kitAndPad(), fixes: [])
-    #expect(a.l == a.r)
-    #expect(a.l == render(kitAndPad(), fixes: [], right: false).l)
+    #expect(sameSamples(a.l, a.r) == .identical)
+    #expect(sameSamples(a.l, render(kitAndPad(), fixes: [], right: false).l) == .identical)
   }
 
   /// A whole track through the deck's options: a wide mix (side 5–25 dB under mid) whose low

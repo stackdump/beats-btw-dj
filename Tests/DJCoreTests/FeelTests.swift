@@ -141,13 +141,18 @@ struct FeelTests {
       let p = sixteenths(drum: true, tempo: 110, swing: swing, humanize: swing / 2)
       let a = render(p, fixes: fixes, feel: lofi).audio
       let b = render(p, fixes: fixes, feel: nil).audio
-      #expect(a == b, "\(fixes) swing \(swing)")
+      #expect(sameSamples(a, b) == .identical, "\(fixes) swing \(swing)")
     }
     // with it, the hats move
     let p = sixteenths(drum: true, tempo: 110)
-    #expect(render(p, fixes: [.feel], feel: lofi).audio != render(p, fixes: [], feel: nil).audio)
+    #expect(
+      sameSamples(
+        render(p, fixes: [.feel], feel: lofi).audio, render(p, fixes: [], feel: nil).audio)
+        != .identical)
     // and the flag on without a template plays as without the flag
-    #expect(render(p, fixes: [.feel], feel: nil).audio == render(p, fixes: [], feel: nil).audio)
+    #expect(
+      sameSamples(render(p, fixes: [.feel], feel: nil).audio, render(p, fixes: [], feel: nil).audio)
+        == .identical)
   }
 
   /// `forGenre` sets the family's template only when the flag is on; a prepared track keeps

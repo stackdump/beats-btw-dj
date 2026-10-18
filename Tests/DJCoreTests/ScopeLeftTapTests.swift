@@ -76,7 +76,9 @@ struct DeckLeftTapTests {
     let blocks = render(deck, net ? sizes : sizes + [4096])
     let got = readAll(deck.leftTap)
     #expect(got.lost == 0)
-    #expect(got.samples == blocks.flatMap(\.left), "exactly the left buffer, sample for sample")
+    #expect(
+      sameSamples(got.samples, blocks.flatMap(\.left)) == .identical,
+      "exactly the left buffer, sample for sample")
     #expect(got.samples.contains { abs($0) > 0.01 }, "the deck must actually be making sound")
     #expect(deck.leftTap.endFrame == deck.renderedFrames && deck.leftTap.originFrame == 0)
     if !net {
@@ -96,8 +98,8 @@ struct DeckLeftTapTests {
     let blocks = render(deck, sizes)
     let left = blocks.flatMap(\.left)
     let mono = blocks.flatMap { b in zip(b.left, b.right).map { ($0 + $1) * 0.5 } }
-    #expect(readAll(deck.leftTap).samples == left)
-    #expect(readAll(deck.tap).samples == mono)
+    #expect(sameSamples(readAll(deck.leftTap).samples, left) == .identical)
+    #expect(sameSamples(readAll(deck.tap).samples, mono) == .identical)
   }
 
   @Test func aSubscriptionMidStreamIsStampedInDeckFrames() throws {
@@ -107,7 +109,7 @@ struct DeckLeftTapTests {
     let blocks = render(deck, [128, 128])
     #expect(deck.leftTap.originFrame == 2000 && deck.leftTap.frames == 256)
     #expect(deck.leftTap.endFrame == deck.renderedFrames)
-    #expect(readAll(deck.leftTap).samples == blocks.flatMap(\.left))
+    #expect(sameSamples(readAll(deck.leftTap).samples, blocks.flatMap(\.left)) == .identical)
   }
 
   @Test func theGapWhileUnsubscribedReadsAsSilenceAndStaysStamped() throws {
@@ -130,7 +132,7 @@ struct DeckLeftTapTests {
     l.withUnsafeMutableBufferPointer {
       deck.renderBlock(frames: 256, left: $0.baseAddress!, right: nil)
     }
-    #expect(readAll(deck.leftTap).samples == l)
+    #expect(sameSamples(readAll(deck.leftTap).samples, l) == .identical)
   }
 
   @Test(arguments: [false, true])
@@ -140,7 +142,10 @@ struct DeckLeftTapTests {
     watched.leftTap.acquire()
     let a = render(quiet, sizes + sizes)
     let b = render(watched, sizes + sizes)
-    for (x, y) in zip(a, b) { #expect(x.left == y.left && x.right == y.right) }
+    for (x, y) in zip(a, b) {
+      #expect(sameSamples(x.left, y.left) == .identical)
+      #expect(sameSamples(x.right, y.right) == .identical)
+    }
     #expect(a.contains { $0.left.contains { abs($0) > 0.01 } })
   }
 
@@ -155,7 +160,8 @@ struct DeckLeftTapTests {
     }
     let off = try run(tapped: false)
     let on = try run(tapped: true)
-    #expect(off.count == 44_100 && off == on)
+    #expect(off.count == 44_100)
+    #expect(sameSamples(off, on) == .identical)
     #expect(off.contains { abs($0) > 0.01 })
   }
 }
@@ -231,11 +237,14 @@ struct MasterLeftTapTests {
     let left = dj.masterLeftTap
     #expect(left.endFrame == total && left.endFrame == dj.frame && left.gapFrames == 0)
     let got = readAll(left, from: left.frames - 8192)
-    #expect(got.lost == 0 && got.samples == Array(out[0].suffix(8192)))
-    #expect(out[0] != out[1], "the demo loop is panned: L and R really differ")
+    #expect(got.lost == 0)
+    #expect(sameSamples(got.samples, Array(out[0].suffix(8192))) == .identical)
+    #expect(
+      sameSamples(out[0], out[1]) != .identical, "the demo loop is panned: L and R really differ")
     let mono = readAll(dj.masterTap, from: dj.masterTap.frames - 8192).samples
-    #expect(mono == zip(out[0], out[1]).suffix(8192).map { ($0 + $1) * 0.5 })
-    #expect(mono != got.samples, "the two taps carry different signals")
+    #expect(
+      sameSamples(mono, zip(out[0], out[1]).suffix(8192).map { ($0 + $1) * 0.5 }) == .identical)
+    #expect(sameSamples(mono, got.samples) != .identical, "the two taps carry different signals")
   }
 
   @Test func theMasterLeftTapOnOrOffLeavesTheEnginesOutputBitIdentical() throws {
@@ -250,6 +259,6 @@ struct MasterLeftTapTests {
     }
     let off = try run(tapped: false)
     let on = try run(tapped: true)
-    #expect(off == on && off[0].contains { abs($0) > 0.01 })
+    #expect(sameSamples(off, on) == .identical && off[0].contains { abs($0) > 0.01 })
   }
 }
