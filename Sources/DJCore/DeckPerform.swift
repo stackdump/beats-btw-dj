@@ -312,15 +312,67 @@ extension Deck {
   }
 
   /// A master-chain macro (FX, pitch, feel) for `duration` bars (nil: its default; 0: permanent).
-  /// On the loop channel ("L") it goes to the loops' master bus (LoopMasterFx.swift).
+  /// On the loop channel ("L") it goes to the loops' master bus (LoopMasterFx.swift). On a sample
+  /// deck it goes to the deck's own bus (`DeckRenderer.master`), on the deck's next bar at its
+  /// tempo; the vinyl brake is still net-only there (a no-op).
   public func fire(_ macro: MasterMacro, duration: Int? = nil) {
     if bank != nil {
       onMasterMacro?(macro, duration)
       return
     }
-    guard mode == .net else { return }
-    wave.fire(macro, bars: duration)
+    switch mode {
+    case .net:
+      wave.fire(macro, bars: duration)
+    case .sample:
+      guard let bus = renderer.master, macro != .vinylBrake else { return }
+      let at = sampleMasterFire()
+      bus.fire(macro, bars: duration, frame: at.frame, bpm: at.bpm)
+    }
     onMasterMacro?(macro, duration)
+  }
+
+  /// Where a master macro fired now lands on a sample deck: the first downbeat of its grid at
+  /// least `DJEngine.loopLead` frames ahead (the command must reach the audio thread first), at
+  /// the deck's tempo. Stopped, or with no grid: at once (the next block), at its tempo or 120.
+  func sampleMasterFire() -> (frame: Int, bpm: Double) {
+    let bpm = effectiveBPM ?? 120
+    guard playing, let s = beatState, s.bpm > 0 else { return (0, bpm) }
+    let now = renderedFrames
+    let clock = LoopClock(
+      ref: self, origin: (now, s.beat), framesPerBeat: 60 / s.bpm * turntable.sampleRate,
+      bpm: s.bpm)
+    return (clock.nextBoundary(after: now + DJEngine.loopLead, every: 4), s.bpm)
+  }
+
+  /// Move a master FX slider by hand (its own units), on whichever chain this deck plays through:
+  /// the net's, a sample deck's bus, or the loops' bus.
+  public func setMasterFx(_ key: MasterFxKey, _ value: Int) {
+    if let bank {
+      bank.master.setSlider(key, value)
+    } else if mode == .net {
+      wave.setMasterFx(key, value)
+    } else {
+      renderer.master?.setSlider(key, value)
+    }
+  }
+
+  /// The master macros running (or waiting for their bar) on this deck's chain, in either mode
+  /// (the loop channel: its bus's). Main thread; allocates the array it returns.
+  public var activeMasterMacros: [MasterMacro] {
+    if let bank { return bank.master.activeMasterMacros }
+    switch mode {
+    case .net: return wave.activeMasterMacros
+    case .sample: return renderer.master?.activeMasterMacros ?? []
+    }
+  }
+
+  /// Is `macro` running on this deck's chain (see `activeMasterMacros`)?
+  public func isMasterActive(_ macro: MasterMacro) -> Bool {
+    if let bank { return bank.master.isActive(macro) }
+    switch mode {
+    case .net: return wave.isActive(macro)
+    case .sample: return renderer.master?.isActive(macro) ?? false
+    }
   }
 
   /// Fire a catalog macro by its beats id (`drop`, `sweep-lp`, `feel-build`...), whichever kind
@@ -347,8 +399,10 @@ extension Deck {
       bank.master.panic()
       return
     }
-    guard mode == .net else { return }
-    wave.panic()
+    switch mode {
+    case .net: wave.panic()
+    case .sample: renderer.master?.panic()
+    }
     onMasterMacro?(nil, nil)
   }
 

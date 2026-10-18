@@ -144,7 +144,7 @@ class MatrixToolTests(FakeRepo):
 
 
 class ServerTests(unittest.TestCase):
-    def test_lists_the_five_tools(self):
+    def test_lists_every_tool(self):
         try:
             from djtest_mcp import server
         except ImportError:
