@@ -166,6 +166,36 @@ struct StockPad: Equatable, Identifiable {
   var pending: Bool { state == .starting || state == .stopping || loading }
 }
 
+/// A Crate page pad: one favorite in the chosen crate (a starred net track or sample), lit while
+/// a deck plays it (by its CID, as the Favorites panel marks the current one).
+struct CratePad: Equatable, Identifiable {
+  /// The favorite's CID.
+  var id: String
+  var title: String
+  var isSample: Bool
+  /// "Sample · 120 BPM", "Net track"; its other tags after.
+  var detail: String
+  /// The decks holding it now, and the ones of those playing it.
+  var onDecks: [String]
+  var playingOn: [String]
+  var light: PadLight.Level
+
+  init(_ f: Favorite, crate: String, decks: [String: DeckState]) {
+    id = f.cid
+    title = f.title
+    isSample = f.isSample
+    var kind = f.isSample ? "Sample" : "Net track"
+    if case .sample(_, _, let g?) = f.source { kind += String(format: " · %.0f BPM", g.bpm) }
+    let others = f.tags.filter { $0 != crate }.map { "#\($0)" }
+    detail = ([kind] + others).joined(separator: " · ")
+    onDecks = decks.keys.sorted().filter { decks[$0]?.sourceCID == f.cid }
+    playingOn = onDecks.filter { decks[$0]?.playing == true }
+    light = playingOn.isEmpty ? .off : .full
+  }
+
+  var sounding: Bool { !playingOn.isEmpty }
+}
+
 /// How the pads are laid out for `count` pads in `width` points: as many columns as fit at the
 /// smallest pad size (never more than there are pads), each pad as wide as the columns leave,
 /// up to the largest size.
@@ -302,6 +332,42 @@ extension AppModel {
     let id = await addStockLoopToRow(loop)
     if let dj = engine { pollLoops(dj) }
     return id
+  }
+
+  /// The crate the Crate page shows: the one chosen, while it exists, else the first crate.
+  var crateBoardCrate: String? {
+    let all = crates
+    if let c = soundboardCrate, all.contains(c) { return c }
+    return all.first
+  }
+
+  /// Choose the Crate page's crate (remembered across launches).
+  func setSoundboardCrate(_ c: String) {
+    soundboardCrate = c
+    defaults.set(c, forKey: Self.soundboardCrateKey)
+  }
+
+  /// The Crate page's pads: the chosen crate's favorites, in the order starred.
+  var cratePads: [CratePad] {
+    guard let crate = crateBoardCrate else { return [] }
+    return favorites.tagged(crate).map { CratePad($0, crate: crate, decks: decks) }
+  }
+
+  /// The deck a Crate pad loads onto: the focus deck, or (⌥) the other one.
+  func crateBoardDeck(other: Bool = false) -> String {
+    let names = engine.map { $0.decks.keys.sorted() } ?? decks.keys.sorted()
+    let focus = engine?.focus ?? names.first ?? "A"
+    guard other else { return focus }
+    return names.first { $0 != focus } ?? focus
+  }
+
+  /// A Crate pad's press (or Return on it): load its favorite on the focus deck (⌥: the other
+  /// one) through `loadFavorite`, so it is performed and recorded like the Favorites panel's.
+  /// Returns the load's task, nil for an unknown favorite.
+  @discardableResult
+  func cratePadPress(_ cid: String, other: Bool = false) -> Task<Bool, Never>? {
+    guard let f = favorites.first(where: { $0.cid == cid }) else { return nil }
+    return loadFavorite(crateBoardDeck(other: other), f)
   }
 
   /// The window's Soundboard toggle, its View menu item and the control socket's `view`; saved

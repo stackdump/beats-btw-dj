@@ -160,6 +160,10 @@ public final class AppModel {
   var stockPadQuery = ""
   /// Stock loops being decoded for the row from their pads (shown as loading).
   var stockPadsLoading: Set<String> = []
+  /// The crate the Crate page shows (`setSoundboardCrate`), saved in the app's defaults as
+  /// `soundboardCrate`; nil (or a crate since deleted) shows the first crate.
+  var soundboardCrate: String?
+  static let soundboardCrateKey = "soundboardCrate"
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
@@ -297,6 +301,7 @@ public final class AppModel {
     if let p = defaults.string(forKey: Self.soundboardPageKey).flatMap(SoundboardPage.init) {
       soundboardPage = p
     }
+    soundboardCrate = defaults.string(forKey: Self.soundboardCrateKey)
     showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
     if let injected {
       dj = injected
@@ -917,9 +922,11 @@ public final class AppModel {
   }
   /// Load a favorite onto a deck, through `perform` like any other load: a net is prepared off
   /// the main thread, a sample decoded from its file (with the grid it was starred with).
-  func loadFavorite(_ deck: String, _ f: Favorite) {
+  /// Returns the load's task (its value: did it load), for callers that wait on it.
+  @discardableResult
+  func loadFavorite(_ deck: String, _ f: Favorite) -> Task<Bool, Never> {
     status = "loading \(f.title)…"
-    Task { @MainActor in await loadFavoriteNow(deck, f) }
+    return Task { @MainActor in await loadFavoriteNow(deck, f) }
   }
 
   @discardableResult
