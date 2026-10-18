@@ -284,7 +284,9 @@ public final class Journal: @unchecked Sendable {
     -> JournalStoreState?
   {
     // Only the checkpoint and the store lines are parsed: a long set is mostly knobs.
-    let storeKinds = ["favorite.", "crate.", "variation.", "note."].map { #""k":""# + $0 }
+    let storeKinds = ["favorite.", "crate.", "variation.", "note.", "stores."].map {
+      #""k":""# + $0
+    }
     for url in list(in: directory) {
       guard let data = try? Data(contentsOf: url) else { continue }
       let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")

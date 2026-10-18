@@ -105,6 +105,7 @@ public struct JournalStoreState: Equatable, Sendable {
     case .noteAdd(let n): notes = notes.adding(n)
     case .noteEdit(let id, let text, let at): notes = notes.editing(id, text: text, at: at)
     case .noteDelete(let id): notes = notes.deleting(id)
+    case .storesReplace(let all): self = all
     default: return false
     }
     return true
