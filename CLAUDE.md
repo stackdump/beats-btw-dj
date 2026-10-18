@@ -435,6 +435,11 @@ its copy; the two are now independent. Rules inherited from that split:
   tonal lane (`Lane.harmonyGroup`) plays through, mapped at the fire's step (the groove queue
   carries the mapped note); `FireEvent.note` is mapped, live keys aren't, net views show the
   bound note. Measure with `NoteLog.capture(…, harmony:)` (what `djctl render` does).
+- `.harmonicRhythm` (6.3) rides the same plan (`SectionHarmony(project:fixes:)`; built under either
+  flag): a slot's shift makes the band play a chosen chord over the pad's — intros / breakdowns /
+  outros hold 2 bars per chord (pad rings of 2 or 4 bars only), a buildup's last half-bar is the V
+  (else ♭VII) of what follows, the bar into a chorus plays 2 chords; drops untouched. Section ends
+  are `tail` (2 half-bar slots overriding the cycle). `.sectionHarmony` alone is the old plan.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -553,6 +558,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `toSeq`/`endFrame` (`startSeq`), folding line 0's stores and the store events before it;
   `fromStart` forces line 0. Same state as a full replay, not the same audio (loops restart,
   tails and router state start fresh) — byte-identical audio needs `fromStart`.
+- `DJEngine.reset(to:clip:)` (JournalRewind.swift) rewinds a running engine in place: row,
+  scenes and removed list cleared (not remembered as removed), decks stopped, ejected,
+  unfollowed, tweaks / disabled roles / knobs / locks / mixer / row settings to defaults, then
+  `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
+  and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
+  (`JournalRewindRealTimeTests`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),

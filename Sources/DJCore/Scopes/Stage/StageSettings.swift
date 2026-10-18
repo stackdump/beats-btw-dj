@@ -37,6 +37,9 @@ public final class StageSettings {
   /// Flash the share card on every track change.
   public var cardOnChange = false
   public var bgMode: StageBackground = .void
+  /// The Wander walk on the stage (phrase arc, move flash, ticker; `StageWanderModel`). On by
+  /// default; it draws nothing for a deck that is not wandering.
+  public var showWander = true
   /// The toolbar folds into one dot (stage.js starts collapsed).
   public var menuCollapsed = true
 

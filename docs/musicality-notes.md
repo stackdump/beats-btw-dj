@@ -751,3 +751,39 @@ and the measurement decides whether it earns its place: compare `--fixes all` wi
   genres × 2 seeds, every bass note in key; the exempt genres byte-identical with and without
   it; a hand-set ring for the copy and the pickup. `MusicalityTests`' `phrasing` A/B set now
   leaves `.bassMotif` out of both sides too.
+
+## 12. The chill family's beat (`.backbeat`, 2026-10-18)
+
+beats' theme table brings lofi, jazz and bossa's kick and snare in only for buildup / drop /
+pre-chorus (and jazz / bossa's kick for the outro), and their `standard` blueprints have none of
+those: verses and choruses never play a beat (`BeatTests.surveyEveryGenreBeforeThePass`: exactly
+these three read `hasBeat` 0 at seed 42). `.backbeat` (Backbeat.swift) runs after `.timing`,
+before `.variety`:
+
+- **Where**: each part plays wherever the composer had it plus every section the style expects a
+  beat in (`beatStyle`: verse, pre-chorus, chorus, drop; lofi also buildup). Intros, bridges,
+  breakdowns, solos and outros keep what the composer gave them. The part starts unmuted when the
+  first section has a beat.
+- **How, without topology**: `struct-kick` / `struct-snare` are accumulator chains with one stage
+  per change the composer made (none at all for the snare, which no `standard` chill section
+  activates). When a chain has as many stages as there are edges they are retimed onto them;
+  otherwise its stages are rebound to agree with the plan and each edge is a mute / unmute
+  binding on a free transition of a `fill-N` chain spanning it (one transition per tick, as
+  `.buildup` / `.crash` use them). Every change fires on the section's start tick after that
+  tick's notes, `.timing`'s convention. A slotted part (`kick-0`…, `activate-slot`) is skipped.
+- **What**: the figures are rewritten on each ring's own transitions, as shares of its loudest
+  composed hit: lofi boom-bap (kick 1, a-of-2, and-of-3; snare 2 and 4), jazz a feathered kick
+  (0.45 on every beat) under a soft 2 and 4, bossa a surdo (dotted quarter and eighth, leaning
+  on 3) and the bossa clave on the rim (note 37). beats' jazz drums are 12-step rings (three
+  beats against a 16-step bar), which can't hold a 2 and 4: there the kick feathers every beat
+  and the snare keeps time softly on every beat, as brushes do. `.variety`'s ghost hits then
+  land around the figure; the runner's groove (`.feel`) swings it.
+- Exit (BackbeatTests): `hasBeat` = 1 for lofi / jazz / bossa at seeds 42 / 7 / 1234, with the
+  pass alone and with every fix; ambient and the other genres unchanged; nets, places,
+  transitions, arcs and the composed project's CID unchanged.
+
+Ear-gated: whether lofi reads as boom-bap and jazz as brushes needs listening. The matrix before
+/ after (`scripts/musicality-matrix.py OUTDIR` on integrate/roadmap against this branch,
+`--compare`) has not been run yet: it goes here with the chill rows' `hasBeat`, loudness and
+balance columns. The kick and snare now sound in the level probe and `.balance`'s solos, so the
+chill tracks' gain and part trims move.

@@ -202,8 +202,8 @@ public enum DJMusicality {
     /// Per-section harmony: the bridge melody normalised (`SectionMelody.swift`) and the runner
     /// transposing the section (p63-section-transpose-runner).
     public static let sectionHarmony = Fixes(rawValue: 1 << 34)
-    /// Two bars per chord in intros / breakdowns, a pickup into the drop. Runner
-    /// (p63-harmonic-rhythm).
+    /// Two bars per chord in intros / breakdowns / outros, a V pickup at a buildup's end, two
+    /// chords in the bar into a chorus. Runner, through `SectionHarmony`'s slots.
     public static let harmonicRhythm = Fixes(rawValue: 1 << 35)
     /// 8-bar question and answer on melody slot pairs (`Answer.swift`, p64-answer).
     public static let answer = Fixes(rawValue: 1 << 36)
@@ -222,7 +222,11 @@ public enum DJMusicality {
     /// quarters where it rests, the section's energy where no melody plays, a step busier in
     /// each phrase's fourth bar and in buildups. Needs `.arpeggio`.
     public static let arpDensity = Fixes(rawValue: 1 << 41)
-    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`, p65-chill-backbeat).
+    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`): beats' theme table
+    /// leaves lofi, jazz and bossa's verses and choruses without either. Both come in wherever
+    /// the style has a beat (`beatStyle`), playing boom-bap (lofi), a feathered kick under a soft
+    /// 2 and 4 (jazz), a surdo and the clave on the rim (bossa), on their own rings; the section
+    /// edges are mute / unmute bindings on existing control transitions.
     public static let backbeat = Fixes(rawValue: 1 << 42)
     /// The family's groove template and a tempo-scaled swing. Runner (p65-feel-runner).
     public static let feel = Fixes(rawValue: 1 << 43)
