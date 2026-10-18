@@ -1425,7 +1425,7 @@ public final class WaveRunner {
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
         balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil,
-        sampled: prepared.probeLevels, subOctave: opts.subOctave)
+        sampled: prepared.probeLevels, subOctave: opts.subOctave, genre: opts.genre)
     }
     return prepared
   }
