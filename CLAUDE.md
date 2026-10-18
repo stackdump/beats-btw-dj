@@ -385,7 +385,9 @@ its copy; the two are now independent. Rules inherited from that split:
   which span the song from tick 0 to their boundary, so any bar before it can carry a drum
   hit; the runner voices note 49 there as a crash), `.bassLine`, `.openHats` (note 46 → open
   hat in the runner) and `.stereo` (mid/side pan per lane in the runner, `stereoPlacement`; the
-  sampler bus's side highpassed at 150 Hz). Stereo only renders with a right channel: mono
+  sampler bus's side highpassed at 150 Hz; each sampled slot's side scaled by its category,
+  `sampledWidth`: bass 0, keys/pads 1.2 over a 300 Hz side highpass, guitars 0.8, leads 0.6,
+  on the per-slot path with `WaveProject.slotWidth`). Stereo only renders with a right channel: mono
   callers get the old mix.
 - Part E adds `.legato` (melody notes held to the next, ≤ a beat), `.cadence` (phrase ends —
   half a bar of rest, or the last note before a 2-bar line — on a chord tone), `.approach`
