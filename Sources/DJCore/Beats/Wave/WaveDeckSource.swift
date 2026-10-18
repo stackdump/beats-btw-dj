@@ -625,6 +625,9 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .play: runner.play()
     case .pause: runner.pause()
     case .stop:
+      // A stop under the brake ends the record where the brake left it: what it held (voices,
+      // room, the sends in flight) must not fade back in after the cancel (6.7).
+      if brake.isOn { runner.silence() }
       runner.stop()
       brake.cancel()
       fx.panic { handle($0) }  // beats: transport stop cancels and restores every animation
