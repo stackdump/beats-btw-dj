@@ -24,7 +24,7 @@ private func project(_ genre: String, _ seed: Double, _ structure: String = "loo
 private struct Tally {
   var allocs = 0
   var frees = 0
-  /// The first offending stacks over all regions (`Rig.measure` keeps them).
+  /// The offending stacks over all regions, up to `maxStacks` (`Rig.measure` keeps them).
   var stacks: [String] = []
   mutating func add(_ r: AllocationReport) {
     allocs += r.allocations

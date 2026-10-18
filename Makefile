@@ -50,9 +50,10 @@ swift-shots:
 # that `make run-app` builds is a debug one; `make run-app-release` is the one this vouches for.)
 # The filter is a regex: name every new audio-thread test suite `…RealTime…` to include it.
 # One test at a time (--no-parallel, ~5 s slower): a sampler's render frees AudioToolbox
-# listener-map nodes that another thread's engine teardown left behind, so a parallel test
-# tearing down its engine shows up as frees in another's measurement
-# (SamplerConcurrentEngineRealTimeTests has the stacks).
+# listener-map nodes that a removal on another thread left behind, and a parallel run makes
+# those removals (other tests' engines torn down) far more common. Serial is not immune (1-2
+# such frees in 2 of 10 runs), so sampler tests tolerate exactly that free, judged per call by
+# its stack (AllocationReport.freesAreOnlyListenerMapReclamation).
 swift-rt-test:
 	swift test -c release -Xswiftc -enable-testing --no-parallel $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
 

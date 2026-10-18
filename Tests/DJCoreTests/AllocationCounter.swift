@@ -8,51 +8,81 @@ import Foundation
 // This is how the "audio thread must not allocate" contract is *measured*, not
 // asserted: render a few thousand blocks and expect zero allocations.
 //
-// `countAllocations(stacks: true)` also keeps the call stacks of the first `maxStacks`
-// offending calls, so an occasional failure says where it came from. The hook runs inside
-// malloc: it may not allocate or lock, so it only copies return addresses (`backtrace`, which
-// walks frame pointers) into storage allocated up front; they are symbolicated after the
-// hook is disarmed.
+// `countAllocations(stacks: true)` also records the call stack of every offending call, kept
+// as up to `maxStacks` distinct stacks with a hit count each (calls whose stack is new once
+// those are full only count as `unrecorded`), so an occasional failure says where every one of
+// its calls came from. The hook runs inside malloc: it may not allocate or lock, so it only
+// copies return addresses (`backtrace`, which walks frame pointers) into storage allocated up
+// front and compares them with `memcmp`; they are symbolicated after the hook is disarmed.
 
 private typealias MallocLogger = @convention(c) (UInt32, UInt, UInt, UInt, UInt, UInt32) -> Void
 
 private let stackLoggingTypeAlloc: UInt32 = 2
 private let stackLoggingTypeDealloc: UInt32 = 4
 
-/// Stacks kept per measurement, and frames per stack.
-public let maxStacks = 8
+/// Distinct stacks kept per measurement, and frames per stack.
+public let maxStacks = 16
 private let maxFrames = 48
 
 // Storage the hook can touch without allocating or locking.
-// [allocs, frees, stacks kept, recording?, inside the hook?]
-nonisolated(unsafe) private let counters = UnsafeMutablePointer<Int>.allocate(capacity: 5)
+// [allocs, frees, distinct stacks kept, recording?, inside the hook?, nested hook entries,
+//  calls not in a kept stack]
+private let counterCount = 7
+nonisolated(unsafe) private let counters = UnsafeMutablePointer<Int>.allocate(
+  capacity: counterCount)
 nonisolated(unsafe) private let armed = UnsafeMutablePointer<pthread_t?>.allocate(capacity: 1)
-// maxStacks × maxFrames return addresses, with each stack's depth, kind (type bits) and
-// size / pointer argument.
+// (maxStacks + 1 scratch) × maxFrames return addresses, with each stack's depth, kind (type
+// bits), first size / pointer argument and hit count.
 nonisolated(unsafe) private let frames = UnsafeMutablePointer<UnsafeMutableRawPointer?>.allocate(
-  capacity: maxStacks * maxFrames)
-nonisolated(unsafe) private let depths = UnsafeMutablePointer<Int32>.allocate(capacity: maxStacks)
+  capacity: (maxStacks + 1) * maxFrames)
+nonisolated(unsafe) private let depths = UnsafeMutablePointer<Int32>.allocate(
+  capacity: maxStacks + 1)
 nonisolated(unsafe) private let kinds = UnsafeMutablePointer<UInt32>.allocate(capacity: maxStacks)
 nonisolated(unsafe) private let args = UnsafeMutablePointer<UInt>.allocate(capacity: maxStacks)
+nonisolated(unsafe) private let hits = UnsafeMutablePointer<Int>.allocate(capacity: maxStacks)
 
 private let hook: MallocLogger = { type, _, a2, a3, _, _ in
   guard let t = armed.pointee, pthread_equal(t, pthread_self()) != 0 else { return }
-  // Only the armed thread gets here, so a plain flag is enough against re-entry (should
-  // `backtrace` ever allocate, that allocation is neither counted nor recorded).
-  guard counters[4] == 0 else { return }
+  // Only the armed thread gets here, so a plain flag is enough against re-entry. Should
+  // `backtrace` ever allocate, that allocation is not counted but shows as `nested`.
+  guard counters[4] == 0 else {
+    counters[5] += 1
+    return
+  }
   let alloc = type & stackLoggingTypeAlloc != 0
   let dealloc = type & stackLoggingTypeDealloc != 0
   guard alloc || dealloc else { return }
   if alloc { counters[0] += 1 }
   if dealloc { counters[1] += 1 }
-  guard counters[3] != 0, counters[2] < maxStacks else { return }
+  guard counters[3] != 0 else { return }
   counters[4] = 1
-  let k = counters[2]
-  depths[k] = backtrace(frames + k * maxFrames, Int32(maxFrames))
-  kinds[k] = type
-  // malloc: a2 = size; free: a2 = pointer; realloc: a2 = old pointer, a3 = new size
-  args[k] = alloc && dealloc ? a3 : a2
-  counters[2] = k + 1
+  let kept = counters[2]
+  // capture into the next free slot (or the scratch slot once all are kept)
+  let slot = min(kept, maxStacks)
+  let base = frames + slot * maxFrames
+  let depth = backtrace(base, Int32(maxFrames))
+  depths[slot] = depth
+  let bytes = Int(depth) * MemoryLayout<UnsafeMutableRawPointer?>.stride
+  var match = -1
+  var k = 0
+  while k < kept {
+    if kinds[k] == type && depths[k] == depth && memcmp(frames + k * maxFrames, base, bytes) == 0 {
+      match = k
+      break
+    }
+    k += 1
+  }
+  if match >= 0 {
+    hits[match] += 1
+  } else if kept < maxStacks {
+    kinds[kept] = type
+    // malloc: a2 = size; free: a2 = pointer; realloc: a2 = old pointer, a3 = new size
+    args[kept] = alloc && dealloc ? a3 : a2
+    hits[kept] = 1
+    counters[2] = kept + 1
+  } else {
+    counters[6] += 1
+  }
   counters[4] = 0
 }
 
@@ -62,45 +92,72 @@ private let gate = NSLock()  // one measurement at a time: the hook state is pro
 public struct AllocationReport: Sendable {
   public var allocations: Int
   public var frees: Int
-  /// With `stacks: true`: the first `maxStacks` offending calls, symbolicated, one string
-  /// each ("#1 malloc 64 bytes" / "#2 free" / "#3 realloc to …", then a frame per line).
+  /// With `stacks: true`: each distinct stack of the offending calls, symbolicated, one string
+  /// each ("#1 malloc 64 bytes ×20" / "#2 free ×3" / "#3 realloc to … ×1", then a frame per
+  /// line), in the order first seen.
   public var stacks: [String] = []
+  /// With `stacks: true`: whether each of `stacks` is frees only.
+  public var stackIsFree: [Bool] = []
+  /// With `stacks: true`: offending calls whose stack was new after `maxStacks` were kept.
+  public var unrecorded = 0
+  /// Hook entries from inside the hook itself (`backtrace` allocating): should stay 0.
+  public var nested = 0
 
   /// The stacks as one block of text for a failure message ("" when none were kept).
   public var stackText: String {
-    stacks.isEmpty ? "" : "\n" + stacks.joined(separator: "\n\n")
+    stacks.isEmpty
+      ? ""
+      : "\n" + stacks.joined(separator: "\n\n")
+        + (unrecorded > 0 ? "\n\n(\(unrecorded) more calls on stacks not kept)" : "")
+  }
+
+  /// No frees, or (with `stacks: true`) every free on a kept stack that `allowed` accepts.
+  /// Needs every offending call classified: false when some went unrecorded.
+  public func freesAreOnly(_ allowed: (String) -> Bool) -> Bool {
+    if frees == 0 { return true }
+    guard !stacks.isEmpty, unrecorded == 0 else { return false }
+    return zip(stacks, stackIsFree).allSatisfy { !$1 || allowed($0) }
+  }
+
+  /// No frees but AudioToolbox reclaiming its parameter-listener map's nodes, which a sampler's
+  /// render can do when another engine's units were torn down while it walked the map
+  /// (`ListenerMap::NotifyParameterChange` → `node_allocator::end_traversal` → `free_node`).
+  /// Needs `countAllocations(stacks: true)`.
+  public var freesAreOnlyListenerMapReclamation: Bool {
+    freesAreOnly { $0.contains("ListenerMap") && $0.contains("end_traversal") }
   }
 }
 
 /// Run `body` and report malloc/free calls made on this thread. One counter at a time:
 /// tests that use it must not run it concurrently on the same process. `stacks: true` also
-/// returns where the first few came from (`AllocationReport.stacks`).
+/// returns where they came from (`AllocationReport.stacks`).
 public func countAllocations(stacks: Bool = false, _ body: () -> Void) -> AllocationReport {
   gate.lock()
   defer { gate.unlock() }
   if !installed {
     installed = true
-    counters.initialize(repeating: 0, count: 5)
+    counters.initialize(repeating: 0, count: counterCount)
     armed.initialize(to: nil)
-    frames.initialize(repeating: nil, count: maxStacks * maxFrames)
-    depths.initialize(repeating: 0, count: maxStacks)
+    frames.initialize(repeating: nil, count: (maxStacks + 1) * maxFrames)
+    depths.initialize(repeating: 0, count: maxStacks + 1)
     kinds.initialize(repeating: 0, count: maxStacks)
     args.initialize(repeating: 0, count: maxStacks)
+    hits.initialize(repeating: 0, count: maxStacks)
     if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "malloc_logger") {
       sym.assumingMemoryBound(to: MallocLogger?.self).pointee = hook
     }
   }
-  counters[0] = 0
-  counters[1] = 0
-  counters[2] = 0
+  for i in 0..<counterCount { counters[i] = 0 }
   counters[3] = stacks ? 1 : 0
-  counters[4] = 0
   armed.pointee = pthread_self()
   body()
   armed.pointee = nil
   var report = AllocationReport(allocations: counters[0], frees: counters[1])
+  report.nested = counters[5]
   if stacks {
     report.stacks = (0..<counters[2]).map { symbolicate($0) }
+    report.stackIsFree = (0..<counters[2]).map { kinds[$0] & stackLoggingTypeAlloc == 0 }
+    report.unrecorded = counters[6]
   }
   return report
 }
@@ -113,7 +170,7 @@ private func symbolicate(_ k: Int) -> String {
   let what =
     alloc && dealloc
     ? "realloc to \(args[k]) bytes" : alloc ? "malloc \(args[k]) bytes" : "free"
-  var lines = ["#\(k + 1) \(what)"]
+  var lines = ["#\(k + 1) \(what) ×\(hits[k])"]
   // frame 0 is the hook itself; the malloc frames come next
   for i in 1..<max(1, Int(depths[k])) {
     guard let pc = frames[k * maxFrames + i] else { continue }

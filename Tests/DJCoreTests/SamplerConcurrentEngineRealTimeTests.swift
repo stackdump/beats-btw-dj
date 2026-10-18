@@ -9,8 +9,8 @@ import Testing
 // clean) looked like the AUParameterCache trap: another AVAudioEngine connecting its mixers
 // while a deck's samplers play. `samplersDoNotAllocateWhenAnotherEngineIsBuilt` builds that
 // engine between measurements; these build engines on another thread *during* them, the way
-// a parallel test run (or the app's `SessionPlayer`) does, and keep the first offending stacks
-// (`countAllocations(stacks:)`) so a failure says where it came from.
+// a parallel test run (or the app's `SessionPlayer`) does, and keep the stack of every offending
+// call (`countAllocations(stacks:)`) so a failure says where it came from.
 //
 // What the stacks showed (2026-10-18): with the parameter cache built at load
 // (`SamplerInstrument.buildParameterCache`) the render thread no longer *allocates*, but it can
@@ -21,9 +21,8 @@ import Testing
 // sometimes the render thread (`node_allocator::end_traversal` → `free_node`): one to a few
 // dozen frees per teardown, no mallocs. That is CoreAudio's, not ours, and the app meets it
 // too when an offline engine is torn down while a deck plays. So these tests hold the render
-// to no allocations at all, and to no frees but that reclamation; `make swift-rt-test` runs
-// the allocation-counting suites one at a time (`--no-parallel`) so other tests' teardowns
-// stay out of their measurements.
+// to no allocations at all, and to no frees but that reclamation, each free judged by its own
+// stack (`AllocationReport.freesAreOnlyListenerMapReclamation`).
 
 #if DEBUG
   private let optimized = false
@@ -43,6 +42,8 @@ private final class Builder: Sendable {
   let built = Atomic<Int>(0)
   let done = Atomic<Bool>(false)
   let failed = Atomic<Bool>(false)
+  /// Set when the measurement gave up waiting: build no more, so the thread can be joined.
+  let stop = Atomic<Bool>(false)
 }
 
 /// Builds `count` offline engines, one after another, on a new pthread once `go` is set (each
@@ -78,6 +79,7 @@ private final class BuilderBody: Sendable {
   func run() {
     while !b.go.load(ordering: .acquiring) { sched_yield() }
     for i in 0..<count {
+      if b.stop.load(ordering: .acquiring) { break }
       do {
         if samplers {
           // as a bank loads one (`SamplerBank.slot(for:)`), then lets it go
@@ -131,15 +133,15 @@ private func renderWhileBuilding(
   return (report, blocks)
 }
 
-/// Frees that are AudioToolbox reclaiming its listener map's nodes (see the top of this file),
-/// as opposed to anything the render path itself frees. Judged by the stacks kept, so it needs
-/// `countAllocations(stacks: true)`.
-private func onlyListenerMapReclamation(_ r: AllocationReport) -> Bool {
-  r.frees == 0
-    || (!r.stacks.isEmpty
-      && r.stacks.allSatisfy {
-        $0.contains("free") && $0.contains("ListenerMap") && $0.contains("end_traversal")
-      })
+/// Joins the builder. If the measurement timed out, records that, tells the builder to stop
+/// after the build in hand and still joins it: a builder left running would build engines
+/// during the next test's measurement.
+private func finish(_ b: Builder, _ thread: pthread_t) {
+  if !b.done.load(ordering: .acquiring) {
+    Issue.record("the builder missed the deadline; stopping it before the next test")
+    b.stop.store(true, ordering: .releasing)
+  }
+  pthread_join(thread, nil)
 }
 
 private func warm(_ src: WaveDeckSource, _ n: Int, frames: Int = 512) {
@@ -169,11 +171,7 @@ private func warm(_ src: WaveDeckSource, _ n: Int, frames: Int = 512) {
     let thread = startBuilding(b, count: 4, sampleRate: sr)
     let (report, blocks) = renderWhileBuilding(src, b)
     let built = b.built.load(ordering: .acquiring)
-    if b.done.load(ordering: .acquiring) {
-      pthread_join(thread, nil)
-    } else {
-      pthread_detach(thread)
-    }
+    finish(b, thread)
     #expect(built == 4, "every engine was built inside the measured renders (\(built))")
     let failed = b.failed.load(ordering: .acquiring)
     #expect(!failed, "the engines built")
@@ -181,7 +179,7 @@ private func warm(_ src: WaveDeckSource, _ n: Int, frames: Int = 512) {
     #expect(
       report.allocations == 0, "render allocated \(report.allocations) times\(report.stackText)")
     #expect(
-      onlyListenerMapReclamation(report),
+      report.freesAreOnlyListenerMapReclamation,
       "render freed \(report.frees) times\(report.stackText)")
     src.drainRetired()
   }
@@ -232,16 +230,12 @@ private func warm(_ src: WaveDeckSource, _ n: Int, frames: Int = 512) {
       if i % 20 == 0 { src.send(cmds[(i / 20) % cmds.count]) }
     }
     let built = b.built.load(ordering: .acquiring)
-    if b.done.load(ordering: .acquiring) {
-      pthread_join(thread, nil)
-    } else {
-      pthread_detach(thread)
-    }
+    finish(b, thread)
     #expect(built == 4, "every engine was built inside the measured renders (\(built))")
     #expect(
       report.allocations == 0, "render allocated \(report.allocations) times\(report.stackText)")
     #expect(
-      onlyListenerMapReclamation(report),
+      report.freesAreOnlyListenerMapReclamation,
       "render freed \(report.frees) times\(report.stackText)")
   }
 
@@ -262,16 +256,12 @@ private func warm(_ src: WaveDeckSource, _ n: Int, frames: Int = 512) {
     let thread = startBuilding(b, count: 40, sampleRate: sr, samplers: true)
     let (report, _) = renderWhileBuilding(src, b)
     let built = b.built.load(ordering: .acquiring)
-    if b.done.load(ordering: .acquiring) {
-      pthread_join(thread, nil)
-    } else {
-      pthread_detach(thread)
-    }
+    finish(b, thread)
     #expect(built == 40, "every sampler was loaded inside the measured renders (\(built))")
     #expect(
       report.allocations == 0, "render allocated \(report.allocations) times\(report.stackText)")
     #expect(
-      onlyListenerMapReclamation(report),
+      report.freesAreOnlyListenerMapReclamation,
       "render freed \(report.frees) times\(report.stackText)")
     src.drainRetired()
   }
