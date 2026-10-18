@@ -137,6 +137,10 @@ its copy; the two are now independent. Rules inherited from that split:
   each distinct offending stack with a hit count (up to 16; the rest count as `unrecorded`).
 - Projects are composed and compiled off the audio thread (`TrackSpec` →
   `PreparedTrack`), handed over whole through a command ring, installed at the next bar.
+- Mix-out tail (`WaveOptions.tail` = `MixOutTail(fromTick, bars)`, nil on parity): a
+  `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
+  the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
+  `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
