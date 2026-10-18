@@ -13,6 +13,7 @@
 //   tilt (16)                    StageTiltModel.swift                  (the container: StageContainer)
 //   wander walk                  StageWanderModel.swift                StageWanderLayer.swift
 //   solo visualizers (9-12)      StageSoloModel.swift                  StageSoloLayer.swift
+//   blocks (solo, dj)            StageMinecraftModel.swift             StageMinecraftLayer.swift
 //   card flash (19)              StageCardModel.swift                  StageCardLayer.swift
 //
 // The constellation itself (panels, tokens, flash: modes 7, 13; the meta-net: mode 8; the
@@ -71,6 +72,7 @@ public final class StageLayerModels {
   public let tilt: StageTiltModel
   public let wander: StageWanderModel
   public let solo: StageSoloModel
+  public let minecraft: StageMinecraftModel
   public let card: StageCardModel
 
   public init(
@@ -81,6 +83,7 @@ public final class StageLayerModels {
     tilt: StageTiltModel = StageTiltModel(),
     wander: StageWanderModel = StageWanderModel(),
     solo: StageSoloModel = StageSoloModel(),
+    minecraft: StageMinecraftModel = StageMinecraftModel(),
     card: StageCardModel = StageCardModel()
   ) {
     self.background = background
@@ -90,12 +93,13 @@ public final class StageLayerModels {
     self.tilt = tilt
     self.wander = wander
     self.solo = solo
+    self.minecraft = minecraft
     self.card = card
   }
 
   /// Bottom to top: the order `advance` runs in and the views stack in.
   public var all: [any StageLayerModel] {
-    [background, flame, bolts, pulse, tilt, wander, solo, card]
+    [background, flame, bolts, pulse, tilt, wander, solo, minecraft, card]
   }
 
   /// What stage.js clears when it rebuilds the panels. (Not the wander model: a wander swap is a

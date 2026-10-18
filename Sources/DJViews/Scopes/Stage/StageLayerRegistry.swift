@@ -64,6 +64,7 @@ struct StageLayerStack: View {
       if !context.isSolo { StageEmptyLayer(context: context) }
 
       StageSoloLayer(context: context, model: models.solo)
+      StageMinecraftLayer(context: context, model: models.minecraft)
       StageCardLayer(context: context, model: models.card)
     }
   }

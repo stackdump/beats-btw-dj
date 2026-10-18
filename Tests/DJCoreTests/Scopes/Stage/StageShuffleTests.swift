@@ -18,7 +18,7 @@ private struct Script: StageRandom {
   }
 }
 
-private let real: [StageVisualizer] = [.constellation, .corona, .sonar, .petal]
+private let real: [StageVisualizer] = [.constellation, .corona, .sonar, .petal, .minecraft]
 
 private func pick(_ values: [Double], excluding current: StageVisualizer) -> StageVisualizer {
   var rng = Script(values)
@@ -50,25 +50,26 @@ private final class Machine {
 struct StageShuffleStateTests {
   @Test func theSwapEveryNFiresIs64AndTheOrderIsTheCycleOrder() {
     #expect(StageShuffle.firesPerSwap == 64)
-    #expect(StageVisualizer.real == [.constellation, .corona, .sonar, .petal])
+    #expect(StageVisualizer.real == [.constellation, .corona, .sonar, .petal, .minecraft])
     #expect(StageVisualizer.constellation.rawValue == "mandala")
   }
 
-  @Test func pickNextChoosesFloorOfRandomTimesTheRemainingThree() {
-    // excluding the constellation: [corona, sonar, petal]
+  @Test func pickNextChoosesFloorOfRandomTimesTheRemainingFour() {
+    // excluding the constellation: [corona, sonar, petal, minecraft]
     let cases: [(Double, StageVisualizer)] = [
-      (0, .corona), (0.3333, .corona), (0.3334, .sonar), (0.6666, .sonar), (0.6667, .petal),
-      (0.999999, .petal),
+      (0, .corona), (0.2499, .corona), (0.25, .sonar), (0.4999, .sonar), (0.5, .petal),
+      (0.7499, .petal), (0.75, .minecraft), (0.999999, .minecraft),
     ]
     for (r, want) in cases {
       #expect(pick([r], excluding: .constellation) == want, "r = \(r)")
     }
-    // excluding the sonar: [constellation, corona, petal]
+    // excluding the sonar: [constellation, corona, petal, minecraft]
     #expect(pick([0.1], excluding: .sonar) == .constellation)
-    #expect(pick([0.5], excluding: .sonar) == .corona)
-    #expect(pick([0.9], excluding: .sonar) == .petal)
+    #expect(pick([0.3], excluding: .sonar) == .corona)
+    #expect(pick([0.6], excluding: .sonar) == .petal)
+    #expect(pick([0.9], excluding: .sonar) == .minecraft)
     // a random source that returns exactly 1 (it must not) cannot index past the end
-    #expect(pick([1], excluding: .petal) == .sonar)
+    #expect(pick([1], excluding: .petal) == .minecraft)
   }
 
   @Test func pickNextNeverReturnsTheVisualizerThatShowsOrShuffle() {
@@ -80,24 +81,24 @@ struct StageShuffleStateTests {
         #expect(next != current && next != .shuffle)
         seen.insert(next)
       }
-      #expect(seen.count == 3, "every other one turns up: \(seen)")
+      #expect(seen.count == 4, "every other one turns up: \(seen)")
     }
   }
 
   @Test func choosingShuffleStartsAtOnceOnARandomOtherVisualizer() {
-    let m = Machine(draws: [0.5])  // from the constellation: [corona, sonar, petal] -> sonar
+    let m = Machine(draws: [0.3])  // from the constellation: [corona, sonar, petal, mc] -> sonar
     let shown = m.apply(.shuffle)
     #expect(shown == .sonar && m.current == .sonar && m.shuffling && m.fireCount == 0)
     #expect(m.drawn == 1)
     // from the sonar the next first pick cannot be the sonar
-    let again = Machine(StageShuffle(current: .sonar), draws: [0.5])
+    let again = Machine(StageShuffle(current: .sonar), draws: [0.3])
     again.apply(.shuffle)
     #expect(again.current == .corona && again.fireCount == 0)
   }
 
   @Test func the64thFireSwapsAndEveryOtherFireDoesNot() {
-    // excluding the corona: [constellation, sonar, petal] -> petal
-    let m = Machine(StageShuffle(current: .corona, shuffling: true), draws: [0.9])
+    // excluding the corona: [constellation, sonar, petal, minecraft] -> petal
+    let m = Machine(StageShuffle(current: .corona, shuffling: true), draws: [0.6])
     for n in 1...63 {
       #expect(!m.fired(), "fire \(n)")
       #expect(m.current == .corona && m.fireCount == n)
@@ -146,17 +147,17 @@ struct StageShuffleStateTests {
       v = StageShuffle.cycle(from: v, step: 1)
       right.append(v)
     }
-    #expect(right == [.corona, .sonar, .petal, .constellation, .corona], "right, wrapping")
+    #expect(right == [.corona, .sonar, .petal, .minecraft, .constellation], "right, wrapping")
     var left: [StageVisualizer] = []
     v = .constellation
     for _ in 0..<5 {
       v = StageShuffle.cycle(from: v, step: -1)
       left.append(v)
     }
-    #expect(left == [.petal, .sonar, .corona, .constellation, .petal], "left, wrapping")
+    #expect(left == [.minecraft, .petal, .sonar, .corona, .constellation], "left, wrapping")
     // a name outside the order counts as the first (indexOf = -1 -> 0)
     #expect(StageShuffle.cycle(from: .shuffle, step: 1) == .corona)
-    #expect(StageShuffle.cycle(from: .shuffle, step: -1) == .petal)
+    #expect(StageShuffle.cycle(from: .shuffle, step: -1) == .minecraft)
   }
 }
 
@@ -198,9 +199,9 @@ struct StageShuffleModelTests {
   }
 
   @Test func shuffleShowsARandomOtherOneAtOnceThenSwapsOnTheSixtyFourthFire() {
-    // picks: 0.4 -> from the constellation [corona, sonar, petal] -> sonar;
-    //        0.9 -> excluding the sonar [constellation, corona, petal] -> petal
-    let m = model([0.4, 0.9])
+    // picks: 0.4 -> from the constellation [corona, sonar, petal, minecraft] -> sonar;
+    //        0.6 -> excluding the sonar [constellation, corona, petal, minecraft] -> petal
+    let m = model([0.4, 0.6])
     #expect(m.resolveVisualizer(selection: .shuffle, fires: [], now: 1) == .sonar)
     #expect(m.shuffle.shuffling)
     // 63 fires over two frames: still the sonar
@@ -227,7 +228,7 @@ struct StageShuffleModelTests {
   @Test func theFireThatMakesTheSwapBelongsToTheNewVisualizer() {
     // sonar first, then the 64th fire swaps to the petal: the sonar rings of fires 1...63 are
     // thrown away by setVisualizer, the petal gets the 64th fire only
-    let m = model([0.4, 0.9])
+    let m = model([0.4, 0.6])
     let first = m.resolveVisualizer(selection: .shuffle, fires: [], now: 1)
     m.advance(context(first, selection: .shuffle, fires: []))
     #expect(first == .sonar)
@@ -242,9 +243,9 @@ struct StageShuffleModelTests {
   }
 
   @Test func aSwapToTheSonarLetsTheSwappingFireRingAndTheEarlierOnesNot() {
-    // petal first (0.9 -> [corona, sonar, petal] -> petal), then 0.4 excluding the petal
-    // [constellation, corona, sonar] -> corona; use 0.9 again -> sonar
-    let m = model([0.9, 0.9])
+    // petal first (0.6 -> [corona, sonar, petal, minecraft] -> petal), then 0.6 excluding the
+    // petal [constellation, corona, sonar, minecraft] -> sonar
+    let m = model([0.6, 0.6])
     let first = m.resolveVisualizer(selection: .shuffle, fires: [], now: 1)
     #expect(first == .petal)
     m.advance(context(first, selection: .shuffle))
@@ -259,7 +260,7 @@ struct StageShuffleModelTests {
   }
 
   @Test func theToolbarSelectionKeepsSayingShuffleWhileTheVisualizerChanges() {
-    let m = model([0.4, 0.9])
+    let m = model([0.4, 0.6])
     let shown = m.resolveVisualizer(selection: .shuffle, fires: [], now: 1)
     let ctx = context(shown, selection: .shuffle)
     #expect(ctx.selection == .shuffle && ctx.visualizer == .sonar && ctx.isSolo)
@@ -291,14 +292,14 @@ struct StageShuffleModelTests {
       seen.append(settings.visualizer)
       _ = m.resolveVisualizer(selection: settings.visualizer, fires: [], now: 0)
     }
-    #expect(seen == [.corona, .sonar, .petal, .constellation, .corona])
+    #expect(seen == [.corona, .sonar, .petal, .minecraft, .constellation])
     seen = []
     for _ in 0..<5 {
       #expect(m.handleKey(.left, settings: settings))
       seen.append(settings.visualizer)
       _ = m.resolveVisualizer(selection: settings.visualizer, fires: [], now: 0)
     }
-    #expect(seen == [.constellation, .petal, .sonar, .corona, .constellation])
+    #expect(seen == [.minecraft, .petal, .sonar, .corona, .constellation])
     #expect(!m.handleKey(.t, settings: settings), "T is the card's")
   }
 
