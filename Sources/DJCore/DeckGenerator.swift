@@ -216,7 +216,7 @@ public final class PreparedTrack: @unchecked Sendable {
 extension WaveOptions {
   /// These options with the settings a track of `genre` plays with, for the fixes they hold:
   /// the duck depth, the room, the echo, the groove template, the voice design
-  /// (`VoiceDesign.forGenre`), the brushes; and the genre itself (`genre`: the rests it gates).
+  /// (`VoiceDesign.forGenre`), the brushes, the HF tilt (`HFTilt.forGenre`); and the genre itself (`genre`: the rests it gates).
   public func forGenre(_ genre: String) -> WaveOptions {
     var o = self
     o.genre = genre
@@ -228,6 +228,7 @@ extension WaveOptions {
     if musicality.contains(.space) { o.space = SpaceSpec.forGenre(genre) }
     if musicality.contains(.echo) { o.echo = EchoSpec.forGenre(genre) }
     o.brushes = musicality.contains(.backbeat) && Brush.forGenre(genre)
+    if musicality.contains(.hfTilt) { o.hfTilt = HFTilt.forGenre(genre) }
     return o
   }
 }

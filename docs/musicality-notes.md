@@ -1068,3 +1068,24 @@ verdict and first wrong are his, left blank here): techno 42, house 42, edm 42, 
 dnb 42, dubstep 42, synthwave 42, lofi 42, jazz 42, funk 42, bossa 42, ambient 42 — every matrix
 genre at seed 42, since the exit is *hummable* for at least half of them; 6.4 is done when the log
 says so, not when the table above is green.
+
+## 15. 6.6 HF tilt (b) (2026-10-18): `.hfTilt` lowpasses the bright drums at the source
+
+§14's table is still pending, so this follows research M7's finding (drum genres: −2.4 to
+−4 dB/oct with a +6–12 dB 16 kHz bump) and §14's expected carriers rather than a measured list:
+beats' hat, open hat and dj's crash are white noise highpassed at 7 / 4.2 kHz with nothing above,
+flat to Nyquist.
+
+- `.hfTilt` (in `Fixes.all`): those synth lanes (`drumVoice`'s noise carriers, kinds `hat`,
+  `openhat`, `crash`) run a second-order Butterworth lowpass after their own filter
+  (`Lane.tilt`, WaveRunner.swift). Cutoff per family (`HFTilt.forGenre`, targets.json `hfTilt`,
+  [RULE-OF-THUMB]): dance 10 kHz, song 9.5, jazz 9, chill 8. At 10 kHz that is about −4 dB at
+  12.5 kHz and −10 dB at 16 kHz; the 7–10 kHz band stays.
+- Not on the master, not in WaveSynth.swift's `kits` (the synth.js port the parity fixtures run),
+  not on sampled kits (no measurement names them yet). `WaveOptions()` has no tilt; kick, snare,
+  clap and the brush are untouched.
+- Acceptance (`HFTiltTests.everyGenreFallsWithNoBump`): slope < 0 and hfBump ≤ 2 dB
+  (`MixTargets.maxHFBumpDB`) for the 12 genres, synth and sampled; `lowersTheHatsTop` holds the
+  soloed hats' 12.5 / 16 kHz power ≥ 4 dB down. Not yet run (built without renders). Ear check
+  pending: hats may read dull at the chill / jazz cutoffs; if the measure shows sampled kits
+  carry the bump, they need their own EQ.
