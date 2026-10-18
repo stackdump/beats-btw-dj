@@ -81,7 +81,10 @@ public struct SampleLevel: Sendable, Equatable {
     var high = 0.0
     let lp = biquad(type: "lowpass", fc: 150, q: 0.7071, sr: buffer.sampleRate)
     let hp = biquad(type: "highpass", fc: 4000, q: 0.7071, sr: buffer.sampleRate)
-    var l1 = 0.0, l2 = 0.0, h1 = 0.0, h2 = 0.0
+    var l1 = 0.0
+    var l2 = 0.0
+    var h1 = 0.0
+    var h2 = 0.0
     for i in 0..<n {
       let a = buffer.left[i]
       let b = buffer.right[i]
@@ -121,6 +124,123 @@ extension SampleBuffer {
       cached = l
       return l
     }
+  }
+}
+
+/// What the auto-gain does to a set of samples (`djctl levels`): each one's loudness as it is and
+/// as a deck plays it, and the spread of both against their targets (a partial loop's is 4 LU
+/// under a full mix's, so the spread is taken off each one's own target).
+public struct LevelSurvey: Sendable {
+  public struct Entry: Sendable {
+    public var name: String
+    public var category: String
+    public var level: SampleLevel
+
+    public init(name: String, category: String = "", level: SampleLevel) {
+      self.name = name
+      self.category = category
+      self.level = level
+    }
+
+    /// LU off its target as it is (nil: silent).
+    public var errorBefore: Double? { level.lufs.map { $0 - level.targetLUFS } }
+    /// LU off its target as a deck plays it, auto-gain on.
+    public var errorAfter: Double? { errorBefore.map { $0 + level.autoGainDB } }
+    /// What kept it off its target: `maxGain` (the ±12 dB clamp) or `peak` (a boost cut back
+    /// to the peak ceiling); nil when it lands within the tolerance or is silent.
+    public var limitedBy: String? {
+      guard let e = errorAfter, abs(e) > LevelSurvey.toleranceLU, let before = errorBefore else {
+        return nil
+      }
+      if abs(before) > LevelMatch.maxGainDB { return "maxGain" }
+      return "peak"
+    }
+
+    public var dictionary: [String: Any] {
+      var d = level.dictionary
+      d["name"] = name
+      if !category.isEmpty { d["category"] = category }
+      if let e = errorBefore { d["errorBeforeLU"] = round3(e) }
+      if let e = errorAfter { d["errorAfterLU"] = round3(e) }
+      if let l = limitedBy { d["limitedBy"] = l }
+      return d
+    }
+  }
+
+  /// A sample within this of its target counts as level matched.
+  public static let toleranceLU = 1.5
+
+  public var entries: [Entry]
+  /// Samples that could not be read: name, why.
+  public var failures: [(name: String, error: String)]
+
+  public init(entries: [Entry], failures: [(name: String, error: String)] = []) {
+    self.entries = entries
+    self.failures = failures
+  }
+
+  /// Decode and measure each file (off the audio thread; at the decks' rate).
+  public static func measure(
+    _ files: [(name: String, category: String, url: URL)], sampleRate: Double = 48_000
+  ) -> LevelSurvey {
+    var entries: [Entry] = []
+    var failures: [(name: String, error: String)] = []
+    for f in files {
+      do {
+        let b = try Deck.decode(f.url, sampleRate: sampleRate)
+        entries.append(Entry(name: f.name, category: f.category, level: b.level))
+      } catch {
+        failures.append((f.name, "\(error)"))
+      }
+    }
+    return LevelSurvey(entries: entries, failures: failures)
+  }
+
+  /// `perCategory` stock loops from each category, evenly spaced through it by path: the same
+  /// pick every run for the same library.
+  public static func pick(_ loops: [StockLoop], perCategory: Int) -> [StockLoop] {
+    let byCategory = Dictionary(grouping: loops, by: \.category)
+    var out: [StockLoop] = []
+    for c in byCategory.keys.sorted() {
+      let all = byCategory[c]!.sorted { $0.path < $1.path }
+      let n = min(perCategory, all.count)
+      for i in 0..<n { out.append(all[i * all.count / max(n, 1)]) }
+    }
+    return out
+  }
+
+  /// max − min of the errors (LU), as is and as played; nil with nothing measured.
+  public var spreadBefore: Double? { Self.range(entries.compactMap(\.errorBefore)) }
+  public var spreadAfter: Double? { Self.range(entries.compactMap(\.errorAfter)) }
+  /// The samples that miss their target by more than the tolerance as played.
+  public var exceptions: [Entry] {
+    entries.filter { e in e.errorAfter.map { abs($0) > Self.toleranceLU } ?? false }
+  }
+
+  private static func range(_ x: [Double]) -> Double? {
+    guard let lo = x.min(), let hi = x.max() else { return nil }
+    return hi - lo
+  }
+
+  private static func maxAbs(_ x: [Double]) -> Double? { x.map(abs).max() }
+
+  public var summary: [String: Any] {
+    var d: [String: Any] = [
+      "measured": entries.count, "silent": entries.filter { $0.level.lufs == nil }.count,
+      "toleranceLU": Self.toleranceLU,
+      "within": entries.count - exceptions.count - entries.filter { $0.level.lufs == nil }.count,
+      "exceptions": exceptions.map { e -> [String: Any] in
+        var x: [String: Any] = ["name": e.name, "errorAfterLU": round3(e.errorAfter ?? 0)]
+        if let l = e.limitedBy { x["limitedBy"] = l }
+        return x
+      },
+    ]
+    if let s = spreadBefore { d["spreadBeforeLU"] = round3(s) }
+    if let s = spreadAfter { d["spreadAfterLU"] = round3(s) }
+    if let m = Self.maxAbs(entries.compactMap(\.errorBefore)) { d["maxErrorBeforeLU"] = round3(m) }
+    if let m = Self.maxAbs(entries.compactMap(\.errorAfter)) { d["maxErrorAfterLU"] = round3(m) }
+    if !failures.isEmpty { d["failures"] = failures.map { ["name": $0.name, "error": $0.error] } }
+    return d
   }
 }
 

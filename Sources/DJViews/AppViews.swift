@@ -610,7 +610,9 @@ public final class AppModel {
   private func applyAutoGainPreference(_ dj: DJEngine) {
     let on = defaults.object(forKey: Self.autoGainKey) as? Bool ?? true
     for name in dj.decks.keys.sorted() {
-      if dj[name]?.autoGain != on { dj.perform(.param(deck: name, name: "autoGain", value: on ? 1 : 0)) }
+      if dj[name]?.autoGain != on {
+        dj.perform(.param(deck: name, name: "autoGain", value: on ? 1 : 0))
+      }
       autoGain[name] = on
     }
   }
@@ -906,9 +908,14 @@ public final class AppModel {
     guard let dj else { return false }
     let url = URL(fileURLWithPath: file)
     let sr = dj.sampleRate
+    let level = dj[deck]?.autoGain ?? false
     do {
+      // measured here too, off the main thread, when the deck will level it (cached on the
+      // buffer: the load then reads it for free)
       let buffer = try await Task.detached(priority: .userInitiated) {
-        try Deck.decode(url, sampleRate: sr)
+        let b = try Deck.decode(url, sampleRate: sr)
+        if level { _ = b.level }
+        return b
       }.value
       var grid: BeatGrid?
       if case .sample(_, _, let g) = f.source { grid = g }
@@ -1012,10 +1019,13 @@ public final class AppModel {
   func loadStockLoop(_ deck: String, _ loop: StockLoop) async -> Bool {
     guard let dj else { return false }
     let sr = dj.sampleRate
+    let level = dj[deck]?.autoGain ?? false
     status = "loading \(loop.name)…"
     do {
       let buffer = try await Task.detached(priority: .userInitiated) {
-        try Deck.decode(loop.url, sampleRate: sr)
+        let b = try Deck.decode(loop.url, sampleRate: sr)
+        if level { _ = b.level }  // off the main thread, as loadFavoriteNow
+        return b
       }.value
       let grid = BeatGrid(bpm: loop.bpm, offset: 0, confidence: 1)
       dj.perform(

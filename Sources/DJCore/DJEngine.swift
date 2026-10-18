@@ -664,6 +664,7 @@ public final class Deck: JogClock {
     seedTarget = nil
     clipID = nil
     sourceFile = nil
+    levelSource = nil  // a net is levelled by its own loudness gain, not the sample's
     stemsMuted = [:]
     if mode != .net {
       turntable.send(.transport(playing: false))
