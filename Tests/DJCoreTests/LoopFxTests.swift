@@ -263,6 +263,99 @@ struct LoopFxTests {
   }
 }
 
+// MARK: a clip on deck A / B
+
+extension LoopFxTests {
+  /// An engine (never started) with clip `c` on its row, moved onto deck A and playing there.
+  @MainActor
+  private func clipOnDeck(_ c: LoopClip) throws -> (DJEngine, Deck) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    dj.restoreClips([c])
+    dj.playClip(c.id, on: "A")
+    let deck = try #require(dj["A"])
+    #expect(deck.clipID == c.id)
+    deck.launch()
+    return (dj, deck)
+  }
+
+  /// The same clip's audio loaded on a deck as a plain looping sample: no FX ever.
+  @MainActor
+  private func plainDeck(_ c: LoopClip) throws -> (DJEngine, Deck) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let deck = try #require(dj["A"])
+    deck.load(c.buffer, title: c.title, level: false)
+    deck.setLoop(0, Double(c.buffer.length))
+    deck.launch()
+    return (dj, deck)
+  }
+
+  @Test @MainActor func aClipMovedOntoADeckKeepsItsFx() throws {
+    let frames = 24_576
+    for fx in [
+      LoopFX.presets[1].fx, LoopFX.presets[3].fx, LoopFX.presets[4].fx,
+      LoopFX(drive: 12, mode: .fold, amount: 0.7, tone: 0.5, mix: 0.6, trim: -3),
+    ] {
+      var c = fxTestClip(1)
+      c.fx = fx
+      let (_, deck) = try clipOnDeck(c)
+      let onDeck = renderDeck(deck, frames)
+      #expect(deck.renderer.fxRunning, "\(fx.summary)")
+      let mixer = FxBankRig([c.buffer], fx: [fx]).render(frames)
+      let dry = FxBankRig([c.buffer]).render(frames)
+      let l = residualDB(onDeck.left, mixer.left)
+      let r = residualDB(onDeck.right, mixer.right)
+      #expect(l < -40 && r < -40, "\(fx.summary): deck vs mixer \(l) / \(r) dB")
+      // and the FX are heard: it is not the dry clip
+      #expect(residualDB(onDeck.left, dry.left) > -20, "\(fx.summary)")
+    }
+  }
+
+  @Test @MainActor func aDryClipOnADeckIsBitIdentical() throws {
+    let frames = 24_576
+    for fx in [LoopFX(), LoopFX(bypass: true, drive: 24, mode: .hard, amount: 1)] {
+      var c = fxTestClip(2)
+      c.fx = fx
+      let (_, deck) = try clipOnDeck(c)
+      let (_, plain) = try plainDeck(c)
+      let a = renderDeck(deck, frames)
+      let b = renderDeck(plain, frames)
+      #expect(a.left == b.left && a.right == b.right, "\(fx)")
+      #expect(!deck.renderer.fxRunning)
+    }
+  }
+
+  @Test @MainActor func changingTheClipsFxReachesTheDeckAndALoadDropsThem() throws {
+    let c = fxTestClip(1)
+    let (dj, deck) = try clipOnDeck(c)
+    let (_, plain) = try plainDeck(c)
+    _ = renderDeck(deck, 4096)
+    _ = renderDeck(plain, 4096)
+    #expect(!deck.renderer.fxRunning)
+    dj.perform(.clipFx(id: c.id, fx: LoopFX.presets[2].fx))
+    let wet = renderDeck(deck, 8192)
+    let dry = renderDeck(plain, 8192)
+    #expect(deck.renderer.fxRunning)
+    #expect(residualDB(Array(wet.left[2048...]), Array(dry.left[2048...])) > -20)
+    // off again: out over the fade, then the turntable's bytes
+    dj.perform(.clipFx(id: c.id, fx: LoopFX()))
+    _ = renderDeck(deck, 4096)
+    _ = renderDeck(plain, 4096)
+    #expect(!deck.renderer.fxRunning)
+    // on, then anything else loaded on the deck plays dry
+    dj.perform(.clipFx(id: c.id, fx: LoopFX.presets[3].fx))
+    _ = renderDeck(deck, 4096)
+    #expect(deck.renderer.fxRunning)
+    deck.load(c.buffer, title: "plain", level: false)
+    #expect(deck.clipID == nil)
+    _ = renderDeck(deck, 512)
+    #expect(!deck.renderer.fxRunning)
+    // and a clip edit no longer reaches it
+    dj.perform(.clipFx(id: c.id, fx: LoopFX.presets[1].fx))
+    _ = renderDeck(deck, 512)
+    #expect(!deck.renderer.fxRunning)
+  }
+}
+
 /// `DJ_FX_WAV_DIR=… make swift-test-filter FILTER=LoopFxListening`: the demo loop dry and
 /// through each preset, to listen to.
 struct LoopFxListening {

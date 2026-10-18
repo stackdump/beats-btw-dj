@@ -30,9 +30,14 @@ import Foundation
 // Switching FX on or off, or a mode / sample-and-hold change, crossfades the chain in and out
 // over 10 ms; every continuous parameter is smoothed (one pole, ~10 ms) toward its target.
 //
+// A clip moved onto deck A or B plays through the same chain there: each sample deck's
+// `DeckRenderer` has one voice and one limiter (`DeckFxCommand`), so a clip sounds the same on a
+// deck as under the mixer, the 23-sample latency of the oversampled modes included.
+//
 // Threading: `LoopFxVoice.process` and `LoopFxLimiter.process` are the audio thread's (called
-// from `LoopBank.render`); they allocate nothing (every buffer is made in `init`). Parameters
-// cross as `LoopFxParams` (plain floats) in `LoopBankCommand.fx`, the way clip gain does.
+// from `LoopBank.render` and `DeckRenderer.renderBlock`); they allocate nothing (every buffer
+// is made in `init`). Parameters cross as `LoopFxParams` (plain floats) in `LoopBankCommand.fx`,
+// the way clip gain does, or in a deck's `DeckFxCommand`.
 
 /// What a voice's shaper does.
 public enum LoopFXMode: String, CaseIterable, Sendable {

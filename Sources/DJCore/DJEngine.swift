@@ -272,8 +272,13 @@ public final class Deck: JogClock {
   public var tap: ScopeTap { renderer.tap }
   /// Stereo history after the EQ, always on: what LOOP record takes its bars from.
   let capture: CaptureTap
-  /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads.
-  public internal(set) var clipID: String?
+  /// The clip this deck is playing (`DJEngine.playClip`), nil once anything else loads (and
+  /// with it the clip's FX go: `setClipFx`).
+  public internal(set) var clipID: String? {
+    didSet { if clipID == nil { setClipFx(.off, now: true) } }
+  }
+  /// Whether the deck's FX chain was last told to be on (main thread's view).
+  private var clipFxOn = false
   /// The audio file the sample on the deck was loaded from (set by the app after a file or
   /// stock-loop load; nil for nets, clips and the demo loop): what a favorite of it reloads.
   public var sourceFile: URL? { didSet { if let sourceFile { onSourceFile?(sourceFile) } } }
@@ -487,6 +492,17 @@ public final class Deck: JogClock {
   }
 
   deinit { capture.detach() }
+
+  /// Main thread. Play the deck's clip through `fx` (`LoopFx.swift`: the loop row's chain, on
+  /// this deck). `now`: start clean at them (a clip being loaded); otherwise a playing deck
+  /// changes over smoothly. Sample mode only; the loop channel ignores it (its voices have
+  /// their own).
+  func setClipFx(_ fx: LoopFX, now: Bool = false) {
+    let p = LoopFxParams(fx, sampleRate: turntable.sampleRate)
+    guard bank == nil, p.active || clipFxOn else { return }
+    clipFxOn = p.active
+    renderer.sendFx(p, sounding: !now && playing)
+  }
 
   /// Puts `buffer` on the turntable. `level`: give it the deck's auto-gain (`autoGain`,
   /// `SampleLevel`); a clip (`loadClip`) plays at the level it was taken at instead.

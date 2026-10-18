@@ -946,11 +946,12 @@ struct LoopVoice {
 }
 
 extension Deck {
-  /// Load a clip as a looping sample with its grid, its tempo matched to `ref` and its playhead
-  /// at the point of the loop that lines up with `ref`'s bar.
+  /// Load a clip as a looping sample with its grid and FX, its tempo matched to `ref` and its
+  /// playhead at the point of the loop that lines up with `ref`'s bar.
   func loadClip(_ clip: LoopClip, against ref: Deck?) {
     load(clip.buffer, title: clip.title, level: false)
     clipID = clip.id
+    setClipFx(clip.fx, now: true)  // its FX come with it (LoopFxEdits.swift)
     setBeatGrid(clip.grid)
     let length = Double(clip.buffer.length)
     setLoop(0, length)
