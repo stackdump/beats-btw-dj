@@ -194,8 +194,11 @@ struct DriftTests {
     r.load(prepared: WaveRunner.prepare(p, sampleRate: sr, opts: o, startTick: 64))
     r.play()
     var buf = [Float](repeating: 0, count: 256)
+    // `startFrame` counts on, as in `render`: a hit the drift holds past a block's end is
+    // logged in the next block, and its frame is only comparable with the grid's when the
+    // blocks are numbered (with every block at 0 it reads a block — 256 frames — early).
     buf.withUnsafeMutableBufferPointer { b in
-      for _ in 0..<2400 { r.process(b.baseAddress!, nil, frames: 256) }
+      for i in 0..<2400 { r.process(b.baseAddress!, nil, frames: 256, startFrame: i * 256) }
     }
     let seeked = log.records
     try #require(seeked.count >= 64)
