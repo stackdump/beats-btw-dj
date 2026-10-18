@@ -330,6 +330,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
   renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
   musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+  Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
+  `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
+  runner init, a nil check per hit when unset, never changes the render).
 - Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,

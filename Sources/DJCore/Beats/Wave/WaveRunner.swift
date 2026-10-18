@@ -108,6 +108,11 @@ public struct WaveOptions {
   /// (`WaveProject.sampledGroups`, `Loudness.sampledPartDB`). Empty everywhere else.
   var probeLevels: [String: Double] = [:]
   public var onTick: ((WaveRunner) -> Void)?
+  /// Offline only (`GrooveReport`, `djctl render`): called on the render thread with every
+  /// onset the runner plays, at the sample it plays on (`HitRecord`; a held-back groove note
+  /// when it is due). Read once when the runner is made. nil (everywhere but measurement) costs
+  /// one nil check per hit, and the hook never changes what plays.
+  public var onHit: ((HitRecord) -> Void)?
   public init() {}
 }
 
@@ -209,6 +214,9 @@ final class Lane {
   /// Bass / pad voice that dips on the kick (`WaveOptions.duckDepth`); the kick that keys it.
   var ducks = false
   var isKick = false
+  /// What the prepare keyed it by (`kick`, `snare`, `clap`, `hat`, `openhat`, `crash`,
+  /// `tonal`, `v` for a voice override): `HitRecord.kind`.
+  var kind = ""
   /// `.stereo`: side gain of the whole lane, and per voice when its voices spread (empty: all
   /// at `pan`). 0 = centre. `voiceSpread` is each voice's offset at full width (±spread);
   /// `voicePan` what it plays at, narrowed for low notes when the voice is struck.
@@ -720,6 +728,7 @@ private func buildLanes(
           }
         }
         lane.netId = n.id
+        lane.kind = key
         lane.channel = tr.channel
         lane.instrument = tr.instrument
         if stereo {
@@ -894,6 +903,9 @@ public final class WaveRunner {
   /// Deck frame of the sample being rendered when a tick lands (set by `process` right
   /// before `doTick`): start-of-block frame + offset inside the block.
   private var tickFrame: Int64 = 0
+  /// `startFrame` of the block being processed: + `blockOffset` = the frame of the sample.
+  private var blockStart: Int64 = 0
+  private let onHit: ((HitRecord) -> Void)?
   public var graph: WaveGraph? { current?.graph }
   /// `WaveProject.generation` of the project the clock is running (0: none).
   public var generation: Int32 { current?.generation ?? 0 }
@@ -938,6 +950,9 @@ public final class WaveRunner {
   private var grooveTrans = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
   private var grooveLane = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
   private var grooveVel = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  // for `onHit` only: the tick each held-back note belongs to, and that tick's frame
+  private var grooveTick = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveGrid = [Int64](repeating: 0, count: WaveRunner.grooveCapacity)
   private var grooveCount = 0
   private var grooveNext = Double.infinity
   /// Sample index within the block being rendered (0 between blocks).
@@ -997,6 +1012,7 @@ public final class WaveRunner {
     samplers = opts.samplers
     samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
     grooveOn = opts.musicality.contains(.groove)
+    onHit = opts.onHit
     energyOn = opts.musicality.contains(.energy)
     stereoOn = opts.musicality.contains(.stereo)
     samplerSide = SideHighpass(hz: 150, sampleRate: sampleRate)
@@ -1457,9 +1473,16 @@ public final class WaveRunner {
 
   // MARK: onsets
 
-  private func hit(_ lane: Lane, _ n: CompiledNet, _ t: Int, velocity: Int? = nil) {
+  /// `tick` / `gridFrame`: where a held-back groove note was due on the grid (`onHit`); -1 =
+  /// now (the graph's tick, this sample).
+  private func hit(
+    _ lane: Lane, _ n: CompiledNet, _ t: Int, velocity: Int? = nil, tick: Int = -1,
+    gridFrame: Int64 = -1
+  ) {
     lane.active = true
-    let w = Double(velocity ?? n.vel[t]) / 127
+    let vel = velocity ?? n.vel[t]
+    if let onHit { logHit(onHit, lane, n, t, vel, tick: tick, gridFrame: gridFrame) }
+    let w = Double(vel) / 127
     if lane.isKick { duckHold = 1 }
     if !lane.isTonal {
       if lane.samplerSlot >= 0 {
@@ -1478,6 +1501,19 @@ public final class WaveRunner {
     let steps = n.durSteps[t]
     let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
     trigger(lane, note: n.note[t], w: w, durMs: durMs)
+  }
+
+  /// `onHit`'s record of a hit (offline only: it builds strings).
+  private func logHit(
+    _ onHit: (HitRecord) -> Void, _ lane: Lane, _ n: CompiledNet, _ t: Int, _ vel: Int,
+    tick: Int, gridFrame: Int64
+  ) {
+    let frame = blockStart &+ Int64(blockOffset)
+    onHit(
+      HitRecord(
+        frame: frame, gridFrame: gridFrame >= 0 ? gridFrame : frame,
+        tick: tick >= 0 ? tick : current?.graph.tick ?? 0, net: n.id, note: n.note[t],
+        channel: lane.channel, kind: lane.kind, velocity: vel))
   }
 
   /// Start a note on a tonal lane: steal the quietest voice (deterministic), continuing from
@@ -1544,6 +1580,8 @@ public final class WaveRunner {
     grooveTrans[grooveCount] = Int32(t)
     grooveLane[grooveCount] = Int32(li)
     grooveVel[grooveCount] = Int32(vel)
+    grooveTick[grooveCount] = Int32(truncatingIfNeeded: proj.graph.tick)
+    grooveGrid[grooveCount] = blockStart &+ Int64(blockOffset)
     grooveCount += 1
     if due < grooveNext { grooveNext = due }
   }
@@ -1570,13 +1608,17 @@ public final class WaveRunner {
     while k < grooveCount {
       if grooveDue[k] <= now {
         let n = proj.graph.nets[Int(grooveNet[k])]
-        hit(proj.lanes[Int(grooveLane[k])], n, Int(grooveTrans[k]), velocity: Int(grooveVel[k]))
+        hit(
+          proj.lanes[Int(grooveLane[k])], n, Int(grooveTrans[k]), velocity: Int(grooveVel[k]),
+          tick: Int(grooveTick[k]), gridFrame: grooveGrid[k])
         grooveCount -= 1
         grooveDue[k] = grooveDue[grooveCount]
         grooveNet[k] = grooveNet[grooveCount]
         grooveTrans[k] = grooveTrans[grooveCount]
         grooveLane[k] = grooveLane[grooveCount]
         grooveVel[k] = grooveVel[grooveCount]
+        grooveTick[k] = grooveTick[grooveCount]
+        grooveGrid[k] = grooveGrid[grooveCount]
       } else {
         next = min(next, grooveDue[k])
         k += 1
@@ -2203,6 +2245,7 @@ public final class WaveRunner {
     startFrame: Int = 0
   ) {
     ticksInBlock = 0
+    blockStart = Int64(startFrame)
     serviceTempoFx()
     let gain = masterGain * (current?.gain ?? 1)
     // Samplers join the voices before the curve when asked (and the block fits the scratch).
