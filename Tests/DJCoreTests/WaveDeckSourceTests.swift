@@ -156,8 +156,15 @@ struct WaveRunnerRealTimeTests {
       }
       run(200)
     }
-    pthread_join(loader, nil)
+    // Read before joining: a join after a timeout would let the load finish outside the
+    // measured renders, and the checks below would pass without an eviction mid-render.
     let slot = result.slot.load(ordering: .acquiring)
+    guard slot != -2 else {
+      Issue.record("the eviction load missed the deadline, so it ran outside the measured renders")
+      pthread_detach(loader)  // a hung load mustn't hang the run; the thread owns its captures
+      return
+    }
+    pthread_join(loader, nil)
     #expect(slot >= 0, "the load evicted a slot")
     #expect(!used.contains(slot), "never one the playing project references")
     #expect(bank.source(of: slot) == .gm(80))
