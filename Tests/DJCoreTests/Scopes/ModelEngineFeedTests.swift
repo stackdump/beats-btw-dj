@@ -27,6 +27,10 @@ func warmedCache(_ items: [(String, Double, String, Double)]) -> ModelKernelCach
   return copy
 }
 
+/// How long a test waits for a song's kernels that no warmed cache holds. The app's 30 s default
+/// is plenty alone, but a full parallel test run starves the background render well past it.
+let coldKernelTimeout = 300.0
+
 /// Render in half-second pumps, consuming after each.
 @MainActor
 func play(
@@ -191,9 +195,10 @@ struct ModelEngineFeedTests {
     #expect(
       model.status.hasPrefix("model · rendering "), "the kernels are not there yet: \(model.status)"
     )
-    model.waitForKernels()
+    model.waitForKernels(timeout: coldKernelTimeout)
     model.consume(feed)
-    #expect(model.tablesReady && model.status.hasSuffix(" ms)"))
+    try #require(model.tablesReady, "the kernels did not arrive in time: \(model.status)")
+    #expect(model.status.hasSuffix(" ms)"))
     play(rig, model, feed, seconds: 3)
     #expect(model.maxBar >= 2 && model.modelBars[0..<(6 * (model.maxBar + 1))].contains { $0 > 0 })
   }

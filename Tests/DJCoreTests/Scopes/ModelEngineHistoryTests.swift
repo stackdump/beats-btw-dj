@@ -131,7 +131,7 @@ struct ModelEngineHistoryTests {
     #expect(ModelEngine.start(for: feed, engine: rig.dj, cache: cache) === model, "one per feed")
     #expect(model.status.hasPrefix("model · rendering "), "the kernels are on their way")
     #expect(model.lanes == feed.lanes)
-    model.waitForKernels()
+    model.waitForKernels(timeout: coldKernelTimeout)
     rig.hub.pump()  // the hub takes it from here
     #expect(model.tablesReady && model.fires == feed.fireCount && model.fires > 0)
   }
