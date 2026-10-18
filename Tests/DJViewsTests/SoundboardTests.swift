@@ -256,6 +256,23 @@ struct SoundboardTests {
     #expect(SoundboardLayout.columns(count: 9, width: 1400) == 9, "a wide window: one row")
   }
 
+  /// ↑ / ↓ on the board move a row of the grid as laid out at that width.
+  @Test func arrowsMoveARowOfTheBoard() {
+    let width: CGFloat = 720 - 2 * 16 - 2 * DJStyle.cardPadding
+    let ids = (0..<9).map { "pad\($0)" }
+    let cols = SoundboardLayout.columns(count: ids.count, width: width)
+    #expect(cols > 1 && cols < ids.count, "more than one row at the minimum width")
+    #expect(
+      HoverKeys.step(ids, from: "pad0", by: 1, vertical: true, columns: cols) == "pad\(cols)")
+    #expect(
+      HoverKeys.step(ids, from: "pad\(cols)", by: -1, vertical: true, columns: cols) == "pad0")
+    #expect(HoverKeys.step(ids, from: "pad0", by: 1, vertical: false, columns: cols) == "pad1")
+    let wide = SoundboardLayout.columns(count: ids.count, width: 1400)
+    #expect(
+      HoverKeys.step(ids, from: "pad3", by: 1, vertical: true, columns: wide) == "pad3",
+      "one row: ↓ stays put")
+  }
+
   @Test func theBoardDrawsItsPadsInRowsAtTheMinimumWidth() throws {
     let (m, dj) = try pads(5)
     defer { dj.stop() }
