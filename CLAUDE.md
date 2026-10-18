@@ -41,7 +41,9 @@ under structural rules, rather than editing audio freely.
   one tonal role, the same seed in another structure, or a neighbouring genre (same family,
   nearest tempo: `Wander.neighbours`) — weights in `WanderMoveKind.weight`. Swaps land at the
   next phrase's first bar with the transport still running (`PreparedTrack(startTick:)`,
-  `SwapStart`). The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
+  `SwapStart`); a bar earlier the move is planned read-only and a swap composed into
+  `Deck.lookAhead` (`LookAheadSlot`, live only), taken at the move only if step, spec, start and
+  role filter all match, else dropped. The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
   deck's step counter, so moves are **derived, never recorded**; only the pokes are
   (`DeckAction.wander` / `.wanderPace` / `.wanderLock`, the controller's MIDI), plus the walk's
   settings in a session's starting `DeckParams.wander`, so a replay walks the same path
@@ -141,6 +143,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
   the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
   `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
+  The deck control is `DeckAction.mixOut(deck, bars)` (`Deck.mixOut`: the outro at the next bar,
+  else plays on) and `.mixIn(deck, bars)` (`RestSchedule.mixIn`, the same mask, joined to the
+  song's rests): one recorded action each, through `relocate(toTick:tail:rest:)`, never apart.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
@@ -151,7 +156,10 @@ its copy; the two are now independent. Rules inherited from that split:
   `.feel` plays it in the runner (`WaveOptions.feel`, set by `forGenre`; `WaveProject.feelTable`):
   in place of the project's swing / humanize, a drum is late by its offset + (2r − 1) × half a pair
   (a sixteenth; jazz an eighth) on its off-beat, r at the tempo playing, its velocity scaled; tonal lanes
-  swing only. Without the flag (or the template) the template is never read.
+  swing only. Without the flag (or the template) the template is never read. `.drift` plays the
+  project's humanize (h) as Voss–McCartney 1/f noise (`Drift`, `WaveProject.drift` keyed by
+  `voicingSeed`): velocity ± 12 × h, 0…3 ms × h late, on top of `.feel` or `.groove`'s swing, in
+  place of beats' white jitter. A pure hash of (seed, net, song tick), so seeks and replays match.
   `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
   b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
   4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
@@ -174,9 +182,15 @@ its copy; the two are now independent. Rules inherited from that split:
   (`TurntableBrake.swift`, GO-DIVERGENCE.md §5): varispeed on the runner's output, *before* the
   chain (the chain is the mixer's insert and keeps real time), r = 1 − t / (¾ D), silent for the
   last quarter, then `WaveRunner.catchUp` puts the tick clock where an unbraked deck would be
-  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. Master macros are
-  net-only on A/B (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake;
-  on "L" they go to the loops' master bus (below).
+  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. On "L" master
+  macros go to the loops' master bus (below).
+- **Sample decks run the chain too**: each A/B `DeckRenderer` owns a `LoopMasterBus` (`master`,
+  built at deck init), turntable → clip FX → bus → limiter in sample mode; a neutral bus is
+  bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
+  wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
+  `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
+  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
+  on a sample deck before this (then a no-op) now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
   voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
@@ -264,6 +278,11 @@ its copy; the two are now independent. Rules inherited from that split:
   → `SamplerBank.slotPartLevelDB(slot, group:)`. Unity-gain levels are cached by (file, size,
   mtime, rate, probe `version`) in `Application Support/DJApp/sampler-part-levels.json`
   (`$DJ_SAMPLER_PART_CACHE`; empty = memory only); bump `version` when a probe changes.
+  With `.balance` and a bank, each slot plays at its part's trim − that level (± 12 dB,
+  `SampledBalance` → `WaveProject.slotGain`; a shared slot keeps the first net's): non-unity
+  slots render one at a time through the scratch pair in `flushSamplers` (own duck and send),
+  and the loudness probe stands each sampled net in where it now sits (`probeLevels`).
+  `djctl render --balance` solos on the deck's samplers (`MixBalance.measure(samplers:)`).
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and
@@ -341,9 +360,14 @@ its copy; the two are now independent. Rules inherited from that split:
 - `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
   renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
   musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+  `make listen [GENRES=… SECONDS=… PREV_FIXES=…]` renders 6.1's panel (`--fixes all` vs the
+  previous part, plus `--solo` stems) into `.build/listen/`; `scripts/listen-ab.py` plays it blind
+  (seeded order, afplay) and appends JSONL picks for `listening-log.py from-picks`.
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
+  The matrix's `--notes` keeps each track's note log; `scripts/corpus-distance.py A B` (or `A --ref
+  MIDIDIR`) is M8's Yang & Lerch KDE overlap per genre × group: a trend that flags, never a gate (exits 0).
   `djctl measure <file> [--start S] [--seconds N] [--note N] [--sections [--kernel K]]`
   runs any local audio file (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
   decoded by `Deck.decode` at the file's rate), named by basename + sha256 prefix, never
@@ -388,8 +412,9 @@ its copy; the two are now independent. Rules inherited from that split:
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
   `rootNote`, so `.kickTune`, the keys and later fixes follow) and, in cohesion v2 with a
-  seven-note key, a progression from `progressionTable` (beats' own `chordProgs` first in the
-  pool; pad and bass moved along the key, a walking bass's chromatic approach re-aimed, melody /
+  seven-note or pentatonic key (lofi / ambient: five-degree tables, the chords become sus /
+  quartal; blues keeps its plan), a progression from `progressionTable` (beats' own `chordProgs`
+  first in the pool; pad and bass moved along the key, a walking bass's chromatic approach re-aimed, melody /
   arp beat notes snapped to the new chord) before `.register` (`varyHarmony`); after
   `.bassLine`, a bass figure (rhythm × line; each bar's first and last notes stay the root,
   figure notes under the pad and above E1; walking / bossa basses untouched) and drum detail
@@ -445,6 +470,10 @@ its copy; the two are now independent. Rules inherited from that split:
   `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
   reference bands (lufs, lra, truePeak, slope, side; empty until measured). Every number names its
   `source` — retune there, saying where the new value came from; `TargetsTableTests` pins the values.
+  Bands come only from `scripts/references.py --write` (`$DJ_REFERENCES/<family>/*`, local files:
+  `djctl measure --sections` + ffmpeg cross-check, cached in `.build/references`): median, p10–p90,
+  source `ref:<family>/<sha8> (n=K, djctl <build>)` — hashes, never a path or name.
+  `musicality-matrix.py --targets PATH` prints each track's distance from its family's band.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
@@ -456,10 +485,31 @@ its copy; the two are now independent. Rules inherited from that split:
   outros hold 2 bars per chord (pad rings of 2 or 4 bars only), a buildup's last half-bar is the V
   (else ♭VII) of what follows, the bar into a chorus plays 2 chords; drops untouched. Section ends
   are `tail` (2 half-bar slots overriding the cycle). `.sectionHarmony` alone is the old plan.
+- 6.4's melody flags are pass stages on slot nets, located by `slotWindows` (`SlotWindows.swift`:
+  which slot net of a role plays which bars of each section, and its ring step there; rings keep
+  song time, so a rewrite works on `ringStart` + offset, mod the ring). Order: `.contour` →
+  `.shape` → `.cadence` → `.hook` → `.motif` → `.answer` → `.bassMotif` → `.approach` → `.legato`.
+- `.shape` (6.4, `MelodyShape.swift`): only off-beat melody notes move — repeats / passing tones by
+  `MelodyBigrams.default` (RS200, `Resources/beats/melody-bigrams.json`, one table), a late peak, a
+  step back after a leap; the bigram step needs a seven-note key.
+- `.hook` (6.4, `Hook.swift`): one seeded chord-tone bar (`buildHook`) on each melody window's first
+  bar, mode per section (`hookModes`); off when compose's own `hook` technique is on.
+- `.answer` (6.4, `Answer.swift`): per section 8-bar pair, bars 1–4 end open (fifth / third), 5–8 on
+  the tonic; a ring step several windows want takes the majority. Pass-side, no runner mapping.
+- `.bassMotif` (6.4, `BassMotif.swift`): bass bar 2 takes bar 1's rhythm by scale steps; walking /
+  bossa exempt. `MusicalityTests`' phrasing A/Bs leave it out of both sides.
+- `.arpStyle` (6.4, `ArpFigure.seeded(_:variant:genre:)`): trance / synthwave / edm figure pools;
+  other genres keep `.arpeggio`'s.
+- `.arpDensity` (6.4, `arpDensityRates`, needs `.arpeggio`): the arp's rate per bar from the melody's
+  onsets; with it `arpeggiate` runs after `.legato`. `arpDensityDirection` is the ear call.
 - `TrackSpec.partSeeds` (bass / kick / snare / hihat / melody / arp → seed) are dj-only: the
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
   transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
+- `.sweep` (`BuildupSweep`, in the runner): a subtractive voice struck in a ramp section
+  (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
+  `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.
+  It builds the `EnergyCurve` without `.energy`. Synth lanes only; samplers keep `.energy`'s bus LP.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -587,6 +637,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
   and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
   (`JournalRewindRealTimeTests`).
+- In-app rewind: `AppModel.rewindJournal(toSeq:)` (socket `journal` {action: rewind, seq},
+  `dj_journal`) replays the flushed file off the main actor (`playheads: true`), `reset(to:)`s
+  the engine, `replaceStores`, then appends `rewind <seq>` (`Journal.rewindMark`) and a
+  playhead checkpoint — append-only, line 0 untouched. Nothing before a rewind's checkpoint
+  carries over: replays past it start there even `fromStart`; `exportSession` refuses a slice
+  with a rewind mark (`JournalError.spansRewind`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
@@ -612,7 +668,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `build/testmcp/renders/<ts>/`, returns MusicalityReport + AudioMetrics, lufs / peakDB lifted),
   `djtest_matrix` (musicality-matrix.py → summary rows), `djtest_replay` (`journal replay
   --json --render`; `twice` compares state + sha256 — round-robin samplers may differ on
-  purpose), `djtest_journal_list`. Never the speakers, the app or its socket.
+  purpose), `djtest_journal_list`, `djtest_measure` (`djctl measure` + full sha256),
+  `djtest_compare` (sha256 identity + b − a deltas with pass flags, `measure.DEFAULTS`: ±0.5 LU,
+  peaks < 0 dBFS…), `djtest_level_check` (genres × seeds rendered → per-track LUFS, spread).
+  Never the speakers, the app or its socket.
+- `lufs` in every tool is Swift's (`IntegratedLoudness`, BS.1770) and pass flags judge it;
+  `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
 - `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
   never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
   limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree

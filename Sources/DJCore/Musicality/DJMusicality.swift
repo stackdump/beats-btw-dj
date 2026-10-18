@@ -295,7 +295,7 @@ public enum DJMusicality {
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.bassLine) { leadBass(&p) }
     if fixes.contains(.variety) { varyFigures(&p, genre: genre, spec: spec) }
-    if fixes.contains(.color) { colorChords(&p, genre: genre) }
+    let colored = fixes.contains(.color) ? colorChords(&p, genre: genre) : []
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     let arpGenre = fixes.contains(.arpStyle) ? spec.genre : nil
     if fixes.contains(.arpeggio) && !fixes.contains(.arpDensity) {
@@ -323,6 +323,8 @@ public enum DJMusicality {
     if fixes.contains(.buildup) { rollIntoDrops(&p, genre: genre) }
     if fixes.contains(.crash) { crashOnSections(&p, genre: genre) }
     if fixes.contains(.openHats) { openOffbeatHats(&p, genre: genre) }
+    // on the final notes: everything that moves the pad, the melody, the arp or the bass ran
+    if !colored.isEmpty { unrubColor(&p, colored) }
     return p
   }
 
@@ -1089,12 +1091,27 @@ public enum DJMusicality {
   /// tone, on the sixteenth after its last strike when that step is free and in the same bar:
   /// the first of `chordColor`'s intervals that is in the key and not already in the chord,
   /// near the chord's own notes, at its last strike's velocity and length.
-  static func colorChords(_ p: inout Project, genre: GenreDef) {
-    guard let intervals = chordColor(genre.name) else { return }
+  /// One tone `colorChords` added: the pad net, the step it plays on, the chord's steps, its
+  /// root's pitch class, the pitch classes it may be (`chordColor`'s order, in key, not in the
+  /// chord; the first is the one it got) and the pad's range.
+  struct ColorTone {
+    var net: String
+    var step: Int
+    var chordSteps: [Int]
+    var root: Int
+    var candidates: [Int]
+    var lo: Int
+    var hi: Int
+  }
+
+  @discardableResult
+  static func colorChords(_ p: inout Project, genre: GenreDef) -> [ColorTone] {
+    guard let intervals = chordColor(genre.name) else { return [] }
     let root = p.rootNote ?? 60
     let name = p.scaleName.isEmpty ? "Major" : p.scaleName
     let key = Set(scaleIntervals(name + "Scale").map { (root + $0) % 12 })
-    guard key.count == 7 else { return }  // a seventh is a diatonic scale's
+    guard key.count == 7 else { return [] }  // a seventh is a diatonic scale's
+    var added: [ColorTone] = []
     for id in p.nets.keys {
       guard var nb = p.nets[id], nb.role != "control", part(nb) == "harmony" else { continue }
       var steps: [(step: Int, note: Int)] = []
@@ -1119,11 +1136,10 @@ public enum DJMusicality {
           let last = nb.bindings["t\(chord.last!.step)"]
         else { continue }
         let pcs = Set(chord.map { $0.note % 12 })
-        guard
-          let pc = intervals.map({ (chord[0].note + $0) % 12 }).first(where: {
-            key.contains($0) && !pcs.contains($0)
-          })
-        else { continue }
+        let candidates = intervals.map({ (chord[0].note + $0) % 12 }).filter {
+          key.contains($0) && !pcs.contains($0)
+        }
+        guard let pc = candidates.first else { continue }
         // the octave nearest the chord's middle, inside the pad's range, more than a semitone
         // from its notes
         var mid = 0
@@ -1139,8 +1155,89 @@ public enum DJMusicality {
         var b = last
         b.note = note
         nb.bindings["t\(next)"] = b
+        added.append(
+          ColorTone(
+            net: id, step: next, chordSteps: chord.map(\.step), root: chord[0].note % 12,
+            candidates: candidates, lo: lo, hi: hi))
       }
       p.nets[id] = nb
+    }
+    return added
+  }
+
+  /// Judged on the played project (after `.variety`'s progressions, `.voicing` and every
+  /// melody, arp and bass rewrite): a colour tone that sits a semitone from any melody, arp or
+  /// bass note sounding in its span, or a major seventh voiced a semitone (or a minor ninth)
+  /// under one of the chord's roots, moves to the next of its candidates that does neither, at
+  /// the octave nearest where it was; with none, the chord stays a triad.
+  static func unrubColor(_ p: inout Project, _ tones: [ColorTone]) {
+    let wanted = Set(tones.map(\.net))
+    // every sounding span of each colour tone, and every melody / arp / bass note
+    var spans: [String: [(start: Int, end: Int)]] = [:]
+    var others: [(start: Int, end: Int, pc: Int)] = []
+    let g = WaveGraph(project: p)
+    let tempo = g.tempo > 0 ? g.tempo : 120
+    let msPerStep = 60000 / (tempo * 4)
+    var lead: [Bool] = []
+    for n in g.nets {
+      lead.append(["melody", "arp", "bass"].contains(NoteLog.groupName(n.bundle, id: n.id)))
+    }
+    for _ in 0..<NoteLog.length(p) {
+      g.advance { n, t in
+        guard !isDrumChannel(Int(n.channel[t])) else { return }
+        let steps = n.durSteps[t] > 0 ? n.durSteps[t] : n.durMs[t] / msPerStep
+        let end = g.tick + max(1, Int(steps.rounded(.up)))
+        if lead[n.index] {
+          others.append((g.tick, end, n.note[t] % 12))
+        } else if wanted.contains(n.id) {
+          spans["\(n.id)/\(n.transIds[t])", default: []].append((g.tick, end))
+        }
+      }
+      if g.stopRequested { break }
+    }
+    others.sort { $0.start < $1.start }
+    func heard(_ s: (start: Int, end: Int)) -> Set<Int> {
+      var pcs = Set<Int>()
+      for o in others {
+        if o.start >= s.end { break }
+        if o.end > s.start { pcs.insert(o.pc) }
+      }
+      return pcs
+    }
+    for tone in tones {
+      guard var nb = p.nets[tone.net], let b = nb.bindings["t\(tone.step)"] else { continue }
+      var against = Set<Int>()
+      for s in spans["\(tone.net)/t\(tone.step)"] ?? [] { against.formUnion(heard(s)) }
+      let chord = tone.chordSteps.compactMap { nb.bindings["t\($0)"]?.note }
+      let rubs = { (pc: Int) in
+        against.contains { d in [1, 11].contains(((pc - d) % 12 + 12) % 12) }
+      }
+      // a major seventh just under a voiced root: the root's octave, a semitone up
+      let underRoot = { (n: Int) in
+        (n - tone.root + 12 * 11) % 12 == 11
+          && chord.contains { $0 % 12 == tone.root && [1, 13].contains($0 - n) }
+      }
+      if b.note % 12 == tone.candidates.first, !rubs(b.note % 12), !underRoot(b.note) {
+        continue
+      }
+      var pick: Int?
+      for pc in tone.candidates where !rubs(pc) {
+        let below = b.note - ((b.note - pc) % 12 + 12) % 12
+        for n in [below, below + 12, below - 12, below + 24, below - 24] {
+          let clear =
+            n >= tone.lo && n <= tone.hi && !chord.contains { abs($0 - n) <= 1 } && !underRoot(n)
+          if clear && (pick == nil || abs(n - b.note) < abs(pick! - b.note)) { pick = n }
+        }
+        if pick != nil { break }
+      }
+      if let pick {
+        var moved = b
+        moved.note = pick
+        nb.bindings["t\(tone.step)"] = moved
+      } else {
+        nb.bindings["t\(tone.step)"] = nil
+      }
+      p.nets[tone.net] = nb
     }
   }
 

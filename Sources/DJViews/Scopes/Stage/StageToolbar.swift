@@ -13,13 +13,13 @@ import SwiftUI
 //   ◌ flow  ◎ pulse  ▼ flame  ⊝ tilt        the four stackable overlays (`data-viz`)
 //   ⇄ expand   ■ backs   A labels            panel variants, fills, names
 //   ✎ card on change                          (disabled while the card layer is unavailable)
-//   ⚡︎ bolts   ? help
+//   ⚡︎ bolts   ∿ wander   ? help
 //   background select          Void, Stars, Aurora
 //   scale select               Fit, S, M, L, XL
 //
 // While a solo visualizer shows, the controls that only mean something for the constellation are
 // hidden, exactly as the CSS `.viz-solo` rules do: the four overlays, expand, backs, labels,
-// bolts and scale.
+// bolts and scale (and dj's own wander button: the walk is drawn over the constellation).
 //
 // NOT here, on purpose:
 //   * the structure select ("Loop, A/B, Drop, ..."): in beats it regenerates the track with a new
@@ -137,7 +137,10 @@ struct StageToolbar: View {
         enabled: cardOK
       ) { StageToolAction.card.toggle(settings) }
 
-      if !solo { toolButton(.bolts, settings: settings) }
+      if !solo {
+        toolButton(.bolts, settings: settings)
+        toolButton(.wander, settings: settings)
+      }
       StageToolButton(glyph: "?", active: helpOpen, help: "What am I looking at?") {
         helpOpen.toggle()
       }
@@ -311,6 +314,7 @@ struct StageHelpContent: View {
           "Scale — Fit sizes the panels to the ring; S/M/L/XL force a size.",
           "Background — Void, Stars or Aurora.",
           "Track-change spin — the whole meta-diagram turns a quarter-turn on every new track.",
+          "∿ Wander — on a wandering deck, an arc round the centre fills through the phrase up to its next move (dashed while the browser wheel holds the walk); each move flashes its caption at the top, and the last four trail down the bottom left.",
           "Esc — close the Stage.",
         ])
       section(

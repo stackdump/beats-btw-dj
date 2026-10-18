@@ -142,6 +142,111 @@ struct JournalViewTests {
     again.stop()
   }
 
+  @Test func rewindingPutsTheAppBackAndJournalsIt() async throws {
+    let m = try await model()
+    let dj = try #require(m.engine)
+    let dir = try #require(m.journalDir)
+    defer { m.defaults.removeObject(forKey: AppModel.cratesKey) }
+    dj.perform(.crossfader(0.3))
+    _ = try await call(m, "notes", #"{"action":"add","deck":"A","text":"before"}"#)
+    let seq = try #require(m.journal?.lastSeq)
+    m.journal?.flush()
+    let head = try #require(try newestJournal(dir).entries.first)
+    // everything moves on
+    dj.perform(.crossfader(0.9))
+    _ = try await call(m, "notes", #"{"action":"add","deck":"A","text":"after"}"#)
+    _ = try await call(m, "favorites", #"{"action":"add","deck":"A"}"#)
+    m.newCrate("later")
+    m.setLocked("A.play", true)
+    #expect(!m.favorites.isEmpty)
+
+    let r = try await m.rewindJournal(toSeq: seq)
+    #expect(r.seq == seq)
+    #expect(dj.crossfader == 0.3)
+    #expect(m.notes.map(\.text) == ["before"])
+    #expect(m.notesStore.list() == m.notes)
+    #expect(m.favorites.isEmpty && m.favoritesStore.list().isEmpty)
+    #expect(!m.crates.contains("later"))
+    #expect(!dj.lockedActions.contains("A.play") && !m.lockedButtons.contains("A.play"))
+    #expect(m.status.hasPrefix("rewound to seq \(seq)"))
+
+    // the journal: append-only (line 0 as it was, the later events still there), then the
+    // stores, the mark and a checkpoint
+    m.journal?.flush()
+    let c = try newestJournal(dir)
+    #expect(c.entries.first == head)
+    #expect(c.entries.contains { $0.event == .noteAdd(m.notes[0]) })
+    #expect(
+      c.entries.contains { if case .noteAdd(let n) = $0.event { n.text == "after" } else { false } }
+    )
+    let tail = c.entries.suffix(3).map(\.event)
+    #expect(tail.first.map { if case .storesReplace = $0 { true } else { false } } == true)
+    #expect(Array(tail)[1] == .mark(Journal.rewindMark(seq)))
+    guard case .checkpoint(let cp)? = tail.last else {
+      Issue.record("no checkpoint after the rewind")
+      return
+    }
+    #expect(cp.crossfader == 0.3)
+    #expect(cp.decks["A"]?.position != nil, "with playheads")
+    #expect(c.entries.last?.seq == r.checkpointSeq)
+    // and a replay ends in the post-rewind state
+    let replay = try Journal.replay(c)
+    #expect(replay.state.crossfader == 0.3)
+    #expect(replay.stores.notes == m.notes)
+    #expect(replay.stores.favorites.isEmpty)
+    #expect(Journal.latestStores(in: dir) == m.storeSnapshot)
+  }
+
+  @Test func aReplayAfterARewindStartsFromItsCheckpoint() async throws {
+    let m = try await model()
+    let dj = try #require(m.engine)
+    let dir = try #require(m.journalDir)
+    dj.perform(.crossfader(0.2))
+    let seq = try #require(m.journal?.lastSeq)
+    dj.perform(.crossfader(0.9))
+    let r = try await m.rewindJournal(toSeq: seq)
+    dj.perform(.crossfader(0.6))
+    m.journal?.flush()
+    let c = try newestJournal(dir)
+    #expect(c.rewindCheckpointIndices.map { c.entries[$0].seq } == [r.checkpointSeq])
+    let near = try Journal.replay(c)
+    #expect(near.startSeq == r.checkpointSeq)
+    #expect(near.state.crossfader == 0.6)
+    // nothing before a rewind carries over, so even a replay from line 0 starts there
+    let full = try Journal.replay(c, fromStart: true)
+    #expect(full.startSeq == r.checkpointSeq)
+    #expect(full.state == near.state)
+    // before it, the replay is what the rewind went past
+    #expect(try Journal.replay(c, toSeq: seq + 1).state.crossfader == 0.9)
+    // a session can't be cut across it; either side can
+    let last = c.entries.last!.seq
+    #expect(throws: JournalError.self) { try Journal.exportSession(c, from: 1, to: last) }
+    let after = try Journal.exportSession(c, from: r.checkpointSeq + 1, to: last)
+    #expect(after.crossfader == 0.2)
+    _ = try Journal.exportSession(c, from: 1, to: seq + 1)
+  }
+
+  @Test func theSocketRewinds() async throws {
+    let m = try await model()
+    let dj = try #require(m.engine)
+    dj.perform(.crossfader(0.25))
+    let seq = try #require(m.journal?.lastSeq)
+    dj.perform(.crossfader(0.75))
+    let out = try await call(m, "journal", "{\"action\":\"rewind\",\"seq\":\(seq)}")
+    #expect(out["rewound"]?.int == seq)
+    #expect(out["checkpoint"]?.int == out["lastSeq"]?.int)
+    #expect(dj.crossfader == 0.25)
+    let marks = try await call(m, "journal", #"{"kind":"mark"}"#)
+    #expect(
+      marks["entries"]?.array?.contains { $0["summary"]?.string == "— rewind \(seq)" } == true)
+    await #expect(throws: (any Error).self) {
+      _ = try await self.call(m, "journal", #"{"action":"rewind","seq":99999}"#)
+    }
+    await #expect(throws: (any Error).self) {
+      _ = try await self.call(m, "journal", #"{"action":"rewind"}"#)
+    }
+  }
+
   @Test func theHistoryFoldsAFaderSweep() {
     var entries: [JournalEntry] = []
     for i in 0..<10 {

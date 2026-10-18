@@ -1,6 +1,6 @@
-import DJCore
 import Testing
 
+@testable import DJCore
 @testable import DJViews
 
 /// The control socket's methods, driven straight into an offline engine.
@@ -194,6 +194,123 @@ struct AppControlTests {
     #expect(m.favorites.count == 1 && m.favorites.first?.tags == [], "the loop stays starred")
   }
 
+  /// dj_favorites' crate actions: make one, fill it by cid (and by stock-loop path when the
+  /// Apple Loops are installed), take one out, delete it; the favorites stay starred.
+  @Test func cratesCanBeMadeFilledAndDeleted() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites(), loops: try temporaryLoopLibrary())
+    m.defaults = scratchDefaults()
+    m.start()
+    _ = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    let starred = try await call(m, "favorites", #"{"action":"add","deck":"B"}"#)
+    let cid = try #require(starred["favorites"]?.array?.first?["cid"]?.string)
+    #expect(starred["crates"]?.array?.isEmpty == true)
+
+    let made = try await call(m, "favorites", #"{"action":"newCrate","crate":" warmup "}"#)
+    #expect(made["crates"]?.array == [.string("warmup")], "an empty crate is kept by name")
+    let filled = try await call(
+      m, "favorites", "{\"action\":\"addToCrate\",\"crate\":\"peak\",\"cid\":\"\(cid)\"}")
+    #expect(filled["crates"]?.array == [.string("warmup"), .string("peak")], "made on the way")
+    _ = try await call(
+      m, "favorites", "{\"action\":\"addToCrate\",\"crate\":\"warmup\",\"cid\":\"\(cid)\"}")
+    _ = try await call(
+      m, "favorites", "{\"action\":\"addToCrate\",\"crate\":\"warmup\",\"cid\":\"\(cid)\"}")
+    #expect(m.favorites.first?.tags == ["peak", "warmup"], "once per crate")
+    let listed = try await call(m, "favorites", #"{"action":"crates"}"#)
+    #expect(listed["crates"]?.array?.count == 2)
+
+    if installedAppleLoop != nil {
+      await m.loadStockLoops()
+      let loop = try #require(m.stockLoops.first)
+      _ = try await call(
+        m, "favorites",
+        "{\"action\":\"addToCrate\",\"crate\":\"warmup\",\"path\":\"\(loop.path)\"}")
+      let f = try #require(m.favorites.first { $0.file == loop.path })
+      #expect(f.isSample && f.tags == ["warmup"], "a stock loop is starred, then put in the crate")
+    }
+    await #expect {
+      try await call(m, "favorites", #"{"action":"addToCrate","crate":"x","path":"/nope.caf"}"#)
+    } throws: { "\($0)".contains("no stock loop") }
+
+    let out = try await call(
+      m, "favorites",
+      "{\"action\":\"removeFromCrate\",\"crate\":\"peak\",\"cid\":\"\(cid)\"}")
+    #expect(m.favorites.first { $0.cid == cid }?.tags == ["warmup"])
+    #expect(out["crates"]?.array?.contains(.string("peak")) == true, "made by name: still there")
+    _ = try await call(m, "favorites", #"{"action":"deleteCrate","crate":"warmup"}"#)
+    #expect(m.crates == ["peak"])
+    #expect(m.favorites.allSatisfy { $0.tags.isEmpty }, "its favorites stay starred, untagged")
+    #expect(m.favorites.contains { $0.cid == cid })
+
+    for (params, words) in [
+      (#"{"action":"newCrate"}"#, "`crate`"),
+      (#"{"action":"addToCrate","crate":"x"}"#, "`cid`"),
+      (#"{"action":"addToCrate","crate":"x","cid":"nope"}"#, "no favorite"),
+      (#"{"action":"removeFromCrate","crate":"x","cid":"nope"}"#, "`cid`"),
+      (#"{"action":"deleteCrate","crate":"never made"}"#, "no crate"),
+    ] {
+      await #expect { try await call(m, "favorites", params) } throws: { "\($0)".contains(words) }
+    }
+  }
+
+  /// keepMove {deck, step}: ★ on a move of the walk, through the control method; journaled both
+  /// ways, so the journal's stores hold the kept favorite.
+  @Test func aWanderMoveCanBeStarredAndIsJournaled() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj.deterministic = true
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(
+      engine: dj, favorites: temporaryFavorites(), voices: temporaryVoiceVariations(),
+      notes: temporaryNotes(), journal: temporaryJournalDir())
+    m.defaults = scratchDefaults()
+    m.start()
+    let dir = try #require(m.journalDir)
+    _ = try await call(
+      m, "generate", #"{"deck":"A","genre":"house","seed":5,"structure":"minimal"}"#)
+    m.poll()
+    let d = try #require(dj["A"])
+    // every part kept: the walk only plays macros and stingers (no recompose to wait for)
+    for r in d.roles { m.setWanderLock("A", WanderLock.keep(r), true) }
+    m.setWanderPace("A", 4)
+    m.setWander("A", true)
+    for bar in 0...4 { d.advanceWander(toBar: bar, lockedActions: dj.lockedActions) }
+    let move = try #require(d.wander.log.first)
+    let spec = try #require(move.spec)
+    #expect(!m.isFavoriteSpec(spec))
+
+    let kept = try await call(
+      m, "favorites", "{\"action\":\"keepMove\",\"deck\":\"A\",\"step\":\(move.step)}")
+    #expect(kept["kept"]?.bool == true)
+    let cid = try #require(kept["favorite"]?["cid"]?.string)
+    #expect(m.isFavoriteSpec(spec) && kept["favorite"]?["genre"]?.string == "house")
+    #expect(m.journal?.recent.contains { $0.event.kind == "favorite.add" } == true)
+    // the journal rebuilds the stores with it
+    m.journal?.flush()
+    let c = try newestJournal(dir)
+    var stores = try #require(c.checkpoint?.stores)
+    for e in c.entries.dropFirst() { stores.apply(e.event) }
+    #expect(stores.favorites.map(\.cid) == [cid])
+
+    let again = try await call(
+      m, "favorites", "{\"action\":\"keepMove\",\"deck\":\"A\",\"step\":\(move.step)}")
+    #expect(again["kept"]?.bool == false && !m.isFavoriteSpec(spec), "again: unstarred")
+    #expect(m.journal?.recent.map(\.event).contains(.favoriteRemove(cid: cid)) == true)
+
+    for (params, words) in [
+      (#"{"action":"keepMove","deck":"A"}"#, "`step`"),
+      (#"{"action":"keepMove","deck":"A","step":999}"#, "no wander move"),
+      (#"{"action":"keepMove","deck":"Z","step":0}"#, "no deck"),
+    ] {
+      await #expect { try await call(m, "favorites", params) } throws: { "\($0)".contains(words) }
+    }
+  }
+
   @Test func stateDescribesBothDecks() async throws {
     let s = try await call(try model(), "state")
     #expect(s["decks"]?["A"]?["mode"]?.string == "sample")
@@ -267,6 +384,8 @@ struct AppControlTests {
       (#"{"action":{"op":"play","deck":"C","on":true}}"#, "no deck"),
       (#"{"action":{"op":"spin","deck":"A"}}"#, "known `op`"),
       (#"{"action":{"op":"macro","deck":"A","macro":"drop"}}"#, "needs a net deck"),
+      (#"{"action":{"op":"mixOut","deck":"A"}}"#, "mixOut needs a net deck"),
+      (#"{"action":{"op":"mixIn","deck":"B","bars":2}}"#, "mixIn needs a net deck"),
       (#"{"action":{"op":"load","deck":"A","source":{"kind":"none"}}}"#, "dj_generate"),
     ] {
       await #expect {
@@ -468,6 +587,95 @@ struct AppControlTests {
     await #expect(throws: (any Error).self) {
       try await call(m, "audition", #"{"instrument":"bass","sound":"tuba","play":false}"#)
     }
+  }
+}
+
+/// dj_variations: the sound panel's saved variations through the control socket, on a
+/// temporary store (never the user's voices.json), each edit journaled.
+extension AppControlTests {
+  @Test func variationsSaveApplyRenameDelete() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(
+      engine: dj, favorites: temporaryFavorites(), voices: temporaryVoiceVariations(),
+      notes: temporaryNotes(), journal: temporaryJournalDir())
+    m.start()
+    #expect(m.variationStore.file != VoiceVariationStore.defaultFile)
+    let a = try await call(
+      m, "generate", #"{"deck":"A","genre":"techno","seed":42,"structure":"minimal"}"#)
+    let melody = try #require(
+      a["voices"]?.array?.first { $0["role"]?.string?.contains("melody") == true })
+    let ch = try #require(melody["channel"]?.int)
+    let inst = try #require(melody["instrument"]?.string)
+
+    // nothing saved; saving the instrument's own voice is refused
+    #expect(try await call(m, "variations")["variations"] == .object(JSONObject()))
+    await #expect {
+      try await call(
+        m, "variations", "{\"action\":\"save\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"zap\"}")
+    } throws: { "\($0)".contains("own voice") }
+    await #expect {
+      try await call(m, "variations", #"{"action":"save","deck":"A","channel":99,"name":"zap"}"#)
+    } throws: { "\($0)".contains("channels:") }
+
+    // save what the channel sounds like
+    _ = try await call(
+      m, "perform",
+      "{\"action\":{\"op\":\"voiceTweak\",\"deck\":\"A\",\"channel\":\(ch),\"params\":{\"gainDB\":-6,\"attack\":0.05}}}"
+    )
+    let saved = try await call(
+      m, "variations", "{\"action\":\"save\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"soft\"}")
+    let list = try #require(saved["variations"]?[inst]?.array)
+    #expect(list.map { $0["name"]?.string } == ["soft"])
+    #expect(list.first?["params"]?["gainDB"]?.double == -6)
+    #expect(m.variationStore.list(inst).map(\.name) == ["soft"])
+    let listed = try await call(m, "variations", "{\"instrument\":\"\(inst)\"}")
+    #expect(listed["variations"]?[inst]?.array?.count == 1)
+
+    // back to the instrument's voice, then apply it
+    _ = try await call(
+      m, "perform",
+      "{\"action\":{\"op\":\"voiceTweak\",\"deck\":\"A\",\"channel\":\(ch),\"params\":{}}}")
+    let applied = try await call(
+      m, "variations", "{\"action\":\"apply\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"soft\"}")
+    let voice = try #require(applied["voices"]?.array?.first { $0["channel"]?.int == ch })
+    #expect(voice["tweak"]?["gainDB"]?.double == -6)
+    #expect(voice["variation"]?.string == "soft")
+    await #expect {
+      try await call(
+        m, "variations", "{\"action\":\"apply\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"loud\"}"
+      )
+    } throws: { "\($0)".contains("variations of \(inst): soft") }
+
+    // rename, delete
+    let renamed = try await call(
+      m, "variations",
+      "{\"action\":\"rename\",\"instrument\":\"\(inst)\",\"name\":\"soft\",\"to\":\"gentle\"}")
+    #expect(renamed["variations"]?[inst]?.array?.map { $0["name"]?.string } == ["gentle"])
+    let deleted = try await call(
+      m, "variations",
+      "{\"action\":\"delete\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"gentle\"}")
+    #expect(deleted["variations"]?[inst]?.array?.isEmpty == true)
+    #expect(m.variationStore.list(inst).isEmpty)
+    await #expect { try await call(m, "variations", #"{"action":"tweak"}"#) } throws: {
+      "\($0)".contains("list | save | apply | rename | delete")
+    }
+
+    // each edit is journaled; the apply as the panel's acts
+    let events = (m.journal?.recent ?? []).map(\.event)
+    #expect(events.contains { if case .variationSave = $0 { true } else { false } })
+    #expect(events.contains(.variationRename(instrument: inst, name: "soft", to: "gentle")))
+    #expect(events.contains(.variationDelete(instrument: inst, name: "gentle")))
+    let tweaks = events.filter {
+      if case .action(.voiceTweak(_, let c, let t)) = $0 {
+        c == ch && t.gainDB == -6
+      } else {
+        false
+      }
+    }
+    #expect(tweaks.count == 2, "the perform and the apply")
   }
 }
 

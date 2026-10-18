@@ -416,7 +416,7 @@ extension DJEngine {
     stopLoop(id, now: true)
     let sound = ClipSound(
       muted: clipMutes.contains(id), soloed: clipSolos.contains(id), keyLock: clipKeyLocks[id],
-      quantum: clipQuanta[id], fade: clipFades[id])
+      quantum: clipQuanta[id], fade: clipFades[id], follow: clipFollows[id])
     rememberRemovedClip(clips.remove(at: i), at: i, sound: sound)
     forgetClipSound(id)
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
@@ -511,7 +511,9 @@ extension DJEngine {
   /// Join clips into a sequence: each step's clip `repeats` times, back to back, at the first
   /// clip's tempo (others are resampled to it). With `replacing`, the sequence takes that clip's
   /// place (editing a sequence); otherwise it goes on the end of the row. Steps whose clip is
-  /// gone are left out. Returns the sequence's id (nil if no step has a clip).
+  /// gone are left out. A new sequence takes its steps' FX when they all share the same
+  /// (`sharedFx`), an edited one keeps its own. Returns the sequence's id (nil if no step has a
+  /// clip).
   @discardableResult
   public func makeSequence(_ steps: [SequenceStep], replacing: String? = nil) -> String? {
     let used = steps.compactMap { s in clip(s.clipID).map { (s, $0) } }.filter { $0.0.repeats > 0 }
@@ -534,19 +536,32 @@ extension DJEngine {
       (c.title.split(separator: " ").last.map(String.init) ?? c.title)
         + (s.repeats > 1 ? "×\(s.repeats)" : "")
     }
-    let seq = LoopClip(
+    var seq = LoopClip(
       id: Self.sequenceID(buffer), title: "seq " + names.joined(separator: "→"),
       source: first.source,
       beats: beats, bpm: bpm, startBeat: first.startBeat, buffer: buffer,
       waveform: WaveformOverview(buffer: buffer, columns: 400), steps: used.map { $0.0 },
       provenance: LoopProvenance.sequence(used))
+    seq.fx = Self.sharedFx(used.map { $0.1 })
     if let replacing, let i = clips.firstIndex(where: { $0.id == replacing }) {
+      // an edited sequence keeps its own FX, off included
+      seq.fx = clips[i].fx
       replace(at: i, with: seq)
     } else if clip(seq.id) == nil {
       sampleLibrary[seq.id] = buffer
       clips.append(seq)
     }
     return seq.id
+  }
+
+  /// The FX a new sequence starts with: its steps' when every step's clip has the same active
+  /// FX (the sequence sounds as its steps did), else off. Its audio is the steps' dry audio
+  /// either way, so the id does not depend on them.
+  static func sharedFx(_ clips: [LoopClip]) -> LoopFX {
+    guard let fx = clips.first?.fx, fx.isActive, clips.allSatisfy({ $0.fx == fx }) else {
+      return LoopFX()
+    }
+    return fx
   }
 
   /// A sequence's id: its audio's content id, marked, so a one-step sequence is not its clip.
@@ -718,7 +733,8 @@ extension DJEngine {
   func serviceLoops() {
     guard let bank = loopChannel.bank else { return }
     let now = loopChannel.renderedFrames
-    let louder = loopFollow == .louder ? updateDominantDeck() : nil
+    // once per pass, whatever each loop follows: per voice it could hand over mid-pass
+    let louder = anyLoopFollowsLouder ? updateDominantDeck() : nil
     for v in loopVoices.indices {
       guard let id = loopVoices[v].clipID else { continue }
       if let stop = loopVoices[v].stopFrame {
@@ -736,10 +752,11 @@ extension DJEngine {
       }
       guard let clip = clip(id) else { continue }
       // following the louder deck, a playing loop takes its tempo from whichever that is now;
-      // following its own deck, back to that one when it plays
-      if let louder, louder.clipID != id, bank.isActive(v) {
+      // following its own deck, back to that one when it plays (each clip by its own follow)
+      let follows = follow(for: id)
+      if follows == .louder, let louder, louder.clipID != id, bank.isActive(v) {
         loopVoices[v].ref = louder.name
-      } else if loopFollow == .source, let own = decks[clip.source], own.playing, own.clipID != id,
+      } else if follows == .source, let own = decks[clip.source], own.playing, own.clipID != id,
         bank.isActive(v)
       {
         loopVoices[v].ref = own.name
@@ -817,7 +834,8 @@ extension DJEngine {
   func loopClock(for clip: LoopClip?) -> LoopClock {
     let sr = sampleRate
     // following the louder deck, that one first; else the clip's own deck first
-    let first = loopFollow == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] }
+    let first =
+      follow(for: clip?.id) == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] }
     let candidates =
       ([first, clip.flatMap { decks[$0.source] }] + decks.values.sorted { $0.name < $1.name })
       .compactMap { $0 }
