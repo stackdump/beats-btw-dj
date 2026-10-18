@@ -525,6 +525,12 @@ its copy; the two are now independent. Rules inherited from that split:
   then clip events fall back to the library's clip by id). `djctl journal list | show |
   replay [--to SEQ|--at S] [--render f.wav] | export-session --from --to` (a slice → a normal
   `Session`, starting at rest: playheads and the row at `from` are not in it).
+- `DJEngine.reset(to:clip:)` (JournalRewind.swift) rewinds a running engine in place: row,
+  scenes and removed list cleared (not remembered as removed), decks stopped, ejected,
+  unfollowed, tweaks / disabled roles / knobs / locks / mixer / row settings to defaults, then
+  `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
+  and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
+  (`JournalRewindRealTimeTests`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
