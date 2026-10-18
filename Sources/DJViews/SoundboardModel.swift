@@ -104,6 +104,68 @@ enum SoundPadCommand: Equatable {
   case fx(LoopFX)
 }
 
+/// What the Soundboard's pads are: the loops on the row, the Apple Loops installed on this Mac
+/// (`StockPad`), or a crate's favorites.
+enum SoundboardPage: String, CaseIterable, Sendable {
+  case row, stock, crate
+
+  var label: String {
+    switch self {
+    case .row: "Row"
+    case .stock: "Stock"
+    case .crate: "Crate"
+    }
+  }
+
+  var help: String {
+    switch self {
+    case .row: "The loops on the row, as pads"
+    case .stock: "The Apple Loops on this Mac nearest the decks' tempo: a click puts one on the row"
+    case .crate: "A crate's favorites, as pads"
+    }
+  }
+}
+
+/// A Stock page pad: an Apple Loop (`StockLoop`), lit as its clip is once it is on the row.
+struct StockPad: Equatable, Identifiable {
+  /// The loop's file.
+  var id: String
+  var title: String
+  var category: String
+  /// "Hip Hop · 8 beats · C".
+  var detail: String
+  var bpm: Double
+  var beats: Int
+  /// Its clip on the row (by content id), once it has been put there.
+  var clipID: String?
+  /// Its clip's state under the mixer (off when it isn't on the row).
+  var state: DJEngine.LoopState
+  var light: PadLight.Level
+  var countdown: LoopCountdown?
+  /// Being decoded for the row.
+  var loading: Bool
+
+  init(_ loop: StockLoop, clip: ClipState?, loading: Bool) {
+    id = loop.path
+    title = loop.name
+    category = loop.category
+    detail =
+      [loop.subcategory.isEmpty ? loop.genre : loop.subcategory, "\(loop.beats) beats"]
+      .filter { !$0.isEmpty }.joined(separator: " · ") + (loop.key.map { " · \($0)" } ?? "")
+    bpm = loop.bpm
+    beats = loop.beats
+    clipID = clip?.id
+    state = clip?.loop ?? .off
+    light = SoundPad.light(state)
+    countdown = clip?.countdown
+    self.loading = loading
+  }
+
+  var onRow: Bool { clipID != nil }
+  var sounding: Bool { state == .on || state == .stopping }
+  var pending: Bool { state == .starting || state == .stopping || loading }
+}
+
 /// How the pads are laid out for `count` pads in `width` points: as many columns as fit at the
 /// smallest pad size (never more than there are pads), each pad as wide as the columns leave,
 /// up to the largest size.
@@ -173,6 +235,74 @@ struct SoundboardGrid: Layout {
 extension AppModel {
   /// One pad per clip on the row, in row order (the Inpulse's loop pads follow the same order).
   var soundPads: [SoundPad] { clips.map { SoundPad($0, slot: padSlot($0.id)) } }
+
+  /// How many stock loops the Stock page shows at once (search or pick a category for others).
+  static let stockPadLimit = 32
+
+  /// Switch the Soundboard's page (remembered across launches). The Stock page reads the loop
+  /// index off the main thread the first time.
+  func setSoundboardPage(_ p: SoundboardPage) {
+    soundboardPage = p
+    defaults.set(p.rawValue, forKey: Self.soundboardPageKey)
+    if p == .stock, stockLoops.isEmpty { Task { await loadStockLoops() } }
+  }
+
+  /// The tempo the Stock page sorts by: the deck the loops follow, else the first playing deck,
+  /// else the focus deck.
+  var stockPadTempo: Double? {
+    followingDeck.flatMap { decks[$0]?.bpm } ?? playingTempo
+      ?? engine.flatMap { decks[$0.focus]?.bpm }
+  }
+
+  /// Every stock loop matching the page's category and search, nearest the tempo first.
+  var stockPadMatches: [StockLoop] {
+    stockLoops.matching(category: stockPadCategory, query: stockPadQuery, near: stockPadTempo)
+  }
+
+  /// The Stock page's pads: the first `stockPadLimit` matches.
+  var stockPads: [StockPad] {
+    let onRow = stockClipsOnRow
+    return stockPadMatches.prefix(Self.stockPadLimit).map { loop in
+      let clip = onRow[loop.path].flatMap { id in clips.first { $0.id == id } }
+      return StockPad(loop, clip: clip, loading: stockPadsLoading.contains(loop.path))
+    }
+  }
+
+  /// The row's clips imported from stock loops, by the loop's file (their provenance's `path`).
+  var stockClipsOnRow: [String: String] {
+    var out: [String: String] = [:]
+    for c in engine?.clips ?? [] {
+      guard c.provenance?["kind"]?.string == "stock", let path = c.provenance?["path"]?.string
+      else { continue }
+      out[path] = c.id
+    }
+    return out
+  }
+
+  /// The Stock page's category strip: "" (all) then the installed categories, most loops first.
+  func setStockPadCategory(_ c: String) { stockPadCategory = stockPadCategory == c ? "" : c }
+
+  /// A Stock pad's click (or Return on it): a loop sounding under the mixer goes out on the next
+  /// launch boundary; any other is put on the row (`addStockLoopToRow`, decoded off the main
+  /// thread, the same loop twice is one clip) and comes in on the next boundary. Returns the
+  /// clip's id.
+  @discardableResult
+  func stockPadClick(_ path: String) async -> String? {
+    guard let loop = stockLoops.first(where: { $0.path == path }) else { return nil }
+    if let id = stockClipsOnRow[path], let dj = engine {
+      let s = dj.loopState(id)
+      if s == .on || s == .starting {
+        soundboard(.toggle, id)
+        return id
+      }
+    }
+    guard !stockPadsLoading.contains(path) else { return nil }
+    stockPadsLoading.insert(path)
+    defer { stockPadsLoading.remove(path) }
+    let id = await addStockLoopToRow(loop)
+    if let dj = engine { pollLoops(dj) }
+    return id
+  }
 
   /// The window's Soundboard toggle, its View menu item and the control socket's `view`.
   func setShowSoundboard(_ on: Bool) { showSoundboard = on }

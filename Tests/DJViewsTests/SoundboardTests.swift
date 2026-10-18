@@ -1,7 +1,7 @@
-import DJCore
 import SwiftUI
 import Testing
 
+@testable import DJCore
 @testable import DJViews
 
 /// The Soundboard: a pad per loop on the row, worked out from the engine; its clicks and its
@@ -291,6 +291,140 @@ struct SoundboardTests {
     #expect(rows == 2)
     #expect(violet((height - Int(grid.height))..<(height - Int(grid.height) / 2)) > 500)
     #expect(violet((height - Int(grid.height) / 2 + 4)..<height) > 100, "the second row")
+  }
+
+  /// A fresh engine with deck A playing the demo loop (120 bpm), nothing on the row.
+  func stockModel(_ defaults: UserDefaults? = nil) throws -> (AppModel, DJEngine) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
+    dj["A"]!.loadDemo()
+    dj["A"]!.setPlaying(true)
+    try dj.start()
+    let m = AppModel(engine: dj)
+    m.defaults = defaults ?? scratchDefaults()
+    m.start()
+    try run(dj, Self.bar / 2)
+    m.poll()
+    return (m, dj)
+  }
+
+  /// A Stock pad puts its loop on the row (a recorded `clipImport`), in on the next launch
+  /// boundary; it lights as its clip does; a click on a sounding one takes it out, and another
+  /// brings the same clip back. The Row page shows the clip like any other loop.
+  @Test func aStockPadImportsAndLaunchesTheLoop() async throws {
+    let (m, dj) = try stockModel()
+    defer { dj.stop() }
+    let loop = try temporaryStockLoop("Test Beat 01", category: "Drums")
+    m.stockLoops = [loop]
+    m.setSoundboardPage(.stock)
+    #expect(m.soundboardPage == .stock)
+    let pad = try #require(m.stockPads.first)
+    #expect(pad.id == loop.path && pad.title == "Test Beat 01" && pad.bpm == 120)
+    #expect(!pad.onRow && pad.state == .off && pad.light == .off && !pad.loading)
+    let rec = try SessionRecorder.start(on: dj)
+    let id = try #require(await m.stockPadClick(loop.path))
+    m.poll()
+    #expect(m.clips.map(\.id) == [id] && m.soundPads.map(\.id) == [id], "the Row page has it")
+    #expect(m.stockClipsOnRow == [loop.path: id])
+    let coming = try #require(m.stockPads.first)
+    #expect(coming.clipID == id && coming.onRow && !coming.loading)
+    #expect(coming.state == .starting || coming.state == .on, "\(coming.state)")
+    try run(dj, Self.bar + Self.bar / 4)
+    m.poll()
+    #expect(m.stockPads.first?.state == .on && m.stockPads.first?.light == .full)
+    #expect(dj.loopingClips == [id], "it loops under the mixer")
+    // a sounding pad: out on the next boundary
+    #expect(await m.stockPadClick(loop.path) == id)
+    m.poll()
+    #expect(m.stockPads.first?.state == .stopping && m.stockPads.first?.light == .blink)
+    try run(dj, Self.bar + Self.bar / 4)
+    m.poll()
+    #expect(m.stockPads.first?.state == .off && m.stockPads.first?.onRow == true)
+    // and back in: the same clip, not a second one
+    #expect(await m.stockPadClick(loop.path) == id)
+    m.poll()
+    #expect(m.clips.count == 1 && m.stockPads.first?.state != .off)
+    let imports = rec.finish().events.compactMap { e -> DeckAction? in
+      if case .action(let a) = e.kind, case .clipImport = a { return a }
+      return nil
+    }
+    #expect(imports.count == 2, "each import is recorded")
+    // an unknown pad does nothing
+    #expect(await m.stockPadClick("/nope.caf") == nil)
+  }
+
+  /// The Stock page: the loops of the chosen category (a second click on it is All again)
+  /// matching the search, nearest the decks' tempo first (half / double time count as near),
+  /// at most `stockPadLimit` of them.
+  @Test func theStockPageFiltersByCategoryAndTempo() throws {
+    let (m, dj) = try stockModel()
+    defer { dj.stop() }
+    let tempo = try #require(m.stockPadTempo)
+    #expect(abs(tempo - 120) < 0.5, "the playing deck's tempo (\(tempo))")
+    func loop(_ name: String, _ category: String, bpm: Double) -> StockLoop {
+      describedStockLoop(name, category: category, beats: 8, seconds: 8 * 60 / bpm)
+    }
+    let named = [
+      loop("Beat 90", "Drums", bpm: 90), loop("Beat 120", "Drums", bpm: 120),
+      loop("Beat 61", "Drums", bpm: 61), loop("Beat 140", "Drums", bpm: 140),
+      loop("Bass 120", "Bass", bpm: 120), loop("Pad 100", "Synths", bpm: 100),
+    ]
+    let filler = (0..<40).map { loop("Filler \($0)", "Drums", bpm: 100) }
+    m.stockLoops = named + filler
+    #expect(m.stockPads.count == AppModel.stockPadLimit, "a page is at most 32 pads")
+    #expect(m.stockPadMatches.count == named.count + filler.count)
+    #expect(Array(m.stockPads.prefix(2).map(\.title)) == ["Bass 120", "Beat 120"])
+    m.setStockPadCategory("Drums")
+    #expect(m.stockPadCategory == "Drums")
+    #expect(m.stockPads.allSatisfy { $0.category == "Drums" })
+    #expect(
+      Array(m.stockPads.prefix(3).map(\.title)) == ["Beat 120", "Beat 61", "Beat 140"],
+      "nearest 120 first: 61 is 122 at double time")
+    m.stockPadQuery = "beat"
+    #expect(m.stockPads.map(\.title) == ["Beat 120", "Beat 61", "Beat 140", "Beat 90"])
+    m.setStockPadCategory("Drums")
+    #expect(m.stockPadCategory == "", "a second click is All again")
+    #expect(m.stockPads.count == 4, "the search still applies")
+    m.stockPadQuery = ""
+    m.setStockPadCategory("Synths")
+    #expect(m.stockPads.map(\.title) == ["Pad 100"])
+  }
+
+  /// The page switch is remembered across launches; the Row page is the default.
+  @Test func theBoardsPageIsRemembered() throws {
+    let defaults = scratchDefaults()
+    let (m, dj) = try stockModel(defaults)
+    #expect(m.soundboardPage == .row)
+    m.stockLoops = [describedStockLoop("Beat", category: "Drums", beats: 4, seconds: 2)]
+    m.setSoundboardPage(.stock)
+    dj.stop()
+    let (m2, dj2) = try stockModel(defaults)
+    #expect(m2.soundboardPage == .stock)
+    m2.setSoundboardPage(.crate)
+    dj2.stop()
+    let (m3, dj3) = try stockModel(defaults)
+    defer { dj3.stop() }
+    #expect(m3.soundboardPage == .crate)
+  }
+
+  /// The Stock page draws its pads (and the switch above them) at the window's minimum width.
+  @Test func theStockPageDrawsItsPads() throws {
+    let (m, dj) = try stockModel()
+    defer { dj.stop() }
+    m.stockLoops = (0..<5).map {
+      describedStockLoop("Beat \($0)", category: $0 < 3 ? "Drums" : "Bass", beats: 4, seconds: 2)
+    }
+    m.setSoundboardPage(.stock)
+    let width = 720 - 2 * 16 - 2 * Int(DJStyle.cardPadding)
+    let view = SoundboardView(model: m).frame(width: CGFloat(width)).padding(0)
+      .background(Color.black).environment(\.colorScheme, .dark)
+    let grid = SoundboardLayout.size(count: 5, width: CGFloat(width))
+    let height = Int(grid.height) + 120
+    savePNG(view, width: width, height: height, name: "soundboard-stock")
+    let px = try #require(renderPixels(view, width: width, height: height))
+    let violet = px.count(inX: 0..<width, y: (height - Int(grid.height))..<height) { r, g, b in
+      b > 150 && r > 90 && g < r
+    }
+    #expect(violet > 100, "the pads' outlines (\(violet) pixels)")
   }
 
   @Test func anEmptyBoardSaysHowToMakeLoops() throws {
