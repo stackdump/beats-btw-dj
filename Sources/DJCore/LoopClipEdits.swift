@@ -9,8 +9,8 @@ public struct RemovedClip: Sendable, Equatable {
   public let clip: LoopClip
   /// Its index on the row when it was taken off.
   public let index: Int
-  /// How it sounded then (mute, solo, key lock, launch boundary, fade), so putting it back undoes
-  /// the removal whole.
+  /// How it sounded then (mute, solo, key lock, launch boundary, fade, tempo follow), so putting
+  /// it back undoes the removal whole.
   public let sound: ClipSound
 
   init(clip: LoopClip, index: Int, sound: ClipSound = ClipSound()) {
@@ -30,15 +30,18 @@ public struct ClipSound: Sendable, Equatable {
   /// Its own launch boundary (beats) and fade; nil follows the row's.
   public var quantum: Int?
   public var fade: LoopFade?
+  /// Whose tempo it follows; nil follows the row's.
+  public var follow: LoopFollow?
   public init(
     muted: Bool = false, soloed: Bool = false, keyLock: Bool? = nil, quantum: Int? = nil,
-    fade: LoopFade? = nil
+    fade: LoopFade? = nil, follow: LoopFollow? = nil
   ) {
     self.muted = muted
     self.soloed = soloed
     self.keyLock = keyLock
     self.quantum = quantum
     self.fade = fade
+    self.follow = follow
   }
 }
 
@@ -132,8 +135,8 @@ extension DJEngine {
   }
 
   /// Put a removed clip back on the row: at `at`, or where it was (clamped to the row's end).
-  /// Its level carries on as it was, and so do its mute, solo, key lock, launch boundary and fade. Returns false if it
-  /// is not a removed clip.
+  /// Its level carries on as it was, and so do its mute, solo, key lock, launch boundary, fade
+  /// and tempo follow. Returns false if it is not a removed clip.
   @discardableResult
   public func restoreClip(_ id: String, at: Int? = nil) -> Bool {
     guard let k = removedClips.firstIndex(where: { $0.clip.id == id }) else { return false }
@@ -146,6 +149,7 @@ extension DJEngine {
     if let k = r.sound.keyLock { clipKeyLocks[id] = k }
     if let q = r.sound.quantum { clipQuanta[id] = q }
     if let f = r.sound.fade { clipFades[id] = f }
+    if let f = r.sound.follow { clipFollows[id] = f }
     if r.sound.soloed {
       clipSolos.insert(id)
       pushClipLevels()  // the others go quiet again

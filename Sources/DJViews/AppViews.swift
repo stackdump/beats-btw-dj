@@ -487,13 +487,13 @@ public final class AppModel {
         chaseBoards[name] = board
         chaseClock[name] = now
         state.macroPulse = board.state
-        state.masterRunning = Set(d.wave.activeMasterMacros)
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
         state.bars = d.sections.map(\.steps).reduce(0, +) / 16
         state.bar = d.wave.tick / 16 + 1
       }
+      state.masterRunning = Set(d.activeMasterMacros)  // a sample deck's bus too
       state.clipID = d.clipID
       state.disabledRoles = d.disabledRoles
       state.autoAdvance = d.autoAdvance
