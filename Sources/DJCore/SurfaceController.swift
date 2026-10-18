@@ -425,8 +425,7 @@ public final class SurfaceController {
         let tempo = [NetMacro.halfTime, .tapeStop, .tempoAnchor].contains(m)
         return (tempo ? Color.yellow : Color.red, d.wave.activeMacros.contains(m))
       }
-      // the master macros, in either mode: a sample deck plays them on its own bus (not the
-      // brake, yet)
+      // the master macros, in either mode: a sample deck plays them on its own bus
       if let m = Self.playableMaster(id, d) { return (Self.color(m), d.isMasterActive(m)) }
       return (d.mode == .net ? Color.white : Color.off, false)  // a hit (stinger); dark on a sample
     }
@@ -458,12 +457,9 @@ public final class SurfaceController {
 
   static func key(_ group: String, _ index: Int) -> String { "\(group)#\(index)" }
 
-  /// The master macro `id` names, if `d` can play it: a net deck all of them, a sample deck all
-  /// but the vinyl brake (its bus has none yet).
-  static func playableMaster(_ id: String, _ d: Deck) -> MasterMacro? {
-    guard let m = MasterMacro(id: id), d.mode == .net || m != .vinylBrake else { return nil }
-    return m
-  }
+  /// The master macro `id` names, if `d` can play it: every one, in either mode (a sample deck
+  /// runs the chain and the vinyl brake on its own bus).
+  static func playableMaster(_ id: String, _ d: Deck) -> MasterMacro? { MasterMacro(id: id) }
 
   /// beats' APC colour for a master macro's group.
   static func color(_ m: MasterMacro) -> UInt8 {

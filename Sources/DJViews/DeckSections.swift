@@ -717,12 +717,12 @@ struct MasterFxPanel: View {
   let running: Set<MasterMacro>
   let model: AppModel
   let tint: Color
-  /// A sample deck's bus has no vinyl brake yet (a no-op there), so its button is left out.
+  /// Either mode offers every master macro (a sample deck's bus brakes too).
   var isNet = true
 
   /// The macros the panel offers in `group`.
   static func macros(_ group: String, isNet: Bool) -> [MasterMacro] {
-    MasterMacro.allCases.filter { $0.group == group && (isNet || $0 != .vinylBrake) }
+    MasterMacro.allCases.filter { $0.group == group }
   }
 
   var body: some View {

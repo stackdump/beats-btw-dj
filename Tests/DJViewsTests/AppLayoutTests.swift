@@ -119,13 +119,14 @@ struct AppLayoutTests {
 
   /// A sample deck runs the master chain on its own bus, so its section strip has Master FX
   /// (not Wander, which composes nets), and the panel's sweep-lp reaches the deck. Its panel
-  /// leaves out the vinyl brake (no brake on a sample deck's bus yet).
+  /// offers the vinyl brake too (the bus brakes the turntable).
   @Test func aSampleDeckShowsMasterFx() async throws {
     typealias S = DeckSections.Section
     let sample = S.shown(isNet: false)
     #expect(sample.contains(.masterfx) && !sample.contains(.wander))
     #expect(S.shown(isNet: true) == S.allCases, "a net deck shows every section")
-    #expect(!MasterFxPanel.macros("Pitch", isNet: false).contains(.vinylBrake))
+    #expect(
+      MasterFxPanel.macros("Pitch", isNet: false) == MasterFxPanel.macros("Pitch", isNet: true))
     #expect(MasterFxPanel.macros("FX", isNet: false).contains(.sweepLp))
     let m = try await model()
     let b = try #require(m.engine?["B"])

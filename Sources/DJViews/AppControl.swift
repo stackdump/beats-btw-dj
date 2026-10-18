@@ -61,12 +61,12 @@ extension AppModel {
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
           "setPalette", "setRoleVoice", "mixOut", "mixIn", "stemMute",
         ]
-        // the loop channel and the sample decks take the master macros and panic (their master
-        // FX bus; a sample deck's has no vinyl brake yet)
+        // the loop channel and the sample decks take the master macros (the vinyl brake too)
+        // and panic: their master FX bus
         let masterBus: Bool = {
           if case .panic = action { return true }
-          guard case .macro(_, let id) = action, let m = MasterMacro(id: id) else { return false }
-          return deck == "L" || m != .vinylBrake
+          guard case .macro(_, let id) = action else { return false }
+          return MasterMacro(id: id) != nil
         }()
         if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net, !masterBus {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
