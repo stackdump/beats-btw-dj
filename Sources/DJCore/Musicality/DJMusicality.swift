@@ -192,11 +192,62 @@ public enum DJMusicality {
     /// snares and kicks; hats thinned or moved an eighth).
     public static let variety = Fixes(rawValue: 1 << 32)
 
+    // Phase 6 (ROADMAP 6.2–6.6): registered with fixed bits ahead of their passes, so each flag's
+    // task owns its own file. In `all` from the start; each is a no-op until its task builds it.
+    // Pass flags call a stub in `apply` (named in its comment); the rest are applied by the runner.
+
+    /// The pad cycle's last bar resolves into its first (`HarmonicCadence.swift`,
+    /// p63-harmonic-cadence).
+    public static let harmonicCadence = Fixes(rawValue: 1 << 33)
+    /// Per-section harmony: the bridge melody normalised (`SectionMelody.swift`) and the runner
+    /// transposing the section (p63-section-transpose-runner).
+    public static let sectionHarmony = Fixes(rawValue: 1 << 34)
+    /// Two bars per chord in intros / breakdowns, a pickup into the drop. Runner
+    /// (p63-harmonic-rhythm).
+    public static let harmonicRhythm = Fixes(rawValue: 1 << 35)
+    /// 8-bar question and answer on melody slot pairs (`Answer.swift`, p64-answer).
+    public static let answer = Fixes(rawValue: 1 << 36)
+    /// One seeded chord-tone hook in every melodic section (`Hook.swift`, p64-hook).
+    public static let hook = Fixes(rawValue: 1 << 37)
+    /// Contour by corpus, leap recovery, a peak at two-thirds (`MelodyShape.swift`, p64-shape).
+    public static let shape = Fixes(rawValue: 1 << 38)
+    /// Bass bar 2 echoes bar 1's rhythm (`BassMotif.swift`, p64-bass-motif).
+    public static let bassMotif = Fixes(rawValue: 1 << 39)
+    /// Per-genre arp figures. Runner (p64-arp-style).
+    public static let arpStyle = Fixes(rawValue: 1 << 40)
+    /// The arp rate follows the phrase's density. Runner (p64-arp-density).
+    public static let arpDensity = Fixes(rawValue: 1 << 41)
+    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`, p65-chill-backbeat).
+    public static let backbeat = Fixes(rawValue: 1 << 42)
+    /// The family's groove template and a tempo-scaled swing. Runner (p65-feel-runner).
+    public static let feel = Fixes(rawValue: 1 << 43)
+    /// Humanize as seeded 1/f noise keyed by (seed, net, tick). Runner (p65-pink-humanize).
+    public static let drift = Fixes(rawValue: 1 << 44)
+    /// Voices' filter envelopes open through a buildup. Runner (p65-buildup-sweep).
+    public static let sweep = Fixes(rawValue: 1 << 45)
+    /// At most N melodic parts per section (runner rests, p62-layer-budget).
+    public static let layerBudget = Fixes(rawValue: 1 << 46)
+    /// Song-family band stop before a chorus. Runner (p62-band-stop).
+    public static let bandStop = Fixes(rawValue: 1 << 47)
+    /// Kick out for the last bar of a buildup. Runner (p62-kick-out).
+    public static let kickOut = Fixes(rawValue: 1 << 48)
+    /// A noise riser into drops. Runner (p62-riser).
+    public static let riser = Fixes(rawValue: 1 << 49)
+    /// A sub-octave sine under dnb / dubstep / trap basses. Runner (p66-sub-octave).
+    public static let subOctave = Fixes(rawValue: 1 << 50)
+    /// HF tilt at the offending voices. Runner (p66-hf-tilt).
+    public static let hfTilt = Fixes(rawValue: 1 << 51)
+    /// Pad shimmer and room level from 6.1's references. Runner (p66-room-shimmer).
+    public static let shimmer = Fixes(rawValue: 1 << 52)
+
     public static let all: Fixes = [
       .key, .timing, .register, .dynamics, .loudness, .groove, .offbeatBass, .phrases, .fills,
       .voicing, .energy, .duck, .contour, .color, .arpeggio, .buildup, .crash, .bassLine,
       .openHats, .stereo, .legato, .cadence, .approach, .dropGap, .choke, .space, .subtractive,
-      .unison, .echo, .kickTune, .motif, .balance, .variety,
+      .unison, .echo, .kickTune, .motif, .balance, .variety, .harmonicCadence, .sectionHarmony,
+      .harmonicRhythm, .answer, .hook, .shape, .bassMotif, .arpStyle, .arpDensity, .backbeat,
+      .feel, .drift, .sweep, .layerBudget, .bandStop, .kickOut, .riser, .subOctave, .hfTilt,
+      .shimmer,
     ]
 
     /// Each fix by the name `djctl render --fixes` takes.
@@ -209,7 +260,12 @@ public enum DJMusicality {
       "cadence": .cadence, "approach": .approach, "dropGap": .dropGap, "choke": .choke,
       "space": .space, "subtractive": .subtractive, "unison": .unison, "echo": .echo,
       "kickTune": .kickTune, "motif": .motif, "balance": .balance,
-      "variety": .variety, "none": [],
+      "variety": .variety, "harmonicCadence": .harmonicCadence, "sectionHarmony": .sectionHarmony,
+      "harmonicRhythm": .harmonicRhythm, "answer": .answer, "hook": .hook, "shape": .shape,
+      "bassMotif": .bassMotif, "arpStyle": .arpStyle, "arpDensity": .arpDensity,
+      "backbeat": .backbeat, "feel": .feel, "drift": .drift, "sweep": .sweep,
+      "layerBudget": .layerBudget, "bandStop": .bandStop, "kickOut": .kickOut, "riser": .riser,
+      "subOctave": .subOctave, "hfTilt": .hfTilt, "shimmer": .shimmer, "none": [],
     ]
   }
 
@@ -220,7 +276,10 @@ public enum DJMusicality {
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
+    if fixes.contains(.backbeat) { playBackbeat(&p, genre: genre, spec: spec) }
+    if fixes.contains(.sectionHarmony) { normaliseSectionMelody(&p, genre: genre, spec: spec) }
     if fixes.contains(.variety) { varyHarmony(&p, genre: genre, spec: spec) }
+    if fixes.contains(.harmonicCadence) { resolvePadCycle(&p, genre: genre, spec: spec) }
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.bassLine) { leadBass(&p) }
     if fixes.contains(.variety) { varyFigures(&p, genre: genre, spec: spec) }
@@ -229,8 +288,12 @@ public enum DJMusicality {
     if fixes.contains(.arpeggio) { arpeggiate(&p, seed: spec.seed) }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
+    if fixes.contains(.shape) { shapeMelody(&p, genre: genre, spec: spec) }
     if fixes.contains(.cadence) { resolvePhraseEnds(&p) }
+    if fixes.contains(.hook) { placeHook(&p, genre: genre, spec: spec) }
     if fixes.contains(.motif) { stateIdeasTwice(&p) }
+    if fixes.contains(.answer) { answerPhrases(&p, genre: genre, spec: spec) }
+    if fixes.contains(.bassMotif) { restateBassRhythm(&p, genre: genre, spec: spec) }
     if fixes.contains(.approach) { approachChordChanges(&p, genre: genre) }
     if fixes.contains(.legato) { holdMelodyNotes(&p) }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
