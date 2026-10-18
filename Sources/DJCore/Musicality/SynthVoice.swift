@@ -33,12 +33,16 @@ public struct FilterEnvelope: Sendable, Equatable {
   /// The envelope for a tonal synth voice of part `group`, or nil for voices it leaves as they
   /// are: anything that is not a wavetable saw or square (pads are the soft table, bells and
   /// subs have no harmonics to shape, the Karplus-Strong strings and instruments with their own
-  /// post lowpass are designed already).
-  public static func forVoice(_ v: VoiceSpec, group: String) -> FilterEnvelope? {
+  /// post lowpass are designed already). Parts in `plucked` (`VoiceDesign.pluckGroups`, by
+  /// genre) take `.pluck` whatever their voice.
+  public static func forVoice(
+    _ v: VoiceSpec, group: String, plucked: Set<String> = []
+  ) -> FilterEnvelope? {
     guard v.engine == "table", v.wave == "saw" || v.wave == "square", v.lowpass == 0 else {
       return nil
     }
     if group == "bass" { return .bass }
+    if plucked.contains(group) { return .pluck }
     // tonalVoice's pluck / stab / piano / guitar family: decayScale 0.35
     if v.decayScale < 0.4 { return .pluck }
     return .lead
@@ -68,6 +72,42 @@ public enum Unison {
   /// The pair's difference is highpassed here (second order): what is wide is above the low
   /// mids, so the mix's low end stays mono.
   public static let sideHz = 300.0
+}
+
+/// Per-genre settings for the runner's sound design (`WaveOptions.voiceDesign`, set by
+/// `WaveOptions.forGenre` for the fixes it holds). The default is what every genre played
+/// before p66: no part plucked, pads at full width with their side highpassed at
+/// `Unison.sideHz`.
+public struct VoiceDesign: Sendable, Equatable {
+  /// Parts whose saw / square voices take the `.pluck` filter envelope under `.subtractive`
+  /// (wide open on the strike, closed in 0.12 s) instead of `.lead`'s 0.35 s open.
+  public var pluckGroups: Set<String> = []
+  /// Scales the pad's (`harmony`) stereo spread under `.stereo` (`stereoPlacement`'s 0.5) and its
+  /// unison pair's width (`Unison.width`); 1 = as placed.
+  public var padWidth = 1.0
+  /// Where the pad's unison pair's difference is highpassed (`Unison.sideHz` by default).
+  public var padSideHz = Unison.sideHz
+
+  public init(
+    pluckGroups: Set<String> = [], padWidth: Double = 1, padSideHz: Double = Unison.sideHz
+  ) {
+    self.pluckGroups = pluckGroups
+    self.padWidth = padWidth
+    self.padSideHz = padSideHz
+  }
+
+  /// The arp in trance, edm and synthwave is a pluck: those styles' arps are short, bright
+  /// filter stabs, not a held lead. Ambient's pads are narrower and their side starts higher:
+  /// its pads sit low and long, so at full width their side reached under 150 Hz (the p66
+  /// target: `AudioMetrics.lowSideDB` from −26 dB to −35 dB or lower, with `sideDB` still −20 dB
+  /// or wider, `StereoTests.ambientPadsKeepTheirLowsMono`; numbers to be measured there).
+  public static func forGenre(_ name: String) -> VoiceDesign {
+    switch name {
+    case "trance", "edm", "synthwave": return VoiceDesign(pluckGroups: ["arp"])
+    case "ambient": return VoiceDesign(padWidth: 0.6, padSideHz: 600)
+    default: return VoiceDesign()
+    }
+  }
 }
 
 /// `DJMusicality.Fixes.kickTune`: the kick's body in the track's key. beats' kick sweeps down to
