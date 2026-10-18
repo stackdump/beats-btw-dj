@@ -23,6 +23,8 @@ import SwiftUI
 //   +---------------------------------------------------------------------------------------+
 //   empty-state message           OUTSIDE the container (upright while the diagram turns); only
 //                                 with no panels and no solo visualizer (StageEmptyLayer)
+//   wander walk                   OUTSIDE the container (upright); only with the ∿ button on and
+//                                 no solo visualizer (StageWanderLayer)
 //   solo visualizers              OUTSIDE the container; the container is not drawn while one
 //                                 is showing (`viz-solo`: grid opacity 0, flame display none)
 //   card flash                    OUTSIDE the container
@@ -62,6 +64,9 @@ struct StageLayerStack: View {
       }
 
       if !context.isSolo { StageEmptyLayer(context: context) }
+      if StageWanderPainter.shows(context) {
+        StageWanderLayer(context: context, model: models.wander)
+      }
 
       StageSoloLayer(context: context, model: models.solo)
       StageCardLayer(context: context, model: models.card)
