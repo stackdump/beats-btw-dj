@@ -189,7 +189,9 @@ its copy; the two are now independent. Rules inherited from that split:
   bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
   wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
   `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
-  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
+  `wave.*`. A sample deck shows the Master FX section and lights the master-macro pads
+  (`SurfaceController.playableMaster`). The vinyl brake is still a no-op on sample decks (no
+  button, dark pad, refused over the socket). Sessions that fired a master macro
   on a sample deck before this (then a no-op) now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:

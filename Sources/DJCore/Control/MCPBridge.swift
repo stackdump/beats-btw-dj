@@ -223,7 +223,8 @@ public struct MCPBridge {
       the bar line after. Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
-      Net-only ops (section, role, macro, stinger, panic, mixOut, mixIn) need a deck in net mode. Use \
+      Net-only ops (section, role, net macros, stinger, mixOut, mixIn) need a deck in net mode; \
+      master-chain macros and panic also work on a sample deck (dj_state's macrosRunning). Use \
       dj_generate, not op load, to put a new track on a deck.
       """,
       ["action": prop("object", "The action, e.g. {\"op\":\"play\",\"deck\":\"A\",\"on\":true}")],

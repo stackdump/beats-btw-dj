@@ -838,6 +838,11 @@ extension AppModel {
     o["hotCues"] = .array(s.cues.sorted().map { .int($0) })
     // the deck's walk: on, pace, the countdown, paused (steering), locks, the newest moves
     o["wander"] = d.wanderJSON(lockedActions: engine?.lockedActions ?? [])
+    // a sample deck's master chain runs the master macros too (its own bus)
+    if !s.isNet {
+      o["macrosRunning"] = .array(
+        MasterMacro.allCases.filter { s.masterRunning.contains($0) }.map { .string($0.id) })
+    }
     if s.isNet {
       o["sections"] = .array(
         s.sections.enumerated().map { i, sec in
