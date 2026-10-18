@@ -484,8 +484,11 @@ its copy; the two are now independent. Rules inherited from that split:
   crossfade through dry over 10 ms. Measured allocation-free (`LoopFxRealTimeTests`).
 - Persistence: library.json entries (`fx`, only when set), removed/, the journal checkpoint's
   clips (the run's FX win over the library's on restore). A crop keeps its clip's FX; a new
-  sequence starts off (its steps' audio is dry), an edited one keeps its own; a clip on deck A/B
-  plays dry; scenes don't recall FX. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
+  sequence starts off (its steps' audio is dry), an edited one keeps its own; scenes don't recall
+  FX. A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
+  `LoopFxVoice` + limiter (made at init, fed by `DeckFxCommand` through an SPSC ring, run in sample
+  mode only while the chain is in the path, so a dry deck is the turntable's bytes); `loadClip`
+  sends the clip's FX, `setClipFx` forwards to a deck playing it, any other load drops them. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
   Crunch, Fuzz, Crush, Loud), Settings… ▸ FX, the tile's FX popover; an FX badge when active.
 
 ## Control socket and MCP
