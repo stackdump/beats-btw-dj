@@ -371,10 +371,11 @@ extension AppModel {
     defaults.set(c, forKey: Self.soundboardCrateKey)
   }
 
-  /// The Crate page's pads: the chosen crate's favorites, in the order starred.
+  /// The Crate page's pads: the chosen crate's favorites, in the order starred (first starred
+  /// first; the store keeps newest on top), so a pad keeps its place as favorites are added.
   var cratePads: [CratePad] {
     guard let crate = crateBoardCrate else { return [] }
-    return favorites.tagged(crate).map { CratePad($0, crate: crate, decks: decks) }
+    return favorites.tagged(crate).reversed().map { CratePad($0, crate: crate, decks: decks) }
   }
 
   /// The deck a Crate pad loads onto: the focus deck, or (⌥) the other one.
