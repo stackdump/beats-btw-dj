@@ -531,6 +531,20 @@ its copy; the two are now independent. Rules inherited from that split:
 - Only one app should hold the port if behaviour looks odd — quit Chrome's
   lab tab before blaming the CLI, and vice versa.
 
+## Test MCP (tools/testmcp)
+
+- `dj-vevr-se-test` (package `djtest_mcp`, mcp>=2.0 `MCPServer`, shaped like `~/Workspace/mcp/workbit_mcp`):
+  offline tools for a Claude session — `djtest_build` (release djctl + its bundle copied to
+  `build/testmcp/`, which the rest run), `djtest_render` (`djctl render` → WAV under
+  `build/testmcp/renders/<ts>/`, returns MusicalityReport + AudioMetrics, lufs / peakDB lifted),
+  `djtest_matrix` (musicality-matrix.py → summary rows), `djtest_replay` (`journal replay
+  --json --render`; `twice` compares state + sha256 — round-robin samplers may differ on
+  purpose), `djtest_journal_list`. Never the speakers, the app or its socket.
+- Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s
+  FakeRunner, so `make testmcp-test` (unittest) never builds Swift or renders.
+- `make testmcp-install` only prints the `claude mcp add --scope user dj-vevr-se-test …`
+  command; it never registers anything. The user runs it.
+
 ## Commits
 
 Signed with GPG key `624DDC38A40EF01D` (`commit.gpgsign=true` on this box).
