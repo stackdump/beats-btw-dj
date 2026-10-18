@@ -34,7 +34,10 @@ public struct BeatTracker: Sendable {
   /// How late the flux peak's frame centre reads an onset, seconds (measured on a click track).
   public static let onsetLatency = 0.016
   /// The double tempo wins when its autocorrelation is at least this share of the pick's.
-  public static let doubleRatio = 0.75
+  /// Measured on a dnb render (seed 4242, 174 BPM): ac at one beat is 0.70 of ac at two (its
+  /// kick and snare pattern spans two beats), so 0.75 read it at 87; click tracks at 72 and 95
+  /// BPM have ~0 between their beats, so they stay where they are.
+  public static let doubleRatio = 0.65
 
   /// Tempo, BPM (refined from the beats).
   public var bpm = 0.0
