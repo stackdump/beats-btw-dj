@@ -32,7 +32,7 @@ struct SoundboardView: View {
       switch model.soundboardPage {
       case .row: rowPage(pads)
       case .stock: StockBoardView(model: model)
-      case .crate: CrateBoardPlaceholder()
+      case .crate: CrateBoardView(model: model)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -309,12 +309,112 @@ struct StockPadView: View {
   }
 }
 
-/// The Crate page, until a crate's favorites are pads.
-struct CrateBoardPlaceholder: View {
+/// The Crate page: a crate's favorites as pads, with a strip choosing the crate (remembered). A
+/// click loads the favorite on the focus deck, ⌥-click on the other one (`loadFavorite`, so it is
+/// performed and recorded as the Favorites panel's load); a pad is lit while a deck plays it.
+/// Arrows move the focus, Return / Space press the focused pad.
+struct CrateBoardView: View {
+  let model: AppModel
+  @State private var focus: String?
+  @State private var gridWidth: CGFloat = 0
+
   var body: some View {
-    Text("A crate's favorites as pads: not here yet. Use a deck's Favorites panel meanwhile.")
-      .font(.callout).foregroundStyle(.secondary)
-      .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+    let crates = model.crates
+    let crate = model.crateBoardCrate
+    let pads = model.cratePads
+    VStack(alignment: .leading, spacing: DJStyle.s) {
+      if !crates.isEmpty {
+        FlowRow(spacing: DJStyle.xs) {
+          ForEach(crates, id: \.self) { c in
+            ChoiceButton(label: c, selected: crate == c, tint: tint) {
+              model.setSoundboardCrate(c)
+            }
+          }
+        }
+        .arrowKeys(crates, current: crate) { model.setSoundboardCrate($0) }
+      }
+      if pads.isEmpty {
+        Text(
+          crates.isEmpty
+            ? "No crates yet: make one in a deck's Load panel and drag loops onto it."
+            : "Empty: drag stock loops onto the crate's chip in a deck's Load panel."
+        )
+        .font(.callout).foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+      } else {
+        SoundboardGrid {
+          ForEach(pads) { pad in
+            CratePadView(pad: pad, focused: focus == pad.id)
+              .onTapGesture {
+                focus = pad.id
+                model.cratePadPress(pad.id, other: NSEvent.modifierFlags.contains(.option))
+              }
+              .onHover { if $0 { focus = pad.id } }
+              .help(
+                "\(pad.title): click to load it on deck \(model.crateBoardDeck()) · ⌥-click "
+                  + "on deck \(model.crateBoardDeck(other: true))")
+          }
+        }
+        .onGeometryChange(for: CGFloat.self) {
+          $0.size.width
+        } action: {
+          gridWidth = $0
+        }
+        .arrowKeys(
+          pads.map(\.id), columns: SoundboardLayout.columns(count: pads.count, width: gridWidth),
+          current: focus, select: { focus = $0 },
+          activate: { if let f = focus { model.cratePadPress(f) } })
+      }
+    }
+  }
+
+  private var tint: Color { .yellow }
+}
+
+/// A Crate page pad: the favorite's title, what it is, and the decks holding it; lit while one
+/// plays it.
+struct CratePadView: View {
+  let pad: CratePad
+  var focused = false
+
+  var body: some View {
+    let tint = pad.playingOn.first.map { deckTint($0) } ?? Color.yellow
+    ZStack(alignment: .topLeading) {
+      RoundedRectangle(cornerRadius: 10).fill(tint.opacity(pad.sounding ? 0.62 : 0.1))
+        .overlay(
+          RoundedRectangle(cornerRadius: 10).strokeBorder(
+            focused ? Color.white : tint.opacity(pad.onDecks.isEmpty ? 0.35 : 0.9),
+            lineWidth: focused ? 2 : 1))
+      VStack(alignment: .leading, spacing: DJStyle.xs) {
+        HStack(alignment: .top, spacing: DJStyle.xs) {
+          Text(pad.title).font(.headline).lineLimit(2)
+            .foregroundStyle(pad.sounding ? Color.white : Color.primary)
+          Spacer(minLength: 0)
+          Image(systemName: pad.isSample ? "waveform" : "point.3.connected.trianglepath.dotted")
+            .font(.caption)
+        }
+        Spacer(minLength: 0)
+        Text(pad.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+        HStack(spacing: DJStyle.xs) {
+          Spacer(minLength: 0)
+          ForEach(pad.onDecks, id: \.self) { d in
+            Text("on \(d)").font(.caption2.bold()).padding(.horizontal, 3)
+              .foregroundStyle(Color.black)
+              .background(RoundedRectangle(cornerRadius: 3).fill(deckTint(d)))
+          }
+          Text(stateLabel).font(.caption2.bold())
+        }
+      }
+      .padding(DJStyle.s)
+    }
+    .contentShape(RoundedRectangle(cornerRadius: 10))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(pad.title), \(pad.detail), \(stateLabel)")
+    .accessibilityAddTraits(.isButton)
+  }
+
+  private var stateLabel: String {
+    pad.sounding ? "PLAYING" : pad.onDecks.isEmpty ? "LOAD" : "LOADED"
   }
 }
 
