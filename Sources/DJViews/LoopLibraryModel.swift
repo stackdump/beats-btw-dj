@@ -210,9 +210,17 @@ extension AppModel {
     panel.nameFieldStringValue = c.fileName
     panel.title = "Export loop"
     guard panel.runModal() == .OK, let url = panel.url else { return }
-    do { try c.wavData().write(to: url, options: .atomic) } catch {
+    do { try writeClipWAV(id, to: url) } catch {
       status = "export: \(error)"
     }
+  }
+
+  /// Write a loop's audio to `url` as a WAV (the export, without the panel: `dj_loops export`).
+  @discardableResult
+  func writeClipWAV(_ id: String, to url: URL) throws -> LoopClip {
+    guard let c = engine?.clip(id) else { throw CocoaError(.fileNoSuchFile) }
+    try c.wavData().write(to: url, options: .atomic)
+    return c
   }
 }
 

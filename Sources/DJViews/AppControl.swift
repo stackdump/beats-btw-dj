@@ -404,6 +404,9 @@ extension AppModel {
     case "variations":
       return try await controlVariations(p)
 
+    case "loops":
+      return try await controlLoops(p)
+
     default:
       throw ControlRequestError.bad("unknown method \(method)")
     }

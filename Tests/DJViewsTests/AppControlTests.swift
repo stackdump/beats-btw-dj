@@ -55,6 +55,61 @@ struct AppControlTests {
     #expect(after["favorites"]?.array?.isEmpty == true)
   }
 
+  /// dj_loops: the row's Undo, "Load source", Export (no panel) and "Stop all".
+  @Test func loopsUndoExportAndStopAll() async throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let (m, dj) = try LoopLibraryViewTests().model(takes: 2, library: lib)
+    defer { dj.stop() }
+    let ids = m.clips.map(\.id)
+    func clipIDs(_ loops: JSONValue) -> [String]? {
+      loops["clips"]?.array?.compactMap { $0["id"]?.string }
+    }
+    #expect(clipIDs(try await call(m, "loops")) == ids, "list is dj_state.loops")
+    // undo: only right after a removal
+    await #expect { try await call(m, "loops", #"{"action":"undo"}"#) } throws: {
+      "\($0)".contains("nothing to undo")
+    }
+    _ = try await call(m, "perform", "{\"action\":{\"op\":\"clipRemove\",\"id\":\"\(ids[0])\"}}")
+    #expect(m.clips.map(\.id) == [ids[1]])
+    #expect(clipIDs(try await call(m, "loops", #"{"action":"undo"}"#)) == ids, "back where it was")
+    #expect(m.lastRemoval == nil)
+    // load source: the demo loop the takes came from, onto deck B
+    let b = try await call(
+      m, "loops", "{\"action\":\"loadSource\",\"id\":\"\(ids[0])\",\"deck\":\"B\"}")
+    #expect(b["title"]?.string == "demo loop")
+    await #expect {
+      try await call(m, "loops", #"{"action":"loadSource","id":"nope","deck":"B"}"#)
+    } throws: { "\($0)".contains("a clip on the row") }
+    // export: written without a panel, and it decodes to the clip's frames
+    let path = tempWAVPath()
+    defer { removeFile(path) }
+    let out = try await call(
+      m, "loops", "{\"action\":\"export\",\"id\":\"\(ids[0])\",\"path\":\"\(path)\"}")
+    let clip = try #require(dj.clip(ids[0]))
+    #expect(out["path"]?.string == path)
+    #expect(out["frames"]?.double == Double(clip.buffer.length))
+    #expect(try decodedWAVFrames(path, sampleRate: clip.buffer.sampleRate) == clip.buffer.length)
+    await #expect {
+      try await call(m, "loops", "{\"action\":\"export\",\"id\":\"\(ids[0])\",\"path\":\"x.wav\"}")
+    } throws: { "\($0)".contains("absolute") }
+    // stop all: a clipLoop off for each looping clip, recorded
+    for id in ids {
+      _ = try await call(
+        m, "perform", "{\"action\":{\"op\":\"clipLoop\",\"id\":\"\(id)\",\"on\":true}}")
+    }
+    #expect(Set(dj.loopingClips) == Set(ids))
+    let rec = try SessionRecorder.start(on: dj)
+    let stopped = try await call(m, "loops", #"{"action":"stopAll"}"#)
+    #expect(Set(stopped["stopped"]?.array?.compactMap(\.string) ?? []) == Set(ids))
+    #expect(rec.finish().events.count == ids.count, "one clipLoop off per clip")
+    #expect(dj.loopingClips.isEmpty)
+    #expect(clipIDs(stopped["loops"] ?? .null) == ids)
+    await #expect { try await call(m, "loops", #"{"action":"shuffle"}"#) } throws: {
+      "\($0)".contains("stopAll")
+    }
+  }
+
   @Test func copyADeckThenChangeAnInstrumentOnTheCopy() async throws {
     let m = try favoritesModel()
     _ = try await call(
