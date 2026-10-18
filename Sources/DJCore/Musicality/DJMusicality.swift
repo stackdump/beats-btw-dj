@@ -991,6 +991,41 @@ public enum DJMusicality {
     MixTargets.shared.placement(kind: kind, group: group)
   }
 
+  /// How wide a sampled instrument plays (`.stereo`, ROADMAP 6.6): its slot's side signal
+  /// scaled by `width` (0 = mono, 1 = as the samples have it), after a side highpass at
+  /// `sideHz` when it has one. EXS and SoundFont patches come with whatever image their maker
+  /// gave them; this sets it by what the instrument is. Applied per slot in the runner,
+  /// before the sampler bus's own 150 Hz side highpass.
+  public struct SampledWidth: Equatable, Sendable {
+    public var width: Double
+    public var sideHz: Double?
+    public static let asLoaded = SampledWidth(width: 1, sideHz: nil)
+  }
+
+  /// The highpass on a widened slot's side signal (the keys' and pads' low end stays mono).
+  public static let sampledSideHz = 300.0
+
+  /// Where `sampledWidth`'s numbers come from.
+  public static let sampledWidthSource =
+    "rule-of-thumb (6.6): mixing practice for sampled parts — bass mono, keys and pads wider "
+    + "than recorded with the side highpassed at 300 Hz, guitars a little narrower, leads "
+    + "narrower still so the melody holds the centre; not yet measured against references"
+
+  /// A sampled slot's width by its `VoiceCatalog` category (`bass.*` 0, `keys.*` and `pad`
+  /// 1.2 over 300 Hz, `guitar.*` 0.8, `synth.lead` 0.6, the rest as loaded), the bass part mono
+  /// whatever it plays. `category` nil (no catalog name) goes by `group` alone.
+  public static func sampledWidth(category: String?, group: String) -> SampledWidth {
+    if group == "bass" { return SampledWidth(width: 0, sideHz: nil) }
+    guard let c = category else { return .asLoaded }
+    if c.hasPrefix("bass.") { return SampledWidth(width: 0, sideHz: nil) }
+    if c.hasPrefix("keys.") || c == "pad" {
+      return SampledWidth(width: 1.2, sideHz: sampledSideHz)
+    }
+    if c.hasPrefix("guitar.") { return SampledWidth(width: 0.8, sideHz: nil) }
+    if c == "synth.lead" { return SampledWidth(width: 0.6, sideHz: nil) }
+    return .asLoaded
+  }
+
   // MARK: ducking
 
   /// How far bass and pad dip on a kick (`.duck`): half (−6 dB) under a four-on-the-floor kick

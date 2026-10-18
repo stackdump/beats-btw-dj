@@ -15,12 +15,26 @@ private let sr = 48_000.0
 struct SampledBalanceRealTimeTests {
   @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
   func slotGainsDoNotAllocate() throws {
+    try measure { p in
+      try #require(p.gainSlots != 0, "a sampled slot with a gain to measure")
+    }
+  }
+
+  /// `.stereo`'s per-slot widths and side highpasses (`WaveProject.slotWidth`) on the same path.
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func slotWidthsDoNotAllocate() throws {
+    try measure { p in
+      try #require(p.widthSlots != 0, "a sampled slot with a width to measure")
+    }
+  }
+
+  private func measure(_ check: (WaveProject) throws -> Void) throws {
     let src = WaveDeckSource(sampleRate: sr)
     let spec = TrackSpec(genre: "country", seed: 7, structure: "minimal")
     let track = PreparedTrack(
       spec: spec, sampleRate: sr, opts: .extended(samplers: src.samplers, seed: spec.seed))
     let p = track.prepared
-    try #require(p.gainSlots != 0, "a sampled slot with a gain to measure")
+    try check(p)
     src.load(p)
     src.setTempo(480)
     src.play()
