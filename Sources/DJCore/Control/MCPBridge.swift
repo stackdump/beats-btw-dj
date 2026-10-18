@@ -22,7 +22,7 @@ public struct MCPBridge {
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
     "dj_notes": "notes", "dj_journal": "journal", "dj_palettes": "palettes",
-    "dj_view": "view",
+    "dj_view": "view", "dj_variations": "variations",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -313,14 +313,27 @@ public struct MCPBridge {
       (nets) or kind sample + file, and tags; add {deck} stars what a deck plays: its net \
       (instrument changes included) or a sample loaded from a file (Apple Loop or audio file); \
       remove {cid | deck}; load {deck, cid} puts one on a deck (does not start playback); \
-      tags {cid | deck, tags} replaces a favorite's tags. A net's cid is its share CID, a \
-      sample's "file:" + its path.
+      tags {cid | deck, tags} replaces a favorite's tags. Crates (the Load panel's own lists; \
+      a crate is a tag, so its loops stay starred): crates lists them (every reply carries \
+      crates too); newCrate {crate} makes an empty one; addToCrate {crate, cid | path} puts a \
+      favorite, or a stock loop by path (starred as a sample first), in it; removeFromCrate \
+      {crate, cid} takes one out (it stays starred); deleteCrate {crate} drops the crate, not \
+      its favorites. keepMove {deck, step} toggles the star on the track a move of the deck's \
+      walk (dj_state wander.log) led to or played on: the reply's kept says which. A net's cid \
+      is its share CID, a sample's "file:" + its path.
       """,
       [
-        "action": prop("string", "list | add | remove | load | tags"),
+        "action": prop(
+          "string",
+          "list | add | remove | load | tags | crates | newCrate | addToCrate | removeFromCrate | "
+            + "deleteCrate | keepMove"),
         "tags": prop("array", "tags: the favorite's tags (they replace the old ones)"),
         "deck": prop("string", "A or B"),
         "cid": prop("string", "A favorite's cid, from list"),
+        "crate": prop(
+          "string", "A crate's name (newCrate, addToCrate, removeFromCrate, deleteCrate)"),
+        "path": prop("string", "addToCrate: a stock loop's path, from dj_stock_loops"),
+        "step": prop("number", "keepMove: the move's step, from dj_state wander.log"),
       ]),
     tool(
       "dj_stock_loops",
@@ -364,6 +377,31 @@ public struct MCPBridge {
         "instrument": prop("string", "e.g. reese, supersaw (an error lists the choices)"),
       ],
       required: ["deck", "role", "instrument"]),
+    tool(
+      "dj_variations",
+      """
+      Saved variations: named ways to play an instrument (the sound panel's chips), kept across \
+      launches by instrument name. action list (default) {instrument?}: each instrument's \
+      variations (name, params — the voiceTweak values — and useSynth); save {deck, channel, \
+      name}: keep what that net deck's channel sounds like now (its voiceTweak / voiceSynth; \
+      the same name replaces it); apply {deck, channel, name, instrument?}: play one on the \
+      channel, as voiceTweak / voiceSynth acts — an instrument other than the channel's \
+      reloads the track with it first (as dj_set_instrument); rename {instrument | deck + \
+      channel, name, to}; delete {instrument | deck + channel, name}. dj_state's voices show \
+      each channel's instrument, `variation` (the one it matches) and `variations`. Errors \
+      list the channels and variations there are.
+      """,
+      [
+        "action": prop("string", "list | save | apply | rename | delete"),
+        "deck": prop("string", "A or B (a net deck)"),
+        "channel": prop("integer", "A channel from dj_state's voices"),
+        "instrument": prop(
+          "string",
+          "list: only this one; apply: play it with this instrument (default: the "
+            + "channel's); rename / delete: whose variation"),
+        "name": prop("string", "The variation's name"),
+        "to": prop("string", "rename: the new name"),
+      ]),
     tool(
       "dj_press_pad",
       "Press a pad on the APC mini grid (the real one, or the on-screen one, which this shows). "

@@ -273,12 +273,65 @@ extension AppModel {
           throw ControlRequestError.bad("`cid` (or `deck`) of a favorite is required")
         }
         setFavoriteTags(cid, p["tags"]?.array?.compactMap(\.string) ?? [])
+      case "crates": break
+      case "newCrate":
+        newCrate(try crateName(p))
+      case "addToCrate":
+        let crate = try crateName(p)
+        if let path = p["path"]?.string {
+          await loadStockLoops()
+          guard
+            favorites.contains(where: { $0.cid == Favorite.fileCID(path) })
+              || stockLoops.contains(where: { $0.path == path })
+          else {
+            throw ControlRequestError.bad("no stock loop at that `path` (see dj_stock_loops)")
+          }
+          addToCrate(path, crate)
+        } else if let cid = p["cid"]?.string {
+          guard addFavoriteToCrate(cid, crate) else {
+            throw ControlRequestError.bad("no favorite with that `cid` (see action list)")
+          }
+        } else {
+          throw ControlRequestError.bad("`cid` (a favorite) or `path` (a stock loop) is required")
+        }
+      case "removeFromCrate":
+        let crate = try crateName(p)
+        guard let cid = p["cid"]?.string, favorites.contains(where: { $0.cid == cid }) else {
+          throw ControlRequestError.bad("`cid` of a favorite is required")
+        }
+        removeFromCrate(cid, crate)
+      case "deleteCrate":
+        let crate = try crateName(p)
+        guard crates.contains(crate) else {
+          throw ControlRequestError.bad("no crate \"\(crate)\" (crates: \(crates))")
+        }
+        deleteCrate(crate)
+      case "keepMove":
+        let deck = p["deck"]?.string ?? ""
+        let d = try requireDeck(deck)
+        guard let step = p["step"]?.int else {
+          throw ControlRequestError.bad("`step` (a move of dj_state's wander.log) is required")
+        }
+        guard let move = d.wander.log.first(where: { $0.step == step }) else {
+          let have = d.wander.log.map(\.step)
+          throw ControlRequestError.bad("deck \(deck) has no wander move \(step) (log: \(have))")
+        }
+        guard move.spec != nil else {
+          throw ControlRequestError.bad("wander move \(step) has no track to star")
+        }
+        let kept = keepWanderMove(move)
+        poll()
+        var o = favoritesReply()
+        o["kept"] = .bool(kept != nil)
+        if let kept { o["favorite"] = favoriteJSON(kept) }
+        return .object(o)
       case let other:
         throw ControlRequestError.bad(
-          "action must be list | add | remove | load | tags, not \(other)")
+          "action must be list | add | remove | load | tags | crates | newCrate | addToCrate | "
+            + "removeFromCrate | deleteCrate | keepMove, not \(other)")
       }
       poll()
-      return .object(JSONObject([("favorites", .array(favorites.map(favoriteJSON)))]))
+      return .object(favoritesReply())
 
     case "stockLoops":
       await loadStockLoops()
@@ -362,6 +415,9 @@ extension AppModel {
 
     case "journal":
       return try await controlJournal(p)
+
+    case "variations":
+      return try await controlVariations(p)
 
     default:
       throw ControlRequestError.bad("unknown method \(method)")
@@ -521,6 +577,20 @@ extension AppModel {
     return .object(o)
   }
 
+  /// The favorites method's reply: every favorite, and every crate.
+  func favoritesReply() -> JSONObject {
+    JSONObject([
+      ("favorites", .array(favorites.map(favoriteJSON))),
+      ("crates", .array(crates.map { .string($0) })),
+    ])
+  }
+
+  private func crateName(_ p: JSONValue) throws -> String {
+    let n = (p["crate"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !n.isEmpty else { throw ControlRequestError.bad("`crate` (its name) is required") }
+    return n
+  }
+
   func favoriteJSON(_ f: Favorite) -> JSONValue {
     var o = JSONObject([("title", .string(f.title)), ("cid", .string(f.cid))])
     if case .net(let spec) = f.source {
@@ -537,7 +607,7 @@ extension AppModel {
     return .object(o)
   }
 
-  private func requireDeck(_ name: String) throws -> Deck {
+  func requireDeck(_ name: String) throws -> Deck {
     guard let d = engine?[name] else {
       let have = (engine?.decks.keys.sorted() ?? []).joined(separator: ", ")
       throw ControlRequestError.bad("no deck \"\(name)\" (decks: \(have))")
