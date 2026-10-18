@@ -696,3 +696,35 @@ centre, L takes none (`DJEngine.crossfadeGain`); the −3 dB trim for L is ow-le
 The surveys are measurements, not checks: `DJ_LEVEL_SURVEY=1 swift test -c release -Xswiftc
 -enable-testing --filter LevelSurveyTests` (with the Makefile's framework flags; about three
 minutes in release, the sampled parts need the installed instruments).
+
+## 11. 6.4 metrics (2026-10-18): phrases that answer, a hook, contour
+
+Report only (`MusicalityReport`, `djctl render`'s `musicality`, matrix columns
+ans / hook / b1ct / bidea / peak / leapR); no note and no existing metric changes.
+`PhraseMetricsTests` holds each to exact values on hand-built logs.
+
+- **`answerPhrases`** (ans): 8-bar melody pairs (one net, bars 1–8, 9–16, … on the song's grid,
+  both halves playing) whose first half ends open and second ends closed — closed = the half's
+  last note is the key's tonic (`rootNote`'s pitch class). 6.4's exit wants ≥ 0.9 in song-form
+  genres.
+- **`hookRecurrence`** (hook): the hook is the first melody bar with two notes or more; of the
+  later sections with melody, the share with a bar on its rhythm (same sixteenths) and shape
+  (same up / down / level moves, or all of them turned: an inversion). Transposition is free.
+- **`barOneChordTones`** (b1ct): melody notes in bar 1 of each 4-bar phrase that are tones of
+  the bar's chord (all onsets, not only beats): where a hook is stated over the chord plan.
+- **`bassIdeaRepeats`** (bidea): 4-bar bass phrases (first bar two notes or more, second
+  playing) whose bar 2 repeats bar 1's rhythm.
+- **`melodyPeakPosition`** (peak): where each 4-bar melody phrase's highest note first sounds,
+  as a share of the phrase, averaged (the arch's target is about 0.67).
+- **`leapRecovery`** (leapR): melody leaps (a fourth or more, ≤ half a bar apart) followed
+  within half a bar by a step (1–2 semitones) the other way.
+
+### 6.4 baseline
+
+To be filled from `scripts/musicality-matrix.py OUTDIR` on `main` (12 genres × seeds 42 / 7,
+75 s, synth voices) and `PhraseMetricsTests.playedTracksReportPhraseMetrics`'s printout;
+not yet run (this change was built without renders).
+
+| genre | ans | hook | b1ct | bidea | peak | leapR |
+|---|---|---|---|---|---|---|
+| (pending) | | | | | | |
