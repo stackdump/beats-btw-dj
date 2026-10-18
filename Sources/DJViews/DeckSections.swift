@@ -115,6 +115,27 @@ struct ChoiceButton: View {
   }
 }
 
+/// The Perform panel's mix-out / mix-in (ROADMAP 6.2): each one recorded action, lit while it
+/// plays. Mix out: to the outro at the next bar, 16 bars drums-forward, then stop. Mix in: the
+/// melodic parts rest 4 bars from the next bar.
+struct MixButtons: View {
+  let name: String
+  let state: DeckState
+  let model: AppModel
+  let tint: Color
+
+  var body: some View {
+    ChoiceButton(label: "Mix out", selected: state.mixingOut, tint: tint, live: true) {
+      model.mixOut(name)
+    }
+    .help("At the next bar: the outro, \(MixOutTail.defaultBars) bars of drums and bass, then stop")
+    ChoiceButton(label: "Mix in", selected: state.mixingIn, tint: tint, live: true) {
+      model.mixIn(name)
+    }
+    .help("Drums and bass only for \(DeckAction.defaultMixInBars) bars from the next bar")
+  }
+}
+
 struct LoadPanel: View {
   let name: String
   let model: AppModel
