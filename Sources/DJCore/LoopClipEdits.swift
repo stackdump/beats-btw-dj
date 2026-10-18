@@ -85,6 +85,20 @@ extension LoopClip {
   /// The title of what the deck was playing.
   public var originTitle: String? { takeProvenance?["title"]?.string }
 
+  /// The deck's tempo as LOOP went down (after its tempo fader), if it was recorded.
+  public var originBPM: Double? { takeProvenance?["tempo"]?["bpm"]?.double }
+
+  /// The net deck's roles that were off as LOOP went down (switched off, disabled or under a
+  /// muted stem).
+  public var originRolesOff: [String] {
+    takeProvenance?["rolesOff"]?.array?.compactMap(\.string) ?? []
+  }
+
+  /// The macros (net and master) running as LOOP went down.
+  public var originMacros: [String] {
+    takeProvenance?["macros"]?.array?.compactMap(\.string) ?? []
+  }
+
   /// The clip's audio as a 32-bit float stereo WAV (what the library keeps, and an export).
   public func wavData() -> Data {
     let b = buffer
