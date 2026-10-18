@@ -101,15 +101,21 @@ extension Deck {
     return o
   }
 
-  /// `opts` for another start of the song this deck plays: it keeps the playing project's
-  /// loudness gain, energy curve, duck depth, room, echo, part trims, rest schedule, groove
-  /// template and voice design instead of measuring them again, and its mix-out tail (in song
-  /// ticks, so a jump inside or before it still stops on the same bar line) unless `opts` brings
-  /// one.
+  /// `opts` for another start of the song this deck plays: the settings of its genre, as
+  /// `PreparedTrack` prepared it (`forGenre`: the genre itself, brushes, sub-octave, HF tilt…),
+  /// then the playing project's loudness gain, energy curve, duck depth, room, echo, part trims,
+  /// rest schedule, groove template and voice design instead of measuring them again, and its
+  /// mix-out tail (in song ticks, so a jump inside or before it still stops on the same bar
+  /// line) unless `opts` brings one. (FixesUnderJumpsTests holds a jump to the song's project.)
   func sameSongOptions(_ opts: WaveOptions) -> WaveOptions {
     var o = opts
-    // the fixes the song was loaded with (a raw-`nets` share: the runner's only)
+    // the fixes the song was loaded with (a raw-`nets` share: the runner's only), before
+    // `forGenre`, which reads them
     if let f = fixes { o.musicality.formIntersection(f) }
+    // without the genre a jump lost what only `forGenre` sets (jazz's brushes, the sub-octave,
+    // the hats' HF tilt), and re-measured all-zero trims in the default family
+    let genre = currentSpec?.genre
+    if let genre { o = o.forGenre(genre) }
     if let g = wave.latest?.gain { o.trackGain = g }
     if let e = wave.latest?.energy { o.trackEnergy = e }
     if let d = wave.latest?.duckDepth { o.duckDepth = d }
@@ -121,7 +127,7 @@ extension Deck {
     if let f = wave.latest?.feel { o.feel = f }
     if let v = wave.latest?.voiceDesign { o.voiceDesign = v }
     // a palette changed on the same song brings its room and echo
-    if let genre = currentSpec?.genre { o = o.forPalette(netProject?.palette, genre: genre) }
+    if let genre { o = o.forPalette(netProject?.palette, genre: genre) }
     return o
   }
 
