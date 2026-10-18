@@ -8,13 +8,14 @@ import Foundation
 let journalUsage = """
   usage: djctl journal list [--dir D]
          djctl journal show <file> [--all] [--notes] [--from SEQ] [--to SEQ] [--dir D]
-         djctl journal replay <file> [--to SEQ | --at SECONDS] [--render out.wav] [--float32]
-                              [--loops DIR] [--write-stores DIR] [--json] [--dir D]
+         djctl journal replay <file> [--to SEQ | --at SECONDS] [--from-start] [--render out.wav]
+                              [--float32] [--loops DIR] [--write-stores DIR] [--json] [--dir D]
          djctl journal export-session <file> --from SEQ --to SEQ [--store DIR] [--loops DIR]
   """
 
 @MainActor func journalCommand() {
-  let dir = value("--dir").map { URL(fileURLWithPath: $0, isDirectory: true) }
+  let dir =
+    value("--dir").map { URL(fileURLWithPath: $0, isDirectory: true) }
     ?? Journal.defaultDirectory
   guard let sub = positional.first else {
     stderr(journalUsage)
@@ -92,6 +93,14 @@ func journalClock(_ frame: Int, base: Int, rate: Double) -> String {
   let stamp = DateFormatter()
   stamp.dateFormat = "yyyy-MM-dd HH:mm:ss"
   print("\(url.lastPathComponent)  \(c.entries.count) entries")
+  // where a replay can start: one row per checkpoint
+  let checkpoints = c.checkpointIndices.map { c.entries[$0] }
+  print("checkpoints: \(checkpoints.count)")
+  for e in checkpoints {
+    print(
+      String(format: "  seq %6d  ", e.seq) + journalClock(e.frame, base: first.frame, rate: rate)
+        + "  " + e.event.summary)
+  }
   var i = 0
   let shown = c.entries.filter { $0.seq >= from && $0.seq <= to && (!notesOnly || $0.event.isNote) }
   while i < shown.count {
@@ -115,7 +124,9 @@ func journalClock(_ frame: Int, base: Int, rate: Double) -> String {
     i = j + 1
   }
   if c.truncated { print("(the last line was cut short: the app stopped while writing it)") }
-  if !c.skipped.isEmpty { print("(skipped lines: \(c.skipped.map(String.init).joined(separator: ", ")))") }
+  if !c.skipped.isEmpty {
+    print("(skipped lines: \(c.skipped.map(String.init).joined(separator: ", ")))")
+  }
   // the notes as they stand at the end, with their places
   if let s = c.checkpoint?.stores {
     var stores = s
@@ -133,7 +144,8 @@ func journalClock(_ frame: Int, base: Int, rate: Double) -> String {
 
 /// A loop library's clips by id, decoded at `rate`: the row, then `removed/`.
 func libraryClips(_ rate: Double, dir: String?) -> (String) -> LoopClip? {
-  let lib = dir.map { LoopLibrary(dir: URL(fileURLWithPath: $0, isDirectory: true)) }
+  let lib =
+    dir.map { LoopLibrary(dir: URL(fileURLWithPath: $0, isDirectory: true)) }
     ?? LoopLibrary()
   var row: [String: LoopClip]?
   return { id in
@@ -145,6 +157,7 @@ func libraryClips(_ rate: Double, dir: String?) -> (String) -> LoopClip? {
 @MainActor func journalReplay(_ dir: URL) throws {
   let toSeq = option("--to").map { Int($0) }
   let at = option("--at")
+  let fromStart = flag("--from-start")
   let render = value("--render")
   let float32 = flag("--float32")
   let json = flag("--json")
@@ -155,20 +168,23 @@ func libraryClips(_ rate: Double, dir: String?) -> (String) -> LoopClip? {
   guard let cp = c.checkpoint else { throw JournalError.noCheckpoint }
   let r = try Journal.replay(
     c, toSeq: toSeq, endFrame: at.map { Int($0 * cp.sampleRate) }, render: render != nil,
-    clips: libraryClips(cp.sampleRate, dir: loops))
+    fromStart: fromStart, clips: libraryClips(cp.sampleRate, dir: loops))
   if json {
     print(r.state.json.jsStringified)
   } else {
     print(
       "replayed \(url.lastPathComponent) to seq \(r.lastSeq)  "
-        + journalClock(r.frames, base: 0, rate: cp.sampleRate))
+        + journalClock(r.frames, base: 0, rate: cp.sampleRate)
+        + "  (from checkpoint seq \(r.startSeq))")
     for name in r.state.decks.keys.sorted() {
       let d = r.state.decks[name]!
       print(
         "  \(name): \(d.source.summary)\(d.playing ? " ▶" : "")  vol \(String(format: "%.2f", d.params.volume))"
-          + (d.params.disabledRoles.isEmpty ? "" : "  off: \(d.params.disabledRoles.joined(separator: ","))"))
+          + (d.params.disabledRoles.isEmpty
+            ? "" : "  off: \(d.params.disabledRoles.joined(separator: ","))"))
     }
-    print(String(format: "  mixer: crossfader %.2f  master %.2f", r.state.crossfader, r.state.master))
+    print(
+      String(format: "  mixer: crossfader %.2f  master %.2f", r.state.crossfader, r.state.master))
     print("  loops: \(r.state.clips.map(\.title).joined(separator: ", "))")
     if !r.state.locked.isEmpty { print("  locked: \(r.state.locked.joined(separator: ", "))") }
     let s = r.stores
@@ -177,16 +193,25 @@ func libraryClips(_ rate: Double, dir: String?) -> (String) -> LoopClip? {
         + "\(s.variations.values.map(\.count).reduce(0, +)) variations, \(s.notes.count) notes")
   }
   for w in r.warnings { stderr("warning: \(w)") }
+  if render != nil, r.startSeq > 0 {
+    stderr(
+      "note: the audio starts at checkpoint seq \(r.startSeq) (--from-start renders the whole file)"
+    )
+  }
   if let render, let audio = r.audio {
-    try WAV.encode(audio, float32: float32).write(to: URL(fileURLWithPath: render), options: .atomic)
+    try WAV.encode(audio, float32: float32).write(
+      to: URL(fileURLWithPath: render), options: .atomic)
     print("wrote \(render)  \(String(format: "%.2f", Double(audio.frames) / audio.sampleRate)) s")
   }
   if let writeStores {
     let d = URL(fileURLWithPath: writeStores, isDirectory: true)
-    try FavoritesStore(file: d.appendingPathComponent("favorites.json")).replaceAll(r.stores.favorites)
-    try VoiceVariationStore(file: d.appendingPathComponent("voices.json")).replaceAll(r.stores.variations)
+    try FavoritesStore(file: d.appendingPathComponent("favorites.json")).replaceAll(
+      r.stores.favorites)
+    try VoiceVariationStore(file: d.appendingPathComponent("voices.json")).replaceAll(
+      r.stores.variations)
     try NotesStore(file: d.appendingPathComponent("notes.json")).replaceAll(r.stores.notes)
-    let crates = JSONValue.object(JSONObject([("crates", .array(r.stores.crates.map { .string($0) }))]))
+    let crates = JSONValue.object(
+      JSONObject([("crates", .array(r.stores.crates.map { .string($0) }))]))
     try Data((crates.canonicalJS + "\n").utf8).write(to: d.appendingPathComponent("crates.json"))
     print("stores written to \(d.path)")
   }

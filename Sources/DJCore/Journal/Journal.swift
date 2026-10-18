@@ -6,6 +6,9 @@ import Foundation
 // `~/Library/Application Support/dj-vevr-se/journal/` (`$DJ_JOURNAL_DIR` overrides), named by
 // the run's start time. Line 0 is a checkpoint (`JournalState`); every line after is one event
 // with its sequence number, wall-clock time (metadata only) and engine frame (the timebase).
+// Mid-file checkpoints (`checkpoint`, written by `checkpointIfDue` every `checkpointSeconds` of
+// engine time or `checkpointEntries` entries) keep the decks' playheads and leave the stores out,
+// so a replay to a late point starts from the nearest one instead of line 0.
 //
 // Threads: events are recorded on the main / control side — `DJEngine.perform`, the
 // `ControllerRouter` (MIDI is hopped to the main queue before routing), the app's store edits —
@@ -24,6 +27,14 @@ public final class Journal: @unchecked Sendable {
   public static let syncInterval = 1.0
   /// How many entries `recent` keeps (the History panel).
   public static let recentCapacity = 400
+  /// A mid-file checkpoint is due after this much engine time (seconds)…
+  public static let defaultCheckpointSeconds = 60.0
+  /// …or this many entries since the last one, whichever comes first.
+  public static let defaultCheckpointEntries = 2000
+
+  /// The cadence `checkpointIfDue` keeps (main thread; tests shorten it).
+  public var checkpointSeconds = Journal.defaultCheckpointSeconds
+  public var checkpointEntries = Journal.defaultCheckpointEntries
 
   public let file: URL
   public let started: Date
@@ -33,6 +44,9 @@ public final class Journal: @unchecked Sendable {
   private let lock = NSLock()
   private var nextSeq = 0
   private var ring: [JournalEntry] = []
+  /// The last checkpoint's sequence number and engine frame (under `lock`).
+  private var lastCheckpointSeq = 0
+  private var lastCheckpointFrame = 0
   private let queue = DispatchQueue(label: "dj-vevr-se.journal", qos: .utility)
   // queue-only state
   private var fd: Int32
@@ -64,7 +78,9 @@ public final class Journal: @unchecked Sendable {
       url = directory.appendingPathComponent("\(base)-\(n).\(Self.fileExtension)")
     }
     let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0o644)
-    guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: url.path]) }
+    guard fd >= 0 else {
+      throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: url.path])
+    }
     self.fd = fd
     file = url
     self.started = JournalTime.rounded(started)
@@ -102,6 +118,10 @@ public final class Journal: @unchecked Sendable {
     let entry: JournalEntry = lock.withLock {
       let e = JournalEntry(seq: nextSeq, time: JournalTime.now(), frame: frame, event: event)
       nextSeq += 1
+      if case .checkpoint = event {
+        lastCheckpointSeq = e.seq
+        lastCheckpointFrame = frame
+      }
       ring.append(e)
       if ring.count > Self.recentCapacity + Self.recentCapacity / 4 {
         ring.removeFirst(ring.count - Self.recentCapacity)
@@ -114,12 +134,42 @@ public final class Journal: @unchecked Sendable {
     return entry
   }
 
+  /// Write a mid-file checkpoint: the engine's state now, with the decks' playheads
+  /// (`playheads`) and without the stores (`JournalState.hasStores` false: they are line 0's plus
+  /// the store events, and a long set's favorites and notes would make every checkpoint heavy).
+  /// Main thread, like every other recorder. Nil when the engine is gone.
+  @discardableResult
+  public func checkpoint(playheads: Bool = true) -> JournalEntry? {
+    guard let engine else { return nil }
+    var state = JournalState(engine: engine, playheads: playheads)
+    state.hasStores = false
+    return record(.checkpoint(state))
+  }
+
+  /// Write a mid-file checkpoint if one is due: something was recorded since the last one, and
+  /// `checkpointEntries` entries or `checkpointSeconds` of engine time have gone by. An idle app
+  /// writes none (its state hasn't changed, only the playheads). Call it from the poll (main).
+  @discardableResult
+  public func checkpointIfDue() -> JournalEntry? {
+    guard let engine else { return nil }
+    let frame = engine.frame
+    let due: Bool = lock.withLock {
+      let since = nextSeq - 1 - lastCheckpointSeq
+      guard since > 0 else { return false }
+      return since >= checkpointEntries
+        || Double(frame - lastCheckpointFrame) >= checkpointSeconds * engine.sampleRate
+    }
+    return due ? checkpoint() : nil
+  }
+
   private func write(_ e: JournalEntry, sync urgent: Bool) {
     guard fd >= 0 else { return }
     var bytes = Array((e.line + "\n").utf8)
     var off = 0
     while off < bytes.count {
-      let n = bytes.withUnsafeMutableBytes { Darwin.write(fd, $0.baseAddress! + off, $0.count - off) }
+      let n = bytes.withUnsafeMutableBytes {
+        Darwin.write(fd, $0.baseAddress! + off, $0.count - off)
+      }
       if n < 0 {
         if errno == EINTR { continue }
         writeError = String(cString: strerror(errno))
@@ -194,6 +244,13 @@ public final class Journal: @unchecked Sendable {
       if case .checkpoint(let s)? = entries.first?.event { return s }
       return nil
     }
+
+    /// Where the checkpoints are in `entries`, in order: line 0's, then the mid-file ones.
+    public var checkpointIndices: [Int] {
+      entries.indices.filter {
+        if case .checkpoint = entries[$0].event { true } else { false }
+      }
+    }
   }
 
   /// Read a journal file. A last line without its newline that doesn't parse is a torn write
@@ -221,7 +278,7 @@ public final class Journal: @unchecked Sendable {
   }
 
   /// The stores as the newest journal in `directory` leaves them: its checkpoint's, then its
-  /// store events. Nil when there is no readable journal. (The app checks `notes.json` against
+  /// store events. Mid-file checkpoints carry no stores, so only line 0's counts. Nil when there is no readable journal. (The app checks `notes.json` against
   /// it at launch: the journal is the notes' source of truth.)
   public static func latestStores(in directory: URL = Journal.defaultDirectory)
     -> JournalStoreState?

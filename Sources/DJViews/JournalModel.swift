@@ -35,9 +35,11 @@ extension AppModel {
     journal?.close()
   }
 
-  /// Per poll: the History panel's lines when the journal moved, each deck's note key when its
-  /// track changed.
+  /// Per poll: a mid-file checkpoint when one is due (`Journal.checkpointIfDue`: a minute of
+  /// engine time or 2000 entries), the History panel's lines when the journal moved, each deck's
+  /// note key when its track changed.
   func pollJournal(_ dj: DJEngine) {
+    journal?.checkpointIfDue()
     if let j = journal, j.lastSeq != journalSeen {
       journalSeen = j.lastSeq
       journalEntries = j.recent

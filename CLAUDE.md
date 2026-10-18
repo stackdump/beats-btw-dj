@@ -528,8 +528,14 @@ its copy; the two are now independent. Rules inherited from that split:
   edit functions (`FavoritesStore.adding`…). Deterministic offline; a live journal replays as
   exactly as live timing allows (async composes and sampled round robin can shift a take —
   then clip events fall back to the library's clip by id). `djctl journal list | show |
-  replay [--to SEQ|--at S] [--render f.wav] | export-session --from --to` (a slice → a normal
-  `Session`, starting at rest: playheads and the row at `from` are not in it).
+  replay [--to SEQ|--at S] [--from-start] [--render f.wav] | export-session --from --to` (a
+  slice → a normal `Session`, starting at rest: playheads and the row at `from` are not in it).
+- Mid-file checkpoints: `AppModel.pollJournal` calls `Journal.checkpointIfDue` (60 engine s or
+  2000 entries, and only after something was recorded); they keep the decks' playheads and no
+  `stores` key (`JournalState.hasStores`). A replay starts from the last checkpoint within
+  `toSeq`/`endFrame` (`startSeq`), folding line 0's stores and the store events before it;
+  `fromStart` forces line 0. Same state as a full replay, not the same audio (loops restart,
+  tails and router state start fresh) — byte-identical audio needs `fromStart`.
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
