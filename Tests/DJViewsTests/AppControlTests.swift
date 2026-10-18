@@ -712,6 +712,54 @@ struct AppControlTests {
     #expect((c["apcPads"]?.array?.count ?? 0) > 0)
   }
 
+  @Test func settingsSetPflHeadphonesAndAwake() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
+    m.findInpulse = { nil }  // never route (and restart) a real Inpulse
+    m.start()
+    defer { m.setKeepScreenAwake(false) }
+    let r = try await call(
+      m, "settings",
+      #"{"pfl":{"A":true},"headphoneMix":0.25,"headphoneLevel":0.5,"awake":true}"#)
+    #expect(r["headphones"]?["mix"]?.double == 0.25)
+    #expect(r["headphones"]?["level"]?.double == 0.5)
+    #expect(r["headphones"]?["pfl"]?["A"]?.bool == true)
+    #expect(r["headphones"]?["pfl"]?["B"]?.bool == false)
+    #expect(r["awake"]?.bool == true)
+    #expect(r["inpulseOutput"] == .null)
+    #expect(dj["A"]!.pfl && !dj["B"]!.pfl)
+    #expect(dj.headphoneMix == 0.25 && dj.headphoneLevel == 0.5)
+    #expect(dj.owners["headphoneMix"] == "ui" && dj.owners["headphoneLevel"] == "ui")
+    #expect(m.defaults.bool(forKey: AppModel.keepScreenAwakeKey))
+    let state = try await call(m, "state")
+    #expect(state["headphones"]?["mix"]?.double == 0.25)
+    #expect(state["awake"]?.bool == true)
+    // only the keys given change
+    let b = try await call(m, "settings", #"{"pfl":{"B":true}}"#)
+    #expect(b["headphones"]?["pfl"]?["A"]?.bool == true)
+    #expect(b["headphones"]?["pfl"]?["B"]?.bool == true)
+    #expect(b["headphones"]?["mix"]?.double == 0.25)
+    // a bad key changes nothing
+    await #expect {
+      try await call(m, "settings", #"{"headphoneMix":0.9,"headphoneLevel":2}"#)
+    } throws: { "\($0)".contains("headphoneLevel") }
+    #expect(dj.headphoneMix == 0.25)
+    await #expect { try await call(m, "settings", #"{"pfl":{"Z":true}}"#) } throws: {
+      "\($0)".contains("no deck")
+    }
+    // no Inpulse: an error naming the cause, nothing restarted
+    await #expect {
+      try await call(m, "settings", #"{"inpulseOutput":true,"headphoneMix":1}"#)
+    } throws: { "\($0)".contains("no DJControl Inpulse") }
+    #expect(!m.inpulseRouted && dj.headphoneMix == 0.25)
+    let off = try await call(m, "settings", #"{"awake":false}"#)
+    #expect(off["awake"]?.bool == false)
+  }
+
   @Test func padsPressTheOnScreenAPC() async throws {
     let m = try model()
     let s = try await call(m, "pad", #"{"group":"pads","index":0}"#)

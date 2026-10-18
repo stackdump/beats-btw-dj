@@ -23,6 +23,7 @@ public struct MCPBridge {
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
     "dj_notes": "notes", "dj_journal": "journal", "dj_palettes": "palettes",
     "dj_view": "view", "dj_variations": "variations", "dj_loops": "loops",
+    "dj_settings": "settings",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -510,6 +511,24 @@ public struct MCPBridge {
             ])
           ),
         ]),
+      ]),
+    tool(
+      "dj_settings",
+      """
+      The monitoring settings: pfl {A, B} (a deck's headphone cue), headphoneMix (0 cue only … \
+      1 master only in the headphones), headphoneLevel (0…1), awake (keep the screen from \
+      sleeping) and inpulseOutput (master → the Inpulse's outputs 1/2, cue → 3/4; restarts the \
+      audio engine, an error when no Inpulse is connected). Only the keys given change (a bad \
+      one changes nothing); returns headphones {mix, level, pfl}, awake and inpulseOutput as \
+      they stand (dj_state shows the same). These are monitoring, not performance: they never \
+      reach the master mix, so a recorded session does not record them.
+      """,
+      [
+        "pfl": prop("object", "Deck name → cue on/off, e.g. {\"A\": true, \"B\": false}"),
+        "headphoneMix": prop("number", "0 = cue only … 1 = master only"),
+        "headphoneLevel": prop("number", "Headphone volume, 0…1"),
+        "awake": prop("boolean", "Keep the display awake while the app is open"),
+        "inpulseOutput": prop("boolean", "Route master and cue to the Inpulse's audio outputs"),
       ]),
     tool(
       "dj_record",
