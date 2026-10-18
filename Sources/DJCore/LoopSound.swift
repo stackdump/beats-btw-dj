@@ -1,5 +1,5 @@
 // How the loops under the mixer sound: mute and solo per clip, the fade a loop comes in and goes
-// out with, and key lock (a loop played at another tempo than its own keeps its pitch).
+// out with (the row's, or a clip's own), and key lock (a loop played at another tempo than its own keeps its pitch).
 //
 // Mute and solo are gains: a muted clip's voice (or, while any clip is soloed, every voice that
 // is not) goes to level 0 and keeps playing, so it comes back in phase. The bank ramps every level
@@ -90,16 +90,36 @@ extension DJEngine {
 
   // MARK: fades
 
-  /// How loops come in and go out from now on.
+  /// How loops come in and go out from now on (clips with a fade of their own keep it).
   public func setLoopFade(_ fade: LoopFade) { loopFade = fade }
 
-  /// The fade in frames for a loop playing at `bpm`; `short`: a start or stop that is not on a
-  /// downbeat (a fresh take, a clip moved to a deck), which only de-clicks.
+  /// Clip `id`'s own fade, if it has one (nil: it follows the row's, `loopFade`).
+  public func clipFade(_ id: String) -> LoopFade? { clipFades[id] }
+
+  /// The fade clip `id` comes in and goes out with: its own, else the row's.
+  public func loopFade(for id: String?) -> LoopFade { id.flatMap { clipFades[$0] } ?? loopFade }
+
+  /// Give clip `id` a fade of its own; nil: it follows the row's again. A start or stop already
+  /// waiting keeps the fade it was given.
+  public func setClipFade(_ id: String, _ fade: LoopFade?) { clipFades[id] = fade }
+
+  /// The fade in frames for clip `id` (its own fade, else the row's) playing at `bpm`; `short`:
+  /// a start or stop that is not on a downbeat (a fresh take, a clip moved to a deck), which only
+  /// de-clicks.
+  func loopFadeFrames(for id: String?, bpm: Double, short: Bool = false) -> Int {
+    loopFadeFrames(loopFade(for: id), bpm: bpm, short: short)
+  }
+
+  /// The row's fade in frames for a loop playing at `bpm` (`loopFadeFrames(for:bpm:short:)`).
   func loopFadeFrames(bpm: Double, short: Bool = false) -> Int {
+    loopFadeFrames(loopFade, bpm: bpm, short: short)
+  }
+
+  private func loopFadeFrames(_ fade: LoopFade, bpm: Double, short: Bool) -> Int {
     let declick = Int(sampleRate * 0.01)
     let beat = bpm > 0 ? Int(60 / bpm * sampleRate) : declick
     let frames: Int
-    switch loopFade {
+    switch fade {
     case .off: return 0
     case .declick: frames = declick
     case .beat: frames = beat
@@ -227,6 +247,8 @@ extension DJEngine {
   func forgetClipSound(_ id: String) {
     clipMutes.remove(id)
     clipKeyLocks[id] = nil
+    clipQuanta[id] = nil
+    clipFades[id] = nil
     stretchCache[id] = nil
     if clipSolos.remove(id) != nil { pushClipLevels() }
   }
@@ -236,6 +258,8 @@ extension DJEngine {
     if clipMutes.remove(old) != nil { clipMutes.insert(new) }
     if clipSolos.remove(old) != nil { clipSolos.insert(new) }
     if let k = clipKeyLocks.removeValue(forKey: old) { clipKeyLocks[new] = k }
+    if let q = clipQuanta.removeValue(forKey: old) { clipQuanta[new] = q }
+    if let f = clipFades.removeValue(forKey: old) { clipFades[new] = f }
     stretchCache[old] = nil
   }
 }

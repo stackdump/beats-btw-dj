@@ -197,3 +197,28 @@ share-url-check:
 BEATS_REPO ?= $(HOME)/Workspace/beats-bitwrap-io
 fixtures-go:
 	BEATS_REPO=$(BEATS_REPO) node scripts/beats-go-oracle.mjs
+
+# --- Test MCP (tools/testmcp, Python) -----------------------------------------
+# dj-vevr-se-test: djtest_build / render / matrix / replay / journal_list over stdio, offline
+# (never the speakers or the running app). testmcp-test uses a fake runner: no Swift build.
+# testmcp-install only PRINTS the registration command; run it yourself.
+.PHONY: testmcp-venv testmcp-test testmcp-install
+TESTMCP := $(CURDIR)/tools/testmcp
+TESTMCP_VENV := $(TESTMCP)/.venv
+
+$(TESTMCP_VENV):
+	python3 -m venv $(TESTMCP_VENV)
+	$(TESTMCP_VENV)/bin/pip -q install -e $(TESTMCP)
+
+testmcp-venv: $(TESTMCP_VENV)
+
+testmcp-test: $(TESTMCP_VENV)
+	cd $(TESTMCP) && $(TESTMCP_VENV)/bin/python -m unittest discover -s tests -t . -v
+
+testmcp-install:
+	@test -x $(TESTMCP_VENV)/bin/djtest-mcp || echo "(first: make testmcp-venv)"
+	@echo "Register the test MCP for every claude on this Mac by running:"
+	@echo
+	@echo "  claude mcp add --scope user dj-vevr-se-test -- $(TESTMCP_VENV)/bin/djtest-mcp"
+	@echo
+	@echo "(not run here: this target changes nothing)"

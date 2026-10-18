@@ -38,6 +38,10 @@ public final class DJEngine {
   var clipMutes: Set<String> = []
   var clipSolos: Set<String> = []
   var clipKeyLocks: [String: Bool] = [:]
+  /// Clips' own launch boundary (beats) and fade, where they have one (LoopLaunch.swift,
+  /// LoopSound.swift); the rest follow `loopQuantum` / `loopFade`.
+  var clipQuanta: [String: Int] = [:]
+  var clipFades: [String: LoopFade] = [:]
   public internal(set) var loopKeyLock = false
   public internal(set) var loopFade = LoopFade.declick
   var stretchCache: [String: (bpm: Double, buffer: SampleBuffer)] = [:]
@@ -630,6 +634,31 @@ public final class Deck: JogClock {
     load(DemoLoop.make(sampleRate: turntable.sampleRate), title: "demo loop")
     beatGrid = BeatGrid(bpm: DemoLoop.bpm, offset: 0, confidence: 1)  // known, not measured
     isDemo = true
+  }
+
+  /// Take what is on the deck off it, stopped, as a fresh deck has nothing (`journalSource` says
+  /// `.none`; `DJEngine.reset(to:clip:)`). The turntable keeps its old buffer, silent, until the
+  /// next load retires it through the ring; a net deck's project stays installed but paused.
+  func eject() {
+    leaveNetMode()
+    setPlaying(false)
+    turntable.send(.loopOff)
+    currentSpec = nil
+    currentRawNets = nil
+    seedTarget = nil
+    clipID = nil
+    sourceFile = nil
+    waveform = nil
+    loaded = nil
+    levelSource = nil
+    beatGrid = nil
+    isDemo = false
+    title = "—"
+    hotCues = [:]
+    cuePoint = 0
+    loopStart = nil
+    loopEnd = nil
+    looping = false
   }
 
   public func setPlaying(_ on: Bool) {

@@ -46,6 +46,9 @@ public struct ClipCheckpoint: Equatable, Sendable {
   public var soloed: Bool
   /// Its own key lock; nil follows the row's.
   public var keyLock: Bool?
+  /// Its own launch boundary (beats) and fade; nil follows the row's.
+  public var quantum: Int?
+  public var fade: LoopFade?
   /// Looping (or on its way in) under the mixer.
   public var looping: Bool
   /// Its after effects (`LoopClip.fx`).
@@ -53,7 +56,8 @@ public struct ClipCheckpoint: Equatable, Sendable {
 
   public init(
     id: String, title: String, color: String? = nil, gain: Double = 1, muted: Bool = false,
-    soloed: Bool = false, keyLock: Bool? = nil, looping: Bool = false, fx: LoopFX = LoopFX()
+    soloed: Bool = false, keyLock: Bool? = nil, quantum: Int? = nil, fade: LoopFade? = nil,
+    looping: Bool = false, fx: LoopFX = LoopFX()
   ) {
     self.fx = fx
     self.id = id
@@ -63,6 +67,8 @@ public struct ClipCheckpoint: Equatable, Sendable {
     self.muted = muted
     self.soloed = soloed
     self.keyLock = keyLock
+    self.quantum = quantum
+    self.fade = fade
     self.looping = looping
   }
 }
@@ -105,6 +111,7 @@ public struct JournalStoreState: Equatable, Sendable {
     case .noteAdd(let n): notes = notes.adding(n)
     case .noteEdit(let id, let text, let at): notes = notes.editing(id, text: text, at: at)
     case .noteDelete(let id): notes = notes.deleting(id)
+    case .storesReplace(let all): self = all
     default: return false
     }
     return true
@@ -163,6 +170,10 @@ public struct JournalState: Equatable, Sendable {
   /// `DJEngine.lockedActions`, sorted.
   public var locked: [String]
   public var stores: JournalStoreState
+  /// Whether `stores` is part of this state. Line 0 always carries them; a mid-file checkpoint
+  /// (`Journal.checkpoint`) leaves them out (no `stores` key), and a replay that starts there
+  /// folds line 0's stores and the store events before it instead.
+  public var hasStores = true
 
   public static func == (a: Self, b: Self) -> Bool { a.json == b.json }
 
@@ -214,7 +225,8 @@ public struct JournalState: Equatable, Sendable {
       ClipCheckpoint(
         id: c.id, title: c.title, color: c.color, gain: dj.clipGain(c.id),
         muted: dj.isClipMuted(c.id), soloed: dj.isClipSoloed(c.id),
-        keyLock: dj.clipKeyLocks[c.id], looping: looping.contains(c.id), fx: c.fx)
+        keyLock: dj.clipKeyLocks[c.id], quantum: dj.clipQuantum(c.id), fade: dj.clipFade(c.id),
+        looping: looping.contains(c.id), fx: c.fx)
     }
     scenes = dj.scenes
     removed = dj.removedClips.map { ($0.clip.id, $0.index) }
@@ -247,41 +259,44 @@ public struct JournalState: Equatable, Sendable {
     }
     var loop = loopChannel.json.object ?? JSONObject()
     loop["mute"] = .bool(loopMute)
-    return .object(
-      JSONObject([
-        ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
-        ("decks", .object(decksObj)), ("loopChannel", .object(loop)),
-        (
-          "mixer",
-          .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
-        ),
-        ("loopSettings", .array(loopSettings.map(\.json))),
-        (
-          "clips",
-          .array(
-            clips.map { c in
-              var o = JSONObject([
-                ("id", .string(c.id)), ("title", .string(c.title)), ("gain", .number(c.gain)),
-                ("muted", .bool(c.muted)), ("soloed", .bool(c.soloed)),
-                ("looping", .bool(c.looping)),
-              ])
-              if let color = c.color { o["color"] = .string(color) }
-              if let k = c.keyLock { o["keyLock"] = .bool(k) }
-              if c.fx != LoopFX() { o["fx"] = c.fx.json }
-              return .object(o)
-            })
-        ),
-        ("scenes", .array(scenes.map(\.json))),
-        (
-          "removed",
-          .array(
-            removed.map {
-              .object(JSONObject([("id", .string($0.id)), ("index", .int($0.index))]))
-            })
-        ),
-        ("locked", .array(locked.map { .string($0) })),
-        ("stores", stores.json),
-      ]))
+    var out = JSONObject([
+      ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
+      ("decks", .object(decksObj)), ("loopChannel", .object(loop)),
+      (
+        "mixer",
+        .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
+      ),
+      ("loopSettings", .array(loopSettings.map(\.json))),
+      (
+        "clips",
+        .array(
+          clips.map { c in
+            var o = JSONObject([
+              ("id", .string(c.id)), ("title", .string(c.title)), ("gain", .number(c.gain)),
+              ("muted", .bool(c.muted)), ("soloed", .bool(c.soloed)),
+              ("looping", .bool(c.looping)),
+            ])
+            if let color = c.color { o["color"] = .string(color) }
+            if let k = c.keyLock { o["keyLock"] = .bool(k) }
+            // only when set: checkpoints without them encode as before
+            if let q = c.quantum { o["quantum"] = .int(q) }
+            if let f = c.fade { o["fade"] = .string(f.rawValue) }
+            if c.fx != LoopFX() { o["fx"] = c.fx.json }
+            return .object(o)
+          })
+      ),
+      ("scenes", .array(scenes.map(\.json))),
+      (
+        "removed",
+        .array(
+          removed.map {
+            .object(JSONObject([("id", .string($0.id)), ("index", .int($0.index))]))
+          })
+      ),
+      ("locked", .array(locked.map { .string($0) })),
+    ])
+    if hasStores { out["stores"] = stores.json }
+    return .object(out)
   }
 
   public init?(json v: JSONValue) {
@@ -315,6 +330,7 @@ public struct JournalState: Equatable, Sendable {
         id: id, title: c["title"]?.string ?? "loop", color: c["color"]?.string,
         gain: c["gain"]?.double ?? 1, muted: c["muted"]?.bool ?? false,
         soloed: c["soloed"]?.bool ?? false, keyLock: c["keyLock"]?.bool,
+        quantum: c["quantum"]?.int, fade: c["fade"]?.string.flatMap(LoopFade.init(rawValue:)),
         looping: c["looping"]?.bool ?? false, fx: LoopFX(json: c["fx"]))
     }
     scenes = (v["scenes"]?.array ?? []).compactMap(LoopScene.init(json:))
@@ -322,6 +338,7 @@ public struct JournalState: Equatable, Sendable {
       e["id"]?.string.map { ($0, e["index"]?.int ?? 0) }
     }
     locked = v["locked"]?.array?.compactMap(\.string) ?? []
+    hasStores = v["stores"] != nil
     stores = JournalStoreState(json: v["stores"])
   }
 
@@ -343,7 +360,28 @@ public struct JournalState: Equatable, Sendable {
   /// decks without one, and every loop clip, start from their beginnings.
   @discardableResult
   public func restore(into dj: DJEngine, clip: (String) -> LoopClip?) -> [String] {
+    let staged = restore(into: dj, clip: clip, deferNetSeeks: false)
+    staged.play()
+    return staged.warnings
+  }
+
+  /// What `restore` leaves to its caller: the net decks' playheads it did not seek (asked to
+  /// defer them: a live reset awaits each jump, `DJEngine.reset(to:clip:)`), and the decks to
+  /// start once they are where they belong.
+  struct StagedRestore {
+    var warnings: [String]
+    var netSeeks: [(deck: Deck, tick: Int)]
+    var toPlay: [Deck]
+    func play() { for d in toPlay { d.setPlaying(true) } }
+  }
+
+  /// `restore` up to the decks' transports: everything is in place but no deck has been started.
+  /// `deferNetSeeks`: a net deck's `position` is handed back instead of relocated to.
+  func restore(
+    into dj: DJEngine, clip: (String) -> LoopClip?, deferNetSeeks: Bool
+  ) -> StagedRestore {
     var warnings: [String] = []
+    var netSeeks: [(deck: Deck, tick: Int)] = []
     for a in loopSettings { dj.applyAction(a) }
     var found: [LoopClip] = []
     for c in clips {
@@ -361,6 +399,8 @@ public struct JournalState: Equatable, Sendable {
       if c.muted { dj.setClipMute(c.id, true) }
       if c.soloed { dj.setClipSolo(c.id, true) }
       if let k = c.keyLock { dj.setClipKeyLock(c.id, k) }
+      if let q = c.quantum { dj.setClipQuantum(c.id, q) }
+      if let f = c.fade { dj.setClipFade(c.id, f) }
       if dj.clipFx(c.id) != c.fx { dj.setClipFx(c.id, c.fx) }  // the run's, not the library's
     }
     dj.restoreScenes(scenes)
@@ -383,7 +423,13 @@ public struct JournalState: Equatable, Sendable {
         if !v.tweak.isEmpty { deck.setVoiceTweak(v.tweak, channel: ch) }
         if v.useSynth { deck.setSynthVoice(true, channel: ch) }
       }
-      if let p = d.position { deck.seek(journalPosition: p) }
+      if let p = d.position {
+        if deferNetSeeks && deck.mode == .net {
+          if deck.netProject != nil { netSeeks.append((deck, Int(p.rounded()))) }
+        } else {
+          deck.seek(journalPosition: p)
+        }
+      }
     }
     for (name, d) in decks { if let l = d.leader { dj[name]?.follow(dj.decks[l]) } }
     dj.loopChannel.volume = loopChannel.volume
@@ -396,8 +442,8 @@ public struct JournalState: Equatable, Sendable {
     dj.master = master
     dj.lockedActions = Set(locked)
     for c in clips where c.looping && dj.clip(c.id) != nil { dj.startLoop(c.id, atOnce: true) }
-    for name in decks.keys.sorted() where decks[name]!.playing { dj[name]?.setPlaying(true) }
-    return warnings
+    let toPlay = decks.keys.sorted().filter { decks[$0]!.playing }.compactMap { dj[$0] }
+    return StagedRestore(warnings: warnings, netSeeks: netSeeks, toPlay: toPlay)
   }
 }
 

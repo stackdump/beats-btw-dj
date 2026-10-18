@@ -154,7 +154,7 @@ struct MCPBridgeTests {
       "voiceTweak": #""channel":0"#, "voiceSynth": #""channel":0"#,
       "clipMove": #""id":"x""#, "clipFx": #""id":"x""#, "lock": #""key":"A.play""#,
       "wanderPace": #""bars":8"#, "wanderLock": #""dimension":"tempo""#,
-      "setRoleVoice": #""role":"bass""#,
+      "setRoleVoice": #""role":"bass""#, "clipImport": #""id":"x""#,
     ]
     #expect(Set(DeckAction.jsonOps).count == DeckAction.jsonOps.count)
     for op in DeckAction.jsonOps where op != "load" {
@@ -169,5 +169,21 @@ struct MCPBridgeTests {
     }
     let dims = WanderLock.dimensions.joined(separator: "|")
     #expect(text.contains("dimension: \(dims)|keep:<role>"), "wanderLock's dimensions are listed")
+  }
+
+  @Test func importingAStockLoopOntoTheRowIsDocumented() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":10,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    func text(_ name: String) -> String {
+      tools.first { $0["name"]?.string == name }?["description"]?.string ?? ""
+    }
+    #expect(text("dj_perform").contains("clipImport {id, title, bpm, beats, provenance?}"))
+    #expect(text("dj_stock_loops").contains("addToRow {path}"))
+    #expect(text("dj_stock_loops").contains("never published"))
+    let stock = tools.first { $0["name"]?.string == "dj_stock_loops" }
+    #expect(
+      stock?["inputSchema"]?["properties"]?["action"]?["description"]?.string
+        == "list | load | addToRow")
   }
 }

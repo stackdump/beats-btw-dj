@@ -68,12 +68,11 @@ public enum MixBalance {
   /// Where each part should sit against the others (`DJMusicality.Fixes.balance`), K-weighted
   /// dB: the kick and bass carry a groove, the lead sits just under them, snare and pad behind,
   /// the arp and hats as colour. A dance-mix rule of thumb; genres without a kick are balanced
-  /// among the parts they have.
-  public static let targetDB: [String: Double] = [
-    "kick": 0, "bass": -3, "lead": -4, "snare": -6, "pad": -7, "arp": -8, "hats": -10,
-  ]
-  /// A part moves at most this far.
-  public static let maxTrimDB = 6.0
+  /// among the parts they have. `targets.json`'s `balance.default` (`MixTargets`): kick 0,
+  /// bass −3, lead −4, snare −6, pad −7, arp −8, hats −10.
+  public static let targetDB: [String: Double] = MixTargets.shared.balanceDB()
+  /// A part moves at most this far (`balance.maxTrimDB`).
+  public static let maxTrimDB = MixTargets.shared.balance.maxTrimDB.value!
   /// The rate the parts are measured at for `trims`.
   static let probeRate = 22_050.0
 

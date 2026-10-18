@@ -21,3 +21,16 @@ func newestJournal(_ dir: URL) throws -> Journal.Contents {
   guard let url = Journal.list(in: dir).first else { throw JournalError.noCheckpoint }
   return try Journal.read(url)
 }
+
+/// Stores unlike anything a test model starts with, for `AppModel.replaceStores`.
+func replacementStores() -> JournalStoreState {
+  let at = Date(timeIntervalSince1970: 1_700_000_000)
+  return JournalStoreState(
+    favorites: [
+      Favorite(
+        title: "new", source: .net(TrackSpec(genre: "house", seed: 7)), added: at, tags: ["warm"])
+    ],
+    crates: ["warm", "set 2"],
+    variations: ["bass": [VoiceVariation(name: "deep", params: VoiceTweak(), useSynth: true)]],
+    notes: [TrackNote(id: "n-9", target: .clip(id: "c"), text: "replaced", created: at)])
+}

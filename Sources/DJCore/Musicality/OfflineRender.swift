@@ -64,6 +64,22 @@ public struct OfflineRender {
   /// the beat before the drop against the beat before that, below 200 Hz (kick and bass), dB:
   /// about 0 when the rhythm section plays through, well under it when it stops.
   public func preDropDips(_ project: Project) -> [Double] {
+    lowDips(project, at: DJMusicality.dropGaps(project), beat: DJMusicality.dropGapSteps)
+  }
+
+  /// For each band stop of `project` (`DJMusicality.bandStops`) the render holds, the level of
+  /// the beat before the chorus against the beat before that, below 200 Hz (kick, bass, the
+  /// low of the pads: under the lead, which plays on), dB: about 0 with the band playing
+  /// through, well under it when it stops. Empty outside the song family (`bandStopGenre`).
+  public func bandStopDips(_ project: Project, genre: String) -> [Double] {
+    guard DJMusicality.bandStopGenre(genre) else { return [] }
+    return lowDips(project, at: DJMusicality.bandStops(project), beat: DJMusicality.bandStopSteps)
+  }
+
+  /// Below 200 Hz, the level of `beat` steps from each of `starts` against the `beat` steps
+  /// before it, dB; starts the render does not hold both sides of are left out.
+  func lowDips(_ project: Project, at starts: [Int], beat: Int) -> [Double] {
+    guard !starts.isEmpty else { return [] }
     let tempo = project.tempo > 0 ? project.tempo : 120
     let perStep = sampleRate * 60 / (tempo * 4)
     var low = [Double](repeating: 0, count: left.count)
@@ -86,8 +102,7 @@ public struct OfflineRender {
       return 10 * log10(max(s / Double(max(1, b - a)), 1e-20))
     }
     var out: [Double] = []
-    let beat = DJMusicality.dropGapSteps
-    for g in DJMusicality.dropGaps(project) {
+    for g in starts {
       let a = Int(Double(g - beat) * perStep)
       let b = Int(Double(g) * perStep)
       let c = Int(Double(g + beat) * perStep)
