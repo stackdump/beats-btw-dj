@@ -11,7 +11,9 @@
 //   of mixed steps starts with its FX off, and an edited one keeps the FX it had;
 // - a clip moved onto deck A or B keeps them: the deck has a chain of its own (`DeckRenderer`),
 //   set at the load and changed with the clip's; anything else loaded there plays dry;
-// - scenes recall levels and which clips play, not FX: FX are the clip's, like its colour.
+// - a scene saved with a clip's FX on sets them again on its launch boundary (`SceneClip.fx`,
+//   `LoopBankCommand.fxAt` for a voice already sounding); one saved with them off, or saved
+//   before scenes kept FX, leaves the clip's FX as they are.
 
 extension DJEngine {
   /// Clip `id`'s FX (on the row or removed); off for an unknown clip.
@@ -20,12 +22,18 @@ extension DJEngine {
   }
 
   /// Set clip `id`'s FX (clamped into range). A voice or a deck playing it changes over
-  /// smoothly.
-  public func setClipFx(_ id: String, _ fx: LoopFX) {
+  /// smoothly. `at`: the loop voice playing it changes at that deck frame instead of at once (a
+  /// scene launch, on its boundary); a deck playing it still changes at once.
+  public func setClipFx(_ id: String, _ fx: LoopFX, at: Int? = nil) {
     let f = fx.clamped
     editClip(id) { $0.fx = f }
     for d in decks.values where d.clipID == id { d.setClipFx(f) }
     guard let v = loopVoices.firstIndex(where: { $0.clipID == id }) else { return }
-    loopChannel.bank?.send(.fx(voice: v, LoopFxParams(f, sampleRate: sampleRate)))
+    let p = LoopFxParams(f, sampleRate: sampleRate)
+    if let at {
+      loopChannel.bank?.send(.fxAt(voice: v, p, frame: at))
+    } else {
+      loopChannel.bank?.send(.fx(voice: v, p))
+    }
   }
 }
