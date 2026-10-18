@@ -247,8 +247,9 @@ struct PerfBookingTests {
     #expect(differ > 100, "the menu's face in the header follows the preference (\(differ))")
   }
 
-  /// The main window is at least 720 pt wide and pads its content by 16 pt on each side.
-  static let headerRoom = 720.0 - 32
+  /// The main window is at least 760 pt wide (DJApp's `minWidth`) and pads its content by 16 pt
+  /// on each side.
+  static let headerRoom = 760.0 - 32
 
   @Test func theHeaderLeavesRoomForTheStatusAtTheWindowsMinimumWidth() throws {
     let rig = try ScopeViewRig()
@@ -271,6 +272,7 @@ struct PerfBookingTests {
     // and the pills win over the status when there is not enough: a long status is what is cut
     let perf = PerfMonitor()
     let hub = ScopeHub(engine: rig.dj, perf: perf)
+    let width = Int(Self.headerRoom)
     func header(_ status: String) -> some View {
       ScopePanelHeader(
         hub: hub, kind: .constant(.spectro), source: .constant(.master),
@@ -278,15 +280,28 @@ struct PerfBookingTests {
       )
       .frame(width: Self.headerRoom, alignment: .leading)
     }
-    let short = try #require(renderPixels(header(""), width: 688, height: 24))
+    // The pills (menu included) end where the status's spacer (8 pt minimum) begins.
+    let pillsEnd =
+      Int(
+        idealSize(
+          of: ScopePanelHeader(
+            hub: hub, kind: .constant(.spectro), source: .constant(.master),
+            measured: .constant(true), status: "")
+        ).width) - 8
+    #expect(pillsEnd > 300 && pillsEnd < width - 90, "the pills end at \(pillsEnd) pt")
+    // The process's first render of this text comes out a level or so off in ~30 antialiased
+    // pixels (seen: 1/255 in one channel), so render once to warm up before comparing.
+    _ = renderPixels(header(""), width: width, height: 24)
+    let short = try #require(renderPixels(header(""), width: width, height: 24))
     let long = try #require(
-      renderPixels(header(String(repeating: "lanes and bpm ", count: 12)), width: 688, height: 24))
+      renderPixels(
+        header(String(repeating: "lanes and bpm ", count: 12)), width: width, height: 24))
     var pillsChanged = 0
     for y in 0..<24 {
-      for x in 0..<520 where short.color(x, y) != long.color(x, y) { pillsChanged += 1 }
+      for x in 0..<pillsEnd where short.color(x, y) != long.color(x, y) { pillsChanged += 1 }
     }
     #expect(pillsChanged == 0, "a long status does not squeeze a pill (\(pillsChanged) pixels)")
-    savePNG(header("10 lanes · 128 bpm · 4 bars"), width: 688, height: 24, name: "header-720")
+    savePNG(header("10 lanes · 128 bpm · 4 bars"), width: width, height: 24, name: "header-760")
   }
 
   // MARK: the Stage
