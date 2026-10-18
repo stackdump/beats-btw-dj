@@ -29,7 +29,8 @@ public enum JournalTime {
 /// are the state changes that are not pokes — the persistent stores and the notes — so a replay
 /// rebuilds them too.
 public enum JournalEvent: Equatable, Sendable {
-  /// The full rebuildable state (`JournalState`): every file starts with one.
+  /// The full rebuildable state (`JournalState`): every file starts with one; mid-file ones
+  /// (`Journal.checkpoint`) add the playheads and leave the stores out.
   case checkpoint(JournalState)
   case action(DeckAction)
   case midi(port: String, bytes: [UInt8])
@@ -50,6 +51,9 @@ public enum JournalEvent: Equatable, Sendable {
   case noteAdd(TrackNote)
   case noteEdit(id: String, text: String, at: Date)
   case noteDelete(id: String)
+  /// Every store replaced wholesale (an import, a restore from a backup): what follows builds on
+  /// exactly this. An older build skips the kind, so its replay keeps the stores it had.
+  case storesReplace(JournalStoreState)
   /// A milestone with no state of its own: "app.start", "session.start", "session.saved <cid>".
   case mark(String)
 
@@ -72,6 +76,7 @@ public enum JournalEvent: Equatable, Sendable {
     case .noteAdd: "note.add"
     case .noteEdit: "note.edit"
     case .noteDelete: "note.delete"
+    case .storesReplace: "stores.replace"
     case .mark: "mark"
     }
   }
@@ -105,8 +110,11 @@ public enum JournalEvent: Equatable, Sendable {
       return [("instrument", .string(instrument)), ("name", .string(name))]
     case .noteAdd(let n): return [("note", n.json)]
     case .noteEdit(let id, let text, let at):
-      return [("id", .string(id)), ("text", .string(text)), ("at", .string(JournalTime.string(at)))]
+      return [
+        ("id", .string(id)), ("text", .string(text)), ("at", .string(JournalTime.string(at))),
+      ]
     case .noteDelete(let id): return [("id", .string(id))]
+    case .storesReplace(let s): return [("stores", s.json)]
     case .mark(let text): return [("text", .string(text))]
     }
   }
@@ -164,6 +172,9 @@ public enum JournalEvent: Equatable, Sendable {
     case "note.delete":
       guard let id = v["id"]?.string else { return nil }
       self = .noteDelete(id: id)
+    case "stores.replace":
+      guard let o = v["stores"], o.object != nil else { return nil }
+      self = .storesReplace(JournalStoreState(json: o))
     case "mark":
       guard let t = v["text"]?.string else { return nil }
       self = .mark(t)
@@ -176,7 +187,8 @@ public enum JournalEvent: Equatable, Sendable {
     switch self {
     case .checkpoint(let s):
       let decks = s.decks.keys.sorted().map { "\($0): \(s.decks[$0]!.source.summary)" }
-      return "checkpoint · " + (decks + ["\(s.clips.count) clips"]).joined(separator: " · ")
+      return (s.hasStores ? "checkpoint · " : "checkpoint (mid) · ")
+        + (decks + ["\(s.clips.count) clips"]).joined(separator: " · ")
     case .action(let a): return a.summary
     case .midi(let port, let bytes):
       return "midi \(port) " + bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
@@ -185,7 +197,8 @@ public enum JournalEvent: Equatable, Sendable {
     case .favoriteAdd(let f): return "★ \(f.title)"
     case .favoriteRemove(let cid): return "☆ unstarred \(cid.prefix(14))…"
     case .favoriteTags(let cid, let tags):
-      return "tags \(cid.prefix(14))… = " + (tags.isEmpty ? "none" : tags.map { "#" + $0 }.joined(separator: " "))
+      return "tags \(cid.prefix(14))… = "
+        + (tags.isEmpty ? "none" : tags.map { "#" + $0 }.joined(separator: " "))
     case .crateAdd(let name): return "crate + \(name)"
     case .crateDelete(let name): return "crate − \(name)"
     case .variationSave(let i, let v): return "variation saved \(v.label(i))"
@@ -196,6 +209,10 @@ public enum JournalEvent: Equatable, Sendable {
         + (n.position.map { " @ \($0.label)" } ?? "") + ": \(n.text)"
     case .noteEdit(_, let text, _): return "✎ edited: \(text)"
     case .noteDelete(let id): return "✎ deleted \(id)"
+    case .storesReplace(let s):
+      return
+        "stores replaced · \(s.favorites.count) favorites · \(s.crates.count) crates · "
+        + "\(s.variations.values.reduce(0) { $0 + $1.count }) variations · \(s.notes.count) notes"
     case .mark(let t): return "— \(t)"
     }
   }
