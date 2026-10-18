@@ -99,6 +99,9 @@ public struct WaveOptions {
   /// `stop-transport` is ignored, and the deck stops on its `endTick`. nil = the song as it
   /// ends (parity, and every deck until `Deck.mixOut` sets one).
   public var tail: MixOutTail?
+  /// The track's genre, set by `forGenre`; nil (raw nets, parity) = unknown, and the gestures
+  /// a genre gates (`.bandStop`: the song family) stay off.
+  public var genre: String?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -228,8 +231,8 @@ final class Lane {
   var voiceSpread: [Double] = []
   var voicePan: [Double] = []
   /// What the lane is for the rest schedule (`WaveProject.rests`): it drops its hits while the
-  /// step's mask holds its class. Empty (never rests): fills' and crashes' drums, stingers,
-  /// overrides, the live keys.
+  /// step's mask holds its class. Empty (never rests): crashes, stingers, overrides, the live
+  /// keys.
   var restClass: RestSchedule.Class = []
   /// `.sectionHarmony`: the lane's group in `WaveProject.harmony` (-1: not moved, e.g. drums
   /// and the live keys).
@@ -1074,7 +1077,8 @@ public final class WaveRunner {
     let gain = opts.trackGain ?? 1
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
-    let songRests = opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality)
+    let songRests =
+      opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
     // `.sectionHarmony`: the band moves with the section (a pure function of the played
     // project, cheap: rebuilt on section jumps rather than carried)

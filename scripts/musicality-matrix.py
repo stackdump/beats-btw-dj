@@ -73,6 +73,8 @@ COLUMNS = [
     ("grooveConsistency", "gCons", "{:5.2f}"),
     ("swingRatio", "swing", "{:5.3f}"),
     ("microtimingMs", "uTime", "{:5.1f}"),
+    # 6.2: the band stop before a chorus (song family; OfflineRender.bandStopDips)
+    ("bandStopDipDB", "stopDB", "{:6.1f}"),
 ]
 
 
@@ -94,6 +96,7 @@ def flat(doc):
         "lra": doc.get("lra"),
         "sectionSpreadDB": a.get("sectionSpreadDB"),
         "preDropDipDB": a.get("preDropDipDB"),
+        "bandStopDipDB": a.get("bandStopDipDB"),
         "peakDB": a["peakDB"],
         "clippedSamples": a["clippedSamples"],
         "low+sub": 100 * (b.get("low", 0) + b.get("sub", 0)),
