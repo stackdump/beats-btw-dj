@@ -83,7 +83,8 @@ struct SampledBalanceTests {
     }
   }
 
-  /// Without `.balance` nothing changes: every slot at unity, the probe at the palette average.
+  /// Without `.balance` every slot stays at unity, and the probe plays each sampled part at
+  /// its slot's measured part level (the palette average only where none was measured).
   @Test func withoutBalanceSlotsStayAtUnity() throws {
     let bank = SamplerBank(sampleRate: sr, partLevelCache: tempPartLevelCache())
     let p = track("country", 7, bank: bank, fixes: DJMusicality.Fixes.all.subtracting(.balance))
@@ -93,7 +94,10 @@ struct SampledBalanceTests {
     #expect(p.gainSlots == 0)
     #expect(p.slotGain.allSatisfy { $0 == 1 })
     for (lane, group) in sampled {
-      #expect(p.probeLevels[lane.netId] == Loudness.sampledPartLevel(group: group))
+      let level = bank.slotPartLevelDB(lane.samplerSlot, group: group)
+      #expect(
+        p.probeLevels[lane.netId]
+          == Loudness.sampledPartLevel(group: group, measuredDB: level))
     }
   }
 

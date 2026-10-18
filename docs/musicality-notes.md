@@ -685,6 +685,12 @@ seed 4242, ten genres): bass −4.1 ± 1.9 (was −4.3), harmony −5.0 ± 1.3 (
 −1.7 ± 1.5 (was −1.6); house is the outlier (bass −8.9, melody −4.8). No arp played on a sampler.
 The new values move the sampled whole songs −0.1 LU (−12.2 → −12.3): what is left between
 sampled and synth is not in the soloed parts' levels.
+Since p66-sampled-loudness the probe no longer plays the table: each sampled part's synth
+voice stands in at its slot's own `partLevelDB` (measured at load, which prepare waits for) plus
+the slot's `.balance` gain (`SampledBalance.probeLevel`); `sampledPartDB` is only the fallback for
+a slot with no measured levels. `targetDB` was not recalibrated (no measurement taken yet:
+`LevelSurveyTests.sampledSongsSpread` prints the sampled spread over twelve genres;
+`LevelMatchTests.aSampledTrackPlaysAtTheReference` holds lofi / jazz / bossa to ±1 LU).
 
 The loop channel ("L") at its defaults against a deck at the centred crossfader
 (`LevelSurveyTests.theLoopChannelAgainstACentredDeck`: a 2-bar take of a techno net deck looped
