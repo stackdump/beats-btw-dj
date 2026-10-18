@@ -490,6 +490,19 @@ extension DeckAction {
     }
   }
 
+  /// Every `op` `init(json:)` decodes, in its order. dj_perform documents each one
+  /// (`ControlTests.everyPerformOpIsDocumented`): a new case goes here and in its description.
+  public static let jsonOps: [String] = [
+    "play", "cue", "hotCue", "clearCue", "loop", "param", "crossfader", "master", "load",
+    "queueNext", "nextTrack", "autoAdvance", "section", "role", "roleDisable", "macro", "panic",
+    "stinger", "sync", "quantize", "follow", "grid", "loopRecord", "grabBars", "clip", "clipLoop",
+    "clipGain", "clipSequence", "clipCrop", "clipRemove", "clipRestore", "clipForget",
+    "clipRename", "clipColor", "loopQuantize", "loopFollow", "sceneSave", "sceneLaunch",
+    "sceneRename", "sceneDelete", "clipMute", "clipSolo", "clipKeyLock", "loopKeyLock",
+    "loopFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove", "lock", "wander", "wanderPace",
+    "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink", "setRoleVoice",
+  ]
+
   public init?(json v: JSONValue) {
     guard let op = v["op"]?.string else { return nil }
     let deck = v["deck"]?.string ?? ""
