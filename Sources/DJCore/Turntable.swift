@@ -93,7 +93,7 @@ public final class Turntable: @unchecked Sendable {
   private var rate = 0.0
   private var target = 0.0
   private var scrubbing = false
-  private var playing = false
+  private var motorOn = false
   private var nudge = 0.0
   private var pitch = 0.0
   private var loopStart = 0.0
@@ -167,7 +167,7 @@ public final class Turntable: @unchecked Sendable {
   public func render(
     frames: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?
   ) {
-    while let c = commands.pop() { apply(c) }
+    takeCommands()
     guard let buffer else {
       left.update(repeating: 0, count: frames)
       right?.update(repeating: 0, count: frames)
@@ -180,7 +180,7 @@ public final class Turntable: @unchecked Sendable {
           let want = min(maxRate, max(-maxRate, (target - pos) / chaseTau))
           rate += (want - rate) * rateSmooth
         } else {
-          let want = playing ? (1 + pitch) * (1 + nudge) : 0
+          let want = motorOn ? (1 + pitch) * (1 + nudge) : 0
           rate += (want - rate) * motorSmooth
         }
         pos += rate
@@ -215,6 +215,18 @@ public final class Turntable: @unchecked Sendable {
     // new audio's length beside the old audio's position (the loop clock divides one by the other)
     lengthAtomic.store(buffer._withUnsafeGuaranteedRef { $0.length }, ordering: .relaxed)
   }
+
+  /// Audio thread: apply the commands waiting in the ring now (`render` does it first anyway), so
+  /// a caller can see this block's hand / transport state before it renders (`DeckRenderer`: a
+  /// jog or a stop cancels the sample deck's vinyl brake).
+  func takeCommands() {
+    while let c = commands.pop() { apply(c) }
+  }
+
+  /// Audio thread: is a hand on the platter (scrub mode), as of the last command applied?
+  var handOn: Bool { scrubbing }
+  /// Audio thread: is the motor on (transport playing), as of the last command applied?
+  var motorRunning: Bool { motorOn }
 
   /// Audio thread: move the playhead on by `frames` output frames at the current rate, wrapped
   /// inside the loop region (a loop voice catching up after the loops' vinyl brake, as an
@@ -266,10 +278,10 @@ public final class Turntable: @unchecked Sendable {
         target = 0
       }
       buffer = b  // its length is published with the playhead, at the end of the render
-      if playing && !scrubbing { rate = (1 + pitch) * (1 + nudge) }
-    case .transport(let on): playing = on
+      if motorOn && !scrubbing { rate = (1 + pitch) * (1 + nudge) }
+    case .transport(let on): motorOn = on
     case .start:
-      playing = true
+      motorOn = true
       scrubbing = false
       rate = (1 + pitch) * (1 + nudge)
     case .freeze:
@@ -293,4 +305,27 @@ public final class Turntable: @unchecked Sendable {
       if now { gain = g }
     }
   }
+}
+
+// The sample deck's vinyl brake (`DeckRenderer`'s `LoopMasterBus`) slows the turntable as a
+// `TurntableBrake` source: the brake pulls fewer source frames than it plays (varispeed on the
+// turntable's output), the read position falls behind by the difference in output frames, and
+// the release skips the playhead on by them (`skip`) so it drops back in on the beat it would
+// have been on. Audio thread only.
+extension Turntable: BrakeSource {
+  /// The brake's clock runs on the deck's frames; a stopped transport cancels it instead.
+  var playing: Bool { true }
+
+  func process(
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int,
+    startFrame _: Int
+  ) {
+    render(frames: frames, left: left, right: right)
+  }
+
+  /// Lag in output frames (one per output frame an unbraked turntable plays).
+  func brakeLag(sampleRate _: Double) -> Double { 1 }
+  func brakeChunk(output _: Int, pulled _: Int) {}
+  /// `ticks` output frames behind: skip on by them at the current rate.
+  func catchUp(ticks: Double) { skip(frames: ticks) }
 }

@@ -31,8 +31,9 @@
 // (`turntableBrakeDoesNotAllocate`). A chunk takes at most `maxChunk` output frames, so the runner
 // never gets a block bigger than its scratch (4096, as the sampler bank's).
 
-/// What a `TurntableBrake` slows down: a net deck's `WaveRunner`, or the loop channel's bank
-/// (`LoopBank`, under the loops' master bus). Audio thread only; nothing here may allocate.
+/// What a `TurntableBrake` slows down: a net deck's `WaveRunner`, the loop channel's bank
+/// (`LoopBank`, under the loops' master bus), or a sample deck's `Turntable` (with its clip FX,
+/// `DeckRenderer`, under the deck's master bus). Audio thread only; nothing here may allocate.
 protocol BrakeSource: AnyObject {
   /// Is its clock running (the brake's elapsed time only counts while it is)?
   var playing: Bool { get }

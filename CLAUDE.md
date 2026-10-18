@@ -189,8 +189,10 @@ its copy; the two are now independent. Rules inherited from that split:
   bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
   wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
   `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
-  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
-  on a sample deck before this (then a no-op) now render differently.
+  `wave.*`. `vinyl-brake` there is the bus's `TurntableBrake` with the `Turntable` as source
+  (lag in output frames; release `Turntable.skip`s them, so the sample lands on its grid); a
+  jog (freeze) or transport stop cancels it — the jog wins. Sessions that fired a master macro
+  (or the brake) on a sample deck before this (then a no-op) now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
   voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
