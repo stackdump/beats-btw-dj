@@ -129,6 +129,36 @@ public enum DrumKits {
     return (file, b, p)
   }
 
+  /// The Brush kit of `kit`'s bank (`Brush.forGenre`'s snare on a sampled kit): its bank-128
+  /// preset on GM2 / GS's Brush program (40), else the first one named as a brush kit; nil for
+  /// a bank without one (the kit's own snare plays, softer) or a kit that isn't a bank-128 one.
+  /// Reads the bank's preset list once per bank (prepare, off the audio thread).
+  public static func brushKit(for kit: SamplerSource) -> SamplerSource? {
+    guard case .kit(let path, let bank, _) = kit, bank == 128 else { return nil }
+    let presets =
+      brushCache.withLock({ $0[path] })
+      ?? {
+        let read =
+          path.lowercased().hasSuffix(".dls") ? BankPresets.dls(path) : BankPresets.sf2(path)
+        brushCache.withLock { $0[path] = read }
+        return read
+      }()
+    guard let p = brushPreset(in: presets) else { return nil }
+    return .kit(path, bank: p.bank, program: p.program)
+  }
+  private static let brushCache = LockedBox<[String: [BankPreset]]>([:])
+
+  /// GM2 / GS's Brush kit program.
+  static let brushProgram = 40
+
+  /// The Brush kit among a bank's presets: bank 128 program 40, else the lowest bank-128
+  /// program whose name has "brush" in it.
+  static func brushPreset(in presets: [BankPreset]) -> BankPreset? {
+    let kits = presets.filter { $0.bank == 128 }.sorted { $0.program < $1.program }
+    return kits.first { $0.program == brushProgram }
+      ?? kits.first { $0.name.lowercased().contains("brush") }
+  }
+
   /// A readable name for a kit id (its preset's, when installed; else the id).
   public static func label(_ id: String) -> String {
     installed.first { $0.id == id }?.label ?? id
