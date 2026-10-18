@@ -9,6 +9,7 @@ public final class SessionRecorder {
   private let initial: (decks: [String: DeckSourceDescriptor], params: [String: DeckParams])
   private let crossfader: Double
   private let master: Double
+  private let loopGain: Double
   private let lock = NSLock()
   private var events: [SessionEvent] = []
 
@@ -41,6 +42,7 @@ public final class SessionRecorder {
     initial = (decks, params)
     crossfader = engine.crossfader
     master = engine.master
+    loopGain = engine.loopChannel.gain
   }
 
   func record(midi port: String, _ bytes: [UInt8]) {
@@ -60,7 +62,7 @@ public final class SessionRecorder {
     return Session(
       sampleRate: engine.sampleRate, frames: engine.frame - startFrame, decks: initial.decks,
       params: initial.params, crossfader: crossfader, master: master,
-      events: lock.withLock { events })
+      events: lock.withLock { events }, loopGain: loopGain)
   }
 }
 
