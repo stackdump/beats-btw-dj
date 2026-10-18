@@ -30,9 +30,10 @@ def build_argv() -> list[str]:
     return ["swift", "build", "-c", "release", "--product", "djctl"]
 
 
-def build() -> dict:
+def build(worktree: str = "") -> dict:
     run = rn.get_runner().run
-    root = str(rn.repo_root())
+    wt = rn.worktree_root(worktree)
+    root = str(wt)
     b = run(build_argv(), cwd=root, timeout=rn.BUILD_TIMEOUT).check("swift build")
     p = run(["swift", "build", "-c", "release", "--show-bin-path"], cwd=root,
             timeout=120).check("swift build --show-bin-path")
@@ -40,7 +41,7 @@ def build() -> dict:
     src = bin_dir / "djctl"
     if not src.exists():
         raise rn.ToolError(f"swift build succeeded but {src} is missing")
-    dest = rn.out_dir()
+    dest = rn.out_dir(wt)
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest / "djctl")
     copied = ["djctl"]
@@ -116,16 +117,17 @@ def summarize_render(doc: dict, wav: str) -> dict:
 def render(genre: str, seed: float, *, seconds: float = 30, structure: str = "",
            fixes: str = "", sampled: bool = False, room: bool = False,
            balance: bool = False, kit: str = "", palette: str = "",
-           notes: bool = False) -> dict:
-    djctl = rn.require_djctl()
-    d = rn.run_dir("renders")
+           notes: bool = False, worktree: str = "") -> dict:
+    wt = rn.worktree_root(worktree) if worktree else None
+    djctl = rn.require_djctl(wt)
+    d = rn.run_dir("renders", wt)
     name = f"{genre}-{_num(seed)}"
     wav = str(d / f"{name}.wav")
     notes_path = str(d / f"{name}.notes.txt") if notes else ""
     argv = render_argv(djctl, genre, seed, wav, seconds=seconds, structure=structure,
                        fixes=fixes, sampled=sampled, room=room, balance=balance, kit=kit,
                        palette=palette, notes=notes_path)
-    r = rn.get_runner().run(argv, cwd=str(rn.repo_root()), timeout=rn.RENDER_TIMEOUT)
+    r = rn.get_runner().run(argv, cwd=str(wt or rn.repo_root()), timeout=rn.RENDER_TIMEOUT)
     r.check("djctl render")
     doc = parse_render(r.stdout)
     (d / f"{name}.json").write_text(json.dumps(doc, indent=1, sort_keys=True))

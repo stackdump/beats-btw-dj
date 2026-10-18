@@ -93,7 +93,7 @@ class LockInfo:
 
 
 @contextlib.contextmanager
-def held(what: dict, *, wait: float = LOCK_WAIT):
+def held(what: dict, *, wait: float = LOCK_WAIT, root: Path | None = None):
     """Hold the test lock for the body; yields a LockInfo saying how long it waited and for
     whom. Raises ToolError when `wait` seconds pass without getting it."""
     fd = _open_lock()
@@ -114,7 +114,7 @@ def held(what: dict, *, wait: float = LOCK_WAIT):
                         f"{json.dumps(info.waited_for)}")
                 time.sleep(POLL)
         info.waited_seconds = time.monotonic() - t0
-        me = {"pid": os.getpid(), "host": socket.gethostname(), "root": str(rn.repo_root()),
+        me = {"pid": os.getpid(), "host": socket.gethostname(), "root": str(root or rn.repo_root()),
               "started": _now(), **what}
         os.ftruncate(fd, 0)
         os.lseek(fd, 0, os.SEEK_SET)
@@ -299,13 +299,14 @@ def summarize(res: rn.Result, filter: str, release: bool, log: Path,
 
 
 def swift_test(filter: str, *, release: bool = False, timeout: float = TEST_TIMEOUT,
-               lock_wait: float = LOCK_WAIT) -> dict:
+               lock_wait: float = LOCK_WAIT, worktree: str = "") -> dict:
     f = check_filter(filter)
+    wt = rn.worktree_root(worktree)
     argv = test_argv(f, release=release)
-    d = rn.run_dir("swift-tests")
+    d = rn.run_dir("swift-tests", wt)
     with held({"tool": "djtest_swift_test", "filter": f, "release": release},
-              wait=lock_wait) as lock:
-        res = rn.get_runner().run(argv, cwd=str(rn.repo_root()), timeout=timeout)
+              wait=lock_wait, root=wt) as lock:
+        res = rn.get_runner().run(argv, cwd=str(wt), timeout=timeout)
     log = d / "output.txt"
     log.write_text((res.stdout or "") + "\n--- stderr ---\n" + (res.stderr or ""))
     out = summarize(res, f, release, log)

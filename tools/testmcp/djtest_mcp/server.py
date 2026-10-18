@@ -46,27 +46,29 @@ mcp = MCPServer(
 
 
 @mcp.tool()
-def djtest_build() -> dict:
+def djtest_build(worktree: str = "") -> dict:
     """Build djctl in release (`swift build -c release --product djctl`) and copy it, with
     its resource bundle, to build/testmcp/. Run it after changing Swift; the other tools use
-    the copy, so a later build can't swap the binary under them. Takes minutes cold."""
-    return rd.build()
+    the copy, so a later build can't swap the binary under them. Takes minutes cold.
+    worktree: another checkout of this repo (a git worktree path) to work in instead of the server's own; its files go under that tree's build/testmcp."""
+    return rd.build(worktree)
 
 
 @mcp.tool()
 def djtest_render(genre: str, seed: float, seconds: float = 30, structure: str = "",
                   fixes: str = "", sampled: bool = False, room: bool = False,
                   balance: bool = False, kit: str = "", palette: str = "",
-                  notes: bool = False) -> dict:
+                  notes: bool = False, worktree: str = "") -> dict:
     """Render a track offline with `djctl render` into build/testmcp/renders/<ts>/ and return
     its musicality report and audio metrics, with lufs / lra / peakDB / truePeakDBTP lifted
     to the top and the WAV's path. structure: a structure name, or "loop" (default standard).
     fixes: DJMusicality fixes, "all" / "none" / "key,timing,…" (default all). sampled: use
     the Mac's sampled instruments (default synth voices, reproducible anywhere). room /
-    balance: also measure the reverb return / per-part levels. notes: also write the note log."""
+    balance: also measure the reverb return / per-part levels. notes: also write the note log.
+    worktree: render with that checkout's djctl (djtest_build it with the same worktree first)."""
     return rd.render(genre, seed, seconds=seconds, structure=structure, fixes=fixes,
                      sampled=sampled, room=room, balance=balance, kit=kit, palette=palette,
-                     notes=notes)
+                     notes=notes, worktree=worktree)
 
 
 @mcp.tool()
@@ -136,7 +138,8 @@ def djtest_level_check(genres: list[str], seeds: list[float], seconds: float = 2
 
 
 @mcp.tool()
-def djtest_swift_test(filter: str, release: bool = False, timeout: float = st.TEST_TIMEOUT) -> dict:
+def djtest_swift_test(filter: str, release: bool = False, timeout: float = st.TEST_TIMEOUT,
+                      worktree: str = "") -> dict:
     """Run `make swift-test-filter FILTER=<filter>` (release: `make swift-rt-test-filter`, the
     optimised build the audio-thread allocation tests need) and parse swift-testing's output:
     status, passed / failed / skipped / issues, seconds, the `Test run with N tests` line, and
@@ -144,8 +147,9 @@ def djtest_swift_test(filter: str, release: bool = False, timeout: float = st.TE
     lists, known_tests.json) or new. filter is required (a suite or test name, `A|B` for
     several). Runs one at a time across every worktree (a lock in ~/Library/Caches/dj-vevr-se):
     a call waits for the one before it, and `lock.waited_seconds` / `waited_for` say so. The
-    full transcript is at `log`. timeout: seconds for the run itself (it builds first)."""
-    return st.swift_test(filter, release=release, timeout=timeout)
+    full transcript is at `log`. timeout: seconds for the run itself (it builds first).
+    worktree: another checkout of this repo (a git worktree path) to work in instead of the server's own; its files go under that tree's build/testmcp. The lock is the same for every worktree."""
+    return st.swift_test(filter, release=release, timeout=timeout, worktree=worktree)
 
 
 @mcp.tool()
@@ -157,12 +161,12 @@ def djtest_lock() -> dict:
 
 
 @mcp.tool()
-def djtest_shots(filter: str, limit: int = sh.DEFAULT_LIMIT):
+def djtest_shots(filter: str, limit: int = sh.DEFAULT_LIMIT, worktree: str = ""):
     """Run the view tests matching filter with DJ_SHOT_DIR set (`make swift-shots`), under the
     same lock as djtest_swift_test, and return up to `limit` of the PNGs they wrote as images
     you can see, then a JSON summary (test counts, every PNG's path). e.g. filter
-    "WindowShotTests"."""
-    r = sh.shots(filter, limit)
+    "WindowShotTests". worktree: another checkout of this repo (a git worktree path) to work in instead of the server's own; its files go under that tree's build/testmcp."""
+    r = sh.shots(filter, limit, worktree=worktree)
     meta = {"summary": r["summary"], "shot_dir": r["shot_dir"], "total_pngs": r["total_pngs"],
             "images": [{"path": i["path"], "bytes": i["bytes"]} for i in r["images"]]}
     return [*(Image(data=i["data"], format="png") for i in r["images"]),
