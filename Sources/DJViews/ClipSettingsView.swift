@@ -43,7 +43,8 @@ struct ClipProvenanceDetails: View {
 /// A pad's "Settings…": everything about its clip, bound to the same `ClipState` the Loops row
 /// shows and changed through the same model calls (so the row and the board never disagree):
 /// name and colour, a sequence's steps, a crop to the beat, level, mute / solo / key lock, its
-/// FX, the loop channel's launch, fade and tempo rules, which deck holds it, where it came from,
+/// FX, its own launch, fade and tempo rules beside the loop channel's (all loops), which deck
+/// holds it, where it came from,
 /// and — for a loop taken from a net — the instruments of that track, opened in the sound panel
 /// for tuning.
 struct ClipSettingsView: View {
@@ -106,7 +107,8 @@ struct ClipSettingsView: View {
       section("Edges") { cropEditor(clip) }
       section("Sound") { soundEditor(clip) }
       section("FX") { ClipFxEditor(clip: clip, model: model) }
-      section("Every loop") { channelRules }
+      section("This loop") { clipRules(clip) }
+      section("All loops") { channelRules }
       section("Where it plays") { placement(clip) }
       section("Where it came from") { ClipProvenanceDetails(clip: clip, model: model) }
       section("Tune its instruments") { tuningEditor(clip) }
@@ -218,7 +220,58 @@ struct ClipSettingsView: View {
     }
   }
 
-  /// The loop channel's rules: they apply to every loop, so they are the Loops row's own.
+  /// This clip's own launch, fade and tempo rules: "row" follows the loop channel's (named in
+  /// brackets), a value is this clip's alone (`DJEngine.clipQuantum` / `clipFade` /
+  /// `clipFollow`).
+  private func clipRules(_ clip: ClipState) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 3) {
+        rulesLabel("Launch on")
+        ChoiceButton(
+          label: "row (\(DJEngine.quantumLabel(model.loopQuantum)))", selected: clip.quantum == nil,
+          tint: LoopRowView.tint
+        ) { model.setClipQuantum(clip.id, nil) }
+        ForEach(DJEngine.launchQuanta, id: \.self) { q in
+          ChoiceButton(
+            label: DJEngine.quantumLabel(q), selected: clip.quantum == q, tint: LoopRowView.tint
+          ) { model.setClipQuantum(clip.id, q) }
+        }
+      }
+      HStack(spacing: 3) {
+        rulesLabel("Fade")
+        ChoiceButton(
+          label: "row (\(model.loopChannel.fade.label))", selected: clip.fade == nil,
+          tint: LoopRowView.tint
+        ) { model.setClipFade(clip.id, nil) }
+        ForEach(LoopFade.allCases, id: \.self) { f in
+          ChoiceButton(label: f.label, selected: clip.fade == f, tint: LoopRowView.tint) {
+            model.setClipFade(clip.id, f)
+          }
+        }
+      }
+      HStack(spacing: 3) {
+        rulesLabel("Tempo")
+        ChoiceButton(
+          label: "row (\(ClipState.followLabel(model.loopFollow)))", selected: clip.follow == nil,
+          tint: LoopRowView.tint
+        ) { model.setClipFollow(clip.id, nil) }
+        ForEach(LoopFollow.allCases, id: \.self) { f in
+          ChoiceButton(
+            label: ClipState.followLabel(f), selected: clip.follow == f, tint: LoopRowView.tint
+          ) { model.setClipFollow(clip.id, f) }
+        }
+      }
+      Text("This loop's own; \"row\" follows the loop channel's. Scenes launch on the row's.")
+        .font(.caption2).foregroundStyle(.tertiary)
+    }
+  }
+
+  private func rulesLabel(_ s: String) -> some View {
+    Text(s).font(.caption).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+  }
+
+  /// The loop channel's rules: they apply to every loop without its own, so they are the Loops
+  /// row's own.
   private var channelRules: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 3) {
@@ -255,7 +308,7 @@ struct ClipSettingsView: View {
           Text("→ \(d)").font(.caption.bold()).foregroundStyle(deckTint(d))
         }
       }
-      Text("These are the loop channel's: they apply to every loop.")
+      Text("The loop channel's: every loop without its own follows them.")
         .font(.caption2).foregroundStyle(.tertiary)
     }
   }

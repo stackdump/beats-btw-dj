@@ -166,7 +166,13 @@ struct SoundboardTests {
       (.color(nil), .clipColor(id: id, color: nil)),
       (.rename("  kick  "), .clipRename(id: id, title: "kick")),
       (.rename("  "), nil),
-      (.fade(.bar), .loopFade(mode: "bar")),
+      (.fade(.bar), .clipFade(id: id, mode: "bar")),
+      (.fade(nil), .clipFade(id: id, mode: nil)),
+      (.quantize(8), .clipQuantize(id: id, beats: 8)),
+      (.quantize(nil), .clipQuantize(id: id, beats: nil)),
+      (.follow(.source), .clipFollow(id: id, mode: "source")),
+      (.follow(nil), .clipFollow(id: id, mode: nil)),
+      (.loopFade(.bar), .loopFade(mode: "bar")),
       (.move("B"), .clip(deck: "B", id: id)),
       (.move("L"), .clip(deck: "L", id: id)),
       (.remove, .clipRemove(id: id)),
@@ -179,7 +185,12 @@ struct SoundboardTests {
     m.soundboard(.fade(.beat), id)
     m.poll()
     #expect(m.clips.first?.title == "kick" && m.clips.first?.keyLock == true)
-    #expect(m.loopChannel.fade == .beat && dj.loopFade == .beat)
+    #expect(m.clips.first?.fade == .beat && dj.clipFade(id) == .beat, "the pad's own fade")
+    #expect(m.loopChannel.fade == .declick && dj.loopFade == .declick, "not the row's")
+    m.soundboard(.loopFade(.bar), id)
+    m.poll()
+    #expect(m.loopChannel.fade == .bar && dj.loopFade == .bar, "all loops")
+    #expect(dj.loopFade(for: id) == .beat, "its own fade still wins")
     // onto deck B and back under the mixer
     m.soundboard(.move("B"), id)
     m.poll()
@@ -194,6 +205,72 @@ struct SoundboardTests {
     m.undoRemove()
     m.poll()
     #expect(m.soundPads.map(\.id) == [id] && m.soundPads.first?.title == "kick")
+  }
+
+  /// A pad's fade, launch boundary and tempo follow are its clip's alone: the other pads keep the
+  /// row's, the pad (and its settings) shows them, and "row" hands it back to the loop channel.
+  @Test func aPadsLaunchRulesAreItsOwn() throws {
+    let (m, dj) = try pads(2)
+    defer { dj.stop() }
+    let ids = m.soundPads.map(\.id)
+    let (one, other) = (ids[0], ids[1])
+    #expect(m.soundPads.allSatisfy { $0.launchBadge == nil }, "no rules of their own yet")
+
+    m.soundboard(.fade(.bar), one)
+    m.soundboard(.quantize(8), one)
+    m.soundboard(.follow(.source), one)
+    m.poll()
+    #expect(dj.clipFade(one) == .bar && dj.clipQuantum(one) == 8 && dj.clipFollow(one) == .source)
+    #expect(
+      dj.clipFade(other) == nil && dj.clipQuantum(other) == nil, "the other clip is as it was")
+    #expect(dj.loopFade(for: other) == .declick && dj.quantum(for: other) == dj.loopQuantum)
+    #expect(dj.loopFade == .declick && dj.loopFollow == .louder, "the row is as it was")
+    let pad = try #require(m.soundPads.first { $0.id == one })
+    #expect(pad.fade == .bar && pad.quantum == 8 && pad.follow == .source)
+    #expect(pad.launchBadge == "2 bars · fade 1 bar · own deck", "\(pad.launchBadge ?? "nil")")
+    #expect(m.soundPads.first { $0.id == other }?.launchBadge == nil)
+    let shown = try #require(ClipSettingsView.clip(one, in: m))
+    #expect(shown.fade == .bar && shown.quantum == 8 && shown.follow == .source)
+    #expect(
+      shown.hasLaunchOverride && !(ClipSettingsView.clip(other, in: m)?.hasLaunchOverride ?? true))
+
+    // the settings' "row" choices give it back to the loop channel
+    m.setClipFade(one, nil)
+    m.setClipQuantum(one, nil)
+    m.setClipFollow(one, nil)
+    m.poll()
+    #expect(dj.clipFade(one) == nil && dj.clipQuantum(one) == nil && dj.clipFollow(one) == nil)
+    #expect(m.soundPads.first { $0.id == one }?.launchBadge == nil)
+  }
+
+  /// The badge draws on the pad: a red pad with rules of its own shows the loops' violet in its
+  /// bottom line, the same pad without them shows none.
+  @Test func aPadWithItsOwnRulesShowsTheBadge() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let id = try #require(m.clips.first?.id)
+    m.setClipColor(id, "red")
+    m.soundboard(.toggle, id)  // going out: the pad's face stays dim
+    try run(dj, Self.bar + Self.bar / 4)
+    m.poll()
+    let (w, h) = (220, 130)
+    func violet(_ pad: SoundPad) throws -> Int {
+      let view = SoundPadView(pad: pad).frame(width: CGFloat(w), height: CGFloat(h))
+        .background(Color.black).environment(\.colorScheme, .dark)
+      savePNG(
+        view, width: w, height: h, name: "sound-pad-\(pad.launchBadge == nil ? "row" : "own")")
+      let px = try #require(renderPixels(view, width: w, height: h))
+      return px.count(inX: 0..<w, y: (h - 30)..<h) { r, g, b in b > 150 && r > 90 && g < r }
+    }
+    let plain = try #require(m.soundPads.first)
+    #expect(plain.launchBadge == nil)
+    m.soundboard(.quantize(16), id)
+    m.soundboard(.fade(.beat), id)
+    m.poll()
+    let own = try #require(m.soundPads.first)
+    #expect(own.launchBadge == "4 bars · fade 1 beat")
+    let (before, after) = (try violet(plain), try violet(own))
+    #expect(after > before + 50, "the badge: \(before) → \(after) violet pixels")
   }
 
   /// The settings editor shows the row's own clip: a change from the row shows there and on the

@@ -74,7 +74,8 @@ struct SoundboardView: View {
               .onHover { if $0 { focus = pad.id } }
               .contextMenu {
                 SoundPadMenu(
-                  pad: pad, fade: model.loopChannel.fade,
+                  pad: pad, rowQuantum: model.loopQuantum, rowFade: model.loopChannel.fade,
+                  rowFollow: model.loopFollow,
                   run: { model.soundboard($0, pad.id) },
                   rename: {
                     newName = pad.title
@@ -376,6 +377,7 @@ struct SoundPadView: View {
           if pad.soloed { badge("S", .yellow) }
           if pad.keyLock { Image(systemName: "lock.fill").font(.caption2) }
           if pad.fx.isActive { ClipFxBadge(fx: pad.fx) }
+          if let b = pad.launchBadge { SoundPadLaunchBadge(text: b) }
           if let d = pad.onDeck { badge("on \(d)", deckTint(d)) }
           if let s = pad.slot { Text(s).font(.caption2.monospaced()).foregroundStyle(.secondary) }
           Text(pad.stateLabel.uppercased()).font(.caption2.bold()).monospacedDigit()
@@ -429,11 +431,31 @@ struct SoundPadRing: View {
   }
 }
 
+/// A pad's badge for a loop with launch rules of its own (`SoundPad.launchBadge`): a metronome
+/// and the rules, short, so a pad that comes in on its own boundary says so.
+struct SoundPadLaunchBadge: View {
+  let text: String
+
+  var body: some View {
+    HStack(spacing: 2) {
+      Image(systemName: "metronome")
+      Text(text).lineLimit(1).minimumScaleFactor(0.7)
+    }
+    .font(.caption2.bold()).padding(.horizontal, 3)
+    .foregroundStyle(Color.black)
+    .background(RoundedRectangle(cornerRadius: 3).fill(LoopRowView.tint))
+    .help("Its own launch rules: \(text) (the row's for the rest)")
+  }
+}
+
 /// A pad's right-click: the quick settings, then the clip's full editor.
 struct SoundPadMenu: View {
   let pad: SoundPad
-  /// How loops come in and go out now (the loop channel's).
-  let fade: LoopFade
+  /// The row's launch boundary, fade and tempo follow (the loop channel's), which a pad without
+  /// its own follows.
+  let rowQuantum: Int
+  let rowFade: LoopFade
+  let rowFollow: LoopFollow
   let run: (SoundPadCommand) -> Void
   let rename: () -> Void
   let openSettings: () -> Void
@@ -452,9 +474,37 @@ struct SoundPadMenu: View {
     Toggle("Solo", isOn: Binding(get: { pad.soloed }, set: { run(.solo($0)) }))
     Toggle("Key lock", isOn: Binding(get: { pad.keyLock }, set: { run(.keyLock($0)) }))
     ClipFxMenu(fx: pad.fx) { run(.fx($0)) }
-    Menu("Fade (every loop)") {
+    Menu("Launch on (this loop)") {
+      Toggle(
+        "Row's (\(DJEngine.quantumLabel(rowQuantum)))",
+        isOn: Binding(get: { pad.quantum == nil }, set: { _ in run(.quantize(nil)) }))
+      ForEach(DJEngine.launchQuanta, id: \.self) { q in
+        Toggle(
+          DJEngine.quantumLabel(q),
+          isOn: Binding(get: { pad.quantum == q }, set: { _ in run(.quantize(q)) }))
+      }
+    }
+    Menu("Fade (this loop)") {
+      Toggle(
+        "Row's (\(rowFade.label))",
+        isOn: Binding(get: { pad.fade == nil }, set: { _ in run(.fade(nil)) }))
       ForEach(LoopFade.allCases, id: \.self) { f in
-        Toggle(f.label, isOn: Binding(get: { fade == f }, set: { _ in run(.fade(f)) }))
+        Toggle(f.label, isOn: Binding(get: { pad.fade == f }, set: { _ in run(.fade(f)) }))
+      }
+    }
+    Menu("Tempo (this loop)") {
+      Toggle(
+        "Row's (\(ClipState.followLabel(rowFollow)))",
+        isOn: Binding(get: { pad.follow == nil }, set: { _ in run(.follow(nil)) }))
+      ForEach(LoopFollow.allCases, id: \.self) { f in
+        Toggle(
+          ClipState.followLabel(f),
+          isOn: Binding(get: { pad.follow == f }, set: { _ in run(.follow(f)) }))
+      }
+    }
+    Menu("Fade (all loops)") {
+      ForEach(LoopFade.allCases, id: \.self) { f in
+        Toggle(f.label, isOn: Binding(get: { rowFade == f }, set: { _ in run(.loopFade(f)) }))
       }
     }
     Divider()
