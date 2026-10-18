@@ -41,9 +41,31 @@ extension DJEngine {
   /// How much louder another deck must be to take the loops over: 3 dB.
   static let dominanceMargin = pow(10, 3.0 / 20)
 
-  /// Follow the louder deck, or each loop's own (recorded: `.loopFollow`).
+  /// Follow the louder deck, or each loop's own (recorded: `.loopFollow`). Clips with a follow
+  /// of their own keep it.
   public func setLoopFollow(_ mode: LoopFollow) {
     loopFollow = mode
     if mode == .louder { updateDominantDeck() }
+  }
+
+  /// Clip `id`'s own tempo follow, if it has one (nil: it follows the row's, `loopFollow`).
+  public func clipFollow(_ id: String) -> LoopFollow? { clipFollows[id] }
+
+  /// Whose tempo clip `id` follows: its own choice, else the row's.
+  public func follow(for id: String?) -> LoopFollow {
+    id.flatMap { clipFollows[$0] } ?? loopFollow
+  }
+
+  /// Give clip `id` a tempo follow of its own (recorded: `.clipFollow`); nil: it follows the
+  /// row's again.
+  public func setClipFollow(_ id: String, _ mode: LoopFollow?) {
+    clipFollows[id] = mode
+    if mode == .louder { updateDominantDeck() }
+  }
+
+  /// Whether anything on the row follows the louder deck: the row, or a clip of its own. Only
+  /// then is the dominant deck worth keeping up to date.
+  var anyLoopFollowsLouder: Bool {
+    loopFollow == .louder || clipFollows.values.contains(.louder)
   }
 }
