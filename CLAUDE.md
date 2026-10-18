@@ -358,6 +358,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
   renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
   musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+  `make listen [GENRES=… SECONDS=… PREV_FIXES=…]` renders 6.1's panel (`--fixes all` vs the
+  previous part, plus `--solo` stems) into `.build/listen/`; `scripts/listen-ab.py` plays it blind
+  (seeded order, afplay) and appends JSONL picks for `listening-log.py from-picks`.
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
