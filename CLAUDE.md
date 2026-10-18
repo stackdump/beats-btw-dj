@@ -391,8 +391,9 @@ its copy; the two are now independent. Rules inherited from that split:
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
   `rootNote`, so `.kickTune`, the keys and later fixes follow) and, in cohesion v2 with a
-  seven-note key, a progression from `progressionTable` (beats' own `chordProgs` first in the
-  pool; pad and bass moved along the key, a walking bass's chromatic approach re-aimed, melody /
+  seven-note or pentatonic key (lofi / ambient: five-degree tables, the chords become sus /
+  quartal; blues keeps its plan), a progression from `progressionTable` (beats' own `chordProgs`
+  first in the pool; pad and bass moved along the key, a walking bass's chromatic approach re-aimed, melody /
   arp beat notes snapped to the new chord) before `.register` (`varyHarmony`); after
   `.bassLine`, a bass figure (rhythm × line; each bar's first and last notes stay the root,
   figure notes under the pad and above E1; walking / bossa basses untouched) and drum detail
