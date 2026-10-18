@@ -316,7 +316,7 @@ extension Deck {
   /// A master-chain macro (FX, pitch, feel) for `duration` bars (nil: its default; 0: permanent).
   /// On the loop channel ("L") it goes to the loops' master bus (LoopMasterFx.swift). On a sample
   /// deck it goes to the deck's own bus (`DeckRenderer.master`), on the deck's next bar at its
-  /// tempo; the vinyl brake is still net-only there (a no-op).
+  /// tempo (the vinyl brake too: it slows the turntable and lands back on the deck's grid).
   public func fire(_ macro: MasterMacro, duration: Int? = nil) {
     if bank != nil {
       onMasterMacro?(macro, duration)
@@ -326,7 +326,7 @@ extension Deck {
     case .net:
       wave.fire(macro, bars: duration)
     case .sample:
-      guard let bus = renderer.master, macro != .vinylBrake else { return }
+      guard let bus = renderer.master else { return }
       let at = sampleMasterFire()
       bus.fire(macro, bars: duration, frame: at.frame, bpm: at.bpm)
     }
