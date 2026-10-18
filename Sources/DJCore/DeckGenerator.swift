@@ -108,8 +108,10 @@ public final class PreparedTrack: @unchecked Sendable {
   /// `opts.musicality` asks), or `project` itself for a raw-`nets` share or without fixes.
   public let played: Project
   public let prepared: WaveProject
-  /// What `prepared` was prepared with (the genre's and palette's settings applied), and at.
-  let opts: WaveOptions
+  /// What `prepared` was prepared with: the deck's options with the track's voicing seed and
+  /// its genre's and palette's settings applied (`MixBalance.measure` renders the parts with
+  /// them), and at.
+  public let opts: WaveOptions
   let sampleRate: Double
 
   /// The composed track's spec; nil for a raw-`nets` share.
@@ -214,7 +216,7 @@ public final class PreparedTrack: @unchecked Sendable {
 extension WaveOptions {
   /// These options with the settings a track of `genre` plays with, for the fixes they hold:
   /// the duck depth, the room, the echo, the groove template, the voice design
-  /// (`VoiceDesign.forGenre`); and the genre itself (`genre`: the rests it gates).
+  /// (`VoiceDesign.forGenre`), the brushes; and the genre itself (`genre`: the rests it gates).
   public func forGenre(_ genre: String) -> WaveOptions {
     var o = self
     o.genre = genre
@@ -225,6 +227,7 @@ extension WaveOptions {
     if musicality.contains(.duck) { o.duckDepth = DJMusicality.duckDepth(genre: genre) }
     if musicality.contains(.space) { o.space = SpaceSpec.forGenre(genre) }
     if musicality.contains(.echo) { o.echo = EchoSpec.forGenre(genre) }
+    o.brushes = musicality.contains(.backbeat) && Brush.forGenre(genre)
     return o
   }
 }

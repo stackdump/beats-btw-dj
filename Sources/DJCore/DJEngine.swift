@@ -42,6 +42,9 @@ public final class DJEngine {
   /// LoopSound.swift); the rest follow `loopQuantum` / `loopFade`.
   var clipQuanta: [String: Int] = [:]
   var clipFades: [String: LoopFade] = [:]
+  /// Clips' own tempo follow, where they have one (LoopFollow.swift); the rest follow
+  /// `loopFollow`.
+  var clipFollows: [String: LoopFollow] = [:]
   public internal(set) var loopKeyLock = false
   public internal(set) var loopFade = LoopFade.declick
   var stretchCache: [String: (bpm: Double, buffer: SampleBuffer)] = [:]
@@ -290,6 +293,8 @@ public final class Deck: JogClock {
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
+  /// The song tick the last `mixIn`'s rest ends on (`isMixingIn`); nil once a track loads.
+  var mixInEndTick: Int?
   /// The deck's walk (Wander.swift): on/off, pace, step, locks, the log of moves.
   public internal(set) var wander = WanderState()
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
@@ -360,8 +365,8 @@ public final class Deck: JogClock {
   var isDemo = false
   /// Told when a sample deck's beat grid changes (analysis finished, tapped, moved).
   var onGrid: ((BeatGrid) -> Void)?
-  /// A master macro fired on this deck (nil: its panic): the loops' master bus takes it from
-  /// here (on the loop channel itself, or linked: LoopMasterFx.swift).
+  /// A master macro fired on this deck (nil: its panic), net or sample: the loops' master bus
+  /// takes it from here (on the loop channel itself, or linked: LoopMasterFx.swift).
   var onMasterMacro: ((MasterMacro?, Int?) -> Void)?
   var netNudge = 0.0
   var ringShapes: [String: RingShape] = [:]
@@ -719,6 +724,7 @@ public final class Deck: JogClock {
     sourceFile = nil
     levelSource = nil  // a net is levelled by its own loudness gain, not the sample's
     stemsMuted = [:]
+    mixInEndTick = nil
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net

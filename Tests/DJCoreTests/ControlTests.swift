@@ -171,6 +171,19 @@ struct MCPBridgeTests {
     #expect(text.contains("dimension: \(dims)|keep:<role>"), "wanderLock's dimensions are listed")
   }
 
+  /// The mix-out / mix-in ops say their bars and defaults, and that they need a net deck.
+  @Test func mixOutAndMixInAreDocumented() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":11,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains("mixOut {deck, bars? 1-64, default \(MixOutTail.defaultBars)}"))
+    #expect(text.contains("mixIn {deck, bars? 1-64, default \(DeckAction.defaultMixInBars)}"))
+    #expect(text.contains("stinger, panic, mixOut, mixIn) need a deck in net mode"))
+    #expect(DeckAction.jsonOps.suffix(2) == ["mixOut", "mixIn"])
+  }
+
   @Test func importingAStockLoopOntoTheRowIsDocumented() throws {
     let tools = try #require(
       try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":10,"method":"tools/list"}"#)["result"]?[
@@ -185,5 +198,15 @@ struct MCPBridgeTests {
     #expect(
       stock?["inputSchema"]?["properties"]?["action"]?["description"]?.string
         == "list | load | addToRow")
+  }
+
+  @Test func dJPerformDocumentsAClipsOwnFollow() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":11,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains("clipFollow {id, mode: louder|source or null}"))
+    #expect(DeckAction.jsonOps.contains("clipFollow"))
   }
 }

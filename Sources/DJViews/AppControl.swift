@@ -59,16 +59,16 @@ extension AppModel {
         let d = try requireDeck(deck)
         let netOnly = [
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
-          "setPalette", "setRoleVoice",
+          "setPalette", "setRoleVoice", "mixOut", "mixIn",
         ]
-        // the loop channel takes the master macros and panic (its master FX bus)
-        let loopMaster: Bool = {
-          guard deck == "L" else { return false }
+        // the loop channel and the sample decks take the master macros and panic (their master
+        // FX bus; a sample deck's has no vinyl brake yet)
+        let masterBus: Bool = {
           if case .panic = action { return true }
-          if case .macro(_, let id) = action { return MasterMacro(id: id) != nil }
-          return false
+          guard case .macro(_, let id) = action, let m = MasterMacro(id: id) else { return false }
+          return deck == "L" || m != .vinylBrake
         }()
-        if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net, !loopMaster {
+        if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net, !masterBus {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
         }
         switch action {
@@ -93,6 +93,13 @@ extension AppModel {
           throw ControlRequestError.bad(
             "deck \(deck) has no role \(role) (roles: "
               + d.roleSounds.map(\.role).joined(separator: ", ") + ")")
+        }
+        switch action {
+        case .mixOut(_, let bars), .mixIn(_, let bars):
+          guard (1...64).contains(bars) else {
+            throw ControlRequestError.bad("\(a["op"]?.string ?? "mix") bars must be 1-64")
+          }
+        default: break
         }
         if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
           throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")
@@ -339,7 +346,7 @@ extension AppModel {
       return try controlNotes(p)
 
     case "journal":
-      return controlJournal(p)
+      return try await controlJournal(p)
 
     default:
       throw ControlRequestError.bad("unknown method \(method)")
@@ -779,6 +786,8 @@ extension AppModel {
             .string($0)
           })
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
+      o["mixingOut"] = .bool(s.mixingOut)
+      o["mixingIn"] = .bool(s.mixingIn)
       // what reloads this track: a favorite, dj_load_share, a copy
       if let cid = s.sourceCID {
         var share = JSONObject([("cid", .string(cid))])

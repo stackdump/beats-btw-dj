@@ -71,18 +71,34 @@ extension Deck {
   }
 
   /// Move the net to a tick (the swap lands on the next bar). Off the main thread by
-  /// default; inline in `deterministic` (replay) mode.
-  public func relocate(toTick tick: Int) {
+  /// default; inline in `deterministic` (replay) mode. `tail` / `rest`: the project from there
+  /// on plays that mix-out tail, or that extra rest on top of the song's (`mixOut`, `mixIn`).
+  public func relocate(toTick tick: Int, tail: MixOutTail? = nil, rest: RestSchedule.Entry? = nil) {
     guard mode == .net, let project = netProject else { return }
     if deterministic {
       wave.load(
         WaveRunner.prepare(
-          project, sampleRate: wave.sampleRate, opts: sameSongOptions(waveOptions),
+          project, sampleRate: wave.sampleRate,
+          opts: movedOptions(waveOptions, project, tail: tail, rest: rest),
           startTick: max(0, tick), trackSerial: wave.latest?.trackSerial))
       applyNetTempo()
     } else {
-      Task { @MainActor in await self.jumpToTick(tick) }
+      Task { @MainActor in await self.jumpToTick(tick, tail: tail, rest: rest) }
     }
+  }
+
+  /// `sameSongOptions(opts)` with a new mix-out tail and / or one more rest (in song ticks).
+  private func movedOptions(
+    _ opts: WaveOptions, _ project: Project, tail: MixOutTail?, rest: RestSchedule.Entry?
+  ) -> WaveOptions {
+    var o = sameSongOptions(opts)
+    if let tail { o.tail = tail }
+    if let rest {
+      let song =
+        o.trackRests ?? RestSchedule.build(project, fixes: o.musicality, genre: o.genre)
+      o.trackRests = song.with(rest: rest)
+    }
+    return o
   }
 
   /// `opts` for another start of the song this deck plays: it keeps the playing project's
@@ -132,14 +148,17 @@ extension Deck {
 
   /// Jump the net to an exact tick (quantised to the next bar by the swap).
   @MainActor @discardableResult
-  public func jumpToTick(_ tick: Int) async -> Bool {
+  public func jumpToTick(
+    _ tick: Int, tail: MixOutTail? = nil, rest: RestSchedule.Entry? = nil
+  ) async -> Bool {
     guard mode == .net, let project = netProject else { return false }
     let sr = wave.sampleRate
     let bank = wave.samplers
     let seed = voicingSeed
     let filter = roleFilter
     let song = wave.latest?.trackSerial
-    let opts = sameSongOptions(.extended(samplers: bank, seed: seed, roleFilter: filter))
+    let opts = movedOptions(
+      .extended(samplers: bank, seed: seed, roleFilter: filter), project, tail: tail, rest: rest)
     generation += 1
     let mine = generation
     let prepared = await Task.detached(priority: .userInitiated) {
@@ -150,6 +169,62 @@ extension Deck {
     wave.load(prepared)
     applyNetTempo()
     return true
+  }
+
+  // MARK: mix out / mix in (ROADMAP 6.2, performable form)
+
+  /// Where a change made "from the next bar" starts: the tick to prepare from (the swap's,
+  /// `nextSwapTick`, on a playing deck: it carries on where the playing project would be) and
+  /// the bar line the change begins on.
+  var nextBarStart: (tick: Int, bar: Int) {
+    if wave.isPlaying {
+      let t = nextSwapTick
+      return (t, t + 1)
+    }
+    let t = max(0, wave.tick)
+    return (t, (t + 15) / 16 * 16)
+  }
+
+  /// Mix the deck out (`DeckAction.mixOut`): at the next bar it jumps to the song's outro (or,
+  /// already in it or with none, plays on from where it is) and from that bar line plays only
+  /// its drums-forward lanes for `bars` bars, then stops on a bar line (`MixOutTail`; the room
+  /// rings out). Section jumps, kit and palette changes keep the tail (`sameSongOptions`); a
+  /// new track drops it. The relocation is part of the action, never recorded on its own.
+  /// Returns the tail, nil on a deck not playing a net.
+  @discardableResult
+  public func mixOut(bars: Int = MixOutTail.defaultBars) -> MixOutTail? {
+    guard mode == .net, netProject != nil else { return nil }
+    var (tick, bar) = nextBarStart
+    if let outro = sections.last(where: { $0.name == "outro" }), outro.startTick >= bar {
+      tick = outro.startTick
+      bar = outro.startTick
+    }
+    let tail = MixOutTail(fromTick: bar, bars: max(1, bars))
+    relocate(toTick: tick, tail: tail)
+    return tail
+  }
+
+  /// Bring the deck in drums-forward (`DeckAction.mixIn`): from the next bar its melodic lanes
+  /// (the mix-out tail's mask) rest for `bars` bars and come back on the bar line after, the
+  /// song carrying on where it is. The rest joins the song's schedule (in song ticks: a jump
+  /// back across that stretch rests it again). Returns it, nil on a deck not playing a net.
+  @discardableResult
+  public func mixIn(bars: Int) -> RestSchedule.Entry? {
+    guard mode == .net, netProject != nil, bars > 0 else { return nil }
+    let (tick, bar) = nextBarStart
+    let rest = RestSchedule.mixIn(fromTick: bar, bars: bars)
+    relocate(toTick: tick, rest: rest)
+    mixInEndTick = rest.to
+    return rest
+  }
+
+  /// A mix-out tail plays on the sounding project (it stops on its bar line).
+  public var isMixingOut: Bool { mode == .net && wave.tailEndTick != nil }
+
+  /// A mix-in's rest is still to come or playing.
+  public var isMixingIn: Bool {
+    guard mode == .net, let end = mixInEndTick else { return false }
+    return wave.tick < end
   }
 
   // MARK: roles
@@ -237,15 +312,67 @@ extension Deck {
   }
 
   /// A master-chain macro (FX, pitch, feel) for `duration` bars (nil: its default; 0: permanent).
-  /// On the loop channel ("L") it goes to the loops' master bus (LoopMasterFx.swift).
+  /// On the loop channel ("L") it goes to the loops' master bus (LoopMasterFx.swift). On a sample
+  /// deck it goes to the deck's own bus (`DeckRenderer.master`), on the deck's next bar at its
+  /// tempo; the vinyl brake is still net-only there (a no-op).
   public func fire(_ macro: MasterMacro, duration: Int? = nil) {
     if bank != nil {
       onMasterMacro?(macro, duration)
       return
     }
-    guard mode == .net else { return }
-    wave.fire(macro, bars: duration)
+    switch mode {
+    case .net:
+      wave.fire(macro, bars: duration)
+    case .sample:
+      guard let bus = renderer.master, macro != .vinylBrake else { return }
+      let at = sampleMasterFire()
+      bus.fire(macro, bars: duration, frame: at.frame, bpm: at.bpm)
+    }
     onMasterMacro?(macro, duration)
+  }
+
+  /// Where a master macro fired now lands on a sample deck: the first downbeat of its grid at
+  /// least `DJEngine.loopLead` frames ahead (the command must reach the audio thread first), at
+  /// the deck's tempo. Stopped, or with no grid: at once (the next block), at its tempo or 120.
+  func sampleMasterFire() -> (frame: Int, bpm: Double) {
+    let bpm = effectiveBPM ?? 120
+    guard playing, let s = beatState, s.bpm > 0 else { return (0, bpm) }
+    let now = renderedFrames
+    let clock = LoopClock(
+      ref: self, origin: (now, s.beat), framesPerBeat: 60 / s.bpm * turntable.sampleRate,
+      bpm: s.bpm)
+    return (clock.nextBoundary(after: now + DJEngine.loopLead, every: 4), s.bpm)
+  }
+
+  /// Move a master FX slider by hand (its own units), on whichever chain this deck plays through:
+  /// the net's, a sample deck's bus, or the loops' bus.
+  public func setMasterFx(_ key: MasterFxKey, _ value: Int) {
+    if let bank {
+      bank.master.setSlider(key, value)
+    } else if mode == .net {
+      wave.setMasterFx(key, value)
+    } else {
+      renderer.master?.setSlider(key, value)
+    }
+  }
+
+  /// The master macros running (or waiting for their bar) on this deck's chain, in either mode
+  /// (the loop channel: its bus's). Main thread; allocates the array it returns.
+  public var activeMasterMacros: [MasterMacro] {
+    if let bank { return bank.master.activeMasterMacros }
+    switch mode {
+    case .net: return wave.activeMasterMacros
+    case .sample: return renderer.master?.activeMasterMacros ?? []
+    }
+  }
+
+  /// Is `macro` running on this deck's chain (see `activeMasterMacros`)?
+  public func isMasterActive(_ macro: MasterMacro) -> Bool {
+    if let bank { return bank.master.isActive(macro) }
+    switch mode {
+    case .net: return wave.isActive(macro)
+    case .sample: return renderer.master?.isActive(macro) ?? false
+    }
   }
 
   /// Fire a catalog macro by its beats id (`drop`, `sweep-lp`, `feel-build`...), whichever kind
@@ -272,8 +399,10 @@ extension Deck {
       bank.master.panic()
       return
     }
-    guard mode == .net else { return }
-    wave.panic()
+    switch mode {
+    case .net: wave.panic()
+    case .sample: renderer.master?.panic()
+    }
     onMasterMacro?(nil, nil)
   }
 

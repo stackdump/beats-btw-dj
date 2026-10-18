@@ -294,6 +294,12 @@ extension DJEngine {
       } else {
         setClipFade(id, nil)
       }
+    case .clipFollow(let id, let mode):
+      if let mode {
+        if let f = LoopFollow(rawValue: mode) { setClipFollow(id, f) }
+      } else {
+        setClipFollow(id, nil)
+      }
     case .tapBars(let bars): setTapTakeBars(bars)
     case .voiceTweak(let n, let channel, let params):
       deck(n)?.setVoiceTweak(params, channel: channel)
@@ -309,6 +315,8 @@ extension DJEngine {
     case .clipFx(let id, let fx): setClipFx(id, fx)
     case .loopFxLink(let on): setLoopFxLink(on)
     case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
+    case .mixOut(let n, let bars): deck(n)?.mixOut(bars: bars)
+    case .mixIn(let n, let bars): deck(n)?.mixIn(bars: bars)
     case .clipImport(let id, let title, let bpm, let beats, let provenance):
       if let b = buffer ?? sampleLibrary[id] ?? sampleResolver?(id) {
         importClip(

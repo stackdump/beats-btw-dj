@@ -142,7 +142,8 @@ public struct MCPBridge {
       0 = A} · master {value} · nextTrack {deck} · autoAdvance {deck, on} · \
       section {deck, index} · role {deck, role, on} · roleDisable {deck, role, on}: on = the \
       role stays off through new tracks too, until disabled again with on false · macro {deck, macro: id from \
-      dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
+      dj_catalog, a net macro or a master-chain FX / pitch / feel one; a sample deck takes the \
+      master-chain ones but vinyl-brake, on its next bar} · panic {deck} · \
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       grid {deck, bpm > 0, offset s}: a sample deck's beat grid by hand (the first beat at \
@@ -194,7 +195,8 @@ public struct MCPBridge {
       off|10ms|beat|bar}: how loops come in and go out (default 10ms) · clipQuantize {id, beats: \
       1|4|8|16|32 or null}: one loop's own launch boundary (null: the row's loopQuantize; a scene \
       switches on the row's) · clipFade {id, fade: off|10ms|beat|bar or null}: one loop's own \
-      fade (null: the row's loopFade) · tapBars {bars: 1-64 or \
+      fade (null: the row's loopFade) · clipFollow {id, mode: louder|source or null}: whose \
+      tempo one loop follows (null: the row's loopFollow) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
       app's) · voiceTweak {deck, channel, params}: shape a net deck's channel's synth voice \
       live, on the song playing (no reload; channel from dj_state.voices[].channel): params \
@@ -213,10 +215,15 @@ public struct MCPBridge {
       stinger, voice: an option from dj_palettes / dj_state.decks.X.sound[].options (gm:4, \
       synth:pwm-lead, cat:keys.epiano, inst:piano, a kit id…) or null = back to the palette}: \
       one role's sound, kept through new tracks until reset · setKit {deck, kit: a kit id or \
-      null}. Deck "L" also takes param volume / mute (1 = muted), \
+      null} · mixOut {deck, bars? 1-64, default 16}: play the deck out: at the next bar it \
+      jumps to the song's outro (or, in it or with none, plays on where it is), plays only its \
+      drums and bass for bars bars and stops on a bar line (the room rings out; section jumps \
+      keep it, a new track drops it) · mixIn {deck, bars? 1-64, default 4}: bring the deck in \
+      drums-forward: from the next bar its melodic parts rest for bars bars and come back on \
+      the bar line after. Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
-      Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
+      Net-only ops (section, role, macro, stinger, panic, mixOut, mixIn) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,
       ["action": prop("object", "The action, e.g. {\"op\":\"play\",\"deck\":\"A\",\"on\":true}")],
@@ -433,10 +440,16 @@ public struct MCPBridge {
       """
       The app's journal: the always-on log of every state change this run (deck actions, \
       controller MIDI, favorites, crates, variations, locks, notes), the record a run is \
-      rebuilt from (`djctl journal replay`). Returns the file and its latest entries (seq, \
-      time, engine frame, kind, a summary, and the event as JSON), newest last.
+      rebuilt from (`djctl journal replay`). action list (default): the file and its latest \
+      entries (seq, time, engine frame, kind, a summary, and the event as JSON), newest last. \
+      action rewind {seq}: put the app back where it stood at that seq — the journal is \
+      replayed to it, the decks, loop row, mixer and stores reset to the result — and journal a \
+      `rewind <seq>` mark and a checkpoint (nothing is deleted: the journal is append-only). \
+      Returns the checkpoint written and any clips or samples whose audio was gone.
       """,
       [
+        "action": prop("string", "list | rewind"),
+        "seq": prop("integer", "rewind: the entry to go back to (its seq, from list)"),
         "limit": prop("integer", "How many entries (default 50, at most 400)"),
         "kind": prop(
           "string", "Only entries of this kind, e.g. act, midi, note.add (prefix: note.)"),
