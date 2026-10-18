@@ -14,11 +14,15 @@ public enum Loudness {
   /// (`LevelMatch.referenceLUFS`, integrated; the probe's two bars of the busiest section read
   /// about 0.4 dB under a whole track's integrated loudness, measured over six genres). The deck's
   /// `PeakLimiter` holds the peaks this brings over −1 dBFS. (Was −18 under beats' tanh curve:
-  /// −17…−22 LUFS, about 10 dB under a stock loop.)
-  public static let targetDB = LevelMatch.referenceLUFS - 0.4
+  /// −17…−22 LUFS, about 10 dB under a stock loop.) The 0.4 is `targets.json`'s
+  /// `loudness.probeOffsetDB` (`MixTargets`).
+  public static let targetDB =
+    LevelMatch.referenceLUFS + MixTargets.shared.loudness.probeOffsetDB.value!
   /// The gain stays within −12…+18 dB (the sparsest genres — lofi, ambient — need about +13 at
-  /// the app's reference).
-  public static let range = (min: 0.25, max: 8.0)
+  /// the app's reference): `targets.json`'s `loudness.gainRange`.
+  public static let range = (
+    min: MixTargets.shared.loudness.gainRange.min, max: MixTargets.shared.loudness.gainRange.max
+  )
   /// Probe length and rate: two bars of the loudest section, rendered at a low rate (a
   /// prepare in a debug build stays near a tenth of a second).
   static let probeBars = 2

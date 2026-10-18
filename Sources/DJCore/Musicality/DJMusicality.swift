@@ -961,19 +961,10 @@ public enum DJMusicality {
   /// mid/side pan, and `spread`, a tonal lane's voices alternating that far either side of it
   /// (a chord's notes across the field; an arp's successive notes left, right, left), the
   /// runner narrowing it for notes below G4 so nothing at or under E3 leaves the middle. `kind`
-  /// is the lane's drum kind or "tonal"; `group` the net's part.
+  /// is the lane's drum kind or "tonal"; `group` the net's part. From `targets.json`'s `stereo`
+  /// (`MixTargets`): hats 0.3 right, crash 0.3 left, harmony spread 0.5, arp 0.45.
   public static func stereoPlacement(kind: String, group: String) -> (pan: Double, spread: Double) {
-    switch kind {
-    case "hat", "openhat": return (0.3, 0)
-    case "crash": return (-0.3, 0)
-    case "tonal":
-      switch group {
-      case "harmony": return (0, 0.5)
-      case "arp": return (0, 0.45)
-      default: return (0, 0)
-      }
-    default: return (0, 0)
-    }
+    MixTargets.shared.placement(kind: kind, group: group)
   }
 
   // MARK: ducking

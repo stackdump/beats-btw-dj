@@ -397,6 +397,11 @@ its copy; the two are now independent. Rules inherited from that split:
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
   `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
   `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
+- Mix targets are data (ROADMAP 6.1): `Resources/beats/targets.json` (`MixTargets`, hand-edited;
+  `make beats-tables` writes only tables.json) holds `Loudness.targetDB`'s probe offset and gain range,
+  `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
+  reference bands (lufs, lra, truePeak, slope, side; empty until measured). Every number names its
+  `source` — retune there, saying where the new value came from; `TargetsTableTests` pins the values.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
