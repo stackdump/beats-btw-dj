@@ -27,8 +27,8 @@ extension DJMusicality {
   /// scale the genre is in. Each bar's chord is the composed chord moved along the key to that
   /// root (a triad stays a triad, a seventh a seventh). beats' own progressions for the genre
   /// join the pool (`progressions(for:)`), so the composed plan stays one of the choices.
-  /// Seven-note scales only: beats' degree arithmetic is mod 7, so pentatonic and blues
-  /// genres keep their plan.
+  /// Pentatonic scales count in five-degree space (their chords, two scale steps apart, are
+  /// sus / quartal shapes and stay in key); the six-note blues scale keeps its plan.
   static let progressionTable: [String: [[Int]]] = [
     // i  ii° III iv v VI VII
     "MinorScale": [
@@ -52,14 +52,25 @@ extension DJMusicality {
     "PhrygianScale": [
       [0, 1, 0, 6], [0, 5, 1, 0], [0, 6, 5, 1], [0, 2, 1, 0], [0, 3, 1, 0],
     ],
+    // 1 b3 4 5 b7 (lofi)
+    "MinPentatonicScale": [[0, 3, 2, 4], [0, 2, 3, 0], [0, 4, 3, 2]],
+    // 1 2 3 5 6 (ambient)
+    "PentatonicScale": [[0, 3, 4, 2], [0, 2, 3, 1]],
   ]
 
+  /// The scale sizes `reharmonize` moves chords in: seven-note keys and pentatonic ones.
+  static let progressionKeySizes: Set<Int> = [5, 7]
+
   /// The progressions a track of `genre` may play: beats' (as roots) then dj's table, without
-  /// repeats.
+  /// repeats; none in a key `reharmonize` does not move (blues). beats' degrees are mod 7 and
+  /// `degreeToMidi` wraps them into a five-note scale, so a pentatonic genre's roots are
+  /// taken mod 5 (its composed plan, as played).
   static func progressions(for genre: GenreDef) -> [[Int]] {
+    let size = scaleIntervals(genre.scaleName).count
+    guard progressionKeySizes.contains(size) else { return [] }
     var out: [[Int]] = []
     for prog in genre.theory?.chordProgs ?? [] {
-      let roots = prog.chords.map { clampDegree($0.root) }
+      let roots = prog.chords.map { clampDegree($0.root) % size }
       if !roots.isEmpty && !out.contains(roots) { out.append(roots) }
     }
     for roots in progressionTable[genre.scaleName] ?? [] where !out.contains(roots) {
@@ -135,15 +146,20 @@ extension DJMusicality {
   // MARK: progression
 
   /// The key's notes from MIDI 0 to 127, and its pitch classes from the tonic up (degree
-  /// order); nil unless it has seven notes.
-  static func sevenNoteKey(_ p: Project) -> (scale: [Int], degrees: [Int])? {
+  /// order), whatever its size.
+  static func scaleKey(_ p: Project) -> (scale: [Int], degrees: [Int]) {
     let root = p.rootNote ?? 60
     let name = p.scaleName.isEmpty ? "Major" : p.scaleName
-    let intervals = scaleIntervals(name + "Scale")
-    guard intervals.count == 7 else { return nil }
-    let degrees = intervals.map { pc(root + $0) }
+    let degrees = scaleIntervals(name + "Scale").map { pc(root + $0) }
     let key = Set(degrees)
     return ((0...127).filter { key.contains(pc($0)) }, degrees)
+  }
+
+  /// `scaleKey`, nil unless the key has seven notes (the fifth is four steps up, a triad is
+  /// a triad: `varyBassFigure`, `.harmonicCadence`, `SectionHarmony`).
+  static func sevenNoteKey(_ p: Project) -> (scale: [Int], degrees: [Int])? {
+    let key = scaleKey(p)
+    return key.degrees.count == 7 ? key : nil
   }
 
   /// The pad chord of each bar moved along the key so its root is `roots[bar % count]`'s
@@ -151,10 +167,13 @@ extension DJMusicality {
   /// interval); then every melody and arp note on a beat that is no longer a tone of its bar's
   /// chord to the nearest one (beats snaps its motif's beats to the chord in the same way), and
   /// a passing note that now rubs a semitone against the new chord one scale step away.
-  /// Each move is the shortest way round (at most three scale steps up or down).
+  /// Each move is the shortest way round (at most three scale steps up or down; two in a
+  /// pentatonic key, where `roots` are five-note degrees and the moved chords sus / quartal).
   static func reharmonize(_ p: inout Project, to roots: [Int]) {
     let (chords, padBars) = padChords(p)
-    guard padBars > 0, !roots.isEmpty, let key = sevenNoteKey(p) else { return }
+    let key = scaleKey(p)
+    let size = key.degrees.count
+    guard padBars > 0, !roots.isEmpty, progressionKeySizes.contains(size) else { return }
     // the scale steps each bar of the pad cycle moves, and the semitones its root moves
     var steps = [Int](repeating: 0, count: padBars)
     var semis = [Int](repeating: 0, count: padBars)
@@ -162,10 +181,10 @@ extension DJMusicality {
       guard let root = chords[bar]?.first, let from = key.degrees.firstIndex(of: root) else {
         continue
       }
-      var k = ((roots[bar % roots.count] - from) % 7 + 7) % 7
-      if k > 3 { k -= 7 }
+      var k = ((roots[bar % roots.count] - from) % size + size) % size
+      if k > size / 2 { k -= size }
       steps[bar] = k
-      let to = key.degrees[(from + k + 7) % 7]
+      let to = key.degrees[(from + k + size) % size]
       var s = ((to - root) % 12 + 12) % 12
       if k < 0 && s > 0 { s -= 12 }
       semis[bar] = s
