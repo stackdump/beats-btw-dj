@@ -195,6 +195,10 @@ public final class AppModel {
   private(set) var scopeHub: ScopeHub?
   /// The Stage window's model (SPEC modes 7…21); made with the hub.
   public private(set) var stageModel: StageModel?
+  /// Open / close the Stage window from the control socket (`view`'s `stage.open`): set by the
+  /// main window from its `openWindow` / `dismissWindow`; nil without a window (tests).
+  @ObservationIgnored var openStageWindow: (() -> Void)?
+  @ObservationIgnored var closeStageWindow: (() -> Void)?
   var walk: ControlWalk?
   /// Starred tracks and samples, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
@@ -1532,6 +1536,7 @@ public final class AppModel {
 public struct ContentView: View {
   let model: AppModel
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.dismissWindow) private var dismissWindow
 
   public init(model: AppModel) { self.model = model }
 
@@ -1565,7 +1570,11 @@ public struct ContentView: View {
     // the rings and the small animations pace themselves by the hub's visual level
     .environment(\.scopeHub, model.scopeHub)
     // arrow keys step through whatever list of choices the mouse is over
-    .onAppear { HoverKeys.shared.install() }
+    .onAppear {
+      HoverKeys.shared.install()
+      model.openStageWindow = { [openWindow] in openWindow(id: StageWindow.id) }
+      model.closeStageWindow = { [dismissWindow] in dismissWindow(id: StageWindow.id) }
+    }
     // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
     // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
     // bar, which are full at the window's minimum width

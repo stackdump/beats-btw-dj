@@ -414,6 +414,70 @@ struct AppControlTests {
     #expect(s["variations"]?["bass"]?.array?.first?["useSynth"]?.bool == true)
   }
 
+  @Test func viewFoldsSectionsScopeAndStage() async throws {
+    let m = try model()
+    m.defaults = scratchDefaults()
+    // nothing saved: the decks open on Perform, as DeckSections does
+    let before = try await call(m, "view")
+    #expect(before["sections"]?["A"]?.array?.compactMap(\.string) == ["perform"])
+
+    let v = try await call(
+      m, "view",
+      #"""
+      {"sections":{"A":["history","perform"],"B":[]},"loopMasterFx":true,
+       "scope":{"open":true,"kind":"bands","source":"B","measured":true}}
+      """#)
+    // saved exactly as a click in DeckSections saves it: Section order, comma-separated
+    #expect(m.defaults.string(forKey: "fold.A") == "perform,history")
+    #expect(m.defaults.string(forKey: "fold.B") == "")
+    #expect(v["sections"]?["A"]?.array?.compactMap(\.string) == ["perform", "history"])
+    #expect(v["sections"]?["B"]?.array?.isEmpty == true)
+    #expect(v["loopMasterFx"]?.bool == true && m.showLoopMasterFx)
+    #expect(m.showScopes && m.scopeKind == .bands && m.scopeSource == .deck("B") && m.scopeMeasured)
+    #expect(v["scope"]?["kind"]?.string == "bands")
+    #expect(v["scope"]?["source"]?.string == "B")
+    #expect(v["scope"]?["measured"]?.bool == true)
+
+    // bad values change nothing
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"loopMasterFx":false,"sections":{"A":["mixer"]}}"#)
+    }
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"scope":{"kind":"oscilloscope"}}"#)
+    }
+    #expect(m.showLoopMasterFx && m.defaults.string(forKey: "fold.A") == "perform,history")
+    // without a window (tests) the Stage cannot open
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"stage":{"open":true}}"#)
+    }
+
+    var opened = 0
+    var closed = 0
+    m.openStageWindow = { opened += 1 }
+    m.closeStageWindow = { closed += 1 }
+    let s = try await call(
+      m, "view",
+      #"""
+      {"stage":{"open":true,"source":"A","visualizer":"sonar","overlays":["tilt","bolts"],
+       "background":"stars"}}
+      """#)
+    #expect(opened == 1 && closed == 0)
+    let settings = try #require(m.stageModel?.settings)
+    #expect(settings.source == .deck("A") && settings.visualizer == .sonar)
+    #expect(settings.overlays == [.tilt, .bolts] && settings.bgMode == .stars)
+    #expect(s["stage"]?["visualizer"]?.string == "sonar")
+    #expect(s["stage"]?["overlays"]?.array?.compactMap(\.string) == ["bolts", "tilt"])
+    #expect(s["stage"]?["background"]?.string == "stars")
+    #expect(s["stage"]?["source"]?.string == "A")
+    // the case's name is taken too
+    _ = try await call(m, "view", #"{"stage":{"open":false,"visualizer":"constellation"}}"#)
+    #expect(closed == 1 && settings.visualizer == .constellation)
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"stage":{"background":"plaid"}}"#)
+    }
+    #expect(settings.bgMode == .stars)
+  }
+
   @Test func performGoesThroughTheEngine() async throws {
     let m = try model()
     let a = try await call(m, "perform", #"{"action":{"op":"play","deck":"A","on":true}}"#)

@@ -382,7 +382,7 @@ extension AppModel {
       return deckJSON(deck) ?? .null
 
     case "view":
-      return controlView(p)
+      return try controlView(p)
 
     case "screenshot":
       return try screenshot(to: p["path"]?.string)

@@ -439,14 +439,69 @@ public struct MCPBridge {
     tool(
       "dj_view",
       "Show or hide the main window's panels: the Soundboard (every loop as a big pad), "
-        + "Controllers, Map, Scopes and the on-screen APC pads. Leave a panel out to keep it as "
-        + "it is; returns what shows now.",
+        + "Controllers, Map, Scopes, the on-screen APC pads and the Loops master FX strip; fold "
+        + "each deck's sections open or shut; set what the scope panel shows; open, close or set "
+        + "the Stage window. Leave anything out to keep it as it is; returns what shows now.",
       [
         "soundboard": prop("boolean", "The Soundboard: one pad per loop, scenes on top"),
         "controllers": prop("boolean", "Every controller drawn with its bindings"),
         "map": prop("boolean", "The device map"),
         "scopes": prop("boolean", "The scope panel"),
         "pads": prop("boolean", "The on-screen APC mini grid"),
+        "loopMasterFx": prop("boolean", "The Loops row's master FX strip"),
+        "sections": obj([
+          ("type", .string("object")),
+          (
+            "description",
+            .string(
+              "Per deck, the sections to show open (the rest fold), e.g. {\"A\": [\"perform\", "
+                + "\"masterfx\"]}: perform, wander, masterfx, reverb, track, favorites, "
+                + "generate, load, notes, history")
+          ),
+          (
+            "additionalProperties",
+            obj([("type", .string("array")), ("items", obj([("type", .string("string"))]))])
+          ),
+        ]),
+        "scope": obj([
+          ("type", .string("object")),
+          ("description", .string("The scope panel (dj_state.scope)")),
+          (
+            "properties",
+            obj([
+              ("open", prop("boolean", "Show the panel (as scopes)")),
+              ("kind", prop("string", "live | spectro | bands | raster")),
+              ("source", prop("string", "master, A or B")),
+              ("measured", prop("boolean", "The measured half (spectro and bands)")),
+            ])
+          ),
+        ]),
+        "stage": obj([
+          ("type", .string("object")),
+          ("description", .string("The Stage window (dj_state.stage)")),
+          (
+            "properties",
+            obj([
+              ("open", prop("boolean", "Open (true) or close (false) the window")),
+              ("source", prop("string", "master, A or B")),
+              (
+                "visualizer",
+                prop("string", "mandala (constellation) | corona | sonar | petal | shuffle")
+              ),
+              (
+                "overlays",
+                obj([
+                  ("type", .string("array")), ("items", obj([("type", .string("string"))])),
+                  (
+                    "description",
+                    .string("The overlays on, replacing the set: flow, pulse, flame, tilt, bolts")
+                  ),
+                ])
+              ),
+              ("background", prop("string", "void | stars | aurora")),
+            ])
+          ),
+        ]),
       ]),
     tool(
       "dj_record",

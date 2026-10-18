@@ -25,7 +25,19 @@ struct DeckSections: View {
     self.model = model
     self.tint = tint
     self.importFile = importFile
-    _openList = AppStorage(wrappedValue: "perform", "fold.\(name)")
+    _openList = AppStorage(wrappedValue: Self.defaultOpen, Self.foldKey(name))
+  }
+
+  /// The defaults key of a deck's open sections, and what is open before anything is saved.
+  static func foldKey(_ deck: String) -> String { "fold.\(deck)" }
+  static let defaultOpen = "perform"
+
+  /// The saved form: the open sections' raw values, comma-separated, in `Section` order.
+  static func foldList(_ open: Set<String>) -> String {
+    Section.allCases.map(\.rawValue).filter(open.contains).joined(separator: ",")
+  }
+  static func openSections(_ list: String) -> [String] {
+    list.split(separator: ",").map(String.init)
   }
 
   enum Section: String, CaseIterable {
@@ -33,12 +45,12 @@ struct DeckSections: View {
     var netOnly: Bool { [.perform, .wander, .masterfx, .track].contains(self) }
   }
 
-  private var open: Set<String> { Set(openList.split(separator: ",").map(String.init)) }
+  private var open: Set<String> { Set(Self.openSections(openList)) }
   private func toggle(_ s: Section) {
     var o = open
     if o.contains(s.rawValue) { o.remove(s.rawValue) } else { o.insert(s.rawValue) }
     withAnimation(.snappy(duration: 0.15)) {
-      openList = Section.allCases.map(\.rawValue).filter(o.contains).joined(separator: ",")
+      openList = Self.foldList(o)
     }
   }
 
