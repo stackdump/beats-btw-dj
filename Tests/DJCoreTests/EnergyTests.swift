@@ -108,6 +108,8 @@ struct EnergyTests {
     let p = played("techno", structure: "minimal")
     var o = WaveOptions.extended
     o.musicality.remove(.energy)
+    // (`.sweep` reads the curve's ramps, so it builds the curve too)
+    o.musicality.remove(.sweep)
     #expect(WaveRunner.prepare(p, sampleRate: sr, opts: o).energy == nil)
     #expect(WaveRunner.prepare(p, sampleRate: sr, opts: .extended).energy != nil)
   }
