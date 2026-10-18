@@ -1,16 +1,20 @@
 // How loops come in and go out under the mixer: on a launch boundary (a beat, a bar, or a 2-,
 // 4- or 8-bar phrase of the reference deck), with a countdown to it while a clip waits, and in
-// scenes — saved sets of loops (and their levels) that switch in together on one boundary.
+// scenes — saved sets of loops (and their levels and FX) that switch in together on one boundary.
 //
 // Main-thread state, like the rest of the loop bank's control (`LoopRecorder.swift`).
 
-/// One clip of a scene, at the level it had when the scene was saved.
+/// One clip of a scene, at the level (and with the FX) it had when the scene was saved.
 public struct SceneClip: Sendable, Equatable {
   public var clipID: String
   public var gain: Double
-  public init(clipID: String, gain: Double = 1) {
+  /// The clip's FX, set on the launch boundary. Nil: the scene leaves its FX alone (a clip saved
+  /// with its FX off, and every scene from before scenes kept FX).
+  public var fx: LoopFX?
+  public init(clipID: String, gain: Double = 1, fx: LoopFX? = nil) {
     self.clipID = clipID
     self.gain = gain
+    self.fx = fx
   }
 }
 
@@ -134,8 +138,8 @@ extension DJEngine {
     return "Scene \(n)"
   }
 
-  /// Save the loops playing now (and those on their way in), in row order, with their levels,
-  /// as scene `name`: a new one on the end, or the one already called that, overwritten.
+  /// Save the loops playing now (and those on their way in), in row order, with their levels and
+  /// FX (those that have any on), as scene `name`: a new one on the end, or the one already called that, overwritten.
   @discardableResult
   public func saveScene(_ name: String) -> LoopScene? {
     guard !name.isEmpty else { return nil }
@@ -143,7 +147,8 @@ extension DJEngine {
     let s = LoopScene(
       name: name,
       clips: clips.filter { looping.contains($0.id) }.map {
-        SceneClip(clipID: $0.id, gain: clipGain($0.id))
+        let fx = clipFx($0.id)
+        return SceneClip(clipID: $0.id, gain: clipGain($0.id), fx: fx == LoopFX() ? nil : fx)
       })
     if let i = scenes.firstIndex(where: { $0.name == name }) {
       scenes[i] = s
@@ -159,10 +164,10 @@ extension DJEngine {
     scene(name).map { launchScene(clips: $0.clips) }
   }
 
-  /// Bring exactly `clips` in at their levels and take every other loop out, all at one frame:
-  /// the next launch boundary (the row's, `loopQuantum`, not any clip's own) of the clock the
-  /// first of them lines up with. A clip already in
-  /// stays in (its level changes on the boundary); clips no longer on the row are left out.
+  /// Bring exactly `clips` in at their levels (and FX, those that carry them) and take every
+  /// other loop out, all at one frame: the next launch boundary (the row's, `loopQuantum`, not
+  /// any clip's own) of the clock the first of them lines up with. A clip already in stays in
+  /// (its level and FX change on the boundary); clips no longer on the row are left out.
   /// Returns the boundary.
   @discardableResult
   public func launchScene(clips wanted: [SceneClip]) -> Int {
@@ -175,6 +180,7 @@ extension DJEngine {
     for s in present {
       let sounding = loopState(s.clipID) == .on || loopState(s.clipID) == .stopping
       setClipGain(s.clipID, s.gain, at: sounding ? at : nil)
+      if let fx = s.fx { setClipFx(s.clipID, fx, at: sounding ? at : nil) }
       startLoop(s.clipID, at: at)
     }
     return at
@@ -208,14 +214,23 @@ extension DJEngine {
 }
 
 extension [SceneClip] {
+  /// `fx` only when the clip carries it: a scene without FX encodes as it always has.
   var json: JSONValue {
     .array(
-      map { .object(JSONObject([("clip", .string($0.clipID)), ("gain", .number($0.gain))])) })
+      map {
+        .object(
+          JSONObject(
+            [("clip", .string($0.clipID)), ("gain", .number($0.gain))]
+              + ($0.fx.map { [("fx", $0.json)] } ?? [])))
+      })
   }
 
   init(json v: JSONValue?) {
     self = (v?.array ?? []).compactMap { e in
-      e["clip"]?.string.map { SceneClip(clipID: $0, gain: e["gain"]?.double ?? 1) }
+      e["clip"]?.string.map {
+        SceneClip(
+          clipID: $0, gain: e["gain"]?.double ?? 1, fx: e["fx"].map { LoopFX(json: $0) })
+      }
     }
   }
 }

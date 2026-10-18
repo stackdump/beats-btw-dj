@@ -316,7 +316,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `minecraft-local.sf2` + `minecraft-local.json` (asset index, per-sample SHA-1) in the SoundFont
   folder from the user's own PrismLauncher assets (`MinecraftAssets`: newest index,
   `$DJ_MINECRAFT_ASSETS` overrides; `MinecraftBank` fixed programs, kit at 0:127; decoded,
-  44.1 kHz/16-bit, tuned, steady tones crossfade-looped). Personal use only: the .ogg files and
+  44.1 kHz/16-bit, tuned, steady tones crossfade-looped; each tone also stored ±1 octave,
+  band-limited (`octaveShift`, −60 dB from 11.025 kHz), in three key zones `octaveZones`; bank
+  `formatVersion` 2 is in the sidecar and the recorded palette, `minecraft@32+b2`). Personal use only: the .ogg files and
   the .sf2 never enter the repo, a release or the CDN (`*.sf2`, `minecraft-local.*` ignored), it
   never joins the GM pools (`localOnlyBanks`), and `music/*` / `records/*` are never read.
   Publishing refuses any set that plays it (`Session.localOnlySounds`; `djctl publish
@@ -409,7 +411,10 @@ its copy; the two are now independent. Rules inherited from that split:
   --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
   Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
   arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
-  `WaveProject.voiceDesign`).
+  `WaveProject.voiceDesign`). `.subOctave` (`SubOctave`, `WaveOptions.subOctave` set by
+  `forGenre` for dnb / dubstep / trap): a sine an octave under synth bass voices at −6 dB, only
+  where it is ≥ 30 Hz; sampled basses don't get it. The loudness probe hears it (`Loudness.gain(
+  subOctave:)`); `.balance` measures the bass without it.
 - Part G adds `.variety` (`TrackVariety.swift`): beats draws only the melody from the seed, so
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
@@ -579,8 +584,9 @@ its copy; the two are now independent. Rules inherited from that split:
   crossfade through dry over 10 ms. Measured allocation-free (`LoopFxRealTimeTests`).
 - Persistence: library.json entries (`fx`, only when set), removed/, the journal checkpoint's
   clips (the run's FX win over the library's on restore). A crop keeps its clip's FX; a new
-  sequence starts off (its steps' audio is dry), an edited one keeps its own; scenes don't recall
-  FX. A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
+  sequence starts off (its steps' audio is dry), an edited one keeps its own. Scenes recall a
+  clip's FX when it had any on at the save (`SceneClip.fx`, JSON `fx` only when set; nil leaves
+  them alone), on the boundary frame (`LoopBankCommand.fxAt`, like `gainAt`). A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
   `LoopFxVoice` + limiter (made at init, fed by `DeckFxCommand` through an SPSC ring, run in sample
   mode only while the chain is in the path, so a dry deck is the turntable's bytes); `loadClip`
   sends the clip's FX, `setClipFx` forwards to a deck playing it, any other load drops them. UI: the pad's right-click ▸ FX presets (Off, Warm drive,

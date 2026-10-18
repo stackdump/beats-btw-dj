@@ -112,6 +112,9 @@ public struct WaveOptions {
   /// the brush voice, a sampled kit's play the bank's Brush kit (or the kit's own snare, softer).
   /// Set by `forGenre`; false = beats' snare (parity, and every other genre).
   public var brushes = false
+  /// A sine an octave under the synth basses (`SubOctave`, `DJMusicality.Fixes.subOctave`).
+  /// Set by `forGenre` (dnb, dubstep, trap); false = beats' bass (parity, every other genre).
+  public var subOctave = false
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -290,6 +293,10 @@ final class Lane {
   var uniMax = Unison.width
   var uz1 = 0.0
   var uz2 = 0.0
+  /// `.subOctave`: each voice's sine an octave down (`subPhase`; empty = none), played where
+  /// half the note's rate is at least `subMinRate` (`SubOctave.minHz`, cycles per sample).
+  var subPhase: [Double] = []
+  var subMinRate = 0.0
   // post chain on the voice sum: lowpass biquad (`post`, 5 coefficients on every tonal lane,
   // used while `postOn`), then distortion
   var post: [Double] = []
@@ -551,6 +558,13 @@ private func detune(
   lane.uniMax = Unison.width * (pad ? design.padWidth : 1)
   lane.uniHP = biquad(
     type: "highpass", fc: pad ? design.padSideHz : Unison.sideHz, q: 0.7071, sr: sr)
+}
+
+/// `.subOctave`: give a synth bass lane a sine per voice an octave down.
+private func addSubOctave(_ lane: Lane, _ sr: Double) {
+  guard lane.isTonal, !lane.isPluck else { return }
+  lane.subPhase = [Double](repeating: 0, count: lane.poly)
+  lane.subMinRate = SubOctave.minHz / sr
 }
 
 /// `.feel` as the runner reads it: a family's `GrooveTemplate` flattened into fixed arrays
@@ -849,6 +863,7 @@ private func buildLanes(
   let space = opts.musicality.contains(.space)
   let subtractive = opts.musicality.contains(.subtractive)
   let unison = opts.musicality.contains(.unison)
+  let subOctave = opts.subOctave && opts.musicality.contains(.subOctave)
   let echo = opts.musicality.contains(.echo) && opts.echo != nil
   let kickHz =
     opts.musicality.contains(.kickTune) ? KickTuning.hz(root: g.project.rootNote) : nil
@@ -917,6 +932,7 @@ private func buildLanes(
             shapeVoice(lane, group: part, plucked: opts.voiceDesign.pluckGroups, sr)
           }
           if unison { detune(lane, group: part, wide: stereo, design: opts.voiceDesign, sr) }
+          if subOctave && part == "bass" { addSubOctave(lane, sr) }
         } else {
           let brushed = opts.brushes && key == "snare"
           var voice = brushed ? Brush.voice : drumVoice(kind: key, instrument: tr.instrument)
@@ -1317,7 +1333,7 @@ public final class WaveRunner {
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
         balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil,
-        sampled: prepared.probeLevels)
+        sampled: prepared.probeLevels, subOctave: opts.subOctave)
     }
     return prepared
   }
@@ -2394,6 +2410,14 @@ public final class WaveRunner {
         if lane.uniWide { uside += env * (o1 - o2) * 0.7071 * lane.uniWidth[k] }
       }
       if lane.fAmount > 0 { osc = filterSample(lane, k, osc, hz: rate * sampleRate) }
+      if !lane.subPhase.isEmpty {
+        // `.subOctave`: after the filter, a clean sine an octave down
+        let half = rate * 0.5
+        var sp = lane.subPhase[k] + half
+        sp -= sp.rounded(.down)
+        lane.subPhase[k] = sp
+        if half >= lane.subMinRate { osc += SubOctave.gain * sin(2 * Double.pi * sp) }
+      }
       let y = env * osc
       out += y
       if spread { side += y * lane.voicePan[k] }

@@ -171,7 +171,7 @@ public struct MCPBridge {
       reference deck, phrases on its bars 1, 5, 9…; default 4) · loopFollow {mode: \
       louder|source}: which deck the loops' tempo follows (louder: the louder playing deck, the \
       default; source: each loop the deck it was taken from) · sceneSave {name}: the loops \
-      playing now (and their levels) as a scene (overwrites one of that name) · sceneLaunch \
+      playing now (and their levels and FX) as a scene (overwrites one of that name) · sceneLaunch \
       {name}: its loops in, every other out, all on the next launch boundary · sceneRename \
       {name, to} · sceneDelete {name} (dj_state.loops.scenes, .quantize) · \
       clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \

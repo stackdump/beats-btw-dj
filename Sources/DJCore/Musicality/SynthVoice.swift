@@ -135,6 +135,25 @@ public enum KickTuning {
   }
 }
 
+/// `DJMusicality.Fixes.subOctave`: a sine an octave under each bass note, as dnb's reese, a
+/// dubstep wobble and a trap 808 carry their weight. beats' bass is one oscillator whose
+/// fundamental is the lowest thing in the mix; in those styles the sub-bass an octave down is.
+/// Synth bass lanes only (`WaveOptions.subOctave`, set by `forGenre`): a sampled bass plays as
+/// sampled (a lane switched to its synth voice live gets the sub too). Notes whose sub would be
+/// under `minHz` play without it (inaudible, and all limiter). Each voice's phase is allocated
+/// at prepare and runs free, unfiltered and centred.
+public enum SubOctave {
+  /// The genres that play it.
+  public static let genres: Set<String> = ["dnb", "dubstep", "trap"]
+  /// Its level against the voice's oscillator (−6 dB).
+  public static let gain = 0.5
+  /// The lowest sub it plays, Hz (a bass note of 60 Hz and up).
+  public static let minHz = 30.0
+
+  /// Whether a track of `genre` plays a sub-octave.
+  public static func forGenre(_ genre: String) -> Bool { genres.contains(genre) }
+}
+
 /// Brushes on the snare, for jazz under `DJMusicality.Fixes.backbeat` (`WaveOptions.brushes`):
 /// `.backbeat` brings jazz's snare in on a soft 2 and 4, and beats' snare is a stick's crack (a
 /// 1 ms attack, a 180 Hz tone under the noise) where a jazz drummer plays brushes. The brush is
