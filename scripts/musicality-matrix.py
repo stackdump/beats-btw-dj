@@ -55,6 +55,9 @@ COLUMNS = [
     ("sideDB", "side", "{:6.1f}"),
     ("lowSideDB", "lowSd", "{:6.1f}"),
     ("lra", "LRA", "{:4.1f}"),
+    ("slopeDBPerOct", "slope", "{:5.1f}"),
+    ("hfBumpDB", "hfBump", "{:6.1f}"),
+    ("monoFoldDB", "monoLoss", "{:8.1f}"),
 ]
 
 
@@ -84,6 +87,9 @@ def flat(doc):
         "sideDB": a.get("sideDB"),
         "lowSideDB": a.get("lowSideDB"),
         "balanceErrorDB": a.get("balanceErrorDB"),
+        "slopeDBPerOct": a.get("slopeDBPerOct"),
+        "hfBumpDB": a.get("hfBumpDB"),
+        "monoFoldDB": a.get("monoFoldDB"),
     }
     bal = a.get("balanceDB", {})
     if "kick" in bal and "bass" in bal:
