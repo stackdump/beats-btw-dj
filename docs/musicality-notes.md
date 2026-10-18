@@ -728,3 +728,43 @@ not yet run (this change was built without renders).
 | genre | ans | hook | b1ct | bidea | peak | leapR |
 |---|---|---|---|---|---|---|
 | (pending) | | | | | | |
+
+## 12. 6.6 HF tilt (a) (2026-10-18): slope and 16 kHz bump per family, measured first
+
+Measure only: no voice, filter or fix changes. `SpectralSlopeTests` (always on) holds the
+measurement finite and the parity path (`WaveOptions()`, the composed track and its share CID)
+untouched; `SpectralSlopeSurveyTests.perFamilySlopeAndHFBump` (with `DJ_SPECTRAL_SURVEY=1`)
+prints the table below.
+
+- How: each of the matrix's 12 genres at seed 42, standard structure, 60 s from the top,
+  48 kHz, `.extended` with synth voices and again on the deck's sampler bank; loudness gain
+  fixed at 1 and a linear master (no limiter), so the mix and its solos share one gain (trims
+  and energy curve still come from the whole project). `Spectrum` gives the mix's
+  `slopeDBPerOct` (63 Hz … 8 kHz fit) and `hfBumpDB` (12.5 / 16 kHz over the fit).
+- Parts: kick, snare (+ clap), hats (`hihat`: closed + open), fills (the `fill-N` chains:
+  buildups and the section crash), bass, harmony, melody, arp, each soloed with `RoleFilter`.
+  A part *carries* the bump when its 12.5 / 16 kHz power is ≥ 25 % of the mix's; the survey
+  prints its share, its own slope / bump and the file its voice lives in.
+- Where the bright voices live: synth drums — `Sources/DJCore/Beats/Wave/WaveSynth.swift`
+  `drumVoice` (hat, openhat and crash are highpassed noise: the expected carriers); synth
+  tonal parts — `Sources/DJCore/Musicality/SynthVoice.swift` (`MipTables`, `FilterEnvelope`)
+  with `Resources/voices/instruments.json`; sampled parts — the picked EXS / SoundFont through
+  `Sources/DJCore/Audio/Sampler.swift` (`VoiceCatalog`).
+
+### 6.6 slope table
+
+To be filled from `SpectralSlopeSurveyTests`' printout (`DJ_SPECTRAL_SURVEY=1 make
+swift-test-filter FILTER=SpectralSlopeSurveyTests`, release recommended); not yet run (this
+change was built without renders). Families are `BeatsTables.family(of:)`'s
+(dance, song, jazz, chill).
+
+| family | voices | n | slope dB/oct | hfBump dB | parts carrying the bump (file) |
+|---|---|---|---|---|---|
+| dance | synth | (pending) | | | |
+| dance | sampled | (pending) | | | |
+| song | synth | (pending) | | | |
+| song | sampled | (pending) | | | |
+| jazz | synth | (pending) | | | |
+| jazz | sampled | (pending) | | | |
+| chill | synth | (pending) | | | |
+| chill | sampled | (pending) | | | |
