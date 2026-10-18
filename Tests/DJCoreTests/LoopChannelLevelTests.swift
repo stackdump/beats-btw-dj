@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 
 @testable import DJCore
@@ -77,10 +76,10 @@ struct LoopChannelLevelTests {
     let aOut = loudness(aL, aR, rate)
     let lOut = loudness(lL, lR, rate)
     let gap = lOut - aOut
+    func r2(_ x: Double) -> Double { (x * 100).rounded() / 100 }
     print(
-      "loop channel: A on the master \(String(format: "%.2f", aOut)) LUFS, L "
-        + "\(String(format: "%.2f", lOut)); gap L − A \(String(format: "%.2f", gap)) LU (trim "
-        + "\(dj.loopChannel.trim), crossfade A \(dj.crossfadeGain("A")))")
+      "loop channel: A on the master \(r2(aOut)) LUFS, L \(r2(lOut)); gap L − A \(r2(gap)) LU "
+        + "(trim \(dj.loopChannel.trim), crossfade A \(dj.crossfadeGain("A")))")
     #expect(aOut > -60 && lOut > -60)
     #expect(abs(gap) < 1, "gap \(gap) LU")
   }
