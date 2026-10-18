@@ -433,6 +433,13 @@ its copy; the two are now independent. Rules inherited from that split:
   `.bandStop`: song family only, all but the lead (and crashes) rest the beat before a chorus
   not covered by the drop gap, only where the lead has a note; fill chains are `Class.fill`,
   which nothing else rests. `djctl render` reports `bandStopDipDB` (below 200 Hz).
+- `.riser` (6.2, `Riser.swift`): `WaveProject.riser` (`RiserVoice`, built at prepare from
+  `DJMusicality.riserWindows`: last 2 bars of a buildup into a drop / chorus) is a stinger-class
+  lane rendered into `acc` (never rested, ducked or energy-lowpassed): seeded xorshift noise, SVF
+  lowpass 300 Hz → 8 kHz, −30 → −12 dB, cut at the drop, side under `.stereo`, send under `.space`.
+  Its place is the step `doTick` played (`riserStep`), so a jump starts it in phase; it returns
+  false while silent, so bytes before a window are unchanged. `djctl render` prints `riserRiseDB`
+  / `riserSpearman` (`RiserRise`: ≥ 4 kHz per beat).
 - Mix targets are data (ROADMAP 6.1): `Resources/beats/targets.json` (`MixTargets`, hand-edited;
   `make beats-tables` writes only tables.json) holds `Loudness.targetDB`'s probe offset and gain range,
   `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family

@@ -645,6 +645,8 @@ public final class WaveProject: @unchecked Sendable {
   /// The sound design it was prepared with (`WaveOptions.voiceDesign`): another start of the
   /// same song keeps it.
   public internal(set) var voiceDesign = VoiceDesign()
+  /// The noise riser into its drops (`.riser`, `RiserVoice`); nil = none. Set by `prepare`.
+  var riser: RiserVoice?
   private static let generations = Atomic<Int>(0)
   private static let tracks = Atomic<Int>(0)
 
@@ -1098,6 +1100,9 @@ public final class WaveRunner {
   // mix as mid and side, and go on into the room.
   private let echoFx: PingPong?
   private var accEcho = 0.0
+  /// `.riser`: the song step the current project is playing (its riser's place), or `Int.min`
+  /// for none (stopped, or the tick a queued project took over on, which plays nothing).
+  private var riserStep = Int.min
 
   public init(sampleRate: Double, opts: WaveOptions = WaveOptions()) {
     self.sampleRate = sampleRate
@@ -1157,6 +1162,11 @@ public final class WaveRunner {
       geometry: project, gain: gain, energy: energy, rests: rests, songRests: songRests,
       tail: opts.tail, harmony: harmony)
     prepared.turntableBrake = opts.turntableBrake
+    if opts.musicality.contains(.riser) {
+      prepared.riser = RiserVoice(
+        windows: DJMusicality.riserWindows(project), sampleRate: sampleRate,
+        stereo: opts.musicality.contains(.stereo), space: opts.musicality.contains(.space))
+    }
     if measureGain {
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
@@ -1204,6 +1214,8 @@ public final class WaveRunner {
     }
     current = next
     next.restCursor.reset()
+    next.riser?.reset()
+    riserStep = Int.min
     reverb?.tune(next.space)
     echoFx?.tune(next.echo, bpm: next.graph.tempo)
     setTempo(next.graph.tempo)
@@ -1226,6 +1238,8 @@ public final class WaveRunner {
     macroHoldTicks = 0
     graph?.reset()
     current?.restCursor.reset()
+    current?.riser?.reset()
+    riserStep = Int.min
     samplersAllOff()
     energyPrimed = false
     toneLP.0.reset()
@@ -2314,6 +2328,7 @@ public final class WaveRunner {
     // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
     let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
     let step = g.tick
+    riserStep = step
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 {
@@ -2474,6 +2489,15 @@ public final class WaveRunner {
       }
       if let f = fading { for lane in f.lanes where lane.active { laneSample(lane) } }
       if let proj = current { for lane in proj.sources { lane.st[slotPrev] = lane.st[slotEnv] } }
+      if let riser = current?.riser {
+        let at = playing && !scrubbing && riserStep != Int.min
+        if riser.render(at: at ? Double(riserStep) + clock[clkTickPos] / clock[clkSpt] : nil) {
+          // a stinger: not rested, not ducked, beside the drums (out of the tonal lowpass)
+          acc += riser.mid
+          accS += riser.side
+          accSend += riser.mid * riser.send
+        }
+      }
       if let echoFx, echoFx.isOn {
         let (el, er) = echoFx.process(accEcho)
         let mid = 0.5 * (el + er)
