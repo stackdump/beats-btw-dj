@@ -92,4 +92,53 @@ struct LoopFxRealTimeTests {
     #expect(frees == 0, "and freed \(frees) times")
     #expect(!dj["A"]!.renderer.fxRunning && !dj["B"]!.renderer.fxRunning)
   }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  @MainActor
+  func launchingScenesWithFxDoesNotAllocate() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let clips = (0..<4).map { fxTestClip($0, amplitude: 0.3) }
+    dj.restoreClips(clips)
+    try dj.start()
+    defer { dj.stop() }
+    dj.setLoopQuantum(1)
+    for c in clips { dj.startLoop(c.id, atOnce: true) }
+    let buffer = makeEngineRenderBuffer(dj, frames: 4096)
+    pullEngine(dj, buffer, cycles: 200, frames: 512)  // in, and warm
+    let p = LoopFX.presets.map(\.fx)
+    let fold = LoopFX(drive: 24, mode: .fold, amount: 1, tone: 0.1)
+    let crush = LoopFX(mode: .crush, amount: 1, bits: 3, downsample: 16)
+    // every clip in with FX of its own (mode swaps on the boundary, through dry), half of them
+    // (the rest out, one turned off), and all in again with others
+    dj.restoreScenes([
+      LoopScene(name: "all", clips: zip(clips, p[1...4]).map { SceneClip(clipID: $0.id, fx: $1) }),
+      LoopScene(
+        name: "half",
+        clips: [
+          SceneClip(clipID: clips[0].id, gain: 0.5, fx: LoopFX()),
+          SceneClip(clipID: clips[2].id, fx: crush),
+        ]),
+      LoopScene(
+        name: "again",
+        clips: zip(clips, [fold, crush, LoopFX(drive: 24, autoLevel: false), p[5]]).map {
+          SceneClip(clipID: $0.id, fx: $1)
+        }),
+    ])
+    var allocs = 0
+    var frees = 0
+    for _ in 0..<3 {
+      for name in ["all", "half", "again"] {
+        // the launch is the main thread's; only the renders (across its boundary) are measured
+        dj.perform(.sceneLaunch(name: name, clips: nil))
+        let r = countAllocations { pullEngine(dj, buffer, cycles: 60, frames: 512) }
+        allocs += r.allocations
+        frees += r.frees
+        dj.serviceLoopTakes()
+      }
+    }
+    #expect(allocs == 0, "the render path allocated \(allocs) times")
+    #expect(frees == 0, "and freed \(frees) times")
+    #expect(clips.allSatisfy { dj.loopState($0.id) == .on })
+    #expect(dj.clipFx(clips[0].id) == fold && dj.clipFx(clips[3].id) == p[5])
+  }
 }

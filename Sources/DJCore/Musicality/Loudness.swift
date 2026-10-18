@@ -47,17 +47,22 @@ public enum Loudness {
 
   /// The fixes that change how the voices themselves sound (and so how loud they are): the
   /// probe plays those of the deck's, so the gain is measured on the voices the deck plays.
-  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison]
+  /// (`.subOctave` plays only where the deck's options turn it on: `subOctave` below.)
+  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison, .subOctave]
 
   /// The gain for `project` (1 when it plays nothing), measured with the `voiceFixes` among
   /// `fixes` on.
   /// `sampled`: net id → a level the probe plays that net's part at (the parts the deck plays
-  /// on samplers, `sampledPartLevel`, `WaveRunner.prepare`).
+  /// on samplers, `sampledPartLevel`, `WaveRunner.prepare`). `subOctave`: the deck's
+  /// `WaveOptions.subOctave` (the genre's), so the probe hears the sub the deck plays.
   public static func gain(
     for project: Project, fixes: DJMusicality.Fixes = [], balance: [String: Double]? = nil,
-    sampled: [String: Double] = [:]
+    sampled: [String: Double] = [:], subOctave: Bool = false
   ) -> Double {
-    guard let db = measure(project, fixes: fixes, balance: balance, sampled: sampled) else {
+    guard
+      let db = measure(
+        project, fixes: fixes, balance: balance, sampled: sampled, subOctave: subOctave)
+    else {
       return 1
     }
     let g = pow(10, (targetDB - db) / 20)
@@ -70,7 +75,7 @@ public enum Loudness {
   static func measure(
     _ project: Project, start: Int? = nil, fixes: DJMusicality.Fixes = [],
     balance: [String: Double]? = nil, sampled: [String: Double] = [:],
-    sampleRate probeRate: Double = probeRate
+    subOctave: Bool = false, sampleRate probeRate: Double = probeRate
   ) -> Double? {
     let start = start ?? busiestStart(project)
     var o = WaveOptions()
@@ -78,6 +83,7 @@ public enum Loudness {
     o.master = "linear"
     o.musicality = fixes.intersection(voiceFixes)
     o.probeLevels = sampled
+    o.subOctave = subOctave
     if let balance {
       o.musicality.insert(.balance)
       o.trackBalance = balance

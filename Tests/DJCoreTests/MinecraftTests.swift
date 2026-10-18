@@ -76,6 +76,8 @@ struct MinecraftTests {
     #expect(report.programs.count >= 13, "skipped: \(report.skipped)")
     let side = try #require(MinecraftBank.Sidecar.load(dir: dir))
     #expect(side.assetIndex == a.indexID)
+    #expect(side.format == MinecraftBank.formatVersion)
+    #expect(side.version == "\(a.indexID)+b\(MinecraftBank.formatVersion)")
     #expect(side.programs.contains("harp2") && side.programs.contains("bassattack"))
     #expect(side.sha1["harp2"] == (try a.file(sound: "note/harp2")).sha1)
     #expect(side.sha1["kit:bd"] != nil)
@@ -122,6 +124,40 @@ struct MinecraftTests {
     let k = bank.slot(for: [kit])
     #expect(k != nil, "the kit: \(bank.loadFailure(for: kit) ?? "")")
     if let k { bank.release(k) }
+  }
+
+  /// The octave zones: across ±2 octaves of each tone's root every key plays in tune (each zone
+  /// is an exact octave of the measured recording), and crossing a split moves the level by no
+  /// more than a semitone step inside a zone could (≤ 3 dB).
+  @Test(.enabled(if: minecraftAssets != nil, "no Minecraft assets (PrismLauncher)"))
+  func octaveZonesPlayInTuneAndLevel() throws {
+    let (dir, report) = try #require(scratchMinecraftBank)
+    let path = MinecraftBank.path(dir: dir)
+    let bank = SamplerBank(sampleRate: sr)
+    let built = Set(report.programs.map(\.name))
+    for name in ["harp2", "flute", "bell", "bassattack", "bit"] where built.contains(name) {
+      let prog = try #require(MinecraftBank.programs.first { $0.name == name })
+      let slot = try #require(bank.slot(for: [.sf2(path, program: prog.program)]))
+      defer { bank.release(slot) }
+      func play(_ note: Int) -> [Float] {
+        WaveRunner.audition(
+          tonalVoice(instrument: "", group: "melody"), notes: [(note, 0, 0.5)], sampleRate: sr,
+          seconds: 0.4, sampler: (bank, slot))
+      }
+      for note in stride(from: prog.root - 24, through: prog.root + 24, by: 3)
+      where (24...108).contains(note) {
+        let x = play(note)
+        let e = pitchClassError(x[Int(0.03 * sr)..<Int(0.25 * sr)], note: note, sampleRate: sr)
+        #expect(e.level > 0, "\(name) @\(note): silent")
+        #expect(abs(e.cents) < 5, "\(name) @\(note): \(e.cents) cents")
+      }
+      for z in MinecraftImport.octaveZones(root: prog.root).dropLast() {
+        let below = z.keys.upperBound
+        let a = rmsDB(play(below)[Int(0.03 * sr)..<Int(0.25 * sr)])
+        let b = rmsDB(play(below + 1)[Int(0.03 * sr)..<Int(0.25 * sr)])
+        #expect(abs(a - b) <= 3, "\(name) split \(below)|\(below + 1): \(a) → \(b) dB")
+      }
+    }
   }
 
   /// A held flute note sustains on its loop (a pad can hold it); a harp pluck dies away.
@@ -193,7 +229,7 @@ struct MinecraftTests {
     defer { dj.stop() }
     let buf = makeEngineRenderBuffer(dj, frames: 512)
     pullEngine(dj, buf, cycles: 40, frames: 512)
-    let index = try #require(MinecraftBank.Sidecar.load()?.assetIndex)
+    let index = try #require(MinecraftBank.Sidecar.load()?.version)
     dj.perform(.setPalette(deck: "A", palette: "minecraft"))
     #expect(deck.palette == "minecraft@\(index)")
     pullEngine(dj, buf, cycles: 200, frames: 512)
@@ -213,6 +249,75 @@ struct MinecraftTests {
     pullEngine(dj, buf, cycles: 200, frames: 512)
     #expect(deck.palette == nil)
     #expect(!deck.wave.sampledNets.values.contains { $0.contains(MinecraftBank.fileName) })
+  }
+
+  /// The zones cover the keyboard once, and no key within two octaves of the root plays a
+  /// sample more than six semitones from that sample's root.
+  @Test func octaveZonesCoverTheKeyboard() {
+    for p in MinecraftBank.programs where p.kind == .tone {
+      for root in (p.root - 1)...(p.root + 1) {
+        let zones = MinecraftImport.octaveZones(root: root)
+        #expect(zones.map(\.shift) == [-1, 0, 1], "\(p.name)")
+        var next = 0
+        for z in zones {
+          #expect(z.keys.lowerBound == next, "\(p.name): contiguous")
+          next = z.keys.upperBound + 1
+          for k in z.keys where abs(k - root) <= 24 {
+            #expect(abs(k - (root + 12 * z.shift)) <= 6, "\(p.name) key \(k)")
+          }
+        }
+        #expect(next == 128)
+      }
+    }
+  }
+
+  /// The octave shifts: an exact octave, the level kept in the passband, nothing folding back
+  /// (−60 dB) or imaged, loop points scaled, the same bytes twice.
+  @Test func octaveShiftsAreBandLimitedOctaves() throws {
+    let rate = MinecraftImport.sampleRate
+    let a4 = sineWave(440, sampleRate: rate, seconds: 0.5)
+    let body = { (x: [Float]) in x[(x.count / 4)..<(3 * x.count / 4)] }
+    let up = MinecraftImport.octaveShift(a4, loop: 1000..<3000, octaves: 1)
+    let down = MinecraftImport.octaveShift(a4, loop: 1000..<3000, octaves: -1)
+    #expect(up.pcm.count == a4.count / 2)
+    #expect(down.pcm.count == a4.count * 2)
+    #expect(up.loop == 500..<1500)
+    #expect(down.loop == 2000..<6000)
+    #expect(MinecraftImport.octaveShift(a4, loop: nil, octaves: 0).pcm == a4)
+    for (x, note) in [(up.pcm, 81), (down.pcm, 57)] {
+      let e = pitchClassError(body(x), note: note, sampleRate: rate)
+      #expect(e.octave == 0 && abs(e.cents) < 1, "\(note): \(e)")
+      #expect(abs(rmsDB(body(x)) - rmsDB(body(a4))) < 0.1, "\(note): level")
+    }
+    // 15 kHz an octave up would fold to 14.1 kHz; an octave down it leaves an image at
+    // 14.55 kHz beside the 7.5 kHz it becomes
+    let high = sineWave(15_000, sampleRate: rate, seconds: 0.5)
+    let ref = toneLevelDB(body(high), freq: 15_000, sampleRate: rate)
+    let folded = MinecraftImport.octaveShift(high, loop: nil, octaves: 1).pcm
+    #expect(rmsDB(body(folded)) - rmsDB(body(high)) < -60, "nothing folds back")
+    #expect(toneLevelDB(body(folded), freq: 14_100, sampleRate: rate) - ref < -60)
+    let stretched = MinecraftImport.octaveShift(high, loop: nil, octaves: -1).pcm
+    #expect(abs(toneLevelDB(body(stretched), freq: 7_500, sampleRate: rate) - ref) < 0.5)
+    #expect(toneLevelDB(body(stretched), freq: 14_550, sampleRate: rate) - ref < -60, "no image")
+    #expect(MinecraftImport.octaveShift(high, loop: nil, octaves: 1).pcm == folded)
+  }
+
+  /// The sidecar records the bank format and the palette records it in its version; a bank
+  /// built before formats (no `format` key) still records just its asset index.
+  @Test func theBankFormatIsInThePaletteVersion() throws {
+    let p = try #require(SoundPalette.named("minecraft"))
+    let now = emptyScratchDir()
+    try writeMinecraftSidecar(dir: now, assetIndex: "32", format: MinecraftBank.formatVersion)
+    let side = try #require(MinecraftBank.Sidecar.load(dir: now))
+    #expect(side.format == MinecraftBank.formatVersion)
+    #expect(MinecraftBank.formatVersion == 2)
+    #expect(p.recorded(dir: now) == "minecraft@32+b2")
+    #expect(SoundPalette.named("minecraft@32+b2")?.id == "minecraft")
+    #expect(SoundPalette.version("minecraft@32+b2") == "32+b2")
+    let old = emptyScratchDir()
+    try writeMinecraftSidecar(dir: old, assetIndex: "32", format: nil)
+    #expect(MinecraftBank.Sidecar.load(dir: old)?.format == 1)
+    #expect(p.recorded(dir: old) == "minecraft@32")
   }
 
   @Test func setPaletteRoundTrips() {

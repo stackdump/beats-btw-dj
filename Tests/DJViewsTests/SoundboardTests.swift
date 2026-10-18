@@ -510,6 +510,135 @@ struct SoundboardTests {
     #expect(m3.soundboardPage == .crate)
   }
 
+  /// A fresh engine (deck A playing the demo loop) over a temporary favorites store, with two
+  /// stand-in stock loops starred into crates: both in "warm", the second in "peak" too.
+  func crateModel(
+    _ defaults: UserDefaults? = nil, favorites: FavoritesStore? = nil
+  ) throws -> (AppModel, DJEngine, [StockLoop]) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
+    dj["A"]!.loadDemo()
+    dj["A"]!.setPlaying(true)
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: favorites ?? temporaryFavorites())
+    m.defaults = defaults ?? scratchDefaults()
+    m.start()
+    let loops = [
+      try temporaryStockLoop("Crate Beat", category: "Drums"),
+      try temporaryStockLoop("Crate Bass", category: "Bass", pitch: 110),
+    ]
+    m.stockLoops = loops
+    m.addToCrate(loops[0].path, "warm")
+    m.addToCrate(loops[1].path, "warm")
+    m.addToCrate(loops[1].path, "peak")
+    m.poll()
+    return (m, dj, loops)
+  }
+
+  func loads(_ s: Session) -> [(String, DeckSourceDescriptor)] {
+    s.events.compactMap { e in
+      if case .action(let a) = e.kind, case .load(let deck, let source) = a {
+        return (deck, source)
+      }
+      return nil
+    }
+  }
+
+  /// A Crate pad loads its favorite on the focus deck through `loadFavorite` (a recorded load);
+  /// it shows the deck holding it, and lights once that deck plays it.
+  @Test func aCratePadLoadsItsFavoriteOnTheAimedDeck() async throws {
+    let (m, dj, loops) = try crateModel()
+    defer { dj.stop() }
+    m.setSoundboardPage(.crate)
+    #expect(m.crates == ["warm", "peak"] && m.crateBoardCrate == "warm", "the first crate")
+    #expect(m.cratePads.map(\.title) == ["Crate Beat", "Crate Bass"])
+    let pad = try #require(m.cratePads.first)
+    #expect(pad.id == Favorite.fileCID(loops[0].path) && pad.isSample)
+    #expect(pad.detail.hasPrefix("Sample · 120 BPM"), "\(pad.detail)")
+    #expect(pad.onDecks.isEmpty && pad.light == .off && !pad.sounding)
+    #expect(m.cratePads.last?.detail.contains("#peak") == true, "its other crates")
+
+    dj.focus = "B"
+    #expect(m.crateBoardDeck() == "B" && m.crateBoardDeck(other: true) == "A")
+    let rec = try SessionRecorder.start(on: dj)
+    let load = try #require(m.cratePadPress(pad.id))
+    #expect(await load.value)
+    m.poll()
+    #expect(m.decks["B"]?.title == "Crate Beat", "on the focus deck")
+    #expect(m.decks["A"]?.sourceCID != pad.id, "deck A keeps its loop")
+    let loaded = try #require(m.cratePads.first)
+    #expect(loaded.onDecks == ["B"] && loaded.playingOn.isEmpty && loaded.light == .off)
+    dj["B"]!.setPlaying(true)
+    m.poll()
+    let lit = try #require(m.cratePads.first)
+    #expect(lit.playingOn == ["B"] && lit.light == .full && lit.sounding)
+    #expect(m.cratePads.last?.light == .off, "only the pad a deck plays")
+    let recorded = loads(rec.finish())
+    #expect(recorded.count == 1 && recorded.first?.0 == "B", "the load is recorded")
+    if case .sample(_, let title, let grid)? = recorded.first?.1 {
+      #expect(title == "Crate Beat" && grid?.bpm == 120)
+    } else {
+      Issue.record("a sample load: \(String(describing: recorded.first?.1))")
+    }
+    #expect(m.cratePadPress("file:/nowhere.wav") == nil, "an unknown pad does nothing")
+  }
+
+  /// ⌥-click loads the other deck: the focus stays where it was.
+  @Test func optionClickLoadsTheOtherDeck() async throws {
+    let (m, dj, _) = try crateModel()
+    defer { dj.stop() }
+    m.setSoundboardPage(.crate)
+    m.setSoundboardCrate("peak")
+    #expect(m.cratePads.map(\.title) == ["Crate Bass"])
+    let pad = try #require(m.cratePads.first)
+    #expect(dj.focus == "A")
+    let rec = try SessionRecorder.start(on: dj)
+    let load = try #require(m.cratePadPress(pad.id, other: true))
+    #expect(await load.value)
+    m.poll()
+    #expect(dj.focus == "A", "the focus doesn't move")
+    #expect(m.decks["B"]?.title == "Crate Bass" && m.decks["B"]?.sourceCID == pad.id)
+    #expect(m.decks["A"]?.sourceCID != pad.id)
+    #expect(m.cratePads.first?.onDecks == ["B"])
+    #expect(loads(rec.finish()).map(\.0) == ["B"], "the load is recorded")
+  }
+
+  /// The chosen crate is remembered across launches; a deleted one falls back to the first.
+  @Test func theCratePagesCrateIsRemembered() throws {
+    let defaults = scratchDefaults()
+    let store = temporaryFavorites()
+    let (m, dj, _) = try crateModel(defaults, favorites: store)
+    m.setSoundboardCrate("peak")
+    #expect(m.crateBoardCrate == "peak")
+    dj.stop()
+    let next = AppModel(engine: try DJEngine(decks: ["A", "B"], offline: true), favorites: store)
+    next.defaults = defaults
+    next.start()
+    #expect(next.soundboardCrate == "peak" && next.crateBoardCrate == "peak")
+    #expect(next.cratePads.map(\.title) == ["Crate Bass"])
+    next.deleteCrate("peak")
+    #expect(next.crateBoardCrate == "warm", "a crate since deleted shows the first")
+    #expect(next.cratePads.count == 2)
+  }
+
+  /// The Crate page draws its crate strip and pads at the window's minimum width.
+  @Test func theCratePageDrawsItsPads() throws {
+    let (m, dj, _) = try crateModel()
+    defer { dj.stop() }
+    m.setSoundboardPage(.crate)
+    let width = 720 - 2 * 16 - 2 * Int(DJStyle.cardPadding)
+    let view = SoundboardView(model: m).frame(width: CGFloat(width)).padding(0)
+      .background(Color.black).environment(\.colorScheme, .dark)
+    let grid = SoundboardLayout.size(count: 2, width: CGFloat(width))
+    let height = Int(grid.height) + 120
+    savePNG(view, width: width, height: height, name: "soundboard-crate")
+    let px = try #require(renderPixels(view, width: width, height: height))
+    // the pads' faint yellow outlines and the chosen crate's chip, wherever the stack sits
+    let yellow = px.count(inX: 0..<width, y: 0..<height) { r, g, b in
+      r > 60 && g > 45 && b < 40 && g <= r
+    }
+    #expect(yellow > 100, "the pads' outlines (\(yellow) pixels)")
+  }
+
   /// The Stock page draws its pads (and the switch above them) at the window's minimum width.
   @Test func theStockPageDrawsItsPads() throws {
     let (m, dj) = try stockModel()
