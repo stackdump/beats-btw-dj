@@ -29,10 +29,12 @@ public enum Loudness {
   /// (`SamplerInstrument.targetRMSdB`) and take no `.balance` trim, so in a song they sit under
   /// the synth part they replace — most of all pads (slow attacks, long notes) and basses. The
   /// probe can't play the deck's samplers, so it plays the synth part this much down. Measured
-  /// (soloed parts, 40 s of seed 4242, ten genres: `sampledPartDB` ± the spread): bass −4.3 ± 2,
-  /// harmony −5.8 ± 1.8, melody −1.6 ± 2.
+  /// (`LevelSurveyTests.sampledPartsAgainstTheirSynthVoices`: soloed parts, 40 s of seed 4242,
+  /// ten genres, the default palette, Studio; mean ± spread): bass −4.1 ± 1.9, harmony −5.0 ±
+  /// 1.3, melody −1.7 ± 1.5 (2026-10-18; was −4.3 / −5.8 / −1.6). No genre plays its arp on a
+  /// sampler there, so arps take the melody's.
   public static let sampledPartDB: [String: Double] = [
-    "bass": -4.3, "harmony": -5.8, "melody": -1.6,
+    "bass": -4.1, "harmony": -5.0, "melody": -1.7,
   ]
 
   static func sampledPartLevel(group: String) -> Double {
