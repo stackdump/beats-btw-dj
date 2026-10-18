@@ -299,6 +299,81 @@ final class NextTrackSlot: Sendable {
   }
 }
 
+/// Wander's look-ahead (`Deck.lookAheadWander`): the swap the walk's next move plans, composed
+/// a bar before the move so it is ready when the move is taken. One per deck; a newer request
+/// supersedes it, and whatever the move does not take is dropped (its samplers pin bank slots
+/// until then).
+final class LookAheadSlot: Sendable {
+  /// What a look-ahead was composed for: the move it reads ahead (its step), the swap it plans,
+  /// where that starts, and the deck's role filter. The move reuses it only when all four match.
+  struct Key: Equatable, Sendable {
+    var step: Int
+    var spec: TrackSpec
+    var start: SwapStart
+    var roleFilter: RoleFilter?
+  }
+
+  /// A look-ahead taken by its move: the compose (`task`), and its track once composed.
+  struct Taken: Sendable {
+    var ready: PreparedTrack?
+    var task: Task<PreparedTrack, Never>
+  }
+
+  private struct State {
+    var key: Key?
+    var task: Task<PreparedTrack, Never>?
+    var ready: PreparedTrack?
+    var token = 0
+  }
+  private let state = Mutex(State())
+
+  /// What the slot holds (composed or composing); nil when empty.
+  var key: Key? { state.withLock { $0.key } }
+  /// Its compose, to await (tests).
+  var task: Task<PreparedTrack, Never>? { state.withLock { $0.task } }
+  var isReady: Bool { state.withLock { $0.ready != nil } }
+
+  /// Compose `key.spec` in the background, replacing what the slot held.
+  func request(_ key: Key, sampleRate: Double, samplers: SamplerBank?) {
+    let start = key.start.tick(0)  // `.top` or `.tick`: never the deck's clock
+    let old = state.withLock { s -> State in
+      let o = s
+      s.token += 1
+      let token = s.token
+      s.key = key
+      s.ready = nil
+      s.task = Task.detached(priority: .userInitiated) { [self] in
+        let track = PreparedTrack(
+          spec: key.spec, sampleRate: sampleRate,
+          opts: .extended(samplers: samplers, roleFilter: key.roleFilter), startTick: start)
+        state.withLock { s in if s.token == token { s.ready = track } }
+        return track
+      }
+      return o
+    }
+    _ = old  // released here, outside the lock
+  }
+
+  /// The look-ahead for `key`, off the slot; nil when it holds another (or none). Either way
+  /// the slot is empty after.
+  func take(_ key: Key) -> Taken? {
+    let old = clear()
+    guard old.key == key, let task = old.task else { return nil }
+    return Taken(ready: old.ready, task: task)
+  }
+
+  /// Let go of what the slot holds.
+  func drop() { _ = clear() }
+
+  private func clear() -> State {
+    state.withLock { s in
+      let o = s
+      s = State(token: s.token + 1)
+      return o
+    }
+  }
+}
+
 extension Deck {
   /// Compose `spec` on a background thread, then load it (at the next bar if the deck is
   /// playing). Returns false if a newer `generate` superseded this one meanwhile.
@@ -320,12 +395,30 @@ extension Deck {
     let bank = wave.samplers
     let filter = roleFilter
     let wave = self.wave
-    var track = await Task.detached(priority: .userInitiated) {
+    let track = await Task.detached(priority: .userInitiated) {
       PreparedTrack(
         spec: spec, sampleRate: sr, opts: .extended(samplers: bank, roleFilter: filter),
         startTick: startTick.tick(wave.tick))
     }.value
+    return await install(track, startTick: startTick, mine: mine)
+  }
+
+  /// `generate` for a track whose compose started earlier (`composed`: Wander's look-ahead,
+  /// `LookAheadSlot`): waits for it instead of composing, then installs it the same way.
+  @MainActor @discardableResult
+  func generate(composed: Task<PreparedTrack, Never>, startTick: SwapStart) async -> Bool {
+    generation += 1
+    let mine = generation
+    return await install(await composed.value, startTick: startTick, mine: mine)
+  }
+
+  /// The end of `generate`: load `track` unless a newer `generate` superseded it, prepared
+  /// again first if its `.tick` has passed.
+  @MainActor
+  private func install(_ composed: PreparedTrack, startTick: SwapStart, mine: Int) async -> Bool {
     guard mine == generation else { return false }
+    var track = composed
+    let wave = self.wave
     if case .tick(let t) = startTick, t > 0, track.prepared.startTick == t, wave.tick >= t {
       let late = track
       track = await Task.detached(priority: .userInitiated) {
@@ -377,6 +470,19 @@ extension Deck {
     } else {
       seedTarget = spec
       Task { @MainActor in await self.generate(spec, startTick: start) }
+    }
+  }
+
+  /// `swap(to:start:)` with Wander's look-ahead for it (`LookAheadSlot.take`): composed
+  /// already and on time, it loads now; still composing (or late), it is awaited and installed
+  /// as `generate` would. Never in `deterministic` replay (no look-ahead is made there).
+  func swap(to spec: TrackSpec, start: SwapStart, ahead: LookAheadSlot.Taken) {
+    if let track = ahead.ready, !start.passed(wave.tick) {
+      generation += 1  // supersedes any `generate` still composing
+      loadNet(track)
+    } else {
+      seedTarget = spec
+      Task { @MainActor in await self.generate(composed: ahead.task, startTick: start) }
     }
   }
 
@@ -452,6 +558,12 @@ public enum SwapStart: Sendable, Equatable {
   case nextBar
   /// This tick (a phrase boundary worked out beforehand: Wander).
   case tick(Int)
+
+  /// A `.tick` the deck has reached at `now` (`generate` re-prepares such a track).
+  func passed(_ now: Int) -> Bool {
+    if case .tick(let t) = self { return t > 0 && now >= t }
+    return false
+  }
 
   /// The tick to start at, given the deck's tick now.
   func tick(_ now: Int) -> Int {

@@ -41,7 +41,9 @@ under structural rules, rather than editing audio freely.
   one tonal role, the same seed in another structure, or a neighbouring genre (same family,
   nearest tempo: `Wander.neighbours`) — weights in `WanderMoveKind.weight`. Swaps land at the
   next phrase's first bar with the transport still running (`PreparedTrack(startTick:)`,
-  `SwapStart`). The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
+  `SwapStart`); a bar earlier the move is planned read-only and a swap composed into
+  `Deck.lookAhead` (`LookAheadSlot`, live only), taken at the move only if step, spec, start and
+  role filter all match, else dropped. The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
   deck's step counter, so moves are **derived, never recorded**; only the pokes are
   (`DeckAction.wander` / `.wanderPace` / `.wanderLock`, the controller's MIDI), plus the walk's
   settings in a session's starting `DeckParams.wander`, so a replay walks the same path
@@ -154,7 +156,10 @@ its copy; the two are now independent. Rules inherited from that split:
   `.feel` plays it in the runner (`WaveOptions.feel`, set by `forGenre`; `WaveProject.feelTable`):
   in place of the project's swing / humanize, a drum is late by its offset + (2r − 1) × half a pair
   (a sixteenth; jazz an eighth) on its off-beat, r at the tempo playing, its velocity scaled; tonal lanes
-  swing only. Without the flag (or the template) the template is never read.
+  swing only. Without the flag (or the template) the template is never read. `.drift` plays the
+  project's humanize (h) as Voss–McCartney 1/f noise (`Drift`, `WaveProject.drift` keyed by
+  `voicingSeed`): velocity ± 12 × h, 0…3 ms × h late, on top of `.feel` or `.groove`'s swing, in
+  place of beats' white jitter. A pure hash of (seed, net, song tick), so seeks and replays match.
   `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
   b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
   4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
@@ -355,6 +360,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
   renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
   musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+  `make listen [GENRES=… SECONDS=… PREV_FIXES=…]` renders 6.1's panel (`--fixes all` vs the
+  previous part, plus `--solo` stems) into `.build/listen/`; `scripts/listen-ab.py` plays it blind
+  (seeded order, afplay) and appends JSONL picks for `listening-log.py from-picks`.
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
@@ -462,6 +470,10 @@ its copy; the two are now independent. Rules inherited from that split:
   `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
   reference bands (lufs, lra, truePeak, slope, side; empty until measured). Every number names its
   `source` — retune there, saying where the new value came from; `TargetsTableTests` pins the values.
+  Bands come only from `scripts/references.py --write` (`$DJ_REFERENCES/<family>/*`, local files:
+  `djctl measure --sections` + ffmpeg cross-check, cached in `.build/references`): median, p10–p90,
+  source `ref:<family>/<sha8> (n=K, djctl <build>)` — hashes, never a path or name.
+  `musicality-matrix.py --targets PATH` prints each track's distance from its family's band.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every

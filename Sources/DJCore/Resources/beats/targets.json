@@ -2,7 +2,8 @@
   "provenance": {
     "about": "Mix targets the musicality fixes aim at (ROADMAP 6.1), as data that names where each number came from. Loaded once by MixTargets (Bundle.main first, then Bundle.module), at prepare, never on the audio thread.",
     "editing": "Hand-edited, not generated: make beats-tables writes only tables.json. A value replaced by a measurement says so in its source (corpus, tool, date).",
-    "families": "beats' structure.js family order (BeatsTables.family(of:)): dance, song, jazz, chill"
+    "families": "beats' structure.js family order (BeatsTables.family(of:)): dance, song, jazz, chill",
+    "bands": "scripts/references.py --write fills them from $DJ_REFERENCES/<family>/ (local files, never committed): value = median, band = [p10, p90], source 'ref:<family>/<sha8> (n=K, djctl <build>)', sha8 hashing the files' sha256s. Never a path or a file name."
   },
   "loudness": {
     "probeOffsetDB": {
