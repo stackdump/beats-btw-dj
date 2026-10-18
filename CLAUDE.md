@@ -41,7 +41,9 @@ under structural rules, rather than editing audio freely.
   one tonal role, the same seed in another structure, or a neighbouring genre (same family,
   nearest tempo: `Wander.neighbours`) — weights in `WanderMoveKind.weight`. Swaps land at the
   next phrase's first bar with the transport still running (`PreparedTrack(startTick:)`,
-  `SwapStart`). The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
+  `SwapStart`); a bar earlier the move is planned read-only and a swap composed into
+  `Deck.lookAhead` (`LookAheadSlot`, live only), taken at the move only if step, spec, start and
+  role filter all match, else dropped. The move is `Wander.plan(context, step)`: seeded from the spec's share CID + the
   deck's step counter, so moves are **derived, never recorded**; only the pokes are
   (`DeckAction.wander` / `.wanderPace` / `.wanderLock`, the controller's MIDI), plus the walk's
   settings in a session's starting `DeckParams.wander`, so a replay walks the same path

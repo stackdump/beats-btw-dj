@@ -378,6 +378,8 @@ public final class Deck: JogClock {
   var netCueTick = 0.0
   var heldKeys: [Int: Int] = [:]
   let next = NextTrackSlot()
+  /// The swap Wander's next move plans, composed a bar early (`lookAheadWander`).
+  let lookAhead = LookAheadSlot()
   public private(set) var title = "—"
   public internal(set) var playing = false
   /// Cue points in samples, by slot.
