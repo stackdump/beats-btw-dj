@@ -119,8 +119,13 @@ public struct MCPBridge {
         + "track, level: the deck's short-term / momentary LUFS, autoGain on/off and the "
         + "autoGainDB a sample plays at, the sample's own LUFS when levelled, a net deck's "
         + "limiter), crossfader, master, the LOOP-record clips, the ones removed from the row and the "
-        + "loop channel (loops), "
-        + "connected controllers, recording, status line, and the "
+        + "loop channel (loops; loops.follow: the Tempo mode and the deck followed), "
+        + "connected controllers, recording, status line, locked (buttons disabled by "
+        + "right-click, by lock key), headphones (mix, level, pfl per deck), inpulseOutput "
+        + "(the Inpulse's audio device and whether it is routed, or null), awake (screen kept "
+        + "awake), view (which panels are open), scope (open, kind, source, measured), stage "
+        + "(window open and its toolbar settings), crates, saved voice variations by "
+        + "instrument, and the "
         + "app's build (id, version, build = git commit, date).",
       [:]),
     tool(
@@ -186,7 +191,10 @@ public struct MCPBridge {
       same audio twice is one clip (dj_stock_loops addToRow is the way in for a stock loop; a \
       set with one is never published) · \
       loopKeyLock {on}: the row's key lock, for clips without their own · loopFade {fade: \
-      off|10ms|beat|bar}: how loops come in and go out (default 10ms) · tapBars {bars: 1-64 or \
+      off|10ms|beat|bar}: how loops come in and go out (default 10ms) · clipQuantize {id, beats: \
+      1|4|8|16|32 or null}: one loop's own launch boundary (null: the row's loopQuantize; a scene \
+      switches on the row's) · clipFade {id, fade: off|10ms|beat|bar or null}: one loop's own \
+      fade (null: the row's loopFade) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
       app's) · voiceTweak {deck, channel, params}: shape a net deck's channel's synth voice \
       live, on the song playing (no reload; channel from dj_state.voices[].channel): params \

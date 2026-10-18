@@ -29,6 +29,29 @@ struct SoundboardView: View {
     let pads = model.soundPads
     VStack(alignment: .leading, spacing: DJStyle.s) {
       header(pads)
+      switch model.soundboardPage {
+      case .row: rowPage(pads)
+      case .stock: StockBoardView(model: model)
+      case .crate: CrateBoardPlaceholder()
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .alert(
+      "Rename loop",
+      isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+    ) {
+      TextField("Name", text: $newName)
+      Button("Rename") {
+        if let r = renaming { model.soundboard(.rename(newName), r) }
+        renaming = nil
+      }
+      Button("Cancel", role: .cancel) { renaming = nil }
+    }
+  }
+
+  /// The Row page: every loop on the row as a pad, the scenes above them.
+  @ViewBuilder private func rowPage(_ pads: [SoundPad]) -> some View {
+    Group {
       if !model.scenes.isEmpty || model.loopChannel.looping > 0 {
         HStack(spacing: DJStyle.s) {
           Text("SCENES").font(DJStyle.sectionLabel).tracking(1.2).foregroundStyle(.tertiary)
@@ -84,24 +107,21 @@ struct SoundboardView: View {
           activate: { if let f = focus { model.soundboard(.toggle, f) } })
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .alert(
-      "Rename loop",
-      isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
-    ) {
-      TextField("Name", text: $newName)
-      Button("Rename") {
-        if let r = renaming { model.soundboard(.rename(newName), r) }
-        renaming = nil
-      }
-      Button("Cancel", role: .cancel) { renaming = nil }
-    }
   }
 
   private func header(_ pads: [SoundPad]) -> some View {
     HStack(spacing: DJStyle.m) {
       Text("SOUNDBOARD").font(DJStyle.sectionLabel).tracking(1.2).foregroundStyle(.secondary)
-      if !pads.isEmpty {
+      HStack(spacing: DJStyle.xs) {
+        ForEach(SoundboardPage.allCases, id: \.self) { p in
+          ChoiceButton(label: p.label, selected: model.soundboardPage == p, tint: LoopRowView.tint)
+          {
+            model.setSoundboardPage(p)
+          }
+          .help(p.help)
+        }
+      }
+      if model.soundboardPage == .row, !pads.isEmpty {
         Text("\(pads.count) loop\(pads.count == 1 ? "" : "s")").font(.caption)
           .foregroundStyle(.secondary).monospacedDigit()
       }
@@ -128,6 +148,173 @@ struct SoundboardView: View {
       }
       .buttonStyle(.borderless).help("Close the soundboard (⇧⌘B)")
     }
+  }
+}
+
+/// The Stock page: the Apple Loops on this Mac nearest the decks' tempo as pads (the first
+/// `AppModel.stockPadLimit`), with a category strip and a search. A click puts the loop on the
+/// row, coming in on the next launch boundary; a loop already on the row lights as its clip
+/// does, and a click on a sounding one takes it out. Arrows move the focus, Return / Space press
+/// the focused pad.
+struct StockBoardView: View {
+  let model: AppModel
+  @State private var focus: String?
+  @State private var gridWidth: CGFloat = 0
+
+  var body: some View {
+    let all = model.stockLoops
+    let pads = model.stockPads
+    VStack(alignment: .leading, spacing: DJStyle.s) {
+      HStack(spacing: DJStyle.s) {
+        TextField(
+          "Search stock loops (name, pack, genre)",
+          text: Binding(get: { model.stockPadQuery }, set: { model.stockPadQuery = $0 })
+        )
+        .textFieldStyle(.roundedBorder).controlSize(.small).frame(maxWidth: 280)
+        Text(summary(all: all.count, hits: model.stockPadMatches.count))
+          .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+        Spacer(minLength: 0)
+      }
+      if !all.isEmpty {
+        let categories = all.categories
+        FlowRow(spacing: DJStyle.xs) {
+          ChoiceButton(label: "All", selected: model.stockPadCategory.isEmpty, tint: tint) {
+            model.stockPadCategory = ""
+          }
+          ForEach(categories, id: \.self) { c in
+            ChoiceButton(label: c, selected: model.stockPadCategory == c, tint: tint) {
+              model.setStockPadCategory(c)
+            }
+          }
+        }
+        .arrowKeys([""] + categories, current: model.stockPadCategory) {
+          model.stockPadCategory = $0
+        }
+      }
+      if pads.isEmpty {
+        Text(
+          model.stockLoopsLoading
+            ? "Reading the loop index…"
+            : all.isEmpty
+              ? "No Apple Loops installed (GarageBand or Logic content in /Library/Audio/Apple Loops)"
+              : "No loops match: clear the search or pick another category"
+        )
+        .font(.callout).foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+      } else {
+        SoundboardGrid {
+          ForEach(pads) { pad in
+            StockPadView(pad: pad, focused: focus == pad.id)
+              .onTapGesture {
+                focus = pad.id
+                Task { await model.stockPadClick(pad.id) }
+              }
+              .onHover { if $0 { focus = pad.id } }
+              .help(
+                pad.sounding
+                  ? "\(pad.title): click to take it out on the next "
+                    + DJEngine.quantumLabel(model.loopQuantum)
+                  : "\(pad.title): click to put it on the row, in on the next "
+                    + DJEngine.quantumLabel(model.loopQuantum))
+          }
+        }
+        .onGeometryChange(for: CGFloat.self) {
+          $0.size.width
+        } action: {
+          gridWidth = $0
+        }
+        .arrowKeys(
+          pads.map(\.id), columns: SoundboardLayout.columns(count: pads.count, width: gridWidth),
+          current: focus, select: { focus = $0 },
+          activate: {
+            if let f = focus { Task { await model.stockPadClick(f) } }
+          })
+      }
+    }
+    // the index is read (or scanned, the first time) off the main thread
+    .task { await model.loadStockLoops() }
+  }
+
+  private var tint: Color { LoopRowView.tint }
+
+  private func summary(all: Int, hits: Int) -> String {
+    if model.stockLoopsLoading { return "scanning…" }
+    guard all > 0 else { return "none installed" }
+    let shown = min(hits, AppModel.stockPadLimit)
+    let head = hits > shown ? "\(shown) of \(hits)" : "\(hits)"
+    return model.stockPadTempo.map { String(format: "%@ · nearest %.0f BPM", head, $0) } ?? head
+  }
+}
+
+/// A Stock page pad: the loop's name, its category, tempo and length, lit as its clip on the row
+/// is (full while it plays, blinking on its way in or out or while it loads).
+struct StockPadView: View {
+  let pad: StockPad
+  var focused = false
+
+  var body: some View {
+    let tint = LoopRowView.tint
+    ZStack(alignment: .topLeading) {
+      if pad.pending {
+        TimelineView(.periodic(from: .now, by: 0.25)) { t in
+          let lit = Int(t.date.timeIntervalSinceReferenceDate * 4) % 2 == 0
+          face(tint, fill: lit ? 0.42 : 0.16)
+        }
+      } else {
+        face(tint, fill: pad.sounding ? 0.62 : 0.1)
+      }
+      VStack(alignment: .leading, spacing: DJStyle.xs) {
+        Text(pad.title).font(.headline).lineLimit(2)
+          .foregroundStyle(pad.sounding ? Color.white : Color.primary)
+        Text(pad.category.isEmpty ? "—" : pad.category).font(.caption)
+          .foregroundStyle(.secondary).lineLimit(1)
+        Spacer(minLength: 0)
+        Text(pad.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        HStack(spacing: DJStyle.xs) {
+          Text(String(format: "%.0f BPM", pad.bpm)).font(.caption.bold()).monospacedDigit()
+          Spacer(minLength: 0)
+          if pad.onRow {
+            Text("ROW").font(.caption2.bold()).padding(.horizontal, 3)
+              .foregroundStyle(Color.black)
+              .background(RoundedRectangle(cornerRadius: 3).fill(tint))
+          }
+          Text(stateLabel).font(.caption2.bold()).monospacedDigit()
+            .foregroundStyle(pad.state == .stopping ? LoopCountdownBadge.outTint : Color.primary)
+        }
+      }
+      .padding(DJStyle.s)
+    }
+    .contentShape(RoundedRectangle(cornerRadius: 10))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(pad.title), \(pad.category), \(stateLabel)")
+    .accessibilityAddTraits(.isButton)
+  }
+
+  private var stateLabel: String {
+    if pad.loading { return "LOADING" }
+    switch pad.state {
+    case .off: return pad.onRow ? "OFF" : "ADD"
+    case .on: return "ON"
+    case .starting: return (pad.countdown?.label ?? "in").uppercased()
+    case .stopping: return "OUT"
+    }
+  }
+
+  private func face(_ tint: Color, fill: Double) -> some View {
+    RoundedRectangle(cornerRadius: 10).fill(tint.opacity(fill))
+      .overlay(
+        RoundedRectangle(cornerRadius: 10).strokeBorder(
+          focused ? Color.white : tint.opacity(pad.state == .off ? 0.35 : 0.9),
+          style: StrokeStyle(lineWidth: focused ? 2 : 1, dash: pad.pending ? [5, 3] : [])))
+  }
+}
+
+/// The Crate page, until a crate's favorites are pads.
+struct CrateBoardPlaceholder: View {
+  var body: some View {
+    Text("A crate's favorites as pads: not here yet. Use a deck's Favorites panel meanwhile.")
+      .font(.callout).foregroundStyle(.secondary)
+      .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
   }
 }
 

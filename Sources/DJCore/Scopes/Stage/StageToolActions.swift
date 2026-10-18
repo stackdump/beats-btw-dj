@@ -5,7 +5,7 @@
 
 /// One of the toolbar's round toggle buttons (stage.js `.pn-stage-menu` buttons).
 public enum StageToolAction: String, CaseIterable, Sendable {
-  case flow, pulse, flame, tilt, expand, backs, labels, card, bolts
+  case flow, pulse, flame, tilt, expand, backs, labels, card, bolts, wander
 
   /// The buttons left of the card button, in toolbar order: the four `data-viz` overlays, then
   /// expand, backs and labels.
@@ -14,9 +14,10 @@ public enum StageToolAction: String, CaseIterable, Sendable {
   ]
 
   /// The buttons the CSS hides while a solo visualizer shows (`.viz-solo [data-viz]`,
-  /// `.pn-stage-expand`, `-backs`, `-labels`, `-bolts`): everything but the card button.
+  /// `.pn-stage-expand`, `-backs`, `-labels`, `-bolts`), and the wander button (dj's own; the
+  /// walk is drawn over the constellation): everything but the card button.
   public static let hiddenWhileSolo: Set<StageToolAction> = [
-    .flow, .pulse, .flame, .tilt, .expand, .backs, .labels, .bolts,
+    .flow, .pulse, .flame, .tilt, .expand, .backs, .labels, .bolts, .wander,
   ]
 
   /// The glyph on the button.
@@ -32,6 +33,7 @@ public enum StageToolAction: String, CaseIterable, Sendable {
     case .card: "✎"
     // (with the text-presentation selector: the emoji glyph would ignore the toolbar's colour)
     case .bolts: "⚡\u{FE0E}"
+    case .wander: "∿"
     }
   }
 
@@ -48,10 +50,12 @@ public enum StageToolAction: String, CaseIterable, Sendable {
     case .labels: "Show/hide track labels"
     case .card: "Flash the share card on every track change (T)"
     case .bolts: "Lightning during macros (flame mode)"
+    case .wander: "Wander — the walk's phrase, moves and trail"
     }
   }
 
-  /// The overlay this button toggles, for the five that are overlays.
+  /// The overlay this button toggles, for the five that are overlays. (Wander is a setting, not
+  /// an overlay: `StageOverlay` stays stage.js's set.)
   public var overlay: StageOverlay? {
     switch self {
     case .flow: .flow
@@ -59,7 +63,7 @@ public enum StageToolAction: String, CaseIterable, Sendable {
     case .flame: .flame
     case .tilt: .tilt
     case .bolts: .bolts
-    case .expand, .backs, .labels, .card: nil
+    case .expand, .backs, .labels, .card, .wander: nil
     }
   }
 
@@ -71,6 +75,7 @@ public enum StageToolAction: String, CaseIterable, Sendable {
     case .backs: s.showBacks
     case .labels: s.showLabels
     case .card: s.cardOnChange
+    case .wander: s.showWander
     }
   }
 
@@ -83,6 +88,7 @@ public enum StageToolAction: String, CaseIterable, Sendable {
     case .backs: s.showBacks.toggle()
     case .labels: s.showLabels.toggle()
     case .card: s.cardOnChange.toggle()
+    case .wander: s.showWander.toggle()
     }
   }
 }

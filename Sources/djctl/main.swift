@@ -15,7 +15,7 @@
 //                                     plays each file at, and the spread before / after
 //                                     (LevelSurvey, LevelMatch.swift); --stock: N stock loops
 //                                     per category
-//   djctl measure <file> [--start S] [--seconds N] [--note N]
+//   djctl measure <file> [--start S] [--seconds N] [--note N] [--sections [--kernel K]]
 //                                     any audio file through render's audio block (LUFS, LRA,
 //                                     true peak, spectrum) as JSON, named by basename + sha256;
 //                                     --note: its pitch against that MIDI note (FileMeasure.swift)
@@ -516,12 +516,13 @@ case "ctl":
   }
 
 case "render":
-  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--kit ID] [--palette NAME]
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--layers] [--kit ID] [--palette NAME]
   //              [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
   // --room renders it a second time without the reverb and reports the room's return level;
-  // --balance solos each part (`MixBalance`) and reports its level against the mix. The
+  // --balance solos each part (`MixBalance`) and reports its level against the mix; --layers
+  // counts the melodic parts sounding in each section (`OfflineRender.layersPerSection`). The
   // `groove` block is how the played hits sit against the grid (`GrooveReport`).
   // --mute / --solo render stems (`RenderRequest`: roles, mixer groups or net ids; the --room
   // and --balance renders use the same filter); --options / --cohesion as `bounce` takes them.
@@ -574,11 +575,14 @@ case "render":
   let synth = positional.contains("--synth")
   let room = positional.contains("--room")
   let balance = positional.contains("--balance")
-  positional.removeAll { $0 == "--synth" || $0 == "--room" || $0 == "--balance" }
+  let layers = positional.contains("--layers")
+  positional.removeAll {
+    $0 == "--synth" || $0 == "--room" || $0 == "--balance" || $0 == "--layers"
+  }
   guard positional.count >= 2, let seed = Double(positional[1]) else {
     stderr(
       "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] "
-        + "[--notes f.txt] [--synth] [--room] [--balance] [--kit ID] [--palette NAME] "
+        + "[--notes f.txt] [--synth] [--room] [--balance] [--layers] [--kit ID] [--palette NAME] "
         + "[--fixes all|none|a,…] [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]"
     )
     exit(2)
@@ -644,7 +648,8 @@ case "render":
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   let groove = GrooveReport(hits.records, sampleRate: sr, bpm: track.played.tempo)
   // AudioMetrics, BS.1770 integrated loudness, EBU loudness range and true peak (the block
-  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift)
+  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift:
+  // GR percentiles, grP95DB among them, and its output truePeakDBTP)
   var audio = FileMeasure.audioBlock(left: render.left, right: render.right, sampleRate: sr)
   if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
   if let limiter = source.limiter { audio["limiter"] = limiter.statistics().dictionary }
@@ -658,6 +663,11 @@ case "render":
   // `.bandStop`: the beat before each chorus against the one before it, song family only
   let stops = render.bandStopDips(track.played, genre: spec.genre)
   if !stops.isEmpty { audio["bandStopDipDB"] = round3(stops.reduce(0, +) / Double(stops.count)) }
+  // `.riser`: the high band's climb into each drop (`RiserRise`)
+  if let r = render.riserSummary(track.played) {
+    audio["riserRiseDB"] = round3(r.riseDB)
+    audio["riserSpearman"] = round3(r.spearman)
+  }
   // --room: render it again without `.space`; what the room adds, against the dry mix
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts
@@ -683,10 +693,18 @@ case "render":
   // (synth voices with --synth)
   if balance {
     let levels = MixBalance.measure(
-      track.played, opts: track.options, samplers: synth ? nil : source.samplers)
+      track.played, opts: track.opts, samplers: synth ? nil : source.samplers)
     audio["balanceDB"] = levels.mapValues(round3)
     audio["balanceSampled"] = !synth
     if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
+  }
+  // --layers: the melodic parts sounding in each section, from solo renders (synth voices)
+  if layers {
+    var o = request.applied(to: .extended)
+    o.musicality = fixes
+    audio["layersPerSection"] = OfflineRender.layersPerSection(
+      track.played, opts: o.forGenre(spec.genre), seconds: seconds
+    ).map(\.dictionary)
   }
   // what each palette role plays (`TrackSound.option`), and what the sampler loaded per net
   var sound: [String: String] = [:]
@@ -740,7 +758,7 @@ case "levels":
   try line(["summary": survey.summary])
 
 case "measure":
-  // djctl measure <file> [--start S] [--seconds N] [--note N] (MeasureCommand.swift)
+  // djctl measure <file> [--start S] [--seconds N] [--note N] [--sections] (MeasureCommand.swift)
   measureCommand()
 
 case "minecraft":

@@ -1,3 +1,4 @@
+import Darwin
 import Testing
 
 @testable import DJCore
@@ -124,6 +125,38 @@ struct SynthVoiceTests {
     #expect(
       FilterEnvelope.forVoice(tonalVoice(instrument: "piano", group: "melody"), group: "melody")
         == .pluck)
+  }
+
+  /// Trance's arp takes the pluck envelope (`VoiceDesign.forGenre`, through `forGenre`); a
+  /// house arp, and beats' options for trance (parity), keep the lead's.
+  @Test func trancesArpIsPlucked() {
+    let arp = tonalVoice(instrument: "", group: "arp")
+    for genre in ["trance", "edm", "synthwave"] {
+      let design = WaveOptions.extended.forGenre(genre).voiceDesign
+      #expect(design.pluckGroups == ["arp"], "\(genre)")
+      if FilterEnvelope.forVoice(arp, group: "arp") != nil {
+        #expect(FilterEnvelope.forVoice(arp, group: "arp", plucked: design.pluckGroups) == .pluck)
+      }
+    }
+    #expect(WaveOptions.extended.forGenre("house").voiceDesign == VoiceDesign())
+    #expect(WaveOptions().forGenre("trance").voiceDesign == VoiceDesign())
+    #expect(FilterEnvelope.forVoice(arp, group: "melody", plucked: ["arp"]) != .pluck)
+    // a whole trance track: every shaped arp lane closes at the pluck's rate
+    let track = PreparedTrack(
+      spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: sr)
+    let arpNets = track.played.nets.keys.filter { track.played.nets[$0]?.track.group == "arp" }
+    var shaped = 0
+    for id in arpNets {
+      for li in track.prepared.byNet[id] ?? [] {
+        let lane = track.prepared.lanes[li]
+        guard lane.isTonal, lane.fAmount > 0 else { continue }
+        shaped += 1
+        #expect(lane.fBase == FilterEnvelope.pluck.base, "\(id)")
+        #expect(lane.fAmount == FilterEnvelope.pluck.amount, "\(id)")
+        #expect(lane.fMul == exp(-1 / (FilterEnvelope.pluck.seconds * sr)), "\(id)")
+      }
+    }
+    #expect(shaped > 0, "trance seed 42 has a shaped arp lane (arp nets \(arpNets))")
   }
 }
 

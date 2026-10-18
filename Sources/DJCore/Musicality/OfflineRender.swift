@@ -112,6 +112,21 @@ public struct OfflineRender {
     return out
   }
 
+  /// How the high band climbs through each riser window of `project` the render holds whole
+  /// (`RiserRise`, `.riser`).
+  public func riserRises(_ project: Project) -> [RiserRise] {
+    RiserRise.measure(left: left, right: right, sampleRate: sampleRate, project: project)
+  }
+
+  /// The riser windows' mean rise (last beat over the first, high band, dB) and mean Spearman
+  /// ρ, as `djctl render` reports them; nil without a window in the render.
+  public func riserSummary(_ project: Project) -> (riseDB: Double, spearman: Double)? {
+    let rises = riserRises(project)
+    guard !rises.isEmpty else { return nil }
+    let n = Double(rises.count)
+    return (rises.map(\.riseDB).reduce(0, +) / n, rises.map(\.spearman).reduce(0, +) / n)
+  }
+
   /// 16-bit PCM WAV, stereo.
   public func wav() -> Data {
     var d = Data()
@@ -255,5 +270,102 @@ public struct AudioMetrics: Sendable {
       "monoFoldLossDB": spectrum.monoFoldLossDB.map(round3),
       "monoFoldDB": round3(spectrum.monoFoldDB),
     ]
+  }
+}
+
+/// How many melodic parts sound in one section of a track (`OfflineRender.layersPerSection`):
+/// what `.layerBudget` caps, measured from the audio rather than read from the nets.
+public struct SectionLayers: Equatable, Sendable {
+  public var name: String
+  /// The parts (`OfflineRender.layerParts`) at or above `layerFloorDB` against the mix there.
+  public var parts: [String]
+  /// Each part's level against the section's mix, dB (−200 for silence).
+  public var levelsDB: [String: Double]
+  public var layers: Int { parts.count }
+
+  public var dictionary: [String: Any] {
+    [
+      "name": name, "layers": layers, "parts": parts,
+      "levelsDB": levelsDB.mapValues { ($0 * 1000).rounded() / 1000 },
+    ]
+  }
+}
+
+extension OfflineRender {
+  /// The melodic parts a layer count looks at (`MixBalance`'s names: bass, harmony as pad,
+  /// melody as lead, arp).
+  public static let layerParts = ["bass", "pad", "lead", "arp"]
+  /// A part counts as a layer in a section when its solo is at least this loud against the mix.
+  public static let layerFloorDB = -40.0
+
+  /// Each section of `played` (what a deck plays): which melodic parts sound in it. Every part
+  /// is rendered alone (`MixBalance.solo`: the other nets' notes out, so slots, mutes and rests
+  /// still switch as composed) through the whole song with `opts`' fixes and rest schedule
+  /// (`RestSchedule.build`, unless `opts.trackRests`), mono, synth voices, a linear master and
+  /// one gain, at `sampleRate`, and its level in each section measured against the mix there,
+  /// leaving out each section's first bar (where the last one's tails ring). Sections past
+  /// `seconds` are left out. Offline only.
+  public static func layersPerSection(
+    _ played: Project, opts: WaveOptions, sampleRate: Double = 24_000, seconds: Double? = nil
+  ) -> [SectionLayers] {
+    var o = opts
+    o.samplers = nil
+    o.master = "linear"
+    o.trackGain = 1
+    if o.musicality.contains(.energy) && o.trackEnergy == nil {
+      o.trackEnergy = EnergyCurve(project: played)
+    }
+    if o.musicality.contains(.balance) && o.trackBalance == nil {
+      o.trackBalance = MixBalance.trims(for: played, fixes: o.musicality)
+    }
+    if o.trackRests == nil { o.trackRests = RestSchedule.build(played, fixes: o.musicality) }
+    let tempo = played.tempo > 0 ? played.tempo : 120
+    let perStep = sampleRate * 60 / (tempo * 4)
+    var frames = Int(Double(NoteLog.length(played)) * perStep)
+    if let seconds { frames = min(frames, Int(seconds * sampleRate)) }
+
+    // the sections the render holds whole, as (name, first frame, end frame)
+    var spans: [(name: String, a: Int, b: Int)] = []
+    var step = 0
+    for s in played.structure {
+      let skip = min(16, s.steps / 4)
+      let a = Int(Double(step + skip) * perStep)
+      let b = Int(Double(step + s.steps) * perStep)
+      step += s.steps
+      guard b <= frames else { break }
+      if b > a { spans.append((s.name, a, b)) }
+    }
+    func levels(_ p: Project) -> [Double] {
+      let runner = WaveRunner(sampleRate: sampleRate, opts: o)
+      runner.load(prepared: WaveRunner.prepare(p, sampleRate: sampleRate, opts: o))
+      runner.play()
+      var x = [Float](repeating: 0, count: frames)
+      x.withUnsafeMutableBufferPointer { b in
+        var n = 0
+        while n < b.count {
+          let m = min(512, b.count - n)
+          runner.process(b.baseAddress! + n, nil, frames: m)
+          n += m
+          if runner.stopped { break }
+        }
+      }
+      return spans.map { s in
+        var sum = 0.0
+        for i in s.a..<s.b { sum += Double(x[i]) * Double(x[i]) }
+        return 10 * log10(max(sum / Double(s.b - s.a), 1e-20))
+      }
+    }
+    let mix = levels(played)
+    var solo: [String: [Double]] = [:]
+    for name in layerParts { solo[name] = levels(MixBalance.solo(played, name)) }
+    return spans.enumerated().map { i, s in
+      var rel: [String: Double] = [:]
+      for name in layerParts {
+        let l = solo[name]![i]
+        rel[name] = l <= -150 ? -200 : max(-200, l - mix[i])
+      }
+      return SectionLayers(
+        name: s.name, parts: layerParts.filter { rel[$0]! >= layerFloorDB }, levelsDB: rel)
+    }
   }
 }

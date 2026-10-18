@@ -114,7 +114,7 @@ struct SampledBalanceTests {
     let bank = SamplerBank(sampleRate: sr, partLevelCache: tempPartLevelCache())
     let t = track(genre, 42, bank: bank, fixes: .all)
     try #require(!sampledLanes(t.prepared).isEmpty, "\(genre): a sampled part")
-    let levels = MixBalance.measure(t.played, opts: t.options, bars: 4, samplers: bank)
+    let levels = MixBalance.measure(t.played, opts: t.opts, bars: 4, samplers: bank)
     let e = try #require(MixBalance.error(levels), "\(genre): \(levels)")
     print("\(genre) sampled balance error \(e) dB:", levels.sorted { $0.key < $1.key })
     #expect(e <= 2, "\(genre): sampled balance error \(e) dB, \(levels)")
@@ -140,7 +140,7 @@ struct SampledBalanceTests {
     let part = try #require(MixBalance.part(kind: "tonal", group: group))
     let solo = MixBalance.solo(t.played, part)
     func rms(balance: Bool) -> Double {
-      var o = t.options
+      var o = t.opts
       o.trackGain = 1
       o.master = "limit"
       if !balance { o.musicality.remove(.balance) }

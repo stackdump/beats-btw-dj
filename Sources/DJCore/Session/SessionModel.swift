@@ -166,6 +166,12 @@ public enum DeckAction: Equatable, Sendable {
   case loopKeyLock(on: Bool)
   /// How loops come in and go out: off | 10ms | beat | bar (`LoopFade`).
   case loopFade(mode: String)
+  /// One clip's own launch boundary in beats (`DJEngine.launchQuanta`); nil follows the row's
+  /// (`DJEngine.setClipQuantum`).
+  case clipQuantize(id: String, beats: Int?)
+  /// One clip's own fade (a `LoopFade` raw value); nil follows the row's
+  /// (`DJEngine.setClipFade`).
+  case clipFade(id: String, mode: String?)
   /// How many bars a quick tap of a controller's LOOP button records (1…64), or nil for none
   /// (a tap records to the next downbeat) (`DJEngine.setTapTakeBars`).
   case tapBars(bars: Int?)
@@ -314,6 +320,22 @@ extension TrackSpec {
       genre: genre, seed: seed, structure: p["structure"]?.string,
       cohesion: p["cohesion"]?.string ?? "v2", extra: extra, layers: layers)
   }
+
+  /// `partSeeds` as the session writes it, beside the share (never inside it): nil when
+  /// there are none, so a spec without them writes exactly what it always did.
+  var partSeedsJSON: JSONValue? {
+    guard !partSeeds.isEmpty else { return nil }
+    return .object(JSONObject(partSeeds.keys.sorted().map { ($0, .number(partSeeds[$0]!)) }))
+  }
+
+  /// This spec with the part seeds `v` holds (a session's `partSeeds` object; nil adds none).
+  func withPartSeeds(_ v: JSONValue?) -> TrackSpec {
+    var s = self
+    for (k, x) in v?.object?.entries ?? [] {
+      if let seed = x.double { s.partSeeds[k] = seed }
+    }
+    return s
+  }
 }
 
 extension DeckSourceDescriptor {
@@ -321,11 +343,12 @@ extension DeckSourceDescriptor {
     switch self {
     case .none: return .object(JSONObject([("kind", .string("none"))]))
     case .net(let spec):
-      return .object(
-        JSONObject([
-          ("kind", .string("net")), ("share", spec.payload),
-          ("cid", .string(BeatsCID.shareCID(spec.payload))),
-        ]))
+      var o = JSONObject([
+        ("kind", .string("net")), ("share", spec.payload),
+        ("cid", .string(BeatsCID.shareCID(spec.payload))),
+      ])
+      if let seeds = spec.partSeedsJSON { o["partSeeds"] = seeds }
+      return .object(o)
     case .rawNets(let payload):
       return .object(
         JSONObject([
@@ -349,7 +372,7 @@ extension DeckSourceDescriptor {
     case "none": self = .none
     case "net":
       guard let p = v["share"], let spec = TrackSpec(payload: p) else { return nil }
-      self = .net(spec)
+      self = .net(spec.withPartSeeds(v["partSeeds"]))
     case "rawNets":
       guard let p = v["share"], Share(payload: p).nets != nil else { return nil }
       self = .rawNets(payload: p)
@@ -422,7 +445,10 @@ extension DeckAction {
     case .crossfader(let v): return o("crossfader", [("value", .number(v))])
     case .master(let v): return o("master", [("value", .number(v))])
     case .load(let deck, let source): return o("load", [d(deck), ("source", source.json)])
-    case .queueNext(let deck, let spec): return o("queueNext", [d(deck), ("share", spec.payload)])
+    case .queueNext(let deck, let spec):
+      var fields: [(String, JSONValue)] = [d(deck), ("share", spec.payload)]
+      if let seeds = spec.partSeedsJSON { fields.append(("partSeeds", seeds)) }
+      return o("queueNext", fields)
     case .nextTrack(let deck): return o("nextTrack", [d(deck)])
     case .autoAdvance(let deck, let on): return o("autoAdvance", [d(deck), ("on", .bool(on))])
     case .section(let deck, let i): return o("section", [d(deck), ("index", .int(i))])
@@ -479,6 +505,10 @@ extension DeckAction {
       return o("clipKeyLock", [("id", .string(id)), ("on", .bool(on))])
     case .loopKeyLock(let on): return o("loopKeyLock", [("on", .bool(on))])
     case .loopFade(let mode): return o("loopFade", [("fade", .string(mode))])
+    case .clipQuantize(let id, let beats):
+      return o("clipQuantize", [("id", .string(id)), ("beats", beats.map { .int($0) } ?? .null)])
+    case .clipFade(let id, let mode):
+      return o("clipFade", [("id", .string(id)), ("fade", mode.map { .string($0) } ?? .null)])
     case .tapBars(let bars): return o("tapBars", [("bars", bars.map { .int($0) } ?? .null)])
     case .voiceTweak(let deck, let channel, let params):
       return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
@@ -520,8 +550,9 @@ extension DeckAction {
     "clipGain", "clipSequence", "clipCrop", "clipRemove", "clipRestore", "clipForget",
     "clipRename", "clipColor", "loopQuantize", "loopFollow", "sceneSave", "sceneLaunch",
     "sceneRename", "sceneDelete", "clipMute", "clipSolo", "clipKeyLock", "loopKeyLock",
-    "loopFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove", "lock", "wander", "wanderPace",
-    "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink", "setRoleVoice", "clipImport",
+    "loopFade", "clipQuantize", "clipFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove",
+    "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
+    "setRoleVoice", "clipImport",
   ]
 
   public init?(json v: JSONValue) {
@@ -542,7 +573,7 @@ extension DeckAction {
       self = .load(deck: deck, source: s)
     case "queueNext":
       guard let s = v["share"].flatMap(TrackSpec.init(payload:)) else { return nil }
-      self = .queueNext(deck: deck, spec: s)
+      self = .queueNext(deck: deck, spec: s.withPartSeeds(v["partSeeds"]))
     case "nextTrack": self = .nextTrack(deck: deck)
     case "autoAdvance": self = .autoAdvance(deck: deck, on: v["on"]?.bool ?? false)
     case "section": self = .section(deck: deck, index: v["index"]?.int ?? 0)
@@ -589,6 +620,8 @@ extension DeckAction {
     case "clipKeyLock": self = .clipKeyLock(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
     case "loopKeyLock": self = .loopKeyLock(on: v["on"]?.bool ?? false)
     case "loopFade": self = .loopFade(mode: v["fade"]?.string ?? LoopFade.declick.rawValue)
+    case "clipQuantize": self = .clipQuantize(id: v["id"]?.string ?? "", beats: v["beats"]?.int)
+    case "clipFade": self = .clipFade(id: v["id"]?.string ?? "", mode: v["fade"]?.string)
     case "tapBars": self = .tapBars(bars: v["bars"]?.int)
     case "voiceTweak":
       guard let ch = v["channel"]?.int else { return nil }

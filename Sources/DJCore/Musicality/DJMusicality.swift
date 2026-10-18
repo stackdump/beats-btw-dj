@@ -153,12 +153,14 @@ public enum DJMusicality {
     /// Saw and square voices as an analogue synth plays them: band-limited oscillators with
     /// every partial that fits under Nyquist (beats' tables stop at the 8th, so a 55 Hz bass has
     /// nothing above 440 Hz), through a lowpass per voice that opens on the note — further the
-    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Applied by the runner.
+    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Trance, edm and
+    /// synthwave's arp takes the pluck envelope (`VoiceDesign.forGenre`). Applied by the runner.
     public static let subtractive = Fixes(rawValue: 1 << 26)
 
     /// Pads and saw leads as two oscillators detuned a few cents apart (`Unison`): a held
     /// chord moves and a lead is full instead of one static oscillator. With `.stereo` the
-    /// pad's pair spreads across the field. Applied by the runner.
+    /// pad's pair spreads across the field (narrower in ambient, `VoiceDesign.forGenre`).
+    /// Applied by the runner.
     public static let unison = Fixes(rawValue: 1 << 27)
 
     /// A tempo-synced ping-pong echo on the lead and arp where the style has one (`EchoSpec`:
@@ -202,8 +204,8 @@ public enum DJMusicality {
     /// Per-section harmony: the bridge melody normalised (`SectionMelody.swift`) and the runner
     /// transposing the section (p63-section-transpose-runner).
     public static let sectionHarmony = Fixes(rawValue: 1 << 34)
-    /// Two bars per chord in intros / breakdowns, a pickup into the drop. Runner
-    /// (p63-harmonic-rhythm).
+    /// Two bars per chord in intros / breakdowns / outros, a V pickup at a buildup's end, two
+    /// chords in the bar into a chorus. Runner, through `SectionHarmony`'s slots.
     public static let harmonicRhythm = Fixes(rawValue: 1 << 35)
     /// 8-bar question and answer on melody slot pairs (`Answer.swift`, p64-answer).
     public static let answer = Fixes(rawValue: 1 << 36)
@@ -222,7 +224,11 @@ public enum DJMusicality {
     /// quarters where it rests, the section's energy where no melody plays, a step busier in
     /// each phrase's fourth bar and in buildups. Needs `.arpeggio`.
     public static let arpDensity = Fixes(rawValue: 1 << 41)
-    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`, p65-chill-backbeat).
+    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`): beats' theme table
+    /// leaves lofi, jazz and bossa's verses and choruses without either. Both come in wherever
+    /// the style has a beat (`beatStyle`), playing boom-bap (lofi), a feathered kick under a soft
+    /// 2 and 4 (jazz), a surdo and the clave on the rim (bossa), on their own rings; the section
+    /// edges are mute / unmute bindings on existing control transitions.
     public static let backbeat = Fixes(rawValue: 1 << 42)
     /// The family's groove template and a tempo-scaled swing. Runner (p65-feel-runner).
     public static let feel = Fixes(rawValue: 1 << 43)
@@ -278,6 +284,7 @@ public enum DJMusicality {
   public static func apply(_ project: Project, spec: TrackSpec, fixes: Fixes = .all) -> Project {
     guard !fixes.isEmpty, let genre = BeatsTables.shared.genres[spec.genre] else { return project }
     var p = project
+    if !spec.partSeeds.isEmpty { transplantSeededMelody(&p, spec: spec) }
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
@@ -292,7 +299,7 @@ public enum DJMusicality {
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     let arpGenre = fixes.contains(.arpStyle) ? spec.genre : nil
     if fixes.contains(.arpeggio) && !fixes.contains(.arpDensity) {
-      arpeggiate(&p, seed: spec.seed, genre: arpGenre)
+      arpeggiate(&p, seed: spec.seed(forPart: "arp"), genre: arpGenre)
     }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
@@ -308,8 +315,8 @@ public enum DJMusicality {
     // between touches the arp or the pads).
     if fixes.contains(.arpeggio) && fixes.contains(.arpDensity) {
       arpeggiate(
-        &p, seed: spec.seed, genre: arpGenre,
-        rates: arpDensityRates(p, seed: spec.seed, genre: arpGenre))
+        &p, seed: spec.seed(forPart: "arp"), genre: arpGenre,
+        rates: arpDensityRates(p, seed: spec.seed(forPart: "arp"), genre: arpGenre))
     }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }

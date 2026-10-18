@@ -392,7 +392,7 @@ struct StageModelTests {
     h.model.settings.expandVariants = true
     h.run(0.05)
     #expect(spy.resets == 2, "a rebuild clears per-panel state")
-    #expect(h.model.layers.all.count == 7 && h.model.layers.clearedOnRebuild.count == 3)
+    #expect(h.model.layers.all.count == 8 && h.model.layers.clearedOnRebuild.count == 3)
   }
 
   @Test func theSoloModelDecidesWhatShows() throws {
