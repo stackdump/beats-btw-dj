@@ -25,9 +25,9 @@ private func scalePCs(_ p: Project) -> Set<Int> {
 }
 
 /// Fixes that rewrite single notes by their neighbours (`.cadence`, `.approach`) or bars by
-/// others (`.motif`): a test that isolates an earlier fix by A/B leaves them out of both sides,
+/// others (`.motif`, `.bassMotif`): a test that isolates an earlier fix by A/B leaves them out of both sides,
 /// since which note they pick depends on the octave or the step that fix chose.
-private let phrasing: DJMusicality.Fixes = [.cadence, .approach, .motif]
+private let phrasing: DJMusicality.Fixes = [.cadence, .approach, .motif, .bassMotif]
 
 /// `t` played with every fix except `without` and `phrasing`.
 private func playedWithout(
@@ -69,10 +69,11 @@ struct MusicalityTests {
         // `.color` binds a free step of the pad (a seventh), `.arpeggio` rebinds the arp's
         // steps, `.motif` a melody's second bars (bar 1's rhythm), `.buildup` / `.crash` the
         // fill chains' (a roll, a crash), `.variety` a bass pickup or every other bass hit and
-        // ghost drum hits, `.backbeat` the chill family's kick and snare figures (all on the
-        // net's own transitions); nothing else gains or loses notes
+        // ghost drum hits, `.backbeat` the chill family's kick and snare figures, `.bassMotif`
+        // a bass bar 2 (bar 1's rhythm) (all on the net's own transitions); nothing else gains
+        // or loses notes
         let unvaried = DJMusicality.apply(
-          t.composed, spec: t.spec, fixes: .all.subtracting(.variety)
+          t.composed, spec: t.spec, fixes: .all.subtracting([.variety, .bassMotif])
         ).nets[id]!
         #expect(Set(b.bindings.keys).isSubset(of: Set(b.transitions.keys)), "\(genre) \(id)")
         if id.hasPrefix("fill-") {
