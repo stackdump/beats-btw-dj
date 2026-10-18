@@ -625,7 +625,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `build/testmcp/renders/<ts>/`, returns MusicalityReport + AudioMetrics, lufs / peakDB lifted),
   `djtest_matrix` (musicality-matrix.py → summary rows), `djtest_replay` (`journal replay
   --json --render`; `twice` compares state + sha256 — round-robin samplers may differ on
-  purpose), `djtest_journal_list`. Never the speakers, the app or its socket.
+  purpose), `djtest_journal_list`, `djtest_measure` (`djctl measure` + full sha256),
+  `djtest_compare` (sha256 identity + b − a deltas with pass flags, `measure.DEFAULTS`: ±0.5 LU,
+  peaks < 0 dBFS…), `djtest_level_check` (genres × seeds rendered → per-track LUFS, spread).
+  Never the speakers, the app or its socket.
+- `lufs` in every tool is Swift's (`IntegratedLoudness`, BS.1770) and pass flags judge it;
+  `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
 - `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
   never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
   limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
