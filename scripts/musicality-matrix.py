@@ -2,11 +2,13 @@
 """Render a fixed set of tracks offline and summarise how musical / well-staged they are.
 
     scripts/musicality-matrix.py OUTDIR [--seconds 75] [--sampled] [--fixes key,timing,…]
-                                 [--djctl PATH]
+                                 [--djctl PATH] [--notes]
 
 Each track goes through `djctl render` (compose + the deck's net source, nothing on the
 speakers); integrated loudness comes from ffmpeg's ebur128. Writes OUTDIR/<genre>-<seed>.wav
 and .json, OUTDIR/summary.json and prints a table. Compare two runs with --compare A B.
+--notes also writes each track's note log (`djctl render --notes`) to OUTDIR/<genre>-<seed>.notes,
+what scripts/corpus-distance.py reads (ROADMAP 6.1, M8).
 """
 import json
 import os
@@ -150,7 +152,7 @@ def table(rows):
         print(name.ljust(15) + " ".join(fmt(row.get(k), f) for k, _, f in COLUMNS))
 
 
-def run(outdir, seconds, sampled, djctl, fixes=None):
+def run(outdir, seconds, sampled, djctl, fixes=None, notes=False):
     os.makedirs(outdir, exist_ok=True)
     summary = {}
     for g in GENRES:
@@ -162,6 +164,8 @@ def run(outdir, seconds, sampled, djctl, fixes=None):
                 cmd.append("--synth")
             if fixes:
                 cmd += ["--fixes", fixes]
+            if notes:
+                cmd += ["--notes", os.path.join(outdir, name + ".notes")]
             doc = json.loads(subprocess.run(cmd, check=True, capture_output=True, text=True).stdout)
             doc["lufs"], doc["lra"] = loudness(wav)
             with open(os.path.join(outdir, name + ".json"), "w") as f:
@@ -209,5 +213,6 @@ if __name__ == "__main__":
         fixes = args[i + 1]
         del args[i:i + 2]
     sampled = "--sampled" in args
-    args = [a for a in args if a != "--sampled"]
-    run(args[0], seconds, sampled, djctl, fixes)
+    notes = "--notes" in args
+    args = [a for a in args if a not in ("--sampled", "--notes")]
+    run(args[0], seconds, sampled, djctl, fixes, notes)
