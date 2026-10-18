@@ -397,7 +397,10 @@ its copy; the two are now independent. Rules inherited from that split:
   --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
   Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
   arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
-  `WaveProject.voiceDesign`).
+  `WaveProject.voiceDesign`). `.subOctave` (`SubOctave`, `WaveOptions.subOctave` set by
+  `forGenre` for dnb / dubstep / trap): a sine an octave under synth bass voices at −6 dB, only
+  where it is ≥ 30 Hz; sampled basses don't get it. The loudness probe hears it (`Loudness.gain(
+  subOctave:)`); `.balance` measures the bass without it.
 - Part G adds `.variety` (`TrackVariety.swift`): beats draws only the melody from the seed, so
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
