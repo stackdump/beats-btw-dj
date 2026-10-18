@@ -4,7 +4,8 @@ import Testing
 
 // The audio-thread contract for per-loop FX: changing the FX of loops that are playing (mode
 // swaps through dry, smoothed drive / tone / mix, on and off, the limiter engaging and letting
-// go) allocates and frees nothing on the render thread. Release builds only
+// go) allocates and frees nothing on the render thread, under the mixer or on a deck the clip
+// was moved onto. Release builds only
 // (`make swift-rt-test`).
 //
 // NAME COUPLING: the Makefile's real-time run selects suites by 'RealTime': keep it in the name.
@@ -54,5 +55,41 @@ struct LoopFxRealTimeTests {
     #expect(allocs == 0, "the render path allocated \(allocs) times")
     #expect(frees == 0, "and freed \(frees) times")
     #expect(clips.allSatisfy { dj.clipFx($0.id) == LoopFX() })
+  }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  @MainActor
+  func changingFxOfAClipOnADeckDoesNotAllocate() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let clips = [fxTestClip(0, amplitude: 0.3), fxTestClip(1, amplitude: 0.3)]
+    dj.restoreClips(clips)
+    try dj.start()
+    defer { dj.stop() }
+    dj.playClip(clips[0].id, on: "A")
+    dj.playClip(clips[1].id, on: "B")
+    dj.perform(.play(deck: "A", on: true))
+    dj.perform(.play(deck: "B", on: true))
+    let buffer = makeEngineRenderBuffer(dj, frames: 4096)
+    pullEngine(dj, buffer, cycles: 200, frames: 512)  // in, and warm
+    let settings: [LoopFX] =
+      LoopFX.presets.map(\.fx) + [
+        LoopFX(drive: 24, autoLevel: false),  // the deck's limiter holds it
+        LoopFX(mode: .crush, amount: 1, bits: 3, downsample: 16),
+        LoopFX(bypass: true, drive: 24, mode: .hard),
+        LoopFX(),
+      ]
+    var allocs = 0
+    var frees = 0
+    for _ in 0..<3 {
+      for fx in settings {
+        for c in clips { dj.perform(.clipFx(id: c.id, fx: fx)) }
+        let r = countAllocations { pullEngine(dj, buffer, cycles: 12, frames: 512) }
+        allocs += r.allocations
+        frees += r.frees
+      }
+    }
+    #expect(allocs == 0, "the render path allocated \(allocs) times")
+    #expect(frees == 0, "and freed \(frees) times")
+    #expect(!dj["A"]!.renderer.fxRunning && !dj["B"]!.renderer.fxRunning)
   }
 }

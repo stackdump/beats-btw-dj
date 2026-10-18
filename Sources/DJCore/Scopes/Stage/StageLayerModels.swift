@@ -11,6 +11,7 @@
 //   bolts, seeds, halo (17)      StageBoltsModel.swift                 StageBoltsLayer.swift
 //   pulse particles (14)         StagePulseModel.swift                 StagePulseLayer.swift
 //   tilt (16)                    StageTiltModel.swift                  (the container: StageContainer)
+//   wander walk                  StageWanderModel.swift                StageWanderLayer.swift
 //   solo visualizers (9-12)      StageSoloModel.swift                  StageSoloLayer.swift
 //   card flash (19)              StageCardModel.swift                  StageCardLayer.swift
 //
@@ -68,6 +69,7 @@ public final class StageLayerModels {
   public let bolts: StageBoltsModel
   public let pulse: StagePulseModel
   public let tilt: StageTiltModel
+  public let wander: StageWanderModel
   public let solo: StageSoloModel
   public let card: StageCardModel
 
@@ -77,6 +79,7 @@ public final class StageLayerModels {
     bolts: StageBoltsModel = StageBoltsModel(),
     pulse: StagePulseModel = StagePulseModel(),
     tilt: StageTiltModel = StageTiltModel(),
+    wander: StageWanderModel = StageWanderModel(),
     solo: StageSoloModel = StageSoloModel(),
     card: StageCardModel = StageCardModel()
   ) {
@@ -85,15 +88,17 @@ public final class StageLayerModels {
     self.bolts = bolts
     self.pulse = pulse
     self.tilt = tilt
+    self.wander = wander
     self.solo = solo
     self.card = card
   }
 
   /// Bottom to top: the order `advance` runs in and the views stack in.
   public var all: [any StageLayerModel] {
-    [background, flame, bolts, pulse, tilt, solo, card]
+    [background, flame, bolts, pulse, tilt, wander, solo, card]
   }
 
-  /// What stage.js clears when it rebuilds the panels.
+  /// What stage.js clears when it rebuilds the panels. (Not the wander model: a wander swap is a
+  /// new track, and its flash must outlive the rebuild it causes.)
   public var clearedOnRebuild: [any StageLayerModel] { [pulse, flame, bolts] }
 }

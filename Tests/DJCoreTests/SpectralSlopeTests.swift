@@ -5,7 +5,7 @@ import Testing
 
 // ROADMAP 6.6 (HF tilt, part a): measure before changing anything. `Spectrum`'s long-term
 // slope (63 Hz … 8 kHz) and hfBump (12.5 / 16 kHz over the fit) per genre, synth voices and
-// sampled, and the same for each part soloed, so the table in docs/musicality-notes.md §12 can
+// sampled, and the same for each part soloed, so the table in docs/musicality-notes.md §14 can
 // name which voices carry a bright top. A report: it prints, and asserts only that the numbers
 // are finite and that measuring leaves the parity path alone.
 
@@ -120,7 +120,7 @@ private func f1(_ x: Double) -> String { String(format: "%.1f", x) }
 
 /// The 6.6 table: per genre and voicing, the mix's slope and hfBump and the parts carrying its
 /// 12.5 / 16 kHz energy; then per family (`BeatsTables.family(of:)`) the means. Seed 42, 60 s
-/// from the top, 48 kHz. Printed for docs/musicality-notes.md §12.
+/// from the top, 48 kHz. Printed for docs/musicality-notes.md §14.
 @MainActor
 @Suite struct SpectralSlopeSurveyTests {
   @Test(.enabled(if: surveying, "a measurement: DJ_SPECTRAL_SURVEY=1"))

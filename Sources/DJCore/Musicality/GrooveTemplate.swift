@@ -10,8 +10,9 @@ import Foundation
 /// so a template is measured relative to the family's downbeat kick and hits ahead of it play
 /// on the tick. A position with fewer than `minHits` hits in the dataset is neutral (0 ms, ×1).
 ///
-/// Data only: nothing plays it yet. `prepared(bpm:sampleRate:)` builds the fixed arrays a
-/// render reads (off the audio thread; reading a `Prepared` never allocates).
+/// `.feel` plays it (`WaveOptions.feel` → the runner's `FeelTable`, with the swing worked out at
+/// the tempo playing). `prepared(bpm:sampleRate:)` builds the same at one fixed tempo (off the
+/// audio thread; reading a `Prepared` never allocates).
 public struct GrooveTemplate: Equatable, Sendable {
   /// The drum voices a template has, in the file's order. MIDI notes fold onto them the way the
   /// dataset's kit (Roland TD-11) does, plus beats' clap (39) as a snare.

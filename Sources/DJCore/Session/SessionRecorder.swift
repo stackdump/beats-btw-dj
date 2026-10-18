@@ -287,6 +287,13 @@ extension DJEngine {
     case .clipKeyLock(let id, let on): setClipKeyLock(id, on)
     case .loopKeyLock(let on): setLoopKeyLock(on)
     case .loopFade(let mode): if let f = LoopFade(rawValue: mode) { setLoopFade(f) }
+    case .clipQuantize(let id, let beats): setClipQuantum(id, beats)
+    case .clipFade(let id, let mode):
+      if let mode {
+        if let f = LoopFade(rawValue: mode) { setClipFade(id, f) }
+      } else {
+        setClipFade(id, nil)
+      }
     case .tapBars(let bars): setTapTakeBars(bars)
     case .voiceTweak(let n, let channel, let params):
       deck(n)?.setVoiceTweak(params, channel: channel)

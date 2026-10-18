@@ -2,8 +2,9 @@ import Foundation
 
 /// The LOOP-record clips on disk, so the row under the mixer comes back on the next launch:
 /// one float WAV per clip, named by its content id, and an index (`library.json`) that keeps
-/// the row's order and each clip's bars, tempo, source, name, colour and FX, and the saved scenes
-/// (`scenes`, by clip id).
+/// the row's order and each clip's bars, tempo, source, name, colour and FX, its own launch
+/// boundary and fade where it has them (`ClipLaunch`), and the saved scenes (`scenes`, by clip
+/// id).
 ///
 /// Nothing is deleted by taking a clip off the row: its WAV moves into `removed/` with its
 /// index entry (`removed/removed.json`, newest first, with the place it had and when), so it
@@ -53,8 +54,8 @@ public struct LoopLibrary: Sendable {
       provenance: e["provenance"], color: e["color"]?.string, fx: LoopFX(json: e["fx"]))
   }
 
-  /// A clip's index entry.
-  static func entry(_ c: LoopClip) -> JSONObject {
+  /// A clip's index entry, with its own launch boundary and fade if it has them.
+  static func entry(_ c: LoopClip, launch: ClipLaunch = ClipLaunch()) -> JSONObject {
     var o = JSONObject([
       ("id", .string(c.id)), ("title", .string(c.title)), ("source", .string(c.source)),
       ("beats", .int(c.beats)), ("bpm", .number(c.bpm)),
@@ -64,7 +65,26 @@ public struct LoopLibrary: Sendable {
     if let steps = c.steps { o["steps"] = steps.json }
     if let p = c.provenance { o["provenance"] = p }
     if c.fx != LoopFX() { o["fx"] = c.fx.json }  // only when set: older indexes read the same
+    if let q = launch.quantum { o["quantum"] = .int(q) }  // the same
+    if let f = launch.fade { o["fade"] = .string(f.rawValue) }
     return o
+  }
+
+  /// The launch boundary and fade a saved entry gives its clip (none when it follows the row).
+  static func launch(_ e: JSONValue) -> ClipLaunch {
+    ClipLaunch(
+      quantum: e["quantum"]?.int, fade: e["fade"]?.string.flatMap(LoopFade.init(rawValue:)))
+  }
+
+  /// The saved clips' own launch boundaries and fades, by clip id (only clips that have one).
+  public func loadLaunch() -> [String: ClipLaunch] {
+    var out: [String: ClipLaunch] = [:]
+    for e in entries(indexFile, key: "loops") {
+      guard let id = e["id"]?.string else { continue }
+      let l = Self.launch(e)
+      if !l.isEmpty { out[id] = l }
+    }
+    return out
   }
 
   func entries(_ file: URL, key: String) -> [JSONValue] {
@@ -91,19 +111,22 @@ public struct LoopLibrary: Sendable {
   /// Make the row on disk exactly `clips`, in this order: write the audio of any clip not saved
   /// yet (or move it back out of `removed/`), the index, and move the audio of clips no longer
   /// on the row into `removed/`, each with its entry, its place and when. `scenes`: the scenes
-  /// to keep with them (nil keeps the ones already saved).
+  /// to keep with them (nil keeps the ones already saved). `launch`: the clips' own launch
+  /// boundaries and fades, by id (`DJEngine.clipLaunch`; nil keeps what each saved entry says).
   ///
   /// The order is chosen so a crash (or a failed move) at any step leaves every clip findable:
   /// `removed.json` gets the entries of the clips leaving the row first, then their audio moves,
   /// and only then is `library.json` written without them. Until then the old index still names
   /// them (and the next save tries again); an entry in both is shown on the row.
   public func save(
-    _ clips: [LoopClip], scenes: [LoopScene]? = nil, removedAt date: Date = Date()
+    _ clips: [LoopClip], scenes: [LoopScene]? = nil, launch: [String: ClipLaunch]? = nil,
+    removedAt date: Date = Date()
   ) throws {
     let scenes = scenes ?? loadScenes()
     let fm = FileManager.default
     try fm.createDirectory(at: dir, withIntermediateDirectories: true)
     let before = entries(indexFile, key: "loops")
+    let launch = launch ?? loadLaunch()
     for c in clips where !fm.fileExists(atPath: audioFile(c.id).path) {
       if fm.fileExists(atPath: removedAudioFile(c.id).path) {
         try fm.moveItem(at: removedAudioFile(c.id), to: audioFile(c.id))
@@ -113,7 +136,8 @@ public struct LoopLibrary: Sendable {
     }
     try moveOffTheRow(keeping: Set(clips.map(\.id)), before: before, stamp: date)
     try write(
-      indexFile, schema: Self.schema, key: "loops", clips.map { .object(Self.entry($0)) },
+      indexFile, schema: Self.schema, key: "loops",
+      clips.map { .object(Self.entry($0, launch: launch[$0.id] ?? ClipLaunch())) },
       extra: scenes.isEmpty ? [] : [("scenes", .array(scenes.map(\.json)))])
   }
 
@@ -135,9 +159,11 @@ public struct LoopLibrary: Sendable {
       $0.hasSuffix(".wav") && !keep.contains(String($0.dropLast(4)))
     }
     let old = entries(removedIndexFile, key: "removed")
-    if gone.isEmpty && strays.isEmpty && !old.contains(where: { e in
-      e["id"]?.string.map(keep.contains) ?? false
-    }) {
+    if gone.isEmpty && strays.isEmpty
+      && !old.contains(where: { e in
+        e["id"]?.string.map(keep.contains) ?? false
+      })
+    {
       return
     }
     try fm.createDirectory(at: removedDir, withIntermediateDirectories: true)
@@ -229,7 +255,39 @@ public struct RemovedLoop: Sendable, Equatable, Identifiable {
   }
 }
 
+/// A clip's own launch boundary (beats) and fade, as the library keeps them; nil follows the
+/// row's (`DJEngine.clipQuantum`, `clipFade`).
+public struct ClipLaunch: Sendable, Equatable {
+  public var quantum: Int?
+  public var fade: LoopFade?
+  public init(quantum: Int? = nil, fade: LoopFade? = nil) {
+    self.quantum = quantum
+    self.fade = fade
+  }
+  public var isEmpty: Bool { quantum == nil && fade == nil }
+}
+
 extension DJEngine {
+  /// The row's clips' own launch boundaries and fades, by id (only clips that have one): what
+  /// `LoopLibrary.save(launch:)` keeps.
+  public var clipLaunch: [String: ClipLaunch] {
+    var out: [String: ClipLaunch] = [:]
+    for c in clips {
+      let l = ClipLaunch(quantum: clipQuanta[c.id], fade: clipFades[c.id])
+      if !l.isEmpty { out[c.id] = l }
+    }
+    return out
+  }
+
+  /// Give the row's clips the launch boundaries and fades the library saved
+  /// (`LoopLibrary.loadLaunch`); ids not on the row are skipped.
+  public func restoreClipLaunch(_ saved: [String: ClipLaunch]) {
+    for (id, l) in saved where clip(id) != nil {
+      if let q = l.quantum { setClipQuantum(id, q) }
+      if let f = l.fade { setClipFade(id, f) }
+    }
+  }
+
   /// Put saved clips back on the row (after any already there), ready to loop.
   public func restoreClips(_ restored: [LoopClip]) {
     for c in restored where clip(c.id) == nil {
