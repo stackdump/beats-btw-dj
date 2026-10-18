@@ -105,6 +105,7 @@ public struct JournalStoreState: Equatable, Sendable {
     case .noteAdd(let n): notes = notes.adding(n)
     case .noteEdit(let id, let text, let at): notes = notes.editing(id, text: text, at: at)
     case .noteDelete(let id): notes = notes.deleting(id)
+    case .storesReplace(let all): self = all
     default: return false
     }
     return true
@@ -163,6 +164,10 @@ public struct JournalState: Equatable, Sendable {
   /// `DJEngine.lockedActions`, sorted.
   public var locked: [String]
   public var stores: JournalStoreState
+  /// Whether `stores` is part of this state. Line 0 always carries them; a mid-file checkpoint
+  /// (`Journal.checkpoint`) leaves them out (no `stores` key), and a replay that starts there
+  /// folds line 0's stores and the store events before it instead.
+  public var hasStores = true
 
   public static func == (a: Self, b: Self) -> Bool { a.json == b.json }
 
@@ -247,41 +252,41 @@ public struct JournalState: Equatable, Sendable {
     }
     var loop = loopChannel.json.object ?? JSONObject()
     loop["mute"] = .bool(loopMute)
-    return .object(
-      JSONObject([
-        ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
-        ("decks", .object(decksObj)), ("loopChannel", .object(loop)),
-        (
-          "mixer",
-          .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
-        ),
-        ("loopSettings", .array(loopSettings.map(\.json))),
-        (
-          "clips",
-          .array(
-            clips.map { c in
-              var o = JSONObject([
-                ("id", .string(c.id)), ("title", .string(c.title)), ("gain", .number(c.gain)),
-                ("muted", .bool(c.muted)), ("soloed", .bool(c.soloed)),
-                ("looping", .bool(c.looping)),
-              ])
-              if let color = c.color { o["color"] = .string(color) }
-              if let k = c.keyLock { o["keyLock"] = .bool(k) }
-              if c.fx != LoopFX() { o["fx"] = c.fx.json }
-              return .object(o)
-            })
-        ),
-        ("scenes", .array(scenes.map(\.json))),
-        (
-          "removed",
-          .array(
-            removed.map {
-              .object(JSONObject([("id", .string($0.id)), ("index", .int($0.index))]))
-            })
-        ),
-        ("locked", .array(locked.map { .string($0) })),
-        ("stores", stores.json),
-      ]))
+    var out = JSONObject([
+      ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
+      ("decks", .object(decksObj)), ("loopChannel", .object(loop)),
+      (
+        "mixer",
+        .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
+      ),
+      ("loopSettings", .array(loopSettings.map(\.json))),
+      (
+        "clips",
+        .array(
+          clips.map { c in
+            var o = JSONObject([
+              ("id", .string(c.id)), ("title", .string(c.title)), ("gain", .number(c.gain)),
+              ("muted", .bool(c.muted)), ("soloed", .bool(c.soloed)),
+              ("looping", .bool(c.looping)),
+            ])
+            if let color = c.color { o["color"] = .string(color) }
+            if let k = c.keyLock { o["keyLock"] = .bool(k) }
+            if c.fx != LoopFX() { o["fx"] = c.fx.json }
+            return .object(o)
+          })
+      ),
+      ("scenes", .array(scenes.map(\.json))),
+      (
+        "removed",
+        .array(
+          removed.map {
+            .object(JSONObject([("id", .string($0.id)), ("index", .int($0.index))]))
+          })
+      ),
+      ("locked", .array(locked.map { .string($0) })),
+    ])
+    if hasStores { out["stores"] = stores.json }
+    return .object(out)
   }
 
   public init?(json v: JSONValue) {
@@ -322,6 +327,7 @@ public struct JournalState: Equatable, Sendable {
       e["id"]?.string.map { ($0, e["index"]?.int ?? 0) }
     }
     locked = v["locked"]?.array?.compactMap(\.string) ?? []
+    hasStores = v["stores"] != nil
     stores = JournalStoreState(json: v["stores"])
   }
 
