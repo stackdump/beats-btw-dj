@@ -148,6 +148,10 @@ its copy; the two are now independent. Rules inherited from that split:
   ms 0…15 and velocity scale per drum voice × 16 steps, tempo-scaled Linn swing) is averaged
   from the Groove MIDI Dataset (CC BY 4.0, attributed in README) by `make groove-templates`
   (sha256-pinned fetch into `.build/gmd`); regenerate, never hand-edit the numbers.
+  `.feel` plays it in the runner (`WaveOptions.feel`, set by `forGenre`; `WaveProject.feelTable`):
+  in place of the project's swing / humanize, a drum is late by its offset + (2r − 1) × half a pair
+  (a sixteenth; jazz an eighth) on its off-beat, r at the tempo playing, its velocity scaled; tonal lanes
+  swing only. Without the flag (or the template) the template is never read.
   `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
   b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
   4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.

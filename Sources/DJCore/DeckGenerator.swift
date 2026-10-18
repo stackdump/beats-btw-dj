@@ -213,10 +213,12 @@ public final class PreparedTrack: @unchecked Sendable {
 
 extension WaveOptions {
   /// These options with the settings a track of `genre` plays with, for the fixes they hold:
-  /// the duck depth, the room, the echo; and the genre itself (`genre`: the rests it gates).
+  /// the duck depth, the room, the echo, the groove template; and the genre itself (`genre`:
+  /// the rests it gates).
   public func forGenre(_ genre: String) -> WaveOptions {
     var o = self
     o.genre = genre
+    if musicality.contains(.feel) { o.feel = GrooveTemplate.forGenre(genre) }
     if musicality.contains(.duck) { o.duckDepth = DJMusicality.duckDepth(genre: genre) }
     if musicality.contains(.space) { o.space = SpaceSpec.forGenre(genre) }
     if musicality.contains(.echo) { o.echo = EchoSpec.forGenre(genre) }
