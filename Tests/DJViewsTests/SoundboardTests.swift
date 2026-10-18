@@ -18,6 +18,7 @@ struct SoundboardTests {
     dj["A"]!.setPlaying(true)
     try dj.start()
     let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
     m.start()
     try run(dj, Self.bar + Self.bar / 2)
     m.loopRecord("A", on: true)
@@ -128,6 +129,7 @@ struct SoundboardTests {
     try dj.start()
     defer { dj.stop() }
     let m = AppModel(engine: dj, takes: lib)
+    m.defaults = scratchDefaults()
     m.start()
     #expect(m.soundPads.map(\.id) == [id] && m.soundPads.first?.state == .off)
     let rec = try SessionRecorder.start(on: dj)
@@ -223,6 +225,7 @@ struct SoundboardTests {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
     let spec = TrackSpec(genre: "techno", seed: 42, structure: "standard")
     let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
     m.start()
     #expect(await m.prepareAndLoad("A", .net(spec)))
     dj["A"]!.wave.setTempo(300)
@@ -432,6 +435,7 @@ struct SoundboardTests {
     try dj.start()
     defer { dj.stop() }
     let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
     m.start()
     #expect(m.soundPads.isEmpty)
     let view = SoundboardView(model: m).frame(width: 660).background(Color.black)
@@ -452,6 +456,33 @@ struct SoundboardTests {
     #expect(!m.showSoundboard)
     let off = try await m.control("view", try JSONValue.parse("{}"))
     #expect(off["soundboard"]?.bool == false, "left out: as it was")
+  }
+
+  /// The board's open state is kept in the app's defaults: every path (the window's toggle, the
+  /// View menu, the socket's `view`) saves it, and the next launch opens as the last one left it.
+  @Test func theBoardsOpenStateIsRemembered() async throws {
+    let defaults = scratchDefaults()
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
+    try dj.start()
+    defer { dj.stop() }
+    let fresh = AppModel(engine: dj)
+    fresh.defaults = defaults
+    fresh.start()
+    #expect(!fresh.showSoundboard, "a fresh suite starts closed")
+    fresh.setShowSoundboard(true)
+    #expect(defaults.bool(forKey: AppModel.showSoundboardKey))
+    let next = AppModel(engine: dj)
+    next.defaults = defaults
+    next.start()
+    #expect(next.showSoundboard, "the next launch opens it")
+    next.toggleSoundboard()
+    #expect(!next.showSoundboard && !defaults.bool(forKey: AppModel.showSoundboardKey))
+    _ = try await next.control("view", try JSONValue.parse(#"{"soundboard":true}"#))
+    #expect(defaults.bool(forKey: AppModel.showSoundboardKey), "the socket's view saves it too")
+    let third = AppModel(engine: dj)
+    third.defaults = defaults
+    third.start()
+    #expect(third.showSoundboard)
   }
 
   @Test func returnAndSpaceActivateTheHoveredList() {

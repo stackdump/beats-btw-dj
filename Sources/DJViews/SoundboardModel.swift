@@ -304,9 +304,14 @@ extension AppModel {
     return id
   }
 
-  /// The window's Soundboard toggle, its View menu item and the control socket's `view`.
-  func setShowSoundboard(_ on: Bool) { showSoundboard = on }
-  public func toggleSoundboard() { showSoundboard.toggle() }
+  /// The window's Soundboard toggle, its View menu item and the control socket's `view`; saved
+  /// in the app's defaults (`showSoundboard`) so the next launch opens as this one left it. Not
+  /// a `DeckAction`: it changes nothing a session renders, so it isn't journaled.
+  func setShowSoundboard(_ on: Bool) {
+    showSoundboard = on
+    defaults.set(on, forKey: Self.showSoundboardKey)
+  }
+  public func toggleSoundboard() { setShowSoundboard(!showSoundboard) }
 
   /// A pad's click: ⌥ solos it (or unsolos), ⇧ mutes it (or unmutes), a plain click brings it in
   /// or out on the next launch boundary.

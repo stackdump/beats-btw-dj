@@ -144,8 +144,10 @@ public final class AppModel {
   var showMap = false
   /// The Controllers panel: every device drawn with its bindings.
   var showControllers = false
-  /// The Soundboard panel (SoundboardView.swift): every loop as one big pad.
+  /// The Soundboard panel (SoundboardView.swift): every loop as one big pad. Saved in the app's
+  /// defaults as `showSoundboard` (`setShowSoundboard`); closed until opened.
   var showSoundboard = false
+  static let showSoundboardKey = "showSoundboard"
   /// What the Soundboard shows (its Row / Stock / Crate switch). Saved in the app's defaults as
   /// `soundboardPage`.
   var soundboardPage = SoundboardPage.row
@@ -292,6 +294,7 @@ public final class AppModel {
     if let p = defaults.string(forKey: Self.soundboardPageKey).flatMap(SoundboardPage.init) {
       soundboardPage = p
     }
+    showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
     if let injected {
       dj = injected
       scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
