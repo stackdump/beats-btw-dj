@@ -42,11 +42,12 @@ struct ClipProvenanceDetails: View {
 
 /// A pad's "Settings…": everything about its clip, bound to the same `ClipState` the Loops row
 /// shows and changed through the same model calls (so the row and the board never disagree):
-/// name and colour, a crop to the beat, level, mute / solo / key lock, its FX, the loop channel's
-/// launch, fade and tempo rules, which deck holds it, where it came from, and — for a loop
-/// taken from a net — the instruments of that track, opened in the sound panel for tuning.
+/// name and colour, a sequence's steps, a crop to the beat, level, mute / solo / key lock, its
+/// FX, the loop channel's launch, fade and tempo rules, which deck holds it, where it came from,
+/// and — for a loop taken from a net — the instruments of that track, opened in the sound panel
+/// for tuning.
 struct ClipSettingsView: View {
-  /// The clip shown; a crop replaces the clip (a new id), and this follows it.
+  /// The clip shown; a crop or a sequence edit replaces the clip (a new id), and this follows it.
   @Binding var id: String
   let model: AppModel
   /// The crop being set, in beats (nil: the whole clip).
@@ -94,9 +95,13 @@ struct ClipSettingsView: View {
         ClipColorSwatches(current: clip.color) { model.setClipColor(clip.id, $0) }
         Text(
           "\(clip.lengthLabel) · \(String(format: "%.1f", clip.bpm)) bpm · "
-            + (clip.steps != nil ? "a sequence of \(clip.steps?.count ?? 0)" : "from \(clip.source)")
+            + (clip.steps != nil
+              ? "a sequence of \(clip.steps?.count ?? 0)" : "from \(clip.source)")
         )
         .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+      }
+      if let steps = clip.steps {
+        section("Steps") { stepsEditor(clip, steps) }
       }
       section("Edges") { cropEditor(clip) }
       section("Sound") { soundEditor(clip) }
@@ -112,6 +117,18 @@ struct ClipSettingsView: View {
     VStack(alignment: .leading, spacing: 6) {
       SectionLabel(title)
       body()
+    }
+  }
+
+  // MARK: steps
+
+  /// A sequence's steps, as its tile's chips, plus "Add a loop". An edit remakes the sequence
+  /// under a new id (`SequenceStepsEditor.edit`), which this follows, as a crop does.
+  private func stepsEditor(_ clip: ClipState, _ steps: [StepState]) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      SequenceStepsEditor(id: clip.id, steps: steps, model: model, addMenu: true) { id = $0 }
+      Text("Tap a step for ×1 → ×2 → ×4; right-click to move or remove it.")
+        .font(.caption2).foregroundStyle(.tertiary)
     }
   }
 
@@ -149,11 +166,13 @@ struct ClipSettingsView: View {
       HStack(spacing: DJStyle.s) {
         Stepper(
           "From beat \(span.from + 1)",
-          value: Binding(get: { span.from }, set: { crop = (min(max(0, $0), span.to - 1), span.to) }),
+          value: Binding(
+            get: { span.from }, set: { crop = (min(max(0, $0), span.to - 1), span.to) }),
           in: 0...(beats - 1))
         Stepper(
           "to \(span.to)",
-          value: Binding(get: { span.to }, set: { crop = (span.from, max(min(beats, $0), span.from + 1)) }),
+          value: Binding(
+            get: { span.to }, set: { crop = (span.from, max(min(beats, $0), span.from + 1)) }),
           in: 1...beats)
         Spacer(minLength: 0)
         Button("Crop") {
@@ -163,8 +182,10 @@ struct ClipSettingsView: View {
         .disabled(span.from == 0 && span.to == beats)
       }
       .controlSize(.small).font(.caption).monospacedDigit()
-      Text("Keeps \(span.to - span.from) of \(clip.beats) beats; a loop playing carries on in phase.")
-        .font(.caption2).foregroundStyle(.tertiary)
+      Text(
+        "Keeps \(span.to - span.from) of \(clip.beats) beats; a loop playing carries on in phase."
+      )
+      .font(.caption2).foregroundStyle(.tertiary)
     }
   }
 
@@ -201,27 +222,35 @@ struct ClipSettingsView: View {
   private var channelRules: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 3) {
-        Text("Launch on").font(.caption).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+        Text("Launch on").font(.caption).foregroundStyle(.secondary).frame(
+          width: 64, alignment: .leading)
         ForEach(DJEngine.launchQuanta, id: \.self) { q in
           ChoiceButton(
-            label: DJEngine.quantumLabel(q), selected: model.loopQuantum == q, tint: LoopRowView.tint
+            label: DJEngine.quantumLabel(q), selected: model.loopQuantum == q,
+            tint: LoopRowView.tint
           ) { model.setLoopQuantum(q) }
         }
       }
       HStack(spacing: 3) {
-        Text("Fade").font(.caption).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+        Text("Fade").font(.caption).foregroundStyle(.secondary).frame(
+          width: 64, alignment: .leading)
         ForEach(LoopFade.allCases, id: \.self) { f in
-          ChoiceButton(label: f.label, selected: model.loopChannel.fade == f, tint: LoopRowView.tint) {
+          ChoiceButton(
+            label: f.label, selected: model.loopChannel.fade == f, tint: LoopRowView.tint
+          ) {
             model.setLoopFade(f)
           }
         }
       }
       HStack(spacing: 3) {
-        Text("Tempo").font(.caption).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
-        ChoiceButton(label: "louder deck", selected: model.loopFollow == .louder, tint: LoopRowView.tint)
-        { model.setLoopFollow(.louder) }
-        ChoiceButton(label: "own deck", selected: model.loopFollow == .source, tint: LoopRowView.tint)
-        { model.setLoopFollow(.source) }
+        Text("Tempo").font(.caption).foregroundStyle(.secondary).frame(
+          width: 64, alignment: .leading)
+        ChoiceButton(
+          label: "louder deck", selected: model.loopFollow == .louder, tint: LoopRowView.tint
+        ) { model.setLoopFollow(.louder) }
+        ChoiceButton(
+          label: "own deck", selected: model.loopFollow == .source, tint: LoopRowView.tint
+        ) { model.setLoopFollow(.source) }
         if let d = model.followingDeck {
           Text("→ \(d)").font(.caption.bold()).foregroundStyle(deckTint(d))
         }
@@ -286,7 +315,8 @@ struct ClipSettingsView: View {
                   isPresented: Binding(get: { tuning == t }, set: { if !$0 { tuning = nil } })
                 ) {
                   VoiceEditor(
-                    deck: deck, role: v.role, channel: v.channel, model: model, tint: deckTint(deck))
+                    deck: deck, role: v.role, channel: v.channel, model: model, tint: deckTint(deck)
+                  )
                 }
                 .help("Edit \(v.instrument)'s sound on deck \(deck), live")
             }
@@ -296,7 +326,8 @@ struct ClipSettingsView: View {
       if !decks.isEmpty {
         Text(
           "Tuning changes the deck playing the track; take the loop again (LOOP, or ⟲) to keep "
-            + "the new sound.")
+            + "the new sound."
+        )
         .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
       }
     }
