@@ -11,10 +11,10 @@ hardware (first target: Hercules DJControl Inpulse 200 MK3).
 SwiftPM — no Xcode project. The Go CLI and the browser lab stay as hardware
 and capture tools.
 
-## Where we are (2026-10-11)
+## Where we are (2026-10-18, integrate/roadmap at `28d0b47`)
 
-Phases 1–5 of [ROADMAP.md](ROADMAP.md) are done on `main`; what is still open is listed
-there. In short:
+Phases 1–5 of [ROADMAP.md](ROADMAP.md) are done on `main`; Phase 6 (musicality) is built on
+`integrate/roadmap` (below). What is still open is listed in the roadmap. In short:
 
 - **Decks and mixer** — two decks, each a scratchable turntable (an audio file; ported from
   the lab's scrub worklet) or a **live Petri net** composed natively from genre + seed
@@ -56,6 +56,68 @@ there. In short:
   offscreen; the scopes and Stage have not been looked at in a live window yet.
 - **Remote control** — the running app listens on a local socket; `djctl mcp` is the
   `dj-vevr-se` MCP server over it.
+
+### The product path: `WaveOptions.extended` and `Fixes.all`
+
+Two ways to play a net, and only one is the product:
+
+- **`WaveOptions()` is the parity path** — beats' wave engine exactly: no instrument table, no
+  musicality, no limiter, beats' `tanh` master curve, no loudness gain. It is what the beats
+  fixtures run (`compose()`, shares, CIDs and the wave engine held to the real JS's bytes), and
+  it stays beats-exact; nothing below changes it.
+- **`WaveOptions.extended` is what the app plays** (`Deck.waveOptions`, `djctl render`): the
+  instrument table (`Resources/voices/instruments.json`), the deck's sampler bank voiced by the
+  track's seed, every `DJMusicality.Fixes` flag (`Fixes.all`), the vinyl brake, and
+  `master = "limit"`. `compose()` still runs beats' composer byte for byte; the deck plays
+  `PreparedTrack.played` = `DJMusicality.apply(project, spec:)` (bindings and initial markings
+  only), and the rest is the runner. Per-genre settings (room, echo, voice design, groove
+  template, HF tilt, duck depth) come from `forGenre`.
+
+`Fixes.all`, by the part that added each flag (`djctl render --fixes none|all|name,…` takes
+these names; [docs/musicality-notes.md](docs/musicality-notes.md) has the numbers):
+
+| part | flags |
+|---|---|
+| A — key, time, register | `key`, `timing`, `register`, `dynamics`, `loudness`, `groove`, `offbeatBass`, `phrases` |
+| C — form, harmony, mix | `fills`, `voicing`, `energy`, `duck`, `contour`, `color` |
+| D — parts that do their job, gestures, stereo | `arpeggio`, `buildup`, `crash`, `bassLine`, `openHats`, `stereo` |
+| E — phrasing, the drop, a room | `legato`, `cadence`, `approach`, `dropGap`, `choke`, `space` |
+| F — sound design, a motif, a balanced mix | `subtractive`, `unison`, `echo`, `kickTune`, `motif`, `balance` |
+| G — a song of its own per seed | `variety` |
+| 6.2 — arrangement | `layerBudget`, `bandStop`, `kickOut`, `riser` |
+| 6.3 — harmony that goes somewhere | `harmonicCadence`, `sectionHarmony`, `harmonicRhythm` |
+| 6.4 — a hook, and an answer | `answer`, `hook`, `shape`, `bassMotif`, `arpStyle`, `arpDensity` |
+| 6.5 — a beat in every genre | `backbeat`, `feel`, `drift`, `sweep` |
+| 6.6 — sound and mix | `subOctave`, `hfTilt`, `shimmer` |
+
+(Part B was visual polish: no flag.)
+
+- **Runner-only subset** — a raw-`nets` share was never composed, so the pass has nothing to
+  rewrite: its deck plays `Fixes.runnerOnly` (`loudness`, `groove`, `energy`, `duck`, `stereo`,
+  `dropGap`, `choke`, `space`, `subtractive`, `unison`, `echo`, `kickTune`, `balance`, `feel`,
+  `drift`, `sweep`, `layerBudget`, `bandStop`, `kickOut`, `riser`, `subOctave`, `hfTilt`,
+  `shimmer`). Not the pass's flags, nor the runner halves of pass flags (`fills` / `buildup` /
+  `crash` / `openHats` voicing, `backbeat`'s brushes, `sectionHarmony` / `harmonicRhythm`),
+  which would re-voice or re-pitch nets the composer did not build. `dj_state` reports the
+  deck's set by name.
+- **Level match and limiter** — `.loudness` gains a net deck to `LevelMatch.referenceLUFS`
+  (−12 LUFS integrated; `Loudness.targetDB`, per family), and the deck's `PeakLimiter`
+  (stereo-linked, lookahead, true-peak) holds it under −1 dBTP after the master chain, before
+  the deck's EQ. Measured, not listened to: whole songs sit at −12.0 ± 0.5 LUFS synth, −12.3 ±
+  0.5 sampled (notes §10). The loop channel is trimmed −3 dB to sit level with A / B at the
+  centred crossfader.
+- **The sampled path** — installed Logic / GarageBand EXS instruments and SoundFonts stand in
+  for the synth voices (`VoiceCatalog`, a sound palette per track, Studio by default); each
+  slot is level-normalised on load and measured per part, the loudness probe plays it at that
+  level, and `balance`, `stereo` (per-category width) and `echo` reach sampled parts. Sampled
+  renders depend on what this Mac has installed, and some instruments vary between renders on
+  purpose; GM programs and synth voices are byte-identical on replay.
+
+Where to look: [docs/musicality-notes.md](docs/musicality-notes.md) (what each part changed,
+measured, before / after matrices), [docs/listening-log.md](docs/listening-log.md) (what a
+person heard: rows only a listener writes; the 6.7 first set waits there), and
+[GO-DIVERGENCE.md](GO-DIVERGENCE.md) §5 (the generator bugs these fixes work around, to
+backport to beats).
 
 Open: the Inpulse hardware pass (controls captured but unnamed, or never captured; which
 centre knob is headphones); reverb / delay / pan / shape macros are not ported; the scopes
