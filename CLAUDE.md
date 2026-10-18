@@ -399,7 +399,11 @@ its copy; the two are now independent. Rules inherited from that split:
   stretches built at prepare from `.dropGap` and 6.2's `.layerBudget` / `.bandStop` / `.kickOut`
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
   `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
-  `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
+  `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`). Genre-gated
+  gestures read `WaveOptions.genre` (set by `forGenre`; nil = raw nets / parity: off).
+  `.bandStop`: song family only, all but the lead (and crashes) rest the beat before a chorus
+  not covered by the drop gap, only where the lead has a note; fill chains are `Class.fill`,
+  which nothing else rests. `djctl render` reports `bandStopDipDB` (below 200 Hz).
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every

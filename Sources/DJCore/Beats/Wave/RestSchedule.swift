@@ -9,8 +9,9 @@ import Foundation
 /// stretch), so the runner reads them with a cursor that only moves forward between jumps
 /// (`Cursor`): no search, no allocation.
 public struct RestSchedule: Equatable, Sendable {
-  /// What a lane is, for resting: one bit per kind. A lane is one class (or none: fills, crashes,
-  /// stingers, overrides and the live keys never rest).
+  /// What a lane is, for resting: one bit per kind. A lane is one class (or none: crashes,
+  /// stingers, overrides and the live keys never rest; a fill chain's drums are `.fill`, which
+  /// only `.bandStop` rests).
   public struct Class: OptionSet, Hashable, Sendable {
     public let rawValue: UInt32
     public init(rawValue: UInt32) { self.rawValue = rawValue }
@@ -25,6 +26,8 @@ public struct RestSchedule: Equatable, Sendable {
     public static let arp = Class(rawValue: 1 << 5)
     /// Any other tonal part.
     public static let tonal = Class(rawValue: 1 << 6)
+    /// The drums of a fill chain (`fill-N`: fills, buildup hits), not its crashes.
+    public static let fill = Class(rawValue: 1 << 7)
 
     /// The rhythm section `.dropGap` stops: kick, drums, bass.
     public static let rhythm: Class = [.kick, .drums, .bass]
@@ -41,7 +44,8 @@ public struct RestSchedule: Equatable, Sendable {
         default: return .tonal
         }
       }
-      if kind == "crash" || net.hasPrefix("fill-") { return [] }
+      if kind == "crash" { return [] }
+      if net.hasPrefix("fill-") { return .fill }
       return kind == "kick" ? .kick : .drums
     }
   }
@@ -86,8 +90,11 @@ public struct RestSchedule: Equatable, Sendable {
   }
 
   /// The schedule `fixes` give `project` (the project the deck plays). Pure; off the audio
-  /// thread. Each gesture has its own file and flag.
-  public static func build(_ project: Project, fixes: DJMusicality.Fixes) -> RestSchedule {
+  /// thread. Each gesture has its own file and flag. `genre` is the track's (`WaveOptions.genre`),
+  /// nil when unknown: a gesture only some genres play is off then.
+  public static func build(
+    _ project: Project, fixes: DJMusicality.Fixes, genre: String? = nil
+  ) -> RestSchedule {
     var gestures: [Entry] = []
     if fixes.contains(.dropGap) {
       gestures += DJMusicality.dropGaps(project).map {
@@ -95,7 +102,7 @@ public struct RestSchedule: Equatable, Sendable {
       }
     }
     if fixes.contains(.layerBudget) { gestures += DJMusicality.layerBudgetRests(project) }
-    if fixes.contains(.bandStop) { gestures += DJMusicality.bandStopRests(project) }
+    if fixes.contains(.bandStop) { gestures += DJMusicality.bandStopRests(project, genre: genre) }
     if fixes.contains(.kickOut) { gestures += DJMusicality.kickOutRests(project) }
     return RestSchedule(merging: gestures)
   }

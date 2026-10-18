@@ -103,7 +103,7 @@ struct RestScheduleTests {
     #expect(C.of(kind: "snare", group: "drums", net: "snare") == .drums)
     #expect(C.of(kind: "openhat", group: "drums", net: "hihat") == .drums)
     #expect(C.of(kind: "crash", group: "drums", net: "fill-1").isEmpty)
-    #expect(C.of(kind: "kick", group: "drums", net: "fill-2").isEmpty)
+    #expect(C.of(kind: "kick", group: "drums", net: "fill-2") == .fill)
     #expect(C.of(kind: "tonal", group: "bass", net: "bass") == .bass)
     #expect(C.of(kind: "tonal", group: "harmony", net: "harmony") == .harmony)
     #expect(C.of(kind: "tonal", group: "melody", net: "melody-0") == .melody)
