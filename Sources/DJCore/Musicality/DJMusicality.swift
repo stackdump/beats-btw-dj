@@ -202,8 +202,8 @@ public enum DJMusicality {
     /// Per-section harmony: the bridge melody normalised (`SectionMelody.swift`) and the runner
     /// transposing the section (p63-section-transpose-runner).
     public static let sectionHarmony = Fixes(rawValue: 1 << 34)
-    /// Two bars per chord in intros / breakdowns, a pickup into the drop. Runner
-    /// (p63-harmonic-rhythm).
+    /// Two bars per chord in intros / breakdowns / outros, a V pickup at a buildup's end, two
+    /// chords in the bar into a chorus. Runner, through `SectionHarmony`'s slots.
     public static let harmonicRhythm = Fixes(rawValue: 1 << 35)
     /// 8-bar question and answer on melody slot pairs (`Answer.swift`, p64-answer).
     public static let answer = Fixes(rawValue: 1 << 36)
