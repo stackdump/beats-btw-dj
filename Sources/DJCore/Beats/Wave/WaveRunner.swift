@@ -590,6 +590,70 @@ struct FeelTable: Sendable {
   }
 }
 
+/// `.drift` (ROADMAP 6.5): humanize as seeded 1/f noise. Voss–McCartney, stateless and
+/// random-access: row k of `octaves` holds a hash of (key, net, stream, k, its own counter),
+/// the counter stepping on the ticks whose trailing-zero count is k (one row moves per tick,
+/// row k every 2^(k+1) ticks), plus a white row that moves every tick. Their sum is pink
+/// between 1/2^(octaves+1) and 1/2 cycles a tick, so a drummer's hands drift over bars
+/// instead of jittering hit to hit; and any tick's value is computed directly, so a seek, a
+/// section jump or a replay plays the same noise there. Allocation-free.
+enum Drift {
+  /// Rows of the sum: the slowest moves every 2^octaves ticks (16 bars of sixteenths).
+  static let octaves = 8
+  /// The largest velocity swing, × humanize (h = humanize% / 100).
+  static let velocitySpan = 12.0
+  /// The largest lateness, ms, × h (never early).
+  static let lateSpanMs = 3.0
+  /// The sum of `octaves + 1` uniform rows divided by this has an SD of 1/3; clamped to ±1.
+  private static let scale = 3 * (Double(octaves + 1) / 3).squareRoot()
+
+  /// The key for a track's seed (`WaveOptions.voicingSeed`).
+  static func key(seed: Double) -> UInt64 {
+    mix(seed.bitPattern ^ 0x6472_6966_745f_6b79)
+  }
+
+  /// The noise in [-1, 1] at `tick` (≥ 0) for `net`'s `stream` (0 velocity, 1 timing).
+  @inline(__always) static func pink(_ key: UInt64, net: Int, stream: Int, tick: Int) -> Double {
+    let base = mix(key ^ UInt64(truncatingIfNeeded: net &* 2 &+ stream) &* 0x9E37_79B9_7F4A_7C15)
+    var sum = uniform(base, row: octaves, index: tick)
+    for k in 0..<octaves {
+      sum += uniform(base, row: k, index: (tick &+ (1 << k)) >> (k + 1))
+    }
+    let v = sum / scale
+    return v < -1 ? -1 : (v > 1 ? 1 : v)
+  }
+
+  /// The velocity offset, ± `velocitySpan` × h, rounded.
+  @inline(__always) static func velocity(_ key: UInt64, net: Int, tick: Int, humanize h: Double)
+    -> Int
+  {
+    Int((pink(key, net: net, stream: 0, tick: tick) * velocitySpan * h).rounded())
+  }
+
+  /// How late, ms: 0…`lateSpanMs` × h.
+  @inline(__always) static func lateMs(_ key: UInt64, net: Int, tick: Int, humanize h: Double)
+    -> Double
+  {
+    (pink(key, net: net, stream: 1, tick: tick) + 1) / 2 * lateSpanMs * h
+  }
+
+  /// Uniform in [-1, 1).
+  @inline(__always) private static func uniform(_ base: UInt64, row: Int, index: Int) -> Double {
+    let x = mix(
+      base ^ UInt64(truncatingIfNeeded: row &+ 1) &* 0xD6E8_FEB8_6659_FD93
+        ^ UInt64(truncatingIfNeeded: index) &* 0xBF58_476D_1CE4_E5B9)
+    return Double(x >> 11) / Double(1 << 52) - 1
+  }
+
+  /// splitmix64's finaliser.
+  @inline(__always) private static func mix(_ z0: UInt64) -> UInt64 {
+    var z = z0 &+ 0x9E37_79B9_7F4A_7C15
+    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+    return z ^ (z >> 31)
+  }
+}
+
 /// A compiled project plus its voices: everything the audio thread needs, built off the
 /// audio thread (`WaveRunner.prepare`) and handed over whole. Reference-counted so the
 /// runner can pass it to a retire hook instead of freeing it on the audio thread.
@@ -661,6 +725,9 @@ public final class WaveProject: @unchecked Sendable {
   /// The groove template it plays (`.feel`); nil = none. `feelTable` is what the runner reads.
   public let feel: GrooveTemplate?
   let feelTable: FeelTable?
+  /// `.drift`'s key (`Drift.key`, from the track's `voicingSeed`): humanize plays as seeded 1/f
+  /// noise at (key, net, tick) instead of beats' white jitter. nil = off.
+  public let drift: UInt64?
   /// `vinyl-brake` brakes the deck while this project plays (`WaveOptions.turntableBrake`).
   public internal(set) var turntableBrake = false
   /// The sound design it was prepared with (`WaveOptions.voiceDesign`): another start of the
@@ -677,10 +744,12 @@ public final class WaveProject: @unchecked Sendable {
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
     rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
     space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil,
-    harmony: SectionHarmony? = nil, feel: GrooveTemplate? = nil, slotGain: [Float]? = nil
+    harmony: SectionHarmony? = nil, feel: GrooveTemplate? = nil, slotGain: [Float]? = nil,
+    drift: UInt64? = nil
   ) {
     self.gain = gain
     self.feel = feel
+    self.drift = drift
     feelTable = feel.map(FeelTable.init)
     var gains = [Float](repeating: 1, count: 64)
     var gained: UInt64 = 0
@@ -968,7 +1037,8 @@ private func buildLanes(
     songRests: songRests, tail: tail, space: space ? opts.space ?? .room : nil,
     echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony,
     feel: opts.musicality.contains(.feel) ? opts.feel : nil,
-    slotGain: slotGainDB.map { Float(pow(10, ($0 ?? 0) / 20)) })
+    slotGain: slotGainDB.map { Float(pow(10, ($0 ?? 0) / 20)) },
+    drift: opts.musicality.contains(.drift) ? Drift.key(seed: opts.voicingSeed) : nil)
   project.sampledGroups = sampledGroups
   project.probeLevels = probeLevels
   project.voiceDesign = opts.voiceDesign
@@ -1813,6 +1883,11 @@ public final class WaveRunner {
   /// plus the swing delay, (2r − 1) × the swing grid's half pair on its off-beat member, r the
   /// family's ratio at the tempo playing; its velocity is scaled by the template. Tonal lanes
   /// (and drums the template has no voice for) get the swing only.
+  ///
+  /// With `.drift` (the project has a `drift` key) humanize% is 1/f noise instead (`Drift`):
+  /// velocity ± 12 × h and 0…3 ms × h late, on top of `.feel` or of `.groove`'s swing, the
+  /// white jitter gone. It is a pure function of (seed, net, tick), so a seek or a section
+  /// jump plays the same values the song would have there.
   private func grooveHit(
     _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, lane li: Int, note: Int
   ) {
@@ -1826,6 +1901,11 @@ public final class WaveRunner {
         let c = FeelTable.cell(v, bar)
         delayMs += feel.offsetMs[c]
         vel = max(1, min(127, Int((Double(vel) * feel.velocity[c]).rounded())))
+      }
+    } else if proj.drift != nil {
+      let p = proj.graph.project
+      if grooveOn && step % 2 == 1 {
+        delayMs = p.swing / 100 * 60000 / (clock[clkTempo] * ppq) * 0.5
       }
     } else {
       let p = proj.graph.project
@@ -1841,6 +1921,13 @@ public final class WaveRunner {
         delayMs = max(0, r1 * h * 15)
       }
       if h > 0 { vel = max(1, min(127, Int((Double(vel) + r2 * h * 15).rounded()))) }
+    }
+    if let key = proj.drift {
+      let h = proj.graph.project.humanize / 100
+      if h > 0 {
+        delayMs += Drift.lateMs(key, net: n.index, tick: step, humanize: h)
+        vel = max(1, min(127, vel + Drift.velocity(key, net: n.index, tick: step, humanize: h)))
+      }
     }
     let delay = delayMs / 1000 * sampleRate
     guard delay >= 1, grooveCount < Self.grooveCapacity else {
@@ -2447,6 +2534,7 @@ public final class WaveRunner {
     let groove =
       proj.feelTable != nil
       || grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
+      || proj.drift != nil && proj.graph.project.humanize > 0
     // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
     let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
     let step = g.tick
