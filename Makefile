@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-test-filter swift-shots swift-rt-test app run-app app-release run-app-release djctl \
+        swift-build swift-test swift-test-filter swift-shots swift-rt-test swift-rt-test-filter app run-app app-release run-app-release djctl \
         mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
@@ -51,6 +51,10 @@ swift-shots:
 # The filter is a regex: name every new audio-thread test suite `…RealTime…` to include it.
 swift-rt-test:
 	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter 'RealTime|WaveDeckSourceTests|AllocationCounterTests'
+
+# One RT suite or test, same release build: make swift-rt-test-filter FILTER='AllocationCounterTests'
+swift-rt-test-filter:
+	swift test -c release -Xswiftc -enable-testing $(SWIFT_TEST_FLAGS) --filter '$(FILTER)'
 
 # make djctl ARGS="monitor inpulse"
 djctl:
