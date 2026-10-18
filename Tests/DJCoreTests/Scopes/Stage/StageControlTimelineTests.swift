@@ -21,14 +21,6 @@ enum TimelineFixture {
 }
 
 @Suite struct StageControlTimelineTests {
-  @Test func printsTheSchedule() {
-    let t = TimelineFixture.timeline()
-    print("TIMELINE roles \(t.roles) initial \(t.initiallyActive) total \(t.totalSteps)")
-    for e in t.events where e.kind != .phrase {
-      print("TIMELINE \(e.tick) \(e.kind) \(e.name) len \(e.length) idx \(e.index)")
-    }
-  }
-
   @Test func sectionsMatchTheStructure() {
     let p = TimelineFixture.played()
     let t = StageControlTimeline.build(p)
