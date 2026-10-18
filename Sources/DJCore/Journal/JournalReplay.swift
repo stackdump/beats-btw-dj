@@ -164,6 +164,12 @@ extension Journal {
       where dj.clip(id) == nil && !dj.removedClips.contains(where: { $0.clip.id == id }) {
         if let c = clips(id) { dj.restoreClips([c]) }
       }
+      // an import's audio comes by content id: the library, `samples`, or a `sampleFile` path
+      if case .clipImport(let id, let title, _, _, _) = a, dj.clip(id) == nil,
+        dj.sampleResolver?(id) == nil
+      {
+        warnings.append("imported clip \(title.isEmpty ? id : title) has no audio")
+      }
       dj.applyAction(a)
     case .midi(let port, let bytes):
       if !attached.contains(port) {
