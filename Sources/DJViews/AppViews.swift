@@ -148,6 +148,15 @@ public final class AppModel {
   /// defaults as `showSoundboard` (`setShowSoundboard`); closed until opened.
   var showSoundboard = false
   static let showSoundboardKey = "showSoundboard"
+  /// What the Soundboard shows (its Row / Stock / Crate switch). Saved in the app's defaults as
+  /// `soundboardPage`.
+  var soundboardPage = SoundboardPage.row
+  static let soundboardPageKey = "soundboardPage"
+  /// The Stock page's category strip ("" = all) and search.
+  var stockPadCategory = ""
+  var stockPadQuery = ""
+  /// Stock loops being decoded for the row from their pads (shown as loading).
+  var stockPadsLoading: Set<String> = []
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
@@ -282,6 +291,9 @@ public final class AppModel {
     guard dj == nil else { return }
     let savedTap = defaults.integer(forKey: Self.tapBarsKey)
     if Self.tapBarChoices.contains(savedTap) { tapBars = savedTap }
+    if let p = defaults.string(forKey: Self.soundboardPageKey).flatMap(SoundboardPage.init) {
+      soundboardPage = p
+    }
     showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
     if let injected {
       dj = injected
