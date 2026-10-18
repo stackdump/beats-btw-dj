@@ -314,3 +314,78 @@ extension AppModel {
       ]))
   }
 }
+
+// MARK: rewind picker (the History panel)
+
+/// A row of the History panel's rewind picker: somewhere the journal can go back to.
+struct RewindPoint: Identifiable, Equatable, Sendable {
+  enum Kind: Equatable, Sendable { case mark, note, checkpoint, action }
+  var seq: Int
+  var time: Date
+  var summary: String
+  var kind: Kind
+  /// Read from the file: older than the journal's `recent` lines.
+  var fromFile = false
+  var id: Int { seq }
+
+  /// One action in this many is a rewind point (marks, notes and checkpoints always are).
+  static let every = 25
+
+  /// The point an entry offers: every mark, note and checkpoint, and every `every`th action
+  /// (by seq, so the picks don't shift as the list grows). Nil for the rest.
+  init?(_ e: JournalEntry, every: Int = RewindPoint.every, fromFile: Bool = false) {
+    let kind: Kind
+    switch e.event {
+    case .checkpoint: kind = .checkpoint
+    case .mark: kind = .mark
+    case .action, .midi:
+      guard every > 0, e.seq % every == 0 else { return nil }
+      kind = .action
+    case let ev where ev.isNote: kind = .note
+    default: return nil
+    }
+    self.init(seq: e.seq, time: e.time, summary: e.event.summary, kind: kind, fromFile: fromFile)
+  }
+
+  init(seq: Int, time: Date, summary: String, kind: Kind, fromFile: Bool = false) {
+    self.seq = seq
+    self.time = time
+    self.summary = summary
+    self.kind = kind
+    self.fromFile = fromFile
+  }
+}
+
+extension AppModel {
+  static let rewindEvery = RewindPoint.every
+
+  /// The rewind picker's rows, newest first: the points in `recent` (at most `limit`), then the
+  /// file's checkpoints from before them (`older`, from `fileRewindPoints`).
+  static func rewindPoints(
+    _ recent: [JournalEntry], older: [RewindPoint] = [], every: Int = rewindEvery,
+    limit: Int = HistoryPanel.shown
+  ) -> [RewindPoint] {
+    var out: [RewindPoint] = []
+    for e in recent.reversed() {
+      guard out.count < limit else { break }
+      if let p = RewindPoint(e, every: every) { out.append(p) }
+    }
+    let first = recent.first?.seq ?? Int.max
+    out += older.filter { $0.seq < first }.sorted { $0.seq > $1.seq }
+    return out
+  }
+
+  /// The checkpoints in this run's journal file (flushed, read off the main actor), newest
+  /// first: how the picker reaches back past `recent`.
+  func fileRewindPoints() async -> [RewindPoint] {
+    guard let j = journal else { return [] }
+    j.flush()
+    let file = j.file
+    return await Task.detached(priority: .utility) {
+      guard let c = try? Journal.read(file) else { return [] }
+      return c.checkpointIndices.reversed().compactMap {
+        RewindPoint(c.entries[$0], fromFile: true)
+      }
+    }.value
+  }
+}
