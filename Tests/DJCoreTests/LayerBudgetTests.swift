@@ -107,7 +107,10 @@ struct LayerBudgetTests {
     let budgets = DJMusicality.layerBudgets(p)
     #expect(budgets.contains { $0.playing.count > $0.cap })
     let drop = try #require(p.structure.firstIndex { $0.name == "drop" })
-    #expect(budgets[drop].playing.count == 4 && budgets[drop].rested == [.arp])
+    #expect(
+      budgets[drop].playing.count == 4 && budgets[drop].rested == [.arp],
+      "\(budgets.enumerated().map { "\(p.structure[$0.offset].name) cap \($0.element.cap) \($0.element.playing)" })"
+    )
     let s = RestSchedule.build(p, fixes: .layerBudget)
     var start = 0
     for (i, sec) in p.structure.enumerated() {

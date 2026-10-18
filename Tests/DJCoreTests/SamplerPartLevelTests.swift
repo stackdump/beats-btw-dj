@@ -2,6 +2,15 @@ import Testing
 
 @testable import DJCore
 
+// The load-time bounds (150 ms, 1 s) are the acceptance for the app, which ships optimised: a
+// debug build renders the probes 6 to 30 times slower (6 s for six lanes, measured), so there
+// they would fail without saying anything. `make swift-rt-test-filter` checks them.
+#if DEBUG
+  private let optimized = false
+#else
+  private let optimized = true
+#endif
+
 /// Each sampled instrument's part levels, measured at load (`SamplerPartLevels`): General MIDI
 /// programs, which every Mac has and which render the same every time.
 struct SamplerPartLevelTests {
@@ -81,7 +90,8 @@ struct SamplerPartLevelTests {
   }
 
   /// The probes add at most 150 ms to a load (cold cache; median of five).
-  @Test func probesAddLittleToALoad() throws {
+  @Test(.enabled(if: optimized, "load times are only meaningful in optimized builds"))
+  func probesAddLittleToALoad() throws {
     func loadSeconds(probes: Bool, program: Int) -> Double {
       let bank = coldBank()
       bank.measuresPartLevels = probes
@@ -114,7 +124,7 @@ struct SamplerPartLevelTests {
       for i in insts { i.measurePartLevels(sampleRate: 44_100, cache: nil) }
     }
     print(partLevelFormat("six lanes: %.0f ms", seconds * 1000))
-    #expect(seconds <= 1, "\(seconds) s")
+    if optimized { #expect(seconds <= 1, "\(seconds) s") }
     for i in insts { #expect(i.partLevelDB.count == SamplerPartLevels.groups.count) }
   }
 }

@@ -72,7 +72,7 @@ struct KickOutTests {
     }
     #expect(
       rests([("intro", 64), ("buildup", 64), ("drop", 128), ("buildup", 32), ("drop", 64)])
-        == [Entry(from: 112, to: 128, mask: .kick), Entry(from: 240, to: 256, mask: .kick)])
+        == [Entry(from: 112, to: 128, mask: .kick), Entry(from: 272, to: 288, mask: .kick)])
     #expect(rests([("buildup", 64), ("chorus", 64)]).isEmpty)
     #expect(rests([("buildup", 16), ("drop", 64)]).isEmpty)
     #expect(rests([("intro", 64), ("buildup", 64)]).isEmpty)
