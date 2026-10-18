@@ -139,4 +139,35 @@ struct MCPBridgeTests {
       try reply(b, #"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"dj_nope"}}"#)[
         "error"]?["code"]?.int == -32602)
   }
+
+  /// Every op the session decoder takes (but load, which dj_perform refuses) decodes from a
+  /// minimal object and is named in dj_perform's description as `op {` or `op/`.
+  @Test func everyPerformOpIsDocumented() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":9,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    // the fields an op cannot decode without
+    let needs: [String: String] = [
+      "queueNext": #""share":{"genre":"techno","seed":1}"#,
+      "voiceTweak": #""channel":0"#, "voiceSynth": #""channel":0"#,
+      "clipMove": #""id":"x""#, "clipFx": #""id":"x""#, "lock": #""key":"A.play""#,
+      "wanderPace": #""bars":8"#, "wanderLock": #""dimension":"tempo""#,
+      "setRoleVoice": #""role":"bass""#,
+    ]
+    #expect(Set(DeckAction.jsonOps).count == DeckAction.jsonOps.count)
+    for op in DeckAction.jsonOps where op != "load" {
+      let extra = needs[op].map { "," + $0 } ?? ""
+      let v = try JSONValue.parse(#"{"op":"\#(op)","deck":"A"\#(extra)}"#)
+      let a = DeckAction(json: v)
+      #expect(a != nil, "\(op) decodes")
+      #expect(a?.json["op"]?.string == op, "\(op) encodes back as itself")
+      #expect(
+        text.contains("\(op) {") || text.contains("\(op)/") || text.contains("/\(op) {"),
+        "dj_perform's description documents \(op)")
+    }
+    let dims = WanderLock.dimensions.joined(separator: "|")
+    #expect(text.contains("dimension: \(dims)|keep:<role>"), "wanderLock's dimensions are listed")
+  }
 }
