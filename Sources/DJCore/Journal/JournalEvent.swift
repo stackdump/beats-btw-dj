@@ -29,7 +29,8 @@ public enum JournalTime {
 /// are the state changes that are not pokes — the persistent stores and the notes — so a replay
 /// rebuilds them too.
 public enum JournalEvent: Equatable, Sendable {
-  /// The full rebuildable state (`JournalState`): every file starts with one.
+  /// The full rebuildable state (`JournalState`): every file starts with one; mid-file ones
+  /// (`Journal.checkpoint`) add the playheads and leave the stores out.
   case checkpoint(JournalState)
   case action(DeckAction)
   case midi(port: String, bytes: [UInt8])
@@ -105,7 +106,9 @@ public enum JournalEvent: Equatable, Sendable {
       return [("instrument", .string(instrument)), ("name", .string(name))]
     case .noteAdd(let n): return [("note", n.json)]
     case .noteEdit(let id, let text, let at):
-      return [("id", .string(id)), ("text", .string(text)), ("at", .string(JournalTime.string(at)))]
+      return [
+        ("id", .string(id)), ("text", .string(text)), ("at", .string(JournalTime.string(at))),
+      ]
     case .noteDelete(let id): return [("id", .string(id))]
     case .mark(let text): return [("text", .string(text))]
     }
@@ -176,7 +179,8 @@ public enum JournalEvent: Equatable, Sendable {
     switch self {
     case .checkpoint(let s):
       let decks = s.decks.keys.sorted().map { "\($0): \(s.decks[$0]!.source.summary)" }
-      return "checkpoint · " + (decks + ["\(s.clips.count) clips"]).joined(separator: " · ")
+      return (s.hasStores ? "checkpoint · " : "checkpoint (mid) · ")
+        + (decks + ["\(s.clips.count) clips"]).joined(separator: " · ")
     case .action(let a): return a.summary
     case .midi(let port, let bytes):
       return "midi \(port) " + bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
@@ -185,7 +189,8 @@ public enum JournalEvent: Equatable, Sendable {
     case .favoriteAdd(let f): return "★ \(f.title)"
     case .favoriteRemove(let cid): return "☆ unstarred \(cid.prefix(14))…"
     case .favoriteTags(let cid, let tags):
-      return "tags \(cid.prefix(14))… = " + (tags.isEmpty ? "none" : tags.map { "#" + $0 }.joined(separator: " "))
+      return "tags \(cid.prefix(14))… = "
+        + (tags.isEmpty ? "none" : tags.map { "#" + $0 }.joined(separator: " "))
     case .crateAdd(let name): return "crate + \(name)"
     case .crateDelete(let name): return "crate − \(name)"
     case .variationSave(let i, let v): return "variation saved \(v.label(i))"
