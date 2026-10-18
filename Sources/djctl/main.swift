@@ -381,12 +381,16 @@ case "publish":
 case "mix":
   // djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S]
   //           [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish]
-  //           [--mirror] [--dry-run] [--store DIR]
+  //           [--mirror] [--dry-run] [--store DIR] [--report]
   // Writes a set as a session, offline (`SessionMix`): tracks alternate decks A/B, each plays
   // its whole song, the next comes in synced to the bar `--xfade` seconds (default 20) before
   // the end. Saves it to the store; --export renders it; --publish stages it as `publish`
-  // does (--dry-run lists the bundle instead).
+  // does (--dry-run lists the bundle instead). --report renders it (once, shared with
+  // --export) and prints `SessionMix.Report`: each track's LUFS / dBTP alone, the level step at
+  // each crossfade (8 s alone before against after) and the whole set's; exit 1 if it misses
+  // ROADMAP 6.7's bar (≥ 600 s, steps ≤ 2 LU, ≤ −1 dBTP), and a real --publish is refused.
   let store = storeOption()
+  let wantReport = flag("--report")
   let dry = flag("--dry-run")
   let mirror = flag("--mirror")
   let doPublish = flag("--publish") || mirror
@@ -396,7 +400,7 @@ case "mix":
   let title = value("--title")
   let export = value("--export")
   let usage =
-    "usage: djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S] [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish] [--mirror] [--dry-run] [--store DIR]"
+    "usage: djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S] [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish] [--mirror] [--dry-run] [--store DIR] [--report]"
   if let bad = positional.first(where: { $0.hasPrefix("--") }) {
     stderr("unknown option \(bad)\n\(usage)")
     exit(2)
@@ -435,15 +439,30 @@ case "mix":
     print(
       "\(saved.cid)  \(clock(session.frames))  (\(String(format: "%.1f", session.duration)) s, \(session.events.count) events)"
     )
-    if let export {
-      try SessionStore.exportWAV(session, to: URL(fileURLWithPath: export))
-      print("wrote \(export)")
+    var missed = false
+    if export != nil || wantReport {
+      let audio = try SessionPlayer(session: session).render()
+      if let export {
+        try WAV.encode(audio).write(to: URL(fileURLWithPath: export), options: .atomic)
+        print("wrote \(export)")
+      }
+      if wantReport {
+        let report = mix.report(audio)
+        print("report")
+        for line in report.lines { print(line) }
+        missed = !report.problems().isEmpty
+        if missed && doPublish && !dry {
+          stderr("not publishing: the set misses the bar")
+          exit(1)
+        }
+      }
     }
     if doPublish {
       try publish(
         session, audio: export, title: title ?? mix.title, draft: false, host: "valoper.local",
         blobs: nil, noReload: false, mirror: mirror, dry: dry)
     }
+    if missed { exit(1) }
   } catch {
     stderr("mix failed: \(error)")
     exit(1)
