@@ -144,6 +144,9 @@ its copy; the two are now independent. Rules inherited from that split:
   ms 0…15 and velocity scale per drum voice × 16 steps, tempo-scaled Linn swing) is averaged
   from the Groove MIDI Dataset (CC BY 4.0, attributed in README) by `make groove-templates`
   (sha256-pinned fetch into `.build/gmd`); regenerate, never hand-edit the numbers.
+  `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
+  b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
+  4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
 - Controllers address net decks with `section`, `roleMute`, `macro`, `stinger`, `keys`,
   `sync`, … bindings; deck-less ones (keys, joystick) act on `DJEngine.focus`.
 

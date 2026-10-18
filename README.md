@@ -143,6 +143,12 @@ Sweetwater, APC mini mk2 from Akai) — approximate, not measured.
   licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): per-position timing and
   velocity averages only, no MIDI from the dataset is in this repo. Gillick et al., "Learning
   to Groove with Inverse Sequence Transformations", ICML 2019.
+- `Sources/DJCore/Resources/beats/melody-bigrams.json` (the melody degree bigrams, `make
+  melody-bigrams`) is derived from the [RS200 melodic transcriptions](https://rockcorpus.midside.com/)
+  by Trevor de Clercq and David Temperley, licensed
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): scale-degree counts only, no
+  transcription from the corpus is in this repo. de Clercq & Temperley, "A Corpus Study of Rock
+  Music", Popular Music 30/1, 2011.
 
 ## Native ↔ browser bridge
 
