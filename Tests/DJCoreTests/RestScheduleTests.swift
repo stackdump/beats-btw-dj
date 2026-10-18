@@ -92,8 +92,10 @@ struct RestScheduleTests {
       s.entries
         == gaps.map { Entry(from: $0, to: $0 + DJMusicality.dropGapSteps, mask: .rhythm) })
     #expect(RestSchedule.build(edm, fixes: []).isEmpty)
-    #expect(RestSchedule.build(edm, fixes: .all.subtracting(.dropGap)).isEmpty, "stubs: no rests")
-    #expect(RestSchedule.build(edm, fixes: .all) == s)
+    #expect(
+      RestSchedule.build(edm, fixes: .all.subtracting([.dropGap, .layerBudget])).isEmpty,
+      "stubs: no rests")
+    #expect(RestSchedule.build(edm, fixes: .all.subtracting(.layerBudget)) == s)
   }
 
   /// A lane's class: the drop gap rests kick, non-fill drums and bass, nothing else.
