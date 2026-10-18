@@ -575,6 +575,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
   and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
   (`JournalRewindRealTimeTests`).
+- In-app rewind: `AppModel.rewindJournal(toSeq:)` (socket `journal` {action: rewind, seq},
+  `dj_journal`) replays the flushed file off the main actor (`playheads: true`), `reset(to:)`s
+  the engine, `replaceStores`, then appends `rewind <seq>` (`Journal.rewindMark`) and a
+  playhead checkpoint — append-only, line 0 untouched. Nothing before a rewind's checkpoint
+  carries over: replays past it start there even `fromStart`; `exportSession` refuses a slice
+  with a rewind mark (`JournalError.spansRewind`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),

@@ -428,10 +428,16 @@ public struct MCPBridge {
       """
       The app's journal: the always-on log of every state change this run (deck actions, \
       controller MIDI, favorites, crates, variations, locks, notes), the record a run is \
-      rebuilt from (`djctl journal replay`). Returns the file and its latest entries (seq, \
-      time, engine frame, kind, a summary, and the event as JSON), newest last.
+      rebuilt from (`djctl journal replay`). action list (default): the file and its latest \
+      entries (seq, time, engine frame, kind, a summary, and the event as JSON), newest last. \
+      action rewind {seq}: put the app back where it stood at that seq — the journal is \
+      replayed to it, the decks, loop row, mixer and stores reset to the result — and journal a \
+      `rewind <seq>` mark and a checkpoint (nothing is deleted: the journal is append-only). \
+      Returns the checkpoint written and any clips or samples whose audio was gone.
       """,
       [
+        "action": prop("string", "list | rewind"),
+        "seq": prop("integer", "rewind: the entry to go back to (its seq, from list)"),
         "limit": prop("integer", "How many entries (default 50, at most 400)"),
         "kind": prop(
           "string", "Only entries of this kind, e.g. act, midi, note.add (prefix: note.)"),

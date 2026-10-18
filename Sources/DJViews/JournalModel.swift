@@ -74,6 +74,61 @@ extension AppModel {
     if keys != deckNoteKeys { deckNoteKeys = keys }
   }
 
+  // MARK: rewind
+
+  /// Put the app back where the journal stood at `seq`: the file is flushed and replayed (off the
+  /// main actor, from the nearest checkpoint) to `seq`; the engine is reset to that state
+  /// (`DJEngine.reset(to:clip:)`) and the stores replaced (`replaceStores`, journaled), then the
+  /// journal gets a `rewind <seq>` mark and a checkpoint with playheads — a replay past it starts
+  /// there. The journal stays append-only: everything after `seq` is still in it, line 0 too.
+  /// A live engine's replay need not be what was heard (renders, takes): `status` says so.
+  @discardableResult
+  func rewindJournal(toSeq seq: Int) async throws -> JournalRewind {
+    guard let dj = engine, let j = journal else { throw JournalRewindError.noJournal }
+    let last = j.lastSeq
+    guard (0...last).contains(seq) else { throw JournalRewindError.badSeq(seq, last: last) }
+    j.flush()
+    let file = j.file
+    // the clips' audio: the row's and the removed ones this run has, then the library on disk
+    var have: [String: LoopClip] = [:]
+    for c in dj.clips { have[c.id] = c }
+    for r in dj.removedClips where have[r.clip.id] == nil { have[r.clip.id] = r.clip }
+    let known = have
+    let samples = dj.sampleLibrary
+    let store = takeStore
+    let queue = saveQueue
+    let sr = dj.sampleRate
+    status = "rewinding to seq \(seq)…"
+    let result = try await Task.detached(priority: .userInitiated) {
+      let c = try Journal.read(file)
+      return try Journal.replay(
+        c, toSeq: seq, playheads: true, samples: { samples[$0] },
+        clips: { id in
+          known[id] ?? store.flatMap { s in queue.sync { s.removedClip(id, sampleRate: sr) } }
+        })
+    }.value
+    // the app moved on while it replayed (stopped, another journal)
+    guard engine === dj, journal === j else { throw JournalRewindError.superseded }
+    let warnings =
+      result.warnings
+      + (await dj.reset(to: result.state) { id in
+        known[id] ?? store.flatMap { s in queue.sync { s.removedClip(id, sampleRate: sr) } }
+      })
+    replaceStores(result.stores)
+    lockedButtons = dj.lockedActions
+    defaults.set(lockedButtons.sorted(), forKey: Self.lockedButtonsKey)
+    j.record(.mark(Journal.rewindMark(seq)))
+    let cp = j.checkpoint(playheads: true)
+    poll()
+    var line = "rewound to seq \(seq)"
+    if !warnings.isEmpty { line += " (\(warnings.count) warning\(warnings.count == 1 ? "" : "s"))" }
+    if !dj.deterministic { line += " — replayed, so it may differ from what played live" }
+    status = line
+    return JournalRewind(
+      seq: seq, startSeq: result.startSeq, checkpointSeq: cp?.seq ?? j.lastSeq,
+      warnings: warnings)
+  }
+
   // MARK: notes
 
   /// The notes on what `deck` plays now, in track order.
@@ -123,6 +178,31 @@ extension AppModel {
 
   /// The one-tap notes (no keyboard): what a DJ marks most.
   static let quickNotes = ["drop", "build", "break", "mix in", "mix out", "★"]
+}
+
+/// What `AppModel.rewindJournal` did.
+struct JournalRewind: Equatable {
+  /// The sequence number it went back to.
+  var seq: Int
+  /// The checkpoint its replay started from.
+  var startSeq: Int
+  /// The checkpoint it wrote (a replay past the rewind starts there).
+  var checkpointSeq: Int
+  /// Clips or samples whose audio is gone.
+  var warnings: [String]
+}
+
+enum JournalRewindError: Error, Equatable, CustomStringConvertible {
+  case noJournal
+  case badSeq(Int, last: Int)
+  case superseded
+  var description: String {
+    switch self {
+    case .noJournal: "no journal is open"
+    case .badSeq(let s, let last): "no seq \(s) in this journal (0…\(last))"
+    case .superseded: "the app moved on during the rewind"
+    }
+  }
 }
 
 // MARK: control socket / MCP (dj_notes, dj_journal)
@@ -194,7 +274,24 @@ extension AppModel {
     }
   }
 
-  func controlJournal(_ p: JSONValue) -> JSONValue {
+  func controlJournal(_ p: JSONValue) async throws -> JSONValue {
+    switch p["action"]?.string ?? "list" {
+    case "list": break
+    case "rewind":
+      guard let seq = p["seq"]?.int else { throw ControlRequestError.bad("`seq` is required") }
+      let r: JournalRewind
+      do { r = try await rewindJournal(toSeq: seq) } catch let e as JournalRewindError {
+        throw ControlRequestError.bad(e.description)
+      }
+      return .object(
+        JSONObject([
+          ("rewound", .int(r.seq)), ("startSeq", .int(r.startSeq)),
+          ("checkpoint", .int(r.checkpointSeq)), ("lastSeq", .int(journal?.lastSeq ?? -1)),
+          ("warnings", .array(r.warnings.map { .string($0) })), ("status", .string(status)),
+        ]))
+    case let other:
+      throw ControlRequestError.bad("action must be list | rewind, not \(other)")
+    }
     let limit = min(Journal.recentCapacity, max(1, p["limit"]?.int ?? 50))
     let kind = p["kind"]?.string
     let entries = (journal?.recent ?? []).filter { e in
