@@ -348,6 +348,9 @@ extension AppModel {
     case "journal":
       return try await controlJournal(p)
 
+    case "variations":
+      return try await controlVariations(p)
+
     default:
       throw ControlRequestError.bad("unknown method \(method)")
     }
@@ -522,7 +525,7 @@ extension AppModel {
     return .object(o)
   }
 
-  private func requireDeck(_ name: String) throws -> Deck {
+  func requireDeck(_ name: String) throws -> Deck {
     guard let d = engine?[name] else {
       let have = (engine?.decks.keys.sorted() ?? []).joined(separator: ", ")
       throw ControlRequestError.bad("no deck \"\(name)\" (decks: \(have))")

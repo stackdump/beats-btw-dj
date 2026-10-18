@@ -473,6 +473,95 @@ struct AppControlTests {
   }
 }
 
+/// dj_variations: the sound panel's saved variations through the control socket, on a
+/// temporary store (never the user's voices.json), each edit journaled.
+extension AppControlTests {
+  @Test func variationsSaveApplyRenameDelete() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(
+      engine: dj, favorites: temporaryFavorites(), voices: temporaryVoiceVariations(),
+      notes: temporaryNotes(), journal: temporaryJournalDir())
+    m.start()
+    #expect(m.variationStore.file != VoiceVariationStore.defaultFile)
+    let a = try await call(
+      m, "generate", #"{"deck":"A","genre":"techno","seed":42,"structure":"minimal"}"#)
+    let melody = try #require(
+      a["voices"]?.array?.first { $0["role"]?.string?.contains("melody") == true })
+    let ch = try #require(melody["channel"]?.int)
+    let inst = try #require(melody["instrument"]?.string)
+
+    // nothing saved; saving the instrument's own voice is refused
+    #expect(try await call(m, "variations")["variations"] == .object(JSONObject()))
+    await #expect {
+      try await call(
+        m, "variations", "{\"action\":\"save\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"zap\"}")
+    } throws: { "\($0)".contains("own voice") }
+    await #expect {
+      try await call(m, "variations", #"{"action":"save","deck":"A","channel":99,"name":"zap"}"#)
+    } throws: { "\($0)".contains("channels:") }
+
+    // save what the channel sounds like
+    _ = try await call(
+      m, "perform",
+      "{\"action\":{\"op\":\"voiceTweak\",\"deck\":\"A\",\"channel\":\(ch),\"params\":{\"gainDB\":-6,\"attack\":0.05}}}"
+    )
+    let saved = try await call(
+      m, "variations", "{\"action\":\"save\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"soft\"}")
+    let list = try #require(saved["variations"]?[inst]?.array)
+    #expect(list.map { $0["name"]?.string } == ["soft"])
+    #expect(list.first?["params"]?["gainDB"]?.double == -6)
+    #expect(m.variationStore.list(inst).map(\.name) == ["soft"])
+    let listed = try await call(m, "variations", "{\"instrument\":\"\(inst)\"}")
+    #expect(listed["variations"]?[inst]?.array?.count == 1)
+
+    // back to the instrument's voice, then apply it
+    _ = try await call(
+      m, "perform",
+      "{\"action\":{\"op\":\"voiceTweak\",\"deck\":\"A\",\"channel\":\(ch),\"params\":{}}}")
+    let applied = try await call(
+      m, "variations", "{\"action\":\"apply\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"soft\"}")
+    let voice = try #require(applied["voices"]?.array?.first { $0["channel"]?.int == ch })
+    #expect(voice["tweak"]?["gainDB"]?.double == -6)
+    #expect(voice["variation"]?.string == "soft")
+    await #expect {
+      try await call(
+        m, "variations", "{\"action\":\"apply\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"loud\"}"
+      )
+    } throws: { "\($0)".contains("variations of \(inst): soft") }
+
+    // rename, delete
+    let renamed = try await call(
+      m, "variations",
+      "{\"action\":\"rename\",\"instrument\":\"\(inst)\",\"name\":\"soft\",\"to\":\"gentle\"}")
+    #expect(renamed["variations"]?[inst]?.array?.map { $0["name"]?.string } == ["gentle"])
+    let deleted = try await call(
+      m, "variations",
+      "{\"action\":\"delete\",\"deck\":\"A\",\"channel\":\(ch),\"name\":\"gentle\"}")
+    #expect(deleted["variations"]?[inst]?.array?.isEmpty == true)
+    #expect(m.variationStore.list(inst).isEmpty)
+    await #expect { try await call(m, "variations", #"{"action":"tweak"}"#) } throws: {
+      "\($0)".contains("list | save | apply | rename | delete")
+    }
+
+    // each edit is journaled; the apply as the panel's acts
+    let events = (m.journal?.recent ?? []).map(\.event)
+    #expect(events.contains { if case .variationSave = $0 { true } else { false } })
+    #expect(events.contains(.variationRename(instrument: inst, name: "soft", to: "gentle")))
+    #expect(events.contains(.variationDelete(instrument: inst, name: "gentle")))
+    let tweaks = events.filter {
+      if case .action(.voiceTweak(_, let c, let t)) = $0 {
+        c == ch && t.gainDB == -6
+      } else {
+        false
+      }
+    }
+    #expect(tweaks.count == 2, "the perform and the apply")
+  }
+}
+
 /// The bottom bar's "Awake": a PreventUserIdleDisplaySleep assertion while on, saved.
 @MainActor
 struct ScreenWakeLockTests {
