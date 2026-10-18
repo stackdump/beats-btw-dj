@@ -1,6 +1,9 @@
 {
  "comment": "Per-instrument synth voices for the app (InstrumentTable). Each entry overlays the instrument's wave-engine family voice. Engine params are beats' Tone.js presets (public/audio/tone-engine.js); level is calibrated by InstrumentTableTests to sit with the family voices. Sampled instruments are chosen separately, by category (categories.json, VoiceCatalog).",
  "instruments": {
+  "bass": {
+   "level": 0.31
+  },
   "acoustic-guitar": {
    "engine": "pluck",
    "attackNoise": 2,
