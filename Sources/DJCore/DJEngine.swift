@@ -624,6 +624,31 @@ public final class Deck: JogClock {
     isDemo = true
   }
 
+  /// Take what is on the deck off it, stopped, as a fresh deck has nothing (`journalSource` says
+  /// `.none`; `DJEngine.reset(to:clip:)`). The turntable keeps its old buffer, silent, until the
+  /// next load retires it through the ring; a net deck's project stays installed but paused.
+  func eject() {
+    leaveNetMode()
+    setPlaying(false)
+    turntable.send(.loopOff)
+    currentSpec = nil
+    currentRawNets = nil
+    seedTarget = nil
+    clipID = nil
+    sourceFile = nil
+    waveform = nil
+    loaded = nil
+    levelSource = nil
+    beatGrid = nil
+    isDemo = false
+    title = "—"
+    hotCues = [:]
+    cuePoint = 0
+    loopStart = nil
+    loopEnd = nil
+    looping = false
+  }
+
   public func setPlaying(_ on: Bool) {
     playing = on
     if mode == .net {

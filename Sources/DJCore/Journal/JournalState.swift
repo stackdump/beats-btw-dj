@@ -343,7 +343,28 @@ public struct JournalState: Equatable, Sendable {
   /// decks without one, and every loop clip, start from their beginnings.
   @discardableResult
   public func restore(into dj: DJEngine, clip: (String) -> LoopClip?) -> [String] {
+    let staged = restore(into: dj, clip: clip, deferNetSeeks: false)
+    staged.play()
+    return staged.warnings
+  }
+
+  /// What `restore` leaves to its caller: the net decks' playheads it did not seek (asked to
+  /// defer them: a live reset awaits each jump, `DJEngine.reset(to:clip:)`), and the decks to
+  /// start once they are where they belong.
+  struct StagedRestore {
+    var warnings: [String]
+    var netSeeks: [(deck: Deck, tick: Int)]
+    var toPlay: [Deck]
+    func play() { for d in toPlay { d.setPlaying(true) } }
+  }
+
+  /// `restore` up to the decks' transports: everything is in place but no deck has been started.
+  /// `deferNetSeeks`: a net deck's `position` is handed back instead of relocated to.
+  func restore(
+    into dj: DJEngine, clip: (String) -> LoopClip?, deferNetSeeks: Bool
+  ) -> StagedRestore {
     var warnings: [String] = []
+    var netSeeks: [(deck: Deck, tick: Int)] = []
     for a in loopSettings { dj.applyAction(a) }
     var found: [LoopClip] = []
     for c in clips {
@@ -383,7 +404,13 @@ public struct JournalState: Equatable, Sendable {
         if !v.tweak.isEmpty { deck.setVoiceTweak(v.tweak, channel: ch) }
         if v.useSynth { deck.setSynthVoice(true, channel: ch) }
       }
-      if let p = d.position { deck.seek(journalPosition: p) }
+      if let p = d.position {
+        if deferNetSeeks && deck.mode == .net {
+          if deck.netProject != nil { netSeeks.append((deck, Int(p.rounded()))) }
+        } else {
+          deck.seek(journalPosition: p)
+        }
+      }
     }
     for (name, d) in decks { if let l = d.leader { dj[name]?.follow(dj.decks[l]) } }
     dj.loopChannel.volume = loopChannel.volume
@@ -395,8 +422,8 @@ public struct JournalState: Equatable, Sendable {
     dj.master = master
     dj.lockedActions = Set(locked)
     for c in clips where c.looping && dj.clip(c.id) != nil { dj.startLoop(c.id, atOnce: true) }
-    for name in decks.keys.sorted() where decks[name]!.playing { dj[name]?.setPlaying(true) }
-    return warnings
+    let toPlay = decks.keys.sorted().filter { decks[$0]!.playing }.compactMap { dj[$0] }
+    return StagedRestore(warnings: warnings, netSeeks: netSeeks, toPlay: toPlay)
   }
 }
 
