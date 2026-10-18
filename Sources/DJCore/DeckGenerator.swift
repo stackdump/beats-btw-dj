@@ -20,6 +20,12 @@ public struct TrackSpec: Sendable, Equatable {
   /// plays, and a recorded session replays, the project the envelope describes. Empty for a
   /// plain genre + seed spec.
   public var layers: JSONObject
+  /// dj-only: a seed of its own for some parts (`bass`, `kick`, `snare`, `hihat`, `melody`,
+  /// `arp`), which the musicality pass takes that part's seeded decisions from
+  /// (`TrackVariety.swift`). Deck / session state like the voice tweaks: never in `extra`,
+  /// `layers` or the share payload, so `compose()`, the share and its CID are the same with or
+  /// without it. Empty for a plain spec.
+  public var partSeeds: [String: Double] = [:]
 
   /// The envelope fields `layers` holds: what `shareFromPayload` puts in `overrides`, and
   /// the overlay directives. (`macroCurve` is a compose param, in `extra`.)
@@ -30,7 +36,8 @@ public struct TrackSpec: Sendable, Equatable {
 
   public init(
     genre: String, seed: Double, structure: String? = nil, cohesion: String = "v2",
-    extra: JSONObject = JSONObject(), layers: JSONObject = JSONObject()
+    extra: JSONObject = JSONObject(), layers: JSONObject = JSONObject(),
+    partSeeds: [String: Double] = [:]
   ) {
     self.genre = genre
     self.seed = seed
@@ -38,6 +45,7 @@ public struct TrackSpec: Sendable, Equatable {
     self.cohesion = cohesion
     self.extra = extra
     self.layers = layers
+    self.partSeeds = partSeeds
   }
 
   /// `compose`'s overrides for this spec.

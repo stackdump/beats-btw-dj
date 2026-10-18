@@ -440,6 +440,10 @@ its copy; the two are now independent. Rules inherited from that split:
   outros hold 2 bars per chord (pad rings of 2 or 4 bars only), a buildup's last half-bar is the V
   (else ♭VII) of what follows, the bar into a chorus plays 2 chords; drops untouched. Section ends
   are `tail` (2 half-bar slots overriding the cycle). `.sectionHarmony` alone is the old plan.
+- `TrackSpec.partSeeds` (bass / kick / snare / hihat / melody / arp → seed) are dj-only: the
+  session writes them beside the share, never in `extra` / `layers` / the payload, so the share
+  CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
+  transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
