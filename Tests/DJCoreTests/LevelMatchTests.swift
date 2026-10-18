@@ -69,6 +69,33 @@ private func meanSD(_ x: [Double]) -> (mean: Double, sd: Double) {
 
 private func f1(_ x: Double) -> String { String(format: "%.1f", x) }
 
+/// A whole song (seed 4242, standard structure, 24 kHz) as a deck plays it on its own sampler
+/// bank, whose part levels are measured fresh (`cache`, a new temporary file: a cold cache).
+private func sampledSong(
+  _ genre: String, cache: SamplerPartLevels.Cache, seconds: Double = 400
+) -> (render: OfflineRender, track: PreparedTrack, bank: SamplerBank) {
+  let rate = 24_000.0
+  let bank = SamplerBank(sampleRate: rate, partLevelCache: cache)
+  let source = WaveDeckSource(sampleRate: rate, opts: .extended(samplers: bank, seed: 4242))
+  let track = PreparedTrack(
+    spec: TrackSpec(genre: genre, seed: 4242, structure: "standard"), sampleRate: rate,
+    opts: .extended(samplers: bank, seed: 4242))
+  return (OfflineRender(track: track, source: source, seconds: seconds), track, bank)
+}
+
+/// The sampled slots `p` plays, and whether every one of them renders the same on every play
+/// (GM programs and SoundFonts do; EXS instruments may round-robin or modulate on purpose).
+private func sampledSlots(_ p: WaveProject, _ bank: SamplerBank) -> (slots: Set<Int>, fixed: Bool) {
+  let slots = Set(p.lanes.filter { $0.kind == "tonal" && $0.samplerSlot >= 0 }.map(\.samplerSlot))
+  let fixed = slots.allSatisfy { slot in
+    switch bank.source(of: slot) {
+    case .gm, .sf2: return true
+    default: return false
+    }
+  }
+  return (slots, fixed)
+}
+
 @MainActor
 struct LevelMatchTests {
   // MARK: the meter
@@ -106,6 +133,85 @@ struct LevelMatchTests {
     // and the drums keep their attack: the limiter is mostly idle
     let st = try #require(source.limiter).statistics()
     #expect(st.percentilesDB[0] <= 0.5, "\(genre): median gain reduction \(st.percentilesDB[0]) dB")
+  }
+
+  /// The loudness probe hears each sampled part where its slot sits: the slot's measured part
+  /// level plus its `.balance` gain, not the palette's average (ROADMAP 6.6). The sparse sampled
+  /// genres (lofi, jazz, bossa: the ones the table's average left farthest off) land within
+  /// ±1 LU of the reference on a deck's own instruments.
+  @Test(arguments: ["lofi", "jazz", "bossa"])
+  func aSampledTrackPlaysAtTheReference(genre: String) throws {
+    let cache = tempPartLevelCache()
+    defer { removePartLevelCache(cache) }
+    let (r, track, bank) = sampledSong(genre, cache: cache)
+    let p = track.prepared
+    let slots = sampledSlots(p, bank).slots
+    try #require(!slots.isEmpty, "\(genre): nothing played on a sampler (nothing installed?)")
+    // the probe's stand-ins are the slots' measured levels (with the slot gain), never the table
+    for lane in p.lanes where lane.kind == "tonal" && lane.samplerSlot >= 0 {
+      let group = try #require(p.sampledGroups[lane.netId])
+      let level = try #require(
+        bank.slotPartLevelDB(lane.samplerSlot, group: group), "\(genre): \(lane.netId) measured")
+      let gainDB = 20 * log10(Double(p.slotGain[lane.samplerSlot]))
+      let trim =
+        lane.netId.hasPrefix("fill-")
+        ? 0
+        : MixBalance.part(kind: "tonal", group: group).flatMap { p.balance?[$0] } ?? 0
+      let want = SampledBalance.probeLevel(
+        trimDB: trim, partLevelDB: level, group: group, gainDB: gainDB)
+      let stand = try #require(p.probeLevels[lane.netId])
+      #expect(abs(stand - want) < 1e-9, "\(genre) \(lane.netId): \(stand) vs \(want)")
+    }
+    let l = try #require(
+      IntegratedLoudness.integrated(left: r.left, right: r.right, sampleRate: r.sampleRate))
+    #expect(abs(l - LevelMatch.referenceLUFS) <= 1, "\(genre) sampled: \(l) LUFS")
+  }
+
+  /// A slot whose bank skipped the part-level probes has no level of its own: the probe falls
+  /// back to the palette's average (`Loudness.sampledPartDB`) for that part.
+  @Test func anUnmeasuredSlotTakesThePaletteAverage() throws {
+    let rate = 24_000.0
+    let cache = tempPartLevelCache()
+    defer { removePartLevelCache(cache) }
+    let bank = SamplerBank(sampleRate: rate, partLevelCache: cache)
+    bank.measuresPartLevels = false
+    var o = WaveOptions.extended(samplers: bank, seed: 4242)
+    o.musicality.remove(.balance)
+    let track = PreparedTrack(
+      spec: TrackSpec(genre: "lofi", seed: 4242, structure: "minimal"), sampleRate: rate, opts: o)
+    let p = track.prepared
+    try #require(!p.sampledGroups.isEmpty, "a sampled part (nothing installed?)")
+    for (net, group) in p.sampledGroups {
+      #expect(p.probeLevels[net] == Loudness.sampledPartLevel(group: group), "\(net)")
+    }
+  }
+
+  /// The gain comes only from what prepare has: it waits for each slot's load (and its part
+  /// levels), so two decks rendering one spec from a cold cache pick the same loudness gain and
+  /// slot gains — and play the same bytes, wherever their instruments do (GM and SoundFont
+  /// programs; an EXS may round-robin on purpose, `SamplerInstrument`).
+  @Test func twoColdCacheRendersOfOneSpecMatch() throws {
+    let a = tempPartLevelCache()
+    let b = tempPartLevelCache()
+    defer {
+      removePartLevelCache(a)
+      removePartLevelCache(b)
+    }
+    let one = sampledSong("lofi", cache: a, seconds: 30)
+    let two = sampledSong("lofi", cache: b, seconds: 30)
+    let (slots, fixed) = sampledSlots(one.track.prepared, one.bank)
+    try #require(!slots.isEmpty, "a sampled part (nothing installed?)")
+    #expect(one.track.prepared.gain == two.track.prepared.gain)
+    #expect(one.track.prepared.slotGain == two.track.prepared.slotGain)
+    #expect(one.track.prepared.probeLevels == two.track.prepared.probeLevels)
+    for slot in slots {
+      #expect(one.bank.slotPartLevelDB(slot) == two.bank.slotPartLevelDB(slot), "slot \(slot)")
+    }
+    if fixed {
+      #expect(one.render.left == two.render.left && one.render.right == two.render.right)
+    } else {
+      print("twoColdCacheRendersOfOneSpecMatch: an EXS slot plays; bytes not compared")
+    }
   }
 
   /// The parity path is beats': no limiter, beats' tanh, no loudness gain.
@@ -402,6 +508,32 @@ struct LevelSurveyTests {
           + "reference \(LevelMatch.referenceLUFS)")
       #expect(!all.isEmpty)
     }
+  }
+
+  /// The sampled path's spread (ROADMAP 6.6 acceptance): whole songs on each deck's own
+  /// instruments, part levels measured cold, twelve genres; integrated LUFS within 2 LU of each
+  /// other.
+  @Test(.enabled(if: surveying, "a measurement: DJ_LEVEL_SURVEY=1"))
+  func sampledSongsSpread() throws {
+    var all: [Double] = []
+    for genre in surveyGenres + ["bossa", "country"] {
+      let cache = tempPartLevelCache()
+      defer { removePartLevelCache(cache) }
+      let (r, track, _) = sampledSong(genre, cache: cache)
+      guard
+        let l = IntegratedLoudness.integrated(
+          left: r.left, right: r.right, sampleRate: r.sampleRate)
+      else { continue }
+      all.append(l)
+      print(
+        "  \(genre.padding(toLength: 10, withPad: " ", startingAt: 0)) \(f1(l)) LUFS, gain "
+          + "\(f1(ampDB(track.prepared.gain))) dB")
+    }
+    let (m, sd) = meanSD(all)
+    let spread = (all.max() ?? 0) - (all.min() ?? 0)
+    print("sampled: mean \(f1(m)) ± \(f1(sd)) LUFS, spread \(f1(spread)) LU over \(all.count)")
+    #expect(all.count == 12)
+    #expect(spread <= 2, "sampled LUFS spread \(spread) LU")
   }
 
   /// The loop channel ("L") at its defaults against a deck at the centred crossfader, on the

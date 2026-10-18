@@ -125,7 +125,8 @@ public struct WaveOptions {
   public var turntableBrake = false
   /// The loudness probe's stand-in for sampled parts (`Loudness.measure`): net id → a level on
   /// its tonal lane, so its synth voice sounds about as loud as the sampler the deck plays there
-  /// (`WaveProject.sampledGroups`, `Loudness.sampledPartDB`). Empty everywhere else.
+  /// (`WaveProject.sampledGroups`: the slot's measured part level plus its slot gain,
+  /// `SampledBalance.probeLevel`; `Loudness.sampledPartDB` when unmeasured). Empty elsewhere.
   var probeLevels: [String: Double] = [:]
   public var onTick: ((WaveRunner) -> Void)?
   /// Offline only (`GrooveReport`, `djctl render`): called on the render thread with every
@@ -912,11 +913,14 @@ private func buildLanes(
           if lane.samplerSlot >= 0 {
             let group = tr.group ?? n.bundle.riffGroup
             sampledGroups[n.id] = group
-            if balanceSlots, let bank = opts.samplers, lane.samplerSlot < 64 {
+            // the slot's own part level, measured at its load (which `bindSampler` has just
+            // waited for): the probe plays the synth part where this sampler sits, after its
+            // `.balance` gain. Unmeasured (a bank that skips the probes), the table's average.
+            let level = opts.samplers?.slotPartLevelDB(lane.samplerSlot, group: group)
+            if balanceSlots, lane.samplerSlot < 64 {
               let trim =
                 n.id.hasPrefix("fill-")
                 ? 0 : MixBalance.part(kind: "tonal", group: group).flatMap { trims[$0] } ?? 0
-              let level = bank.slotPartLevelDB(lane.samplerSlot, group: group)
               let gainDB =
                 slotGainDB[lane.samplerSlot]
                 ?? SampledBalance.gainDB(trimDB: trim, partLevelDB: level)
@@ -924,7 +928,7 @@ private func buildLanes(
               probeLevels[n.id] = SampledBalance.probeLevel(
                 trimDB: trim, partLevelDB: level, group: group, gainDB: gainDB)
             } else {
-              probeLevels[n.id] = Loudness.sampledPartLevel(group: group)
+              probeLevels[n.id] = Loudness.sampledPartLevel(group: group, measuredDB: level)
             }
           }
           let part = tr.group ?? n.bundle.riffGroup

@@ -430,7 +430,8 @@ its copy; the two are now independent. Rules inherited from that split:
 - **One loudness** (`Audio/LevelMatch.swift`, GO-DIVERGENCE.md §5.7): everything the user can
   play lands at `LevelMatch.referenceLUFS` (−12 LUFS integrated) at unity knobs, before the EQ
   and fader. Net decks: `.loudness` (`Loudness.targetDB` = reference − 0.4, calibrated on whole
-  songs; the probe plays sampled parts at `Loudness.sampledPartDB` under their synth voice) and,
+  songs; the probe plays a sampled part's synth voice at its slot's measured `partLevelDB` plus its
+  slot gain, `Loudness.sampledPartDB` only when unmeasured) and,
   with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
   end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBTP from BS.1770's 4× FIR,
   `lookahead` 1.5 ms + 12 samples, uncompensated; preallocated, `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
