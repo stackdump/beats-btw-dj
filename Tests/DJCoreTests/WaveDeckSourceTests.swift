@@ -1,3 +1,4 @@
+import Darwin
 import Synchronization
 import Testing
 
@@ -135,23 +136,35 @@ struct WaveRunnerRealTimeTests {
     }
     #expect(bank.count == SamplerBank.capacity, "a full bank")
     let result = EvictionResult()
-    // Started here (spawning a task allocates), loading only once the measured renders run.
-    Task.detached {
-      while !result.go.load(ordering: .acquiring) { await Task.yield() }
+    // A dedicated thread, started here (creating one allocates), loading only once the
+    // measured renders run: a detached Task may not get a cooperative thread under a loaded
+    // parallel run, and the GM load can take a while, so the wait is a deadline, not a count.
+    let loader = startThread {
+      while !result.go.load(ordering: .acquiring) { sched_yield() }
       // a pitched program the fill didn't reach (unpitched SFX ones are turned away on load)
       result.slot.store(bank.slot(for: [.gm(80)]) ?? -1, ordering: .releasing)
     }
     run(10)
     let evicting = countAllocations {
       result.go.store(true, ordering: .releasing)
-      var blocks = 0
-      while result.slot.load(ordering: .acquiring) == -2 && blocks < 100_000 {
+      // clock_gettime_nsec_np reads the clock without allocating (Date() would not do here)
+      let deadline = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + 120 * 1_000_000_000
+      while result.slot.load(ordering: .acquiring) == -2
+        && clock_gettime_nsec_np(CLOCK_UPTIME_RAW) < deadline
+      {
         run(1)
-        blocks += 1
       }
       run(200)
     }
+    // Read before joining: a join after a timeout would let the load finish outside the
+    // measured renders, and the checks below would pass without an eviction mid-render.
     let slot = result.slot.load(ordering: .acquiring)
+    guard slot != -2 else {
+      Issue.record("the eviction load missed the deadline, so it ran outside the measured renders")
+      pthread_detach(loader)  // a hung load mustn't hang the run; the thread owns its captures
+      return
+    }
+    pthread_join(loader, nil)
     #expect(slot >= 0, "the load evicted a slot")
     #expect(!used.contains(slot), "never one the playing project references")
     #expect(bank.source(of: slot) == .gm(80))
@@ -202,6 +215,26 @@ private final class EvictionResult: Sendable {
   /// -2 while loading; then the slot, or -1 for none.
   let slot = Atomic<Int>(-2)
   let go = Atomic<Bool>(false)
+}
+
+/// Runs `body` on a new pthread (Foundation's `Thread` can't be imported next to Testing).
+private func startThread(_ body: @escaping @Sendable () -> Void) -> pthread_t {
+  let box = Unmanaged.passRetained(ThreadBody(body)).toOpaque()
+  var thread: pthread_t?
+  let err = pthread_create(
+    &thread, nil,
+    { ctx in
+      let body = Unmanaged<ThreadBody>.fromOpaque(ctx).takeRetainedValue()
+      body.run()
+      return nil
+    }, box)
+  precondition(err == 0 && thread != nil, "pthread_create failed: \(err)")
+  return thread!
+}
+
+private final class ThreadBody: Sendable {
+  let run: @Sendable () -> Void
+  init(_ run: @escaping @Sendable () -> Void) { self.run = run }
 }
 
 private func renderBlocks(_ src: WaveDeckSource, blocks: Int) -> [Float] {
@@ -454,7 +487,8 @@ extension WaveDeckSourceTests {
     for ch in tonal.sorted() {
       let v = prepared.channelVoice(ch)?.voice
       cmds.append(
-        .voice(VoiceLaneParams(channel: ch, tweak: full, useSynth: false, voice: v, sampleRate: sr)))
+        .voice(VoiceLaneParams(channel: ch, tweak: full, useSynth: false, voice: v, sampleRate: sr))
+      )
       cmds.append(
         .voice(
           VoiceLaneParams(
@@ -468,12 +502,14 @@ extension WaveDeckSourceTests {
           VoiceLaneParams(channel: ch, tweak: full, useSynth: true, voice: nil, sampleRate: sr)))
       synth.append(
         .voice(
-          VoiceLaneParams(channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr)
+          VoiceLaneParams(
+            channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr)
         ))
     }
     let reset = tonal.sorted().map {
       WaveCommand.voice(
-        VoiceLaneParams(channel: $0, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
+        VoiceLaneParams(
+          channel: $0, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
     }
     var l = [Float](repeating: 0, count: 512)
     var r = [Float](repeating: 0, count: 512)
