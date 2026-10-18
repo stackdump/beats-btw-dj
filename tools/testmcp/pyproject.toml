@@ -1,7 +1,7 @@
 [project]
 name = "djtest-mcp"
 version = "0.1.0"
-description = "Test MCP for dj-vevr-se: build a release djctl, render tracks offline, run the musicality matrix, replay journals, measure and compare audio"
+description = "Test MCP for dj-vevr-se: build a release djctl, render tracks offline, run the musicality matrix, replay journals, measure and compare audio, run filtered swift tests one at a time"
 requires-python = ">=3.11"
 dependencies = ["mcp>=2.0"]
 
@@ -14,3 +14,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["djtest_mcp"]
+
+[tool.setuptools.package-data]
+djtest_mcp = ["*.json"]

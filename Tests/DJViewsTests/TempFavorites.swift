@@ -1,5 +1,6 @@
-import DJCore
 import Foundation
+
+@testable import DJCore
 
 /// A favorites store in a fresh temporary directory (kept out of the Testing files: importing
 /// Foundation next to Testing needs a cross-import overlay Command Line Tools doesn't ship).
@@ -37,4 +38,32 @@ func temporaryVoiceVariations() -> VoiceVariationStore {
   VoiceVariationStore(
     file: FileManager.default.temporaryDirectory
       .appendingPathComponent("voices-\(UUID().uuidString)/voices.json"))
+}
+
+/// A stand-in stock loop: `beats` beats at `bpm` of a quiet tone, written as a WAV in a fresh
+/// temporary folder, described as `category` (no Apple Loops content needed).
+func temporaryStockLoop(
+  _ name: String, category: String, beats: Int = 4, bpm: Double = 120,
+  sampleRate: Double = 22_050, pitch: Double = 220
+) throws -> StockLoop {
+  let frames = Int((Double(beats) * 60 / bpm * sampleRate).rounded())
+  let tone = (0..<frames).map { Float(0.2 * sin(2 * Double.pi * pitch * Double($0) / sampleRate)) }
+  let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "stock-\(UUID().uuidString)")
+  try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+  let url = dir.appendingPathComponent("\(name).wav")
+  try WAV.encode(RenderedAudio(sampleRate: sampleRate, left: tone, right: tone), float32: true)
+    .write(to: url)
+  return StockLoop(
+    path: url.path, name: name, pack: "Test Pack", category: category, subcategory: "",
+    genre: "Test", beats: beats, seconds: Double(frames) / sampleRate, key: nil)
+}
+
+/// A described stock loop with no file behind it, for the filters.
+func describedStockLoop(_ name: String, category: String, beats: Int, seconds: Double)
+  -> StockLoop
+{
+  StockLoop(
+    path: "/nowhere/\(category)/\(name).caf", name: name, pack: "Test Pack", category: category,
+    subcategory: "", genre: "Test", beats: beats, seconds: seconds, key: nil)
 }

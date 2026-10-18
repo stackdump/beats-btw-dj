@@ -433,6 +433,13 @@ its copy; the two are now independent. Rules inherited from that split:
   `.bandStop`: song family only, all but the lead (and crashes) rest the beat before a chorus
   not covered by the drop gap, only where the lead has a note; fill chains are `Class.fill`,
   which nothing else rests. `djctl render` reports `bandStopDipDB` (below 200 Hz).
+- `.riser` (6.2, `Riser.swift`): `WaveProject.riser` (`RiserVoice`, built at prepare from
+  `DJMusicality.riserWindows`: last 2 bars of a buildup into a drop / chorus) is a stinger-class
+  lane rendered into `acc` (never rested, ducked or energy-lowpassed): seeded xorshift noise, SVF
+  lowpass 300 Hz → 8 kHz, −30 → −12 dB, cut at the drop, side under `.stereo`, send under `.space`.
+  Its place is the step `doTick` played (`riserStep`), so a jump starts it in phase; it returns
+  false while silent, so bytes before a window are unchanged. `djctl render` prints `riserRiseDB`
+  / `riserSpearman` (`RiserRise`: ≥ 4 kHz per beat).
 - Mix targets are data (ROADMAP 6.1): `Resources/beats/targets.json` (`MixTargets`, hand-edited;
   `make beats-tables` writes only tables.json) holds `Loudness.targetDB`'s probe offset and gain range,
   `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
@@ -611,6 +618,13 @@ its copy; the two are now independent. Rules inherited from that split:
   Never the speakers, the app or its socket.
 - `lufs` in every tool is Swift's (`IntegratedLoudness`, BS.1770) and pass flags judge it;
   `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
+- `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
+  never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
+  limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
+  under an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`; dies with its
+  holder, so never stale; MCP runs only — a terminal `make` ignores it); `djtest_lock` says who
+  holds it. Failures are tagged known_failing / flaky_under_load / new from
+  `djtest_mcp/known_tests.json`, a copy of ROADMAP's Release checks lists — edit both.
 - Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s
   FakeRunner, so `make testmcp-test` (unittest) never builds Swift or renders.
 - `make testmcp-install` only prints the `claude mcp add --scope user dj-vevr-se-test …`
