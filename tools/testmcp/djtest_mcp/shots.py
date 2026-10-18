@@ -27,15 +27,16 @@ def pngs(shot_dir: Path, limit: int) -> list[Path]:
 
 
 def shots(filter: str, limit: int = DEFAULT_LIMIT, *, timeout: float = st.TEST_TIMEOUT,
-          lock_wait: float = st.LOCK_WAIT) -> dict:
+          lock_wait: float = st.LOCK_WAIT, worktree: str = "") -> dict:
     """Run the shots and return {"summary": swift_test-shaped dict, "images": [{path, bytes,
     data}], "total_pngs": n}. data is the PNG's bytes; the server makes Image content of it."""
     f = st.check_filter(filter)
     limit = max(1, min(int(limit), MAX_LIMIT))
-    d = rn.run_dir("shots")
+    wt = rn.worktree_root(worktree)
+    d = rn.run_dir("shots", wt)
     argv = shots_argv(f, str(d))
-    with st.held({"tool": "djtest_shots", "filter": f}, wait=lock_wait) as lock:
-        res = rn.get_runner().run(argv, cwd=str(rn.repo_root()), timeout=timeout)
+    with st.held({"tool": "djtest_shots", "filter": f}, wait=lock_wait, root=wt) as lock:
+        res = rn.get_runner().run(argv, cwd=str(wt), timeout=timeout)
     log = d / "output.txt"
     log.write_text((res.stdout or "") + "\n--- stderr ---\n" + (res.stderr or ""))
     summary = st.summarize(res, f, False, log)

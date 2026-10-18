@@ -90,21 +90,33 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def out_dir() -> Path:
-    return repo_root() / "build" / "testmcp"
+def worktree_root(worktree: str = "") -> Path:
+    """The tree a tool works in: `worktree` (another checkout of this repo, e.g. a fix agent's
+    git worktree) or, when empty, repo_root(). Must hold a Package.swift."""
+    if not worktree:
+        return repo_root()
+    p = Path(worktree).expanduser().resolve()
+    if not (p / "Package.swift").is_file():
+        raise ToolError(f"worktree {worktree!r}: no Package.swift at {p}")
+    return p
 
 
-def djctl_path() -> Path:
-    """The copied release djctl (djtest_build), or $DJTEST_DJCTL."""
-    if v := os.getenv(ENV_DJCTL):
+def out_dir(root: Path | None = None) -> Path:
+    return (root or repo_root()) / "build" / "testmcp"
+
+
+def djctl_path(root: Path | None = None) -> Path:
+    """The copied release djctl (djtest_build), or $DJTEST_DJCTL (only without a root)."""
+    if root is None and (v := os.getenv(ENV_DJCTL)):
         return Path(v)
-    return out_dir() / "djctl"
+    return out_dir(root) / "djctl"
 
 
-def require_djctl() -> str:
-    p = djctl_path()
+def require_djctl(root: Path | None = None) -> str:
+    p = djctl_path(root)
     if not p.exists():
-        raise ToolError(f"no djctl at {p}: run djtest_build first")
+        hint = " with the same worktree" if root is not None else ""
+        raise ToolError(f"no djctl at {p}: run djtest_build{hint} first")
     return str(p)
 
 
@@ -112,8 +124,8 @@ def stamp() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
 
-def run_dir(kind: str) -> Path:
+def run_dir(kind: str, root: Path | None = None) -> Path:
     """A fresh build/testmcp/<kind>/<ts>/ for one call's files."""
-    d = out_dir() / kind / stamp()
+    d = out_dir(root) / kind / stamp()
     d.mkdir(parents=True, exist_ok=True)
     return d
