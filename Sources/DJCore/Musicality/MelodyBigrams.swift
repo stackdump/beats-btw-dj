@@ -11,7 +11,7 @@ import Foundation
 /// distribution given that the melody moves (its diagonal is 0), which is what a pass picking
 /// where a repeat or passing tone should go wants.
 ///
-/// Data only: nothing reads it yet (`p64-shape` will).
+/// `.shape` (`MelodyShape.swift`) reads `moves` to place repeats and passing tones.
 public struct MelodyBigrams: Equatable, Sendable {
   public static let degrees = 7
 
