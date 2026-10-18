@@ -116,7 +116,9 @@ public struct MCPBridge {
       "dj_state",
       "Snapshot of the app: per deck (title, mode sample|net, playing, bpm, position, sections "
         + "and the current one, roles and which are on, volume/filter/pitch, quantize, next "
-        + "track), crossfader, master, the LOOP-record clips, the ones removed from the row and the "
+        + "track, level: the deck's short-term / momentary LUFS, autoGain on/off and the "
+        + "autoGainDB a sample plays at, the sample's own LUFS when levelled, a net deck's "
+        + "limiter), crossfader, master, the LOOP-record clips, the ones removed from the row and the "
         + "loop channel (loops), "
         + "connected controllers, recording, status line, and the "
         + "app's build (id, version, build = git commit, date).",
@@ -416,7 +418,8 @@ public struct MCPBridge {
       """,
       [
         "limit": prop("integer", "How many entries (default 50, at most 400)"),
-        "kind": prop("string", "Only entries of this kind, e.g. act, midi, note.add (prefix: note.)"),
+        "kind": prop(
+          "string", "Only entries of this kind, e.g. act, midi, note.add (prefix: note.)"),
       ]),
   ]
 

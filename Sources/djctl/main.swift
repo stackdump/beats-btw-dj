@@ -9,8 +9,10 @@
 //   djctl render <genre> <seed> <out.wav> [--structure S] [--cohesion v1|v2]
 //                [--options JSON] [--mute r,…] [--solo r,…] [--seconds N] [--float32]
 //                                     compose a track and render it offline (no app)
-//   djctl levels <file>…              loudness (LUFS, peak) and the auto-gain a sample deck
-//                                     plays each file at (LevelMatch.swift)
+//   djctl levels [file…] [--stock N]  loudness (LUFS, peak) and the auto-gain a sample deck
+//                                     plays each file at, and the spread before / after
+//                                     (LevelSurvey, LevelMatch.swift); --stock: N stock loops
+//                                     per category
 import DJCore
 import Foundation
 
@@ -662,7 +664,8 @@ case "render":
   var sound: [String: String] = [:]
   for role in track.played.soundRoles {
     if let nb = track.played.soundNet(role) {
-      sound[role] = nb.track.sound.option ?? (nb.track.picked ? "picked \(nb.track.instrument)" : "own")
+      sound[role] =
+        nb.track.sound.option ?? (nb.track.picked ? "picked \(nb.track.instrument)" : "own")
     }
   }
   audio["sound"] = sound
@@ -678,19 +681,34 @@ case "render":
   print(String(decoding: data, as: UTF8.self))
 
 case "levels":
-  // djctl levels <audio file>…: each file's loudness and the auto-gain a sample deck would
-  // play it at (`SampleLevel`, LevelMatch.swift), one JSON object per line.
-  for path in positional {
-    do {
-      let buffer = try Deck.decode(URL(fileURLWithPath: path), sampleRate: 48_000)
-      var d = buffer.level.dictionary
-      d["file"] = path
-      let data = try JSONSerialization.data(withJSONObject: d, options: [.sortedKeys])
-      print(String(decoding: data, as: UTF8.self))
-    } catch {
-      stderr("\(path): \(error)")
+  // djctl levels [file…] [--stock N]: each sample's loudness and the auto-gain a sample deck
+  // plays it at (`SampleLevel`, LevelMatch.swift), one JSON object per line, then the spread
+  // before / after against each one's target (`LevelSurvey.summary`). --stock N: N stock loops
+  // from each category (`LevelSurvey.pick`).
+  let stock = option("--stock")
+  if let stock, !stock.isFinite || stock < 1 || stock > 10_000 {
+    stderr("usage: djctl levels [file…] [--stock N]   (N: loops per category, 1 or more)")
+    exit(2)
+  }
+  let perCategory = stock.map { Int($0) }
+  var files = positional.map { (name: $0, category: "", url: URL(fileURLWithPath: $0)) }
+  if let perCategory {
+    files += LevelSurvey.pick(StockLoopLibrary().load(), perCategory: perCategory).map {
+      (name: $0.path, category: $0.category, url: $0.url)
     }
   }
+  if files.isEmpty {
+    stderr("usage: djctl levels [file…] [--stock N]")
+    exit(2)
+  }
+  let survey = LevelSurvey.measure(files)
+  func line(_ d: [String: Any]) throws {
+    let data = try JSONSerialization.data(withJSONObject: d, options: [.sortedKeys])
+    print(String(decoding: data, as: UTF8.self))
+  }
+  for e in survey.entries { try line(e.dictionary) }
+  for f in survey.failures { stderr("\(f.name): \(f.error)") }
+  try line(["summary": survey.summary])
 
 case "minecraft":
   // djctl minecraft import [--assets DIR] [--index N] [--out DIR]

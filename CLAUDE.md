@@ -368,7 +368,9 @@ its copy; the two are now independent. Rules inherited from that split:
   end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
   `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
   shares) measured once per buffer (`SampleBuffer.level`, cached; on first read, so only with
-  auto-gain on), auto-gain toward the reference
+  auto-gain on; the app's favorite / stock-loop decode tasks read it off the main thread, a plain
+  file load (`AppModel.load(_:url:)`) decodes and measures on it; ten minutes take ~0.16 s in
+  release, so a load never measures in the background or glides in), auto-gain toward the reference
   (−4 LU for a one-band loop: bass / kick / hats), ±12 dB, never lifting the peak past −1 dBFS;
   applied by the turntable (`TurntableCommand.gain`). Derived from the audio, so never recorded;
   the deck setting `Deck.autoGain` is (`.param(name: "autoGain")`, `DeckParams.autoGain`, both
@@ -378,7 +380,9 @@ its copy; the two are now independent. Rules inherited from that split:
   nil / −200 for silence) and its short-term form `LoudnessMeter`. Clips on a deck (`loadClip`) keep their level: a take is the deck
   after its EQ. `Deck.shortTermLUFS` / `momentaryLUFS` (pre-EQ meter in `DeckRenderer`) and
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
-  percentiles); `djctl levels <file>…` a file's level and auto-gain.
+  percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
+  each file's level and auto-gain, then the spread before / after against each one's target and
+  the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp).
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
