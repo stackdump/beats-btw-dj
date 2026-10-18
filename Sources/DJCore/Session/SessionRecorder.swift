@@ -302,6 +302,8 @@ extension DJEngine {
     case .clipFx(let id, let fx): setClipFx(id, fx)
     case .loopFxLink(let on): setLoopFxLink(on)
     case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
+    case .mixOut(let n, let bars): deck(n)?.mixOut(bars: bars)
+    case .mixIn(let n, let bars): deck(n)?.mixIn(bars: bars)
     case .clipImport(let id, let title, let bpm, let beats, let provenance):
       if let b = buffer ?? sampleLibrary[id] ?? sampleResolver?(id) {
         importClip(

@@ -227,6 +227,8 @@ struct AppControlTests {
       (#"{"action":{"op":"play","deck":"C","on":true}}"#, "no deck"),
       (#"{"action":{"op":"spin","deck":"A"}}"#, "known `op`"),
       (#"{"action":{"op":"macro","deck":"A","macro":"drop"}}"#, "needs a net deck"),
+      (#"{"action":{"op":"mixOut","deck":"A"}}"#, "mixOut needs a net deck"),
+      (#"{"action":{"op":"mixIn","deck":"B","bars":2}}"#, "mixIn needs a net deck"),
       (#"{"action":{"op":"load","deck":"A","source":{"kind":"none"}}}"#, "dj_generate"),
     ] {
       await #expect {

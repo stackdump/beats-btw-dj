@@ -205,10 +205,15 @@ public struct MCPBridge {
       stinger, voice: an option from dj_palettes / dj_state.decks.X.sound[].options (gm:4, \
       synth:pwm-lead, cat:keys.epiano, inst:piano, a kit id…) or null = back to the palette}: \
       one role's sound, kept through new tracks until reset · setKit {deck, kit: a kit id or \
-      null}. Deck "L" also takes param volume / mute (1 = muted), \
+      null} · mixOut {deck, bars? 1-64, default 16}: play the deck out: at the next bar it \
+      jumps to the song's outro (or, in it or with none, plays on where it is), plays only its \
+      drums and bass for bars bars and stops on a bar line (the room rings out; section jumps \
+      keep it, a new track drops it) · mixIn {deck, bars? 1-64, default 4}: bring the deck in \
+      drums-forward: from the next bar its melodic parts rest for bars bars and come back on \
+      the bar line after. Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
-      Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
+      Net-only ops (section, role, macro, stinger, panic, mixOut, mixIn) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,
       ["action": prop("object", "The action, e.g. {\"op\":\"play\",\"deck\":\"A\",\"on\":true}")],

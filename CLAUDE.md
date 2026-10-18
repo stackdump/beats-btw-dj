@@ -141,6 +141,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
   the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
   `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
+  The deck control is `DeckAction.mixOut(deck, bars)` (`Deck.mixOut`: the outro at the next bar,
+  else plays on) and `.mixIn(deck, bars)` (`RestSchedule.mixIn`, the same mask, joined to the
+  song's rests): one recorded action each, through `relocate(toTick:tail:rest:)`, never apart.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats

@@ -281,6 +281,8 @@ public final class Deck: JogClock {
   /// STEMS groups this deck has muted, each with the roles that were playing when it was (what
   /// pressing it again brings back). Cleared when a track loads.
   var stemsMuted: [String: [String]] = [:]
+  /// The song tick the last `mixIn`'s rest ends on (`isMixingIn`); nil once a track loads.
+  var mixInEndTick: Int?
   /// The deck's walk (Wander.swift): on/off, pace, step, locks, the log of moves.
   public internal(set) var wander = WanderState()
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
@@ -674,6 +676,7 @@ public final class Deck: JogClock {
     sourceFile = nil
     levelSource = nil  // a net is levelled by its own loudness gain, not the sample's
     stemsMuted = [:]
+    mixInEndTick = nil
     if mode != .net {
       turntable.send(.transport(playing: false))
       mode = .net
