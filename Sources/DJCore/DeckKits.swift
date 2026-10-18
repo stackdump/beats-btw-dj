@@ -191,7 +191,8 @@ extension Deck {
     }
     guard !channels.isEmpty else { return }
     project.setPalette(id)
-    project.applySound(seed: voicingSeed)
+    // the Hits are the palette's too: resolved again (`curateStingers` resolves the sounds)
+    curateStingers(&project)
     retarget(project) { $0.withPalette(id, channels: channels) }
   }
 }

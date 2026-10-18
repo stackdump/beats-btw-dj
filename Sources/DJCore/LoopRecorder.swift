@@ -370,7 +370,8 @@ extension DJEngine {
 
   // MARK: clips
 
-  public func clip(_ id: String) -> LoopClip? { clips.first { $0.id == id } }
+  /// A clip on the row, or a curated stinger's loop (`stingerClips`, never on the row).
+  public func clip(_ id: String) -> LoopClip? { clips.first { $0.id == id } ?? stingerClips[id] }
 
   /// Take a clip off the row (the audio stays in `sampleLibrary`: a recorded session may name it).
   /// It is kept in `removedClips` with its place and how it sounded, so `restoreClip` can put it
@@ -549,8 +550,11 @@ extension DJEngine {
   }
 
   /// The clips looping (or about to) under the mixer.
+  /// (A curated stinger's loop is not one: it goes out on its own, `fireStingerLoop`.)
   public var loopingClips: [String] {
-    loopVoices.compactMap { $0.stopFrame == nil ? $0.clipID : nil }
+    loopVoices.compactMap { v in
+      v.stopFrame == nil && v.clipID.map { stingerClips[$0] == nil } == true ? v.clipID : nil
+    }
   }
 
   /// A clip's level under the mixer, 0…1 (1 by default).
@@ -586,8 +590,12 @@ extension DJEngine {
 
   /// `atOnce`: start now, in phase, instead of waiting for the next launch boundary (a fresh
   /// take, which ends on a downbeat that has just gone by). `at`: start at that deck frame (a
-  /// scene, whose clips all switch on one boundary).
-  func startLoop(_ id: String, atOnce: Bool = false, at frame: Int? = nil) {
+  /// scene, whose clips all switch on one boundary). `fromTop`: from the clip's first beat, not
+  /// in phase (a curated stinger's loop); `prefer`: line it up with that deck first.
+  func startLoop(
+    _ id: String, atOnce: Bool = false, at frame: Int? = nil, fromTop: Bool = false,
+    prefer: Deck? = nil
+  ) {
     guard let clip = clip(id), let bank = loopChannel.bank else { return }
     if let v = loopVoices.firstIndex(where: { $0.clipID == id }) {
       guard loopVoices[v].stopFrame != nil else { return }  // already in
@@ -598,7 +606,7 @@ extension DJEngine {
       return
     }
     guard let v = loopVoices.firstIndex(where: { $0.clipID == nil }) else { return }
-    let clock = loopClock(for: clip)
+    let clock = loopClock(for: clip, prefer: prefer)
     let earliest = loopChannel.renderedFrames + Self.loopLead
     let at =
       frame.map { max($0, earliest) }
@@ -607,6 +615,7 @@ extension DJEngine {
     var b = (clock.beat(at) - (clock.ref?.name == clip.source ? clip.startBeat : 0))
       .truncatingRemainder(dividingBy: beats)
     if b < 0 { b += beats }
+    if fromTop { b = 0 }
     let target = clock.bpm ?? clip.bpm
     // key-locked at another tempo: a stretched copy made before, if there is one for it
     let audio = loopAudio(clip, at: target)
@@ -657,6 +666,7 @@ extension DJEngine {
     guard let bank = loopChannel.bank else { return }
     let now = loopChannel.renderedFrames
     let louder = loopFollow == .louder ? updateDominantDeck() : nil
+    serviceStingerStops(bank)
     for v in loopVoices.indices {
       guard let id = loopVoices[v].clipID else { continue }
       if let stop = loopVoices[v].stopFrame {
@@ -752,10 +762,11 @@ extension DJEngine {
 
   /// What a loop lines up with: the deck it was taken from if that plays, else another playing
   /// deck, else a loop already going under the mixer, else nothing (it starts on its own).
-  func loopClock(for clip: LoopClip?) -> LoopClock {
+  func loopClock(for clip: LoopClip?, prefer: Deck? = nil) -> LoopClock {
     let sr = sampleRate
     // following the louder deck, that one first; else the clip's own deck first
-    let first = loopFollow == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] }
+    let first =
+      prefer ?? (loopFollow == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] })
     let candidates =
       ([first, clip.flatMap { decks[$0.source] }] + decks.values.sorted { $0.name < $1.name })
       .compactMap { $0 }

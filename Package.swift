@@ -16,6 +16,7 @@ let package = Package(
       name: "DJCore",
       resources: [
         .copy("Resources/profiles"), .copy("Resources/beats"), .copy("Resources/voices"),
+        .copy("Resources/stingers"),
       ]
     ),
     // CLI: ports / monitor — the Swift twin of the Go tool, for hardware checks.

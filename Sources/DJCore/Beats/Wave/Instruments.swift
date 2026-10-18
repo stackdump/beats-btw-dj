@@ -87,6 +87,7 @@ extension WaveOptions {
     var o = WaveOptions()
     o.instruments = .shared
     o.musicality = .all
+    o.stingers = .here
     o.samplers = samplers
     o.voicingSeed = seed
     o.turntableBrake = true

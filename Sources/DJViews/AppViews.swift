@@ -59,6 +59,8 @@ struct DeckState: Equatable {
   var macroPulse = MacroPulseState()
   /// The master-chain macros (FX, pitch, feel) in effect.
   var masterRunning: Set<MasterMacro> = []
+  /// What Hit 1–4 fire (`Deck.stingers`), as their buttons' help says it.
+  var stingers: [String] = []
   /// The LOOP-record clip the deck is playing, if it is playing one.
   var clipID: String?
   /// Roles disabled on the deck (they stay off through new tracks).
@@ -468,6 +470,7 @@ public final class AppModel {
         chaseClock[name] = now
         state.macroPulse = board.state
         state.masterRunning = Set(d.wave.activeMasterMacros)
+        state.stingers = d.stingers.map(\.help)
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
@@ -1010,6 +1013,7 @@ public final class AppModel {
     stockLoopsLoading = true
     let library = loopLibrary
     stockLoops = await Task.detached(priority: .userInitiated) { library.load() }.value
+    StingerContent.setStock(stockLoops)  // a Hit may launch one (local-only)
     stockLoopsLoading = false
   }
 
@@ -2072,6 +2076,7 @@ struct NetPanel: View {
       FlowRow(spacing: 6) {
         ForEach(0..<4, id: \.self) { n in
           Button("Hit \(n + 1)") { model.stinger(name, n) }.liveButton()
+            .help(state.stingers.indices.contains(n) ? state.stingers[n] : "Hit \(n + 1)")
             .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         WanderButton(name: name, on: state.wander.on, model: model, tint: tint)

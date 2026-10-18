@@ -206,6 +206,9 @@ public struct Project {
   public var initialMutes: [String] = []
   /// Set by the composer when the cohesion-v2 engine ran; not part of the model CID.
   public var cohesion: String?
+  /// What the deck's Hit 1–4 fire (`StingerCuration`, `curateStingers`), empty = each Hit's
+  /// stinger net as composed. dj-only, never encoded: the canonical text and CID stay beats'.
+  public var stingers: [StingerAssignment] = []
 }
 
 // MARK: - Parsing

@@ -74,6 +74,9 @@ public struct WaveOptions {
   /// dj's fixes to a composed track (`DJMusicality`), run by `PreparedTrack`; none = the
   /// project exactly as composed (parity).
   public var musicality: DJMusicality.Fixes = []
+  /// What a composed track's Hit 1–4 may be curated from (`StingerCuration`, applied by
+  /// `PreparedTrack` to the played project); nil = the stinger nets as composed (parity).
+  public var stingers: StingerContent?
   /// The gain to prepare with instead of measuring one (`Loudness`): a section jump or a
   /// relocation of the song already playing reuses that project's.
   public var trackGain: Double?

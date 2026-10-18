@@ -272,11 +272,7 @@ extension Deck {
     onMasterMacro?(nil, nil)
   }
 
-  /// Stinger `n` (0…3 → `hit1`…`hit4`): unmute its ring for `bars` bars.
-  public func stinger(_ n: Int, bars: Int = 1) {
-    guard mode == .net, (0..<4).contains(n) else { return }
-    wave.fireStinger("hit\(n + 1)", ticks: bars * 16)
-  }
+  // `stinger(_:bars:)`, Hit 1–4 as curated: StingerLaunch.swift.
 
   // MARK: keys
 

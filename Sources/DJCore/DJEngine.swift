@@ -46,6 +46,12 @@ public final class DJEngine {
   /// Clips taken off the row, newest first, each with the place it had (`removeClip`,
   /// `restoreClip`).
   public internal(set) var removedClips: [RemovedClip] = []
+  /// Curated stingers' loops (`fireStingerLoop`), by clip id: launched like clips, never on the
+  /// row, so never saved, journalled as clips or published (Apple Loops are local-only).
+  var stingerClips: [String: LoopClip] = [:]
+  /// A stinger loop that has been launched and is to go out after one pass: clip id → the deck
+  /// frame, scheduled once its voice is in (`serviceStingerStops`).
+  var stingerStops: [String: Int] = [:]
   /// How many bars a tap of LOOP records (let go within `DJEngine.loopTapFrames` of the
   /// press), when the press does not say: what a controller's LOOP button uses. The app sets it
   /// from its own setting through `perform(.tapBars)`, so a session records it (a controller's
@@ -168,6 +174,9 @@ public final class DJEngine {
       }
       deck.onSourceFile = { [weak self, unowned deck] url in self?.journalSampleFile(deck, url) }
       deck.onMasterMacro = { [weak self] m, bars in self?.linkedLoopMaster(m, bars: bars) }
+      deck.onStingerLoop = { [weak self, unowned deck] a in
+        self?.fireStingerLoop(a, on: deck) ?? false
+      }
       decks[name] = deck
     }
     wire(loopChannel)
@@ -354,6 +363,9 @@ public final class Deck: JogClock {
   /// A master macro fired on this deck (nil: its panic): the loops' master bus takes it from
   /// here (on the loop channel itself, or linked: LoopMasterFx.swift).
   var onMasterMacro: ((MasterMacro?, Int?) -> Void)?
+  /// A curated stinger's loop to launch on the loop row (StingerLaunch.swift); false when it
+  /// can't play, and the Hit plays its stinger net instead.
+  var onStingerLoop: ((StingerAssignment) -> Bool)?
   var netNudge = 0.0
   var ringShapes: [String: RingShape] = [:]
   /// Tempo and first-beat position of a sample deck (analysed, tapped or known).

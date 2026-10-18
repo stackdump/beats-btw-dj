@@ -155,11 +155,16 @@ public final class PreparedTrack: @unchecked Sendable {
   ) {
     self.source = source
     self.project = project
+    var played = project
     if case .net(let spec) = source, !opts.musicality.isEmpty {
       played = DJMusicality.apply(project, spec: spec, fixes: opts.musicality)
-    } else {
-      played = project
     }
+    // Hit 1–4 curated for the genre and palette: on what plays, never on the composition
+    if case .net(let spec) = source, let content = opts.stingers {
+      played.curateStingers(
+        played.resolvedStingers(genre: spec.genre, seed: seed, installed: content), seed: seed)
+    }
+    self.played = played
     var o = opts
     o.voicingSeed = seed
     if case .net(let spec) = source {

@@ -217,6 +217,9 @@ struct WanderContext: Sendable {
   /// The channels the track plays on (where a carried palette is written); empty = compose the
   /// new spec to find them.
   var channels: [Int] = []
+  /// What Hit 1–4 fire (`Deck.stingers`, the curated table): the stinger move fires one of them
+  /// through `Deck.stinger`, and its log line names it. Empty = "hit n".
+  var stingers: [String] = []
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -406,7 +409,8 @@ public enum Wander {
       let ns = (0..<4).filter { !c.locked(.stinger, "\($0)") }
       guard !ns.isEmpty else { return nil }
       let n = rng.pick(ns)
-      return WanderPlan(kind: .stinger, action: .stinger(n), detail: "hit \(n + 1)")
+      let what = c.stingers.indices.contains(n) ? " · \(c.stingers[n])" : ""
+      return WanderPlan(kind: .stinger, action: .stinger(n), detail: "hit \(n + 1)\(what)")
 
     case .seed:
       var s = nearbySeed(c, &rng)
@@ -656,7 +660,8 @@ extension Deck {
       disabledRoles: disabledRoles, stemsMuted: Set(stemsMuted.keys),
       lockedActions: lockedActions, locks: wander.locks, voices: wanderVoices,
       anchorBPM: wander.anchorBPM, key: wander.key, palette: palette, kit: kit,
-      channels: netProject?.channels ?? [])
+      channels: netProject?.channels ?? [],
+      stingers: stingers.map { $0.kind == .fallback ? "stinger" : $0.label })
   }
 
   /// Wander on or off (`DeckAction.wander`). On, it waits for the next phrase end; the bar it
