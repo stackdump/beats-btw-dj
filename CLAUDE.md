@@ -482,6 +482,23 @@ its copy; the two are now independent. Rules inherited from that split:
   outros hold 2 bars per chord (pad rings of 2 or 4 bars only), a buildup's last half-bar is the V
   (else ♭VII) of what follows, the bar into a chorus plays 2 chords; drops untouched. Section ends
   are `tail` (2 half-bar slots overriding the cycle). `.sectionHarmony` alone is the old plan.
+- 6.4's melody flags are pass stages on slot nets, located by `slotWindows` (`SlotWindows.swift`:
+  which slot net of a role plays which bars of each section, and its ring step there; rings keep
+  song time, so a rewrite works on `ringStart` + offset, mod the ring). Order: `.contour` →
+  `.shape` → `.cadence` → `.hook` → `.motif` → `.answer` → `.bassMotif` → `.approach` → `.legato`.
+- `.shape` (6.4, `MelodyShape.swift`): only off-beat melody notes move — repeats / passing tones by
+  `MelodyBigrams.default` (RS200, `Resources/beats/melody-bigrams.json`, one table), a late peak, a
+  step back after a leap; the bigram step needs a seven-note key.
+- `.hook` (6.4, `Hook.swift`): one seeded chord-tone bar (`buildHook`) on each melody window's first
+  bar, mode per section (`hookModes`); off when compose's own `hook` technique is on.
+- `.answer` (6.4, `Answer.swift`): per section 8-bar pair, bars 1–4 end open (fifth / third), 5–8 on
+  the tonic; a ring step several windows want takes the majority. Pass-side, no runner mapping.
+- `.bassMotif` (6.4, `BassMotif.swift`): bass bar 2 takes bar 1's rhythm by scale steps; walking /
+  bossa exempt. `MusicalityTests`' phrasing A/Bs leave it out of both sides.
+- `.arpStyle` (6.4, `ArpFigure.seeded(_:variant:genre:)`): trance / synthwave / edm figure pools;
+  other genres keep `.arpeggio`'s.
+- `.arpDensity` (6.4, `arpDensityRates`, needs `.arpeggio`): the arp's rate per bar from the melody's
+  onsets; with it `arpeggiate` runs after `.legato`. `arpDensityDirection` is the ear call.
 - `TrackSpec.partSeeds` (bass / kick / snare / hihat / melody / arp → seed) are dj-only: the
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
