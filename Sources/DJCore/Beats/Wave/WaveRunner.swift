@@ -112,6 +112,11 @@ public struct WaveOptions {
   /// (`WaveProject.sampledGroups`, `Loudness.sampledPartDB`). Empty everywhere else.
   var probeLevels: [String: Double] = [:]
   public var onTick: ((WaveRunner) -> Void)?
+  /// Offline only (`GrooveReport`, `djctl render`): called on the render thread with every
+  /// onset the runner plays, at the sample it plays on (`HitRecord`; a held-back groove note
+  /// when it is due). Read once when the runner is made. nil (everywhere but measurement) costs
+  /// one nil check per hit, and the hook never changes what plays.
+  public var onHit: ((HitRecord) -> Void)?
   public init() {}
 }
 
@@ -213,6 +218,9 @@ final class Lane {
   /// Bass / pad voice that dips on the kick (`WaveOptions.duckDepth`); the kick that keys it.
   var ducks = false
   var isKick = false
+  /// What the prepare keyed it by (`kick`, `snare`, `clap`, `hat`, `openhat`, `crash`,
+  /// `tonal`, `v` for a voice override): `HitRecord.kind`.
+  var kind = ""
   /// `.stereo`: side gain of the whole lane, and per voice when its voices spread (empty: all
   /// at `pan`). 0 = centre. `voiceSpread` is each voice's offset at full width (±spread);
   /// `voicePan` what it plays at, narrowed for low notes when the voice is struck.
@@ -223,6 +231,9 @@ final class Lane {
   /// step's mask holds its class. Empty (never rests): fills' and crashes' drums, stingers,
   /// overrides, the live keys.
   var restClass: RestSchedule.Class = []
+  /// `.sectionHarmony`: the lane's group in `WaveProject.harmony` (-1: not moved, e.g. drums
+  /// and the live keys).
+  var harmonyGroup = -1
   /// `.choke`: the open hat a hit on this (closed hat) lane chokes; on the open hat lane,
   /// whether it is being choked and how fast it dies then (per sample).
   var choke: Lane?
@@ -560,6 +571,8 @@ public final class WaveProject: @unchecked Sendable {
   public let tail: MixOutTail?
   /// Where the audio thread is in `rests`; reset when the project is installed or stopped.
   var restCursor = RestSchedule.Cursor()
+  /// The section plan the tonal lanes play through (`.sectionHarmony`); nil = as bound.
+  public let harmony: SectionHarmony?
   /// The room this project plays in (`.space`); nil = dry.
   public let space: SpaceSpec?
   /// The sampler slots of lanes that send to the room.
@@ -578,9 +591,11 @@ public final class WaveProject: @unchecked Sendable {
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
     rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
-    space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil
+    space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil,
+    harmony: SectionHarmony? = nil
   ) {
     self.gain = gain
+    self.harmony = harmony
     self.echo = echo
     self.balance = balance
     self.energy = energy
@@ -650,7 +665,8 @@ public final class WaveProject: @unchecked Sendable {
 private func buildLanes(
   _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
   geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil,
-  rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil
+  rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
+  harmony: SectionHarmony? = nil
 ) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
@@ -731,6 +747,7 @@ private func buildLanes(
           }
         }
         lane.netId = n.id
+        lane.kind = key
         lane.channel = tr.channel
         lane.instrument = tr.instrument
         if stereo {
@@ -766,6 +783,9 @@ private func buildLanes(
         if !rests.isEmpty && override == nil && !g.isStingerNet[n.index] {
           lane.restClass = RestSchedule.Class.of(
             kind: key, group: tr.group ?? n.bundle.riffGroup, net: n.id)
+        }
+        if let harmony, lane.isTonal {
+          lane.harmonyGroup = harmony.groupIndex(NoteLog.groupName(n.bundle, id: n.id)) ?? -1
         }
         kindLane[key] = lanes.count
         kindOrder.append(key)
@@ -817,8 +837,7 @@ private func buildLanes(
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, rests: rests,
     songRests: songRests, tail: tail, space: space ? opts.space ?? .room : nil,
-    echo: echo ? opts.echo : nil,
-    balance: trims.isEmpty ? nil : trims)
+    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony)
   project.sampledGroups = sampledGroups
   return project
 }
@@ -906,6 +925,9 @@ public final class WaveRunner {
   /// Deck frame of the sample being rendered when a tick lands (set by `process` right
   /// before `doTick`): start-of-block frame + offset inside the block.
   private var tickFrame: Int64 = 0
+  /// `startFrame` of the block being processed: + `blockOffset` = the frame of the sample.
+  private var blockStart: Int64 = 0
+  private let onHit: ((HitRecord) -> Void)?
   public var graph: WaveGraph? { current?.graph }
   /// `WaveProject.generation` of the project the clock is running (0: none).
   public var generation: Int32 { current?.generation ?? 0 }
@@ -950,6 +972,11 @@ public final class WaveRunner {
   private var grooveTrans = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
   private var grooveLane = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
   private var grooveVel = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  // for `onHit` only: the tick each held-back note belongs to, and that tick's frame
+  private var grooveTick = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
+  private var grooveGrid = [Int64](repeating: 0, count: WaveRunner.grooveCapacity)
+  /// The note as mapped at the fire's step (`.sectionHarmony`), not at the step it falls due.
+  private var grooveNote = [Int32](repeating: 0, count: WaveRunner.grooveCapacity)
   private var grooveCount = 0
   private var grooveNext = Double.infinity
   /// Sample index within the block being rendered (0 between blocks).
@@ -1009,6 +1036,7 @@ public final class WaveRunner {
     samplers = opts.samplers
     samplersInCurve = opts.samplers != nil && opts.musicality.contains(.loudness)
     grooveOn = opts.musicality.contains(.groove)
+    onHit = opts.onHit
     energyOn = opts.musicality.contains(.energy)
     stereoOn = opts.musicality.contains(.stereo)
     samplerSide = SideHighpass(hz: 150, sampleRate: sampleRate)
@@ -1048,10 +1076,13 @@ public final class WaveRunner {
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
     let songRests = opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality)
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
+    // `.sectionHarmony`: the band moves with the section (a pure function of the played
+    // project, cheap: rebuilt on section jumps rather than carried)
+    let harmony = SectionHarmony.playing(project, fixes: opts.musicality)
     let prepared = buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
       geometry: project, gain: gain, energy: energy, rests: rests, songRests: songRests,
-      tail: opts.tail)
+      tail: opts.tail, harmony: harmony)
     prepared.turntableBrake = opts.turntableBrake
     if measureGain {
       prepared.gain = Loudness.gain(
@@ -1231,9 +1262,13 @@ public final class WaveRunner {
     }
     while g.tick > goal {
       let proj = current
+      let step = g.tick - 1  // the step being played backwards
       let ok = g.unadvance { n, t in
         let li = n.lane[t]
-        if li >= 0, let lanes = proj?.lanes { self.hit(lanes[li], n, t) }
+        if li >= 0, let proj {
+          let lane = proj.lanes[li]
+          self.hit(lane, n, t, note: self.playedNote(proj, lane, n, t, step: step))
+        }
       }
       if !ok {  // the start of the log: the platter stops here
         newPos = Double(g.tick)
@@ -1247,10 +1282,14 @@ public final class WaveRunner {
   }
 
   private func stepForwardScrub(_ g: WaveGraph) {
-    let lanes = current?.lanes ?? []
+    let proj = current
+    let step = g.tick
     g.advance { n, t in
       let li = n.lane[t]
-      if li >= 0 { self.hit(lanes[li], n, t) }
+      if li >= 0, let proj {
+        let lane = proj.lanes[li]
+        self.hit(lane, n, t, note: self.playedNote(proj, lane, n, t, step: step))
+      }
     }
     ticksInBlock += 1
     g.stopRequested = false  // a scratched-over end of song doesn't stop the deck
@@ -1500,9 +1539,30 @@ public final class WaveRunner {
 
   // MARK: onsets
 
-  private func hit(_ lane: Lane, _ n: CompiledNet, _ t: Int, velocity: Int? = nil) {
+  /// The note transition `t` of `n` sounds on `lane` at song step `step`: as bound, or moved
+  /// by the section plan (`.sectionHarmony`). Allocation-free.
+  @inline(__always)
+  private func playedNote(
+    _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, step: Int
+  ) -> Int {
+    let note = n.note[t]
+    guard lane.harmonyGroup >= 0, let h = proj.harmony, !isDrumChannel(Int(n.channel[t])) else {
+      return note
+    }
+    return h.note(note, group: lane.harmonyGroup, step: step)
+  }
+
+  /// `note`: what a tonal lane plays (`playedNote`); a drum lane ignores it.
+  /// `tick` / `gridFrame`: where a held-back groove note was due on the grid (`onHit`); -1 =
+  /// now (the graph's tick, this sample).
+  private func hit(
+    _ lane: Lane, _ n: CompiledNet, _ t: Int, note: Int, velocity: Int? = nil, tick: Int = -1,
+    gridFrame: Int64 = -1
+  ) {
     lane.active = true
-    let w = Double(velocity ?? n.vel[t]) / 127
+    let vel = velocity ?? n.vel[t]
+    if let onHit { logHit(onHit, lane, n, note, vel, tick: tick, gridFrame: gridFrame) }
+    let w = Double(vel) / 127
     if lane.isKick { duckHold = 1 }
     if !lane.isTonal {
       if lane.samplerSlot >= 0 {
@@ -1520,7 +1580,20 @@ public final class WaveRunner {
     }
     let steps = n.durSteps[t]
     let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
-    trigger(lane, note: n.note[t], w: w, durMs: durMs)
+    trigger(lane, note: note, w: w, durMs: durMs)
+  }
+
+  /// `onHit`'s record of a hit (offline only: it builds strings). `note`: as played.
+  private func logHit(
+    _ onHit: (HitRecord) -> Void, _ lane: Lane, _ n: CompiledNet, _ note: Int, _ vel: Int,
+    tick: Int, gridFrame: Int64
+  ) {
+    let frame = blockStart &+ Int64(blockOffset)
+    onHit(
+      HitRecord(
+        frame: frame, gridFrame: gridFrame >= 0 ? gridFrame : frame,
+        tick: tick >= 0 ? tick : current?.graph.tick ?? 0, net: n.id, note: note,
+        channel: lane.channel, kind: lane.kind, velocity: vel))
   }
 
   /// Start a note on a tonal lane: steal the quietest voice (deterministic), continuing from
@@ -1559,7 +1632,7 @@ public final class WaveRunner {
   /// leaves its tick. The jitter is a hash of (tick, net, transition), not a random draw: a
   /// replay plays the same groove.
   private func grooveHit(
-    _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, lane li: Int
+    _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int, lane li: Int, note: Int
   ) {
     let p = proj.graph.project
     let step = proj.graph.tick - 1
@@ -1578,7 +1651,7 @@ public final class WaveRunner {
     let vel = h > 0 ? max(1, min(127, Int((Double(n.vel[t]) + r2 * h * 15).rounded()))) : n.vel[t]
     let delay = delayMs / 1000 * sampleRate
     guard delay >= 1, grooveCount < Self.grooveCapacity else {
-      hit(lane, n, t, velocity: vel)
+      hit(lane, n, t, note: note, velocity: vel)
       return
     }
     let due = clock[clkSamples] + delay
@@ -1587,6 +1660,9 @@ public final class WaveRunner {
     grooveTrans[grooveCount] = Int32(t)
     grooveLane[grooveCount] = Int32(li)
     grooveVel[grooveCount] = Int32(vel)
+    grooveTick[grooveCount] = Int32(truncatingIfNeeded: proj.graph.tick)
+    grooveGrid[grooveCount] = blockStart &+ Int64(blockOffset)
+    grooveNote[grooveCount] = Int32(truncatingIfNeeded: note)
     grooveCount += 1
     if due < grooveNext { grooveNext = due }
   }
@@ -1613,13 +1689,18 @@ public final class WaveRunner {
     while k < grooveCount {
       if grooveDue[k] <= now {
         let n = proj.graph.nets[Int(grooveNet[k])]
-        hit(proj.lanes[Int(grooveLane[k])], n, Int(grooveTrans[k]), velocity: Int(grooveVel[k]))
+        hit(
+          proj.lanes[Int(grooveLane[k])], n, Int(grooveTrans[k]), note: Int(grooveNote[k]),
+          velocity: Int(grooveVel[k]), tick: Int(grooveTick[k]), gridFrame: grooveGrid[k])
         grooveCount -= 1
         grooveDue[k] = grooveDue[grooveCount]
         grooveNet[k] = grooveNet[grooveCount]
         grooveTrans[k] = grooveTrans[grooveCount]
         grooveLane[k] = grooveLane[grooveCount]
         grooveVel[k] = grooveVel[grooveCount]
+        grooveTick[k] = grooveTick[grooveCount]
+        grooveGrid[k] = grooveGrid[grooveCount]
+        grooveNote[k] = grooveNote[grooveCount]
       } else {
         next = min(next, grooveDue[k])
         k += 1
@@ -2140,16 +2221,18 @@ public final class WaveRunner {
     let groove = grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
     // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
     let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
+    let step = g.tick
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 {
         if !resting.isEmpty && !resting.isDisjoint(with: lanes[li].restClass) { return }
+        let note = self.playedNote(proj, lanes[li], n, t, step: step)
         if groove {
-          self.grooveHit(proj, lanes[li], n, t, lane: li)
+          self.grooveHit(proj, lanes[li], n, t, lane: li, note: note)
         } else {
-          self.hit(lanes[li], n, t)
+          self.hit(lanes[li], n, t, note: note)
         }
-        if let ring { self.report(ring, proj, lanes[li], n, t, macro: macro) }
+        if let ring { self.report(ring, proj, lanes[li], n, t, note: note, macro: macro) }
       }
     }
     assert(Int(lastAnchorTick) == g.tick, "advance moved the tick by exactly one")
@@ -2205,7 +2288,7 @@ public final class WaveRunner {
   /// One audible hit, into the fire ring. Allocation-free; a full ring overwrites its oldest.
   private func report(
     _ ring: LatestRing<FireEvent>, _ proj: WaveProject, _ lane: Lane, _ n: CompiledNet, _ t: Int,
-    macro: Bool
+    note: Int, macro: Bool
   ) {
     let steps = n.durSteps[t]
     let durMs = steps > 0 ? steps * 60000 / (clock[clkTempo] * ppq) : n.durMs[t]
@@ -2216,7 +2299,7 @@ public final class WaveRunner {
       FireEvent(
         frame: tickFrame, tick: Int32(truncatingIfNeeded: proj.graph.tick),
         generation: proj.generation, net: Int32(truncatingIfNeeded: n.index),
-        transition: Int32(truncatingIfNeeded: t), note: Int16(truncatingIfNeeded: n.note[t]),
+        transition: Int32(truncatingIfNeeded: t), note: Int16(truncatingIfNeeded: note),
         velocity: UInt8(clamping: n.vel[t]), channel: n.channel[t], durSteps: Float(steps),
         durMs: Float(durMs), flags: flags))
   }
@@ -2247,6 +2330,7 @@ public final class WaveRunner {
     startFrame: Int = 0
   ) {
     ticksInBlock = 0
+    blockStart = Int64(startFrame)
     serviceTempoFx()
     let gain = masterGain * (current?.gain ?? 1)
     // Samplers join the voices before the curve when asked (and the block fits the scratch).

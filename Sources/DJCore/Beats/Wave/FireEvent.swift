@@ -42,7 +42,8 @@ public struct FireEvent: BitwiseCopyable, Sendable {
   public var net: Int32
   /// Index into that net's `transIds`.
   public var transition: Int32
-  /// MIDI note number of the binding.
+  /// MIDI note number as it sounds: the binding's, moved by the section plan under
+  /// `.sectionHarmony` (`WaveProject.harmony`; the net views still show the bound note).
   public var note: Int16
   /// MIDI velocity 0...127 as bound (not scaled).
   public var velocity: UInt8

@@ -329,6 +329,9 @@ its copy; the two are now independent. Rules inherited from that split:
 - `djctl render <genre> <seed> [--fixes none|all|key,…] [--synth] [--out f.wav] [--notes f]`
   renders offline and prints `MusicalityReport` + `AudioMetrics`; `scripts/
   musicality-matrix.py OUTDIR [--sampled]` / `--compare A B` is the 24-track before/after.
+  Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
+  `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
+  runner init, a nil check per hit when unset, never changes the render).
 - Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
@@ -401,6 +404,12 @@ its copy; the two are now independent. Rules inherited from that split:
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
   `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
   `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
+- `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
+  the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
+  builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
+  tonal lane (`Lane.harmonyGroup`) plays through, mapped at the fire's step (the groove queue
+  carries the mapped note); `FireEvent.note` is mapped, live keys aren't, net views show the
+  bound note. Measure with `NoteLog.capture(…, harmony:)` (what `djctl render` does).
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
