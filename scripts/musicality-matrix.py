@@ -75,6 +75,12 @@ COLUMNS = [
     ("microtimingMs", "uTime", "{:5.1f}"),
     # 6.2: the band stop before a chorus (song family; OfflineRender.bandStopDips)
     ("bandStopDipDB", "stopDB", "{:6.1f}"),
+    # M1 (ROADMAP 6.2): form a DJ can mix
+    ("structureOn4Bars", "on4", "{:4.2f}"),
+    ("maxLatenessTicks", "late", "{:4d}"),
+    ("introBars", "intro", "{:5d}"),
+    ("outroBars", "outro", "{:5d}"),
+    ("songMinutes", "min", "{:4.1f}"),
 ]
 
 
@@ -125,8 +131,10 @@ def flat(doc):
               "phraseEndsOnChordTones", "melodyIdeaRepeats", "harmonicCadences",
               "progressions", "sectionChordAgreement", "hasBeat", "answerPhrases",
               "hookRecurrence", "barOneChordTones", "bassIdeaRepeats", "melodyPeakPosition",
-              "leapRecovery"):
+              "leapRecovery", "structureOn4Bars", "maxLatenessTicks", "introBars", "outroBars"):
         row[k] = m.get(k)
+    sec = m.get("songSeconds")
+    row["songMinutes"] = sec / 60 if sec is not None else None
     return row
 
 
