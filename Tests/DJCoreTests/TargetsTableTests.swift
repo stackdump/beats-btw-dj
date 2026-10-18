@@ -93,6 +93,42 @@ import Testing
     }
   }
 
+  /// scripts/references.py's only output into the repo: a band source is "unmeasured" or a
+  /// ref: entry (a family and hashes), never a path or a file name.
+  static let refSource =
+    "^ref:(dance|song|jazz|chill)/[0-9a-f]{8} \\(n=[0-9]+, djctl [A-Za-z0-9._-]+\\)$"
+
+  @Test func bandSourcesNameNoPath() throws {
+    let ref = try Regex(Self.refSource)
+    for m in MixTargets.metrics {
+      for (f, b) in MixTargets.shared.bands[m] ?? [:] {
+        let measured = b.source.wholeMatch(of: ref) != nil
+        #expect(measured || b.source.hasPrefix("unmeasured"), "\(m).\(f): \(b.source)")
+        #expect(measured == (b.band != nil), "\(m).\(f): a band names its references")
+      }
+    }
+  }
+
+  @Test func aWrittenBandParses() throws {
+    let source = "ref:dance/0123abcd (n=4, djctl 1a2b3c4-dirty)"
+    #expect(source.wholeMatch(of: try Regex(Self.refSource)) != nil)
+    let t = try targetsWithBand("lufs", family: "dance", value: -8.4, band: [-9.1, -7.2], source)
+    #expect(t.band("lufs", family: "dance") == -9.1 ... -7.2)
+    #expect(t.bands["lufs"]?["dance"]?.value == -8.4)
+    #expect(t.band("lufs", family: "song") == nil)
+    #expect(throws: (any Error).self) {
+      try targetsWithBand("lufs", family: "dance", value: -8.4, band: [-7.2, -9.1], source)
+    }
+  }
+
+  /// The script guards its own output with the same pattern, and writes only `bands`.
+  @Test func referencesScriptWritesRefSources() throws {
+    let script = try repoText("scripts/references.py")
+    #expect(script.contains("SOURCE.match(src)"))
+    #expect(script.contains("f\"ref:{fam}/{family_hash(docs)} (n={len(docs)}, djctl {build})\""))
+    #expect(script.contains("doc.setdefault(\"bands\", {})"))
+  }
+
   @Test func parseRejectsAMissingPart() throws {
     #expect(throws: (any Error).self) { try targetsWithoutBalancePart("hats") }
     // and the untouched file parses to what `shared` holds
