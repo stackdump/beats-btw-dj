@@ -8,8 +8,8 @@
 // - a sequence is rendered from its steps' dry audio, back to back, so its steps' FX are not in
 //   it (they would have to be baked in, which is the destructive edit this avoids): a new
 //   sequence starts with its own FX off, and an edited one keeps the FX it had;
-// - a clip moved onto deck A or B plays there dry (FX are the loop row's); back under the mixer
-//   it has them again;
+// - a clip moved onto deck A or B keeps them: the deck has a chain of its own (`DeckRenderer`),
+//   set at the load and changed with the clip's; anything else loaded there plays dry;
 // - scenes recall levels and which clips play, not FX: FX are the clip's, like its colour.
 
 extension DJEngine {
@@ -18,10 +18,12 @@ extension DJEngine {
     clip(id)?.fx ?? removedClips.first { $0.clip.id == id }?.clip.fx ?? LoopFX()
   }
 
-  /// Set clip `id`'s FX (clamped into range). A voice playing it changes over smoothly.
+  /// Set clip `id`'s FX (clamped into range). A voice or a deck playing it changes over
+  /// smoothly.
   public func setClipFx(_ id: String, _ fx: LoopFX) {
     let f = fx.clamped
     editClip(id) { $0.fx = f }
+    for d in decks.values where d.clipID == id { d.setClipFx(f) }
     guard let v = loopVoices.firstIndex(where: { $0.clipID == id }) else { return }
     loopChannel.bank?.send(.fx(voice: v, LoopFxParams(f, sampleRate: sampleRate)))
   }

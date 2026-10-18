@@ -153,12 +153,14 @@ public enum DJMusicality {
     /// Saw and square voices as an analogue synth plays them: band-limited oscillators with
     /// every partial that fits under Nyquist (beats' tables stop at the 8th, so a 55 Hz bass has
     /// nothing above 440 Hz), through a lowpass per voice that opens on the note — further the
-    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Applied by the runner.
+    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Trance, edm and
+    /// synthwave's arp takes the pluck envelope (`VoiceDesign.forGenre`). Applied by the runner.
     public static let subtractive = Fixes(rawValue: 1 << 26)
 
     /// Pads and saw leads as two oscillators detuned a few cents apart (`Unison`): a held
     /// chord moves and a lead is full instead of one static oscillator. With `.stereo` the
-    /// pad's pair spreads across the field. Applied by the runner.
+    /// pad's pair spreads across the field (narrower in ambient, `VoiceDesign.forGenre`).
+    /// Applied by the runner.
     public static let unison = Fixes(rawValue: 1 << 27)
 
     /// A tempo-synced ping-pong echo on the lead and arp where the style has one (`EchoSpec`:
@@ -282,6 +284,7 @@ public enum DJMusicality {
   public static func apply(_ project: Project, spec: TrackSpec, fixes: Fixes = .all) -> Project {
     guard !fixes.isEmpty, let genre = BeatsTables.shared.genres[spec.genre] else { return project }
     var p = project
+    if !spec.partSeeds.isEmpty { transplantSeededMelody(&p, spec: spec) }
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
@@ -296,7 +299,7 @@ public enum DJMusicality {
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     let arpGenre = fixes.contains(.arpStyle) ? spec.genre : nil
     if fixes.contains(.arpeggio) && !fixes.contains(.arpDensity) {
-      arpeggiate(&p, seed: spec.seed, genre: arpGenre)
+      arpeggiate(&p, seed: spec.seed(forPart: "arp"), genre: arpGenre)
     }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
@@ -312,8 +315,8 @@ public enum DJMusicality {
     // between touches the arp or the pads).
     if fixes.contains(.arpeggio) && fixes.contains(.arpDensity) {
       arpeggiate(
-        &p, seed: spec.seed, genre: arpGenre,
-        rates: arpDensityRates(p, seed: spec.seed, genre: arpGenre))
+        &p, seed: spec.seed(forPart: "arp"), genre: arpGenre,
+        rates: arpDensityRates(p, seed: spec.seed(forPart: "arp"), genre: arpGenre))
     }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }

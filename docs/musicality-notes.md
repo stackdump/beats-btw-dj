@@ -729,6 +729,29 @@ not yet run (this change was built without renders).
 |---|---|---|---|---|---|---|
 | (pending) | | | | | | |
 
+### 6.4 the bass motif (`.bassMotif`, p64-bass-motif)
+
+The plan was to measure first: leave the pass empty if the baseline's mean `bassIdeaRepeats`
+is ≥ 0.95. The baseline above is still pending (built without renders), so the pass is built
+and the measurement decides whether it earns its place: compare `--fixes all` with
+`all` minus `bassMotif` in the matrix's bidea / root columns.
+
+- `restateBassRhythm` (BassMotif.swift): in each bass ring of whole bars, a 4-bar phrase
+  (2-bar, in a 2-bar ring) whose bar 1 has two notes or more and whose bar 2 plays another
+  rhythm gets bar 1's sixteenths, lengths and velocities in bar 2, each note the same scale
+  steps from bar 2's root (its pad chord's root nearest where bar 2 began) as from bar 1's first
+  note. In key by construction; a note out of the bass's room (E1 … A2 or the part's top,
+  under the pad) folds an octave, and a phrase that cannot (or has a chromatic bar-1 note)
+  stays as composed.
+- A pickup in bar 2's last beat after bar 1's last note (`varyBassFigure`'s pickup) stays, and
+  bar 1 plays it too, so variety's pickup figure survives as a pickup into both bars.
+- Walking and bossa grooves (jazz, blues, lofi, bossa) are exempt. Runs after `varyFigures` /
+  `moveBassOffTheKick`, before `.approach`.
+- `BassMotifTests`: bidea ≥ 0.95 and bassOnRoot no lower than without the flag in 11 figure
+  genres × 2 seeds, every bass note in key; the exempt genres byte-identical with and without
+  it; a hand-set ring for the copy and the pickup. `MusicalityTests`' `phrasing` A/B set now
+  leaves `.bassMotif` out of both sides too.
+
 ## 12. The chill family's beat (`.backbeat`, 2026-10-18)
 
 beats' theme table brings lofi, jazz and bossa's kick and snare in only for buildup / drop /
@@ -764,3 +787,36 @@ Ear-gated: whether lofi reads as boom-bap and jazz as brushes needs listening. T
 `--compare`) has not been run yet: it goes here with the chill rows' `hasBeat`, loudness and
 balance columns. The kick and snare now sound in the level probe and `.balance`'s solos, so the
 chill tracks' gain and part trims move.
+
+## 13. 6.2 layer budget (2026-10-18): at most N melodic parts a section (`.layerBudget`)
+
+- **What**: per section, the melodic parts that play there (`slotWindows` of each role) in
+  `layerPriority` order — by rest class, so bass, melody (and lead), harmony (pad, chords), arp —
+  keep the first `autoLayerBudget[name]` (intro / breakdown / outro 1, verse / buildup /
+  bridge / solo 2, drop / chorus 3, others 2); the rest rest over the whole section
+  (`DJMusicality.layerBudgetRests`, a `RestSchedule` gesture). Both tables are beats' own
+  (`Techniques.swift`), the same rule as the composer's `layerBudget: "auto"` technique.
+- **Deviation from the roadmap's "mute slots" wording**: beats' technique mutes the dropped
+  roles' slots in the structure nets (`applyLayerBudget`); dj does not touch nets (the pass
+  rewrites bindings and markings only, and compose stays beats'), so the parts rest in the
+  runner instead: their nets keep running and only their hits are dropped. `NetSnapshot` and
+  the visuals therefore still show a rested part as playing. Roles that share a rest class
+  count as one part (a lead cannot rest while the melody plays).
+- **Measured**: `djctl render --layers` adds `audio.layersPerSection` (`OfflineRender.
+  layersPerSection`): every melodic part soloed (`MixBalance.solo`) through the whole song with
+  the deck's fixes and rests, synth voices, linear master; a part is a layer in a section where
+  its solo is within 40 dB of the mix (first bar of each section left out for tails).
+- **Risk**: the loudness and balance probes don't see the rests (they measure the busiest
+  section's solos), so a capped drop can sit a little under the old level; check the matrix LUFS.
+- `LayerBudgetTests` (priority, caps on a hand-built project and edm 4242, a rested solo
+  < −80 dB, the layer count with and without the flag).
+
+### Matrix before / after
+
+Not yet run (built in fast mode, without renders): `scripts/musicality-matrix.py` with
+`--fixes all` against `all` minus `layerBudget`, LUFS per genre (±0.5 LU or the shift listed)
+and `djctl render <genre> 42 --layers` per section.
+
+| genre | LUFS before | LUFS after | layers before → after |
+|---|---|---|---|
+| (pending) | | | |
