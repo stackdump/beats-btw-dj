@@ -1074,3 +1074,41 @@ verdict and first wrong are his, left blank here): techno 42, house 42, edm 42, 
 dnb 42, dubstep 42, synthwave 42, lofi 42, jazz 42, funk 42, bossa 42, ambient 42 — every matrix
 genre at seed 42, since the exit is *hummable* for at least half of them; 6.4 is done when the log
 says so, not when the table above is green.
+
+## 17. 6.5 exit (2026-10-18): a beat in every genre, M6 across the matrix
+
+6.5's flags together: `.backbeat` (§12; with brushes on jazz's synth snare, `WaveOptions.brushes`),
+`.feel` (the family's `GrooveTemplate` offsets and velocity scale, and its tempo-scaled Linn swing),
+`.drift` (humanize as seeded 1/f noise on top) and `.sweep` (subtractive voices' filter opening
+through a buildup). The exit is `BeatEveryGenreTests`:
+
+- `everyGenreHasItsBeat`: every fix on, seed 42, `standard`: `hasBeat` = 1 for all 18 genres with
+  a beat style, nil for ambient. Before the pass lofi, jazz and bossa read 0
+  (`BeatTests.surveyEveryGenreBeforeThePass`).
+- `grooveReadsAsPlayed` (per drum genre): the hits the runner played (`HitLog`), every fix, synth
+  voices, from the first section the style expects a beat in, at most 8 bars / 16 s (the suite's
+  runtime cap): none early; hats with more than one velocity a bar position (`voices["hat"]`);
+  drum consistency 0.9…0.99 (the template's pattern with the drift on it, neither a grid nor
+  noise); swing measured on the tonal lanes (they take the swing alone, no template offset), on
+  the family's grid (a sixteenth pair; jazz an eighth pair), within 2 % of
+  `GrooveTemplate.Swing.ratio(bpm:)` at the track's tempo. `GrooveReport.swingRatio` itself mixes
+  the drums' template offsets in, so the matrix's `swing` column is not this number.
+
+### Matrix before / after
+
+```sh
+BEFORE=$(every name in Fixes.named but backbeat,feel,drift,sweep, comma-joined)
+scripts/musicality-matrix.py OUT/before --fixes "$BEFORE"
+scripts/musicality-matrix.py OUT/after
+scripts/musicality-matrix.py --compare OUT/before OUT/after
+```
+
+Columns: `beat` (hasBeat), M6's `velPos` / `gCons` / `swing` / `uTime`, plus loudness and
+`balErr` (the chill kick and snare now sound in the level probe and `.balance`'s solos).
+
+| genre | beat before → after | velPos | gCons | swing | uTime ms | LUFS | balErr |
+|---|---|---|---|---|---|---|---|
+| (pending: not rendered in this pass) | | | | | | | |
+
+The table is filled from the renders, never by hand. Gates beyond the targets: clip 0,
+`WaveOptions()` parity bit-identical (the parity filter), `.groove` alone beats-exact.

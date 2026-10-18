@@ -517,6 +517,12 @@ its copy; the two are now independent. Rules inherited from that split:
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
   transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
+- `.backbeat` (6.5, `Backbeat.swift`, after `.timing`, before `.variety`): lofi / jazz / bossa
+  get a kick and snare wherever `beatStyle` expects a beat, as mute / unmute bindings and rebound
+  figures on existing transitions (never topology; slotted parts skipped). Jazz's synth snare plays
+  `Brush` (`WaveOptions.brushes`, via `forGenre`; never in WaveSynth's Kit table). 6.5's exit is
+  `BeatEveryGenreTests`: `hasBeat` = 1 for every genre with a style, and M6 on the played hits
+  (hat velocities > 1 a position, consistency 0.9…0.99, tonal swing within 2 % of the family's).
 - `.sweep` (`BuildupSweep`, in the runner): a subtractive voice struck in a ramp section
   (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
   `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.
