@@ -42,6 +42,9 @@ public final class DJEngine {
   /// LoopSound.swift); the rest follow `loopQuantum` / `loopFade`.
   var clipQuanta: [String: Int] = [:]
   var clipFades: [String: LoopFade] = [:]
+  /// Clips' own tempo follow, where they have one (LoopFollow.swift); the rest follow
+  /// `loopFollow`.
+  var clipFollows: [String: LoopFollow] = [:]
   public internal(set) var loopKeyLock = false
   public internal(set) var loopFade = LoopFade.declick
   var stretchCache: [String: (bpm: Double, buffer: SampleBuffer)] = [:]

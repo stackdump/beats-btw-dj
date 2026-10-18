@@ -194,7 +194,8 @@ public struct MCPBridge {
       off|10ms|beat|bar}: how loops come in and go out (default 10ms) · clipQuantize {id, beats: \
       1|4|8|16|32 or null}: one loop's own launch boundary (null: the row's loopQuantize; a scene \
       switches on the row's) · clipFade {id, fade: off|10ms|beat|bar or null}: one loop's own \
-      fade (null: the row's loopFade) · tapBars {bars: 1-64 or \
+      fade (null: the row's loopFade) · clipFollow {id, mode: louder|source or null}: whose \
+      tempo one loop follows (null: the row's loopFollow) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
       app's) · voiceTweak {deck, channel, params}: shape a net deck's channel's synth voice \
       live, on the song playing (no reload; channel from dj_state.voices[].channel): params \
