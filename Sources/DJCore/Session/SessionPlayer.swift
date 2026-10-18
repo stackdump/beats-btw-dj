@@ -73,6 +73,9 @@ public final class SessionPlayer {
   public var roleFilter: RoleFilter?
   /// Each deck's wander log after the last `render`: the walk the replay took.
   public private(set) var wanderLogs: [String: [WanderMove]] = [:]
+  /// Called after every block `render` plays, with the engine and the frames rendered so far
+  /// (tests: to see where a replay parts from the live set it was recorded from).
+  var onBlock: ((DJEngine, Int) -> Void)?
 
   /// `samples` resolves a sample's content id (the demo loop is built in).
   public init(
@@ -132,6 +135,7 @@ public final class SessionPlayer {
       if l.isEmpty { break }
       left += l
       right += r
+      onBlock?(dj, left.count)
     }
     wanderLogs = dj.decks.mapValues(\.wander.log)
     left.removeLast(max(0, left.count - session.frames))
