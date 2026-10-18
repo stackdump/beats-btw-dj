@@ -90,7 +90,8 @@ enum VoiceParam: String, CaseIterable {
   func position(_ value: Double) -> Double {
     if self == .lowpass && value <= 0 { return 0 }  // off
     let (lo, hi, log) = span
-    let x = log ? Foundation.log(max(lo, value) / lo) / Foundation.log(hi / lo) : (value - lo) / (hi - lo)
+    let x =
+      log ? Foundation.log(max(lo, value) / lo) / Foundation.log(hi / lo) : (value - lo) / (hi - lo)
     return min(1, max(self == .lowpass ? 0.01 : 0, x))
   }
 
@@ -112,7 +113,9 @@ enum VoiceParam: String, CaseIterable {
     case .lowpass:
       return x <= 0
         ? "Brightness off"
-        : x < 1000 ? String(format: "Brightness %.0f Hz", x) : String(format: "Brightness %.1f kHz", x / 1000)
+        : x < 1000
+          ? String(format: "Brightness %.0f Hz", x)
+          : String(format: "Brightness %.1f kHz", x / 1000)
     case .distortion: return x <= 0 ? "Drive off" : String(format: "Drive %.0f%%", x * 100)
     case .vibratoRate: return x <= 0 ? "Vibrato off" : String(format: "Vibrato %.1f Hz", x)
     case .vibratoDepth: return String(format: "Depth %.0f ¢", 1200 * log2(1 + x))

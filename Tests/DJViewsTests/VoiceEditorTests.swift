@@ -12,10 +12,12 @@ struct VoiceEditorTests {
     dj["A"]!.loadDemo()
     dj["B"]!.loadDemo()
     try dj.start()
-    let m = AppModel(engine: dj, favorites: temporaryFavorites(), voices: temporaryVoiceVariations())
+    let m = AppModel(
+      engine: dj, favorites: temporaryFavorites(), voices: temporaryVoiceVariations())
     m.start()
     _ = try await m.control(
-      "generate", try JSONValue.parse(#"{"deck":"A","genre":"techno","seed":42,"structure":"minimal"}"#))
+      "generate",
+      try JSONValue.parse(#"{"deck":"A","genre":"techno","seed":42,"structure":"minimal"}"#))
     m.poll()
     return m
   }
@@ -57,7 +59,8 @@ struct VoiceEditorTests {
       try #require(m.decks["A"]?.voiceSettings[ch]))
     #expect(m.variations[melody.instrument]?.map(\.name) == ["short zap"])
     #expect(m.variationStore.list(melody.instrument).count == 1, "kept on disk")
-    #expect(m.currentVariation(melody.instrument, m.decks["A"]?.voiceSettings[ch])?.name == "short zap")
+    #expect(
+      m.currentVariation(melody.instrument, m.decks["A"]?.voiceSettings[ch])?.name == "short zap")
     // back to the instrument, then one click on the chip
     m.setVoiceTweak("A", channel: ch, VoiceTweak())
     let v = try #require(m.variations[melody.instrument]?.first)
@@ -79,7 +82,8 @@ struct VoiceEditorTests {
     let out = try await m.control(
       "perform",
       try JSONValue.parse(
-        "{\"action\":{\"op\":\"voiceTweak\",\"deck\":\"A\",\"channel\":\(ch),\"params\":{\"gainDB\":-6}}}"))
+        "{\"action\":{\"op\":\"voiceTweak\",\"deck\":\"A\",\"channel\":\(ch),\"params\":{\"gainDB\":-6}}}"
+      ))
     let after = try #require(out["voices"]?.array?.first { $0["channel"]?.int == ch })
     #expect(after["tweak"]?["gainDB"]?.double == -6)
     await #expect {

@@ -144,11 +144,15 @@ struct FineTune: View {
             .help("Back to the palette's own pick for \(row.role)")
         }
         Spacer()
-        Button(more.contains(row.role) ? "less" : (row.role == "kit" ? "all kits…" : "instruments…")) {
+        Button(
+          more.contains(row.role) ? "less" : (row.role == "kit" ? "all kits…" : "instruments…")
+        ) {
           if more.contains(row.role) { more.remove(row.role) } else { more.insert(row.role) }
         }
         .buttonStyle(.plain).font(.caption2).foregroundStyle(.secondary)
-        .help(row.role == "kit" ? "Every kit installed on this Mac" : "Every instrument for \(row.role)")
+        .help(
+          row.role == "kit" ? "Every kit installed on this Mac" : "Every instrument for \(row.role)"
+        )
       }
       FlowRow(spacing: 4) {
         ForEach(row.choices) { c in

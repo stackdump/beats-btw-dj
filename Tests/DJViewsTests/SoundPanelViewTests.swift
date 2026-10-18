@@ -82,8 +82,10 @@ struct SoundPanelViewTests {
     let list = try await call(m, "palettes", #"{"deck":"A"}"#)
     let ids = (list["palettes"]?.array ?? []).compactMap { $0["id"]?.string }
     #expect(ids == SoundPalette.all.map(\.id))
-    #expect(list["palettes"]?.array?.first { $0["id"]?.string == "retro" }?["localOnly"] == .bool(true))
-    #expect(list["palettes"]?.array?.first { $0["id"]?.string == "studio" }?["playing"] == .bool(true))
+    #expect(
+      list["palettes"]?.array?.first { $0["id"]?.string == "retro" }?["localOnly"] == .bool(true))
+    #expect(
+      list["palettes"]?.array?.first { $0["id"]?.string == "studio" }?["playing"] == .bool(true))
     #expect((list["sound"]?.array ?? []).contains { $0["role"]?.string == "melody" })
     let a = try await call(
       m, "perform", #"{"action":{"op":"setPalette","deck":"A","palette":"synthwave"}}"#)

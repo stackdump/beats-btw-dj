@@ -157,8 +157,9 @@ extension TrackSpec {
   /// (beats' channels: the same in every genre).
   public func withPalette(_ palette: String?) -> TrackSpec {
     let id = SoundPalette.normalized(palette)
-    guard case .net(let s)? = DeckSourceDescriptor.net(self).withPalette(
-      id, channels: Self.soundChannels(genre: genre))
+    guard
+      case .net(let s)? = DeckSourceDescriptor.net(self).withPalette(
+        id, channels: Self.soundChannels(genre: genre))
     else { return self }
     return s
   }

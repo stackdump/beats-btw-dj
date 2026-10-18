@@ -38,22 +38,28 @@ public enum NoteTarget: Equatable, Hashable, Sendable {
 
   var json: JSONValue {
     switch self {
-    case .track(let cid): return .object(JSONObject([("kind", .string("track")), ("cid", .string(cid))]))
+    case .track(let cid):
+      return .object(JSONObject([("kind", .string("track")), ("cid", .string(cid))]))
     case .sample(let id, let file):
       var o = JSONObject([("kind", .string("sample")), ("id", .string(id))])
       if let file { o["file"] = .string(file) }
       return .object(o)
-    case .clip(let id): return .object(JSONObject([("kind", .string("clip")), ("id", .string(id))]))
+    case .clip(let id):
+      return .object(JSONObject([("kind", .string("clip")), ("id", .string(id))]))
     }
   }
 
   init?(json v: JSONValue) {
     switch v["kind"]?.string {
-    case "track": guard let c = v["cid"]?.string else { return nil }; self = .track(cid: c)
+    case "track":
+      guard let c = v["cid"]?.string else { return nil }
+      self = .track(cid: c)
     case "sample":
       guard let id = v["id"]?.string else { return nil }
       self = .sample(id: id, file: v["file"]?.string)
-    case "clip": guard let id = v["id"]?.string else { return nil }; self = .clip(id: id)
+    case "clip":
+      guard let id = v["id"]?.string else { return nil }
+      self = .clip(id: id)
     default: return nil
     }
   }

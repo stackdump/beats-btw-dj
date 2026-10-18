@@ -56,7 +56,8 @@ struct SamplerPartLevelTests {
     bank.measuresPartLevels = false
     let slot = try #require(bank.slot(for: [.gm(0)]))
     #expect(bank.slotPartLevelDB(slot).isEmpty)
-    #expect(SamplerPartLevels.cacheKey(.kit("/x.sf2", bank: 128, program: 0), sampleRate: sr) == nil)
+    #expect(
+      SamplerPartLevels.cacheKey(.kit("/x.sf2", bank: 128, program: 0), sampleRate: sr) == nil)
   }
 
   /// Warm loads read the cache and land on the same levels; the file outlives the bank.
