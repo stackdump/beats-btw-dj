@@ -194,7 +194,9 @@ struct MCPBridgeTests {
       tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
     #expect(text.contains("mixOut {deck, bars? 1-64, default \(MixOutTail.defaultBars)}"))
     #expect(text.contains("mixIn {deck, bars? 1-64, default \(DeckAction.defaultMixInBars)}"))
-    #expect(text.contains("stinger, panic, mixOut, mixIn) need a deck in net mode"))
+    // Master FX run on sample decks too (the user's call), so panic left the net-only list.
+    #expect(text.contains("stinger, mixOut, mixIn) need a deck in net mode"))
+    #expect(text.contains("master-chain macros and panic also work on a sample deck"))
     let mix = try #require(DeckAction.jsonOps.firstIndex(of: "mixOut"))
     #expect(DeckAction.jsonOps[mix + 1] == "mixIn")
   }

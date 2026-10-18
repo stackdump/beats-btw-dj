@@ -401,15 +401,21 @@ struct MasterFxScopeTests {
 }
 
 struct MasterFxSessionTests {
+  // The live decks load with their own options (`Deck.waveOptions`, sampler bank included), as
+  // the app does and as `SessionPlayer` replays a `.load`: prepared with plain `.extended` (no
+  // bank) a track now measures another loudness gain (house/9: 1.499 against 1.520), so the
+  // replay parted from the live set from its first block.
   private static func perform(blocks: Int) throws -> (Session, RenderedAudio) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
     dj.deterministic = true
     dj["A"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate))
+        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate,
+        opts: dj["A"]!.waveOptions))
     dj["B"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate))
+        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate,
+        opts: dj["B"]!.waveOptions))
     try dj.start()
     defer { dj.stop() }
     let router = ControllerRouter(engine: dj)
@@ -447,7 +453,8 @@ struct MasterFxSessionTests {
     dj["A"]!.loadDemo()
     dj["B"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate))
+        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate,
+        opts: dj["B"]!.waveOptions))
     try dj.start()
     let router = ControllerRouter(engine: dj)
     let recorder = try SessionRecorder.start(on: dj)
