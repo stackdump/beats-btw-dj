@@ -3,7 +3,7 @@ import Foundation
 /// The LOOP-record clips on disk, so the row under the mixer comes back on the next launch:
 /// one float WAV per clip, named by its content id, and an index (`library.json`) that keeps
 /// the row's order and each clip's bars, tempo, source, name, colour and FX, its own launch
-/// boundary and fade where it has them (`ClipLaunch`), and the saved scenes (`scenes`, by clip
+/// boundary, fade and tempo follow where it has them (`ClipLaunch`), and the saved scenes (`scenes`, by clip
 /// id).
 ///
 /// Nothing is deleted by taking a clip off the row: its WAV moves into `removed/` with its
@@ -54,7 +54,7 @@ public struct LoopLibrary: Sendable {
       provenance: e["provenance"], color: e["color"]?.string, fx: LoopFX(json: e["fx"]))
   }
 
-  /// A clip's index entry, with its own launch boundary and fade if it has them.
+  /// A clip's index entry, with its own launch boundary, fade and tempo follow if it has them.
   static func entry(_ c: LoopClip, launch: ClipLaunch = ClipLaunch()) -> JSONObject {
     var o = JSONObject([
       ("id", .string(c.id)), ("title", .string(c.title)), ("source", .string(c.source)),
@@ -67,13 +67,15 @@ public struct LoopLibrary: Sendable {
     if c.fx != LoopFX() { o["fx"] = c.fx.json }  // only when set: older indexes read the same
     if let q = launch.quantum { o["quantum"] = .int(q) }  // the same
     if let f = launch.fade { o["fade"] = .string(f.rawValue) }
+    if let f = launch.follow { o["follow"] = .string(f.rawValue) }
     return o
   }
 
   /// The launch boundary and fade a saved entry gives its clip (none when it follows the row).
   static func launch(_ e: JSONValue) -> ClipLaunch {
     ClipLaunch(
-      quantum: e["quantum"]?.int, fade: e["fade"]?.string.flatMap(LoopFade.init(rawValue:)))
+      quantum: e["quantum"]?.int, fade: e["fade"]?.string.flatMap(LoopFade.init(rawValue:)),
+      follow: e["follow"]?.string.flatMap(LoopFollow.init(rawValue:)))
   }
 
   /// The saved clips' own launch boundaries and fades, by clip id (only clips that have one).
@@ -255,16 +257,18 @@ public struct RemovedLoop: Sendable, Equatable, Identifiable {
   }
 }
 
-/// A clip's own launch boundary (beats) and fade, as the library keeps them; nil follows the
-/// row's (`DJEngine.clipQuantum`, `clipFade`).
+/// A clip's own launch boundary (beats), fade and tempo follow, as the library keeps them; nil
+/// follows the row's (`DJEngine.clipQuantum`, `clipFade`, `clipFollow`).
 public struct ClipLaunch: Sendable, Equatable {
   public var quantum: Int?
   public var fade: LoopFade?
-  public init(quantum: Int? = nil, fade: LoopFade? = nil) {
+  public var follow: LoopFollow?
+  public init(quantum: Int? = nil, fade: LoopFade? = nil, follow: LoopFollow? = nil) {
     self.quantum = quantum
     self.fade = fade
+    self.follow = follow
   }
-  public var isEmpty: Bool { quantum == nil && fade == nil }
+  public var isEmpty: Bool { quantum == nil && fade == nil && follow == nil }
 }
 
 extension DJEngine {
@@ -273,7 +277,8 @@ extension DJEngine {
   public var clipLaunch: [String: ClipLaunch] {
     var out: [String: ClipLaunch] = [:]
     for c in clips {
-      let l = ClipLaunch(quantum: clipQuanta[c.id], fade: clipFades[c.id])
+      let l = ClipLaunch(
+        quantum: clipQuanta[c.id], fade: clipFades[c.id], follow: clipFollows[c.id])
       if !l.isEmpty { out[c.id] = l }
     }
     return out
@@ -285,6 +290,7 @@ extension DJEngine {
     for (id, l) in saved where clip(id) != nil {
       if let q = l.quantum { setClipQuantum(id, q) }
       if let f = l.fade { setClipFade(id, f) }
+      if let f = l.follow { setClipFollow(id, f) }
     }
   }
 

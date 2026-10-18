@@ -116,13 +116,20 @@ public enum MixBalance {
   /// together), over `bars` bars of the busiest section of `played` (what a deck plays) with
   /// `opts`' fixes, rendered at `sampleRate`, mono, through a linear master. Parts that do not
   /// play there are left out.
+  ///
+  /// `samplers`: the sampled path, offline — the parts `opts` (a deck's, with its voicing seed)
+  /// picks sampled instruments for play them from this bank, at the bank's rate, through the
+  /// deck's unclipped master (`limit`: the voices at the master gain, the samplers beside
+  /// them). nil: every part on its synth voice.
   public static func measure(
-    _ played: Project, opts: WaveOptions, bars: Int = 8, sampleRate: Double = 24_000
+    _ played: Project, opts: WaveOptions, bars: Int = 8, sampleRate: Double = 24_000,
+    samplers: SamplerBank? = nil
   ) -> [String: Double] {
     let start = Loudness.busiestStart(played)
+    let sampleRate = samplers?.sampleRate ?? sampleRate
     var o = opts
-    o.samplers = nil
-    o.master = "linear"
+    o.samplers = samplers
+    o.master = samplers == nil ? "linear" : "limit"
     // one gain and the whole track's energy curve for every solo, so each sits at its place in
     // the mix (measured from a solo, both would differ)
     o.trackGain = 1
@@ -136,6 +143,8 @@ public enum MixBalance {
       let runner = WaveRunner(sampleRate: sampleRate, opts: o)
       runner.load(
         prepared: WaveRunner.prepare(p, sampleRate: sampleRate, opts: o, startTick: start))
+      // every slot of the bank renders each block: what the last render left ringing stops
+      if let samplers { silence(samplers) }
       runner.play()
       let tempo = played.tempo > 0 ? played.tempo : 120
       let frames = Int(Double(bars) * 4 * 60 / tempo * sampleRate)
@@ -164,5 +173,49 @@ public enum MixBalance {
       if let l = level(solo(played, name)) { out[name] = l - mix }
     }
     return out
+  }
+}
+
+extension MixBalance {
+  /// Offline: sound off and notes off on every slot `bank` plays (CC 120, 123), so the next
+  /// render starts silent.
+  static func silence(_ bank: SamplerBank) {
+    let live = bank.beginBlock()
+    var m = live
+    while m != 0 {
+      let i = m.trailingZeroBitCount
+      m &= m - 1
+      bank.send(i, 0xB0, 120, 0, at: 0)
+      bank.send(i, 0xB0, 123, 0, at: 0)
+    }
+    bank.endBlock()
+  }
+}
+
+/// `.balance` on sampled parts (ROADMAP 6.6): a sampler slot plays at a gain of its own, the
+/// part's trim less how far the instrument sits from its synth voice on that part's probe
+/// (`SamplerBank.slotPartLevelDB`), so a sampled part lands where its trimmed synth voice
+/// would. `WaveRunner.prepare` sets it (`WaveProject.slotGain`); the runner renders each slot
+/// with a gain through its scratch pair (`flushSamplers`).
+public enum SampledBalance {
+  /// A slot moves at most this far (dB) either way.
+  public static let rangeDB = 12.0
+
+  /// The gain (dB) for a slot playing a part trimmed `trimDB` whose instrument sits
+  /// `partLevelDB` from its synth voice (nil: not measured, so the trim alone), within
+  /// ± `rangeDB`.
+  public static func gainDB(trimDB: Double, partLevelDB: Double?) -> Double {
+    min(rangeDB, max(-rangeDB, trimDB - (partLevelDB ?? 0)))
+  }
+
+  /// Where that sampler then sits against its trimmed synth voice, linear: what the loudness
+  /// probe (which can't play samplers) plays the synth voice at in its place. Unmeasured, the
+  /// instrument is taken at the palette's average (`Loudness.sampledPartDB`).
+  public static func probeLevel(
+    trimDB: Double, partLevelDB: Double?, group: String, gainDB: Double
+  ) -> Double {
+    let level =
+      partLevelDB ?? Loudness.sampledPartDB[group] ?? Loudness.sampledPartDB["melody"]!
+    return pow(10, (level + gainDB - trimDB) / 20)
   }
 }

@@ -142,7 +142,8 @@ public struct MCPBridge {
       0 = A} · master {value} · nextTrack {deck} · autoAdvance {deck, on} · \
       section {deck, index} · role {deck, role, on} · roleDisable {deck, role, on}: on = the \
       role stays off through new tracks too, until disabled again with on false · macro {deck, macro: id from \
-      dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
+      dj_catalog, a net macro or a master-chain FX / pitch / feel one; a sample deck takes the \
+      master-chain ones but vinyl-brake, on its next bar} · panic {deck} · \
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       grid {deck, bpm > 0, offset s}: a sample deck's beat grid by hand (the first beat at \
@@ -194,7 +195,8 @@ public struct MCPBridge {
       off|10ms|beat|bar}: how loops come in and go out (default 10ms) · clipQuantize {id, beats: \
       1|4|8|16|32 or null}: one loop's own launch boundary (null: the row's loopQuantize; a scene \
       switches on the row's) · clipFade {id, fade: off|10ms|beat|bar or null}: one loop's own \
-      fade (null: the row's loopFade) · tapBars {bars: 1-64 or \
+      fade (null: the row's loopFade) · clipFollow {id, mode: louder|source or null}: whose \
+      tempo one loop follows (null: the row's loopFollow) · tapBars {bars: 1-64 or \
       null}: what a quick tap of a controller's LOOP records (dj_state.loops.tapBars is the \
       app's) · voiceTweak {deck, channel, params}: shape a net deck's channel's synth voice \
       live, on the song playing (no reload; channel from dj_state.voices[].channel): params \

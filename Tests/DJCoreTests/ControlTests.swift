@@ -199,4 +199,14 @@ struct MCPBridgeTests {
       stock?["inputSchema"]?["properties"]?["action"]?["description"]?.string
         == "list | load | addToRow")
   }
+
+  @Test func dJPerformDocumentsAClipsOwnFollow() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":11,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains("clipFollow {id, mode: louder|source or null}"))
+    #expect(DeckAction.jsonOps.contains("clipFollow"))
+  }
 }

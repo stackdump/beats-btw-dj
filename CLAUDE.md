@@ -177,9 +177,15 @@ its copy; the two are now independent. Rules inherited from that split:
   (`TurntableBrake.swift`, GO-DIVERGENCE.md §5): varispeed on the runner's output, *before* the
   chain (the chain is the mixer's insert and keeps real time), r = 1 − t / (¾ D), silent for the
   last quarter, then `WaveRunner.catchUp` puts the tick clock where an unbraked deck would be
-  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. Master macros are
-  net-only on A/B (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake;
-  on "L" they go to the loops' master bus (below).
+  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. On "L" master
+  macros go to the loops' master bus (below).
+- **Sample decks run the chain too**: each A/B `DeckRenderer` owns a `LoopMasterBus` (`master`,
+  built at deck init), turntable → clip FX → bus → limiter in sample mode; a neutral bus is
+  bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
+  wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
+  `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
+  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
+  on a sample deck before this (then a no-op) now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
   voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
@@ -267,6 +273,11 @@ its copy; the two are now independent. Rules inherited from that split:
   → `SamplerBank.slotPartLevelDB(slot, group:)`. Unity-gain levels are cached by (file, size,
   mtime, rate, probe `version`) in `Application Support/DJApp/sampler-part-levels.json`
   (`$DJ_SAMPLER_PART_CACHE`; empty = memory only); bump `version` when a probe changes.
+  With `.balance` and a bank, each slot plays at its part's trim − that level (± 12 dB,
+  `SampledBalance` → `WaveProject.slotGain`; a shared slot keeps the first net's): non-unity
+  slots render one at a time through the scratch pair in `flushSamplers` (own duck and send),
+  and the loudness probe stands each sampled net in where it now sits (`probeLevels`).
+  `djctl render --balance` solos on the deck's samplers (`MixBalance.measure(samplers:)`).
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and
@@ -642,7 +653,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `build/testmcp/renders/<ts>/`, returns MusicalityReport + AudioMetrics, lufs / peakDB lifted),
   `djtest_matrix` (musicality-matrix.py → summary rows), `djtest_replay` (`journal replay
   --json --render`; `twice` compares state + sha256 — round-robin samplers may differ on
-  purpose), `djtest_journal_list`. Never the speakers, the app or its socket.
+  purpose), `djtest_journal_list`, `djtest_measure` (`djctl measure` + full sha256),
+  `djtest_compare` (sha256 identity + b − a deltas with pass flags, `measure.DEFAULTS`: ±0.5 LU,
+  peaks < 0 dBFS…), `djtest_level_check` (genres × seeds rendered → per-track LUFS, spread).
+  Never the speakers, the app or its socket.
+- `lufs` in every tool is Swift's (`IntegratedLoudness`, BS.1770) and pass flags judge it;
+  `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
 - `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
   never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
   limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
