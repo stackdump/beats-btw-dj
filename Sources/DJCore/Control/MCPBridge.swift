@@ -140,6 +140,8 @@ public struct MCPBridge {
       dj_catalog, a net macro or a master-chain FX / pitch / feel one} · panic {deck} · \
       stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
+      grid {deck, bpm > 0, offset s}: a sample deck's beat grid by hand (the first beat at \
+      offset seconds into the sample), replacing the analysis · \
       queueNext {deck, share: {genre, seed, structure?}} · \
       wander {deck, on}: the deck walks by itself, one move per phrase (a mute, a macro, a \
       stinger, the next seed, another instrument, structure or genre, swapped in at the next \
@@ -147,8 +149,9 @@ public struct MCPBridge {
       dj_state.decks.X.wander shows on, pace, nextMoveInBars, paused (the browser wheel steers \
       and pauses it for a phrase), locks and the log of moves · wanderPace {deck, bars: \
       4|8|16|32} · wanderLock {deck, dimension: genre|tempo|key|structure|instruments|\
-      arrangement|fx|keep:<role>, on}: what the walk must not change (tempo: within 6 % of now; \
-      keep:bass keeps the bass's instrument and never mutes it) · \
+      arrangement|fx|palette|keep:<role>, on}: what the walk must not change (tempo: within 6 % \
+      of now; palette: the deck's sound palette; keep:bass keeps the bass's instrument and never \
+      mutes it) · \
       loopRecord {deck, on, bars?}: LOOP record, held (on true) then let go (on false): the \
       deck's bars from the downbeat before the press to the one after the release become a \
       clip, looping under the mixer (dj_state.loops); with bars (1-64) on the press, a release \
@@ -159,7 +162,9 @@ public struct MCPBridge {
       mixer on the next launch boundary (several loop at once; dj_state.loops.clips[].switchIn \
       is the beats until a waiting one switches) · clipGain {id, value 0…1} · \
       loopQuantize {beats: 1|4|8|16|32}: what loops launch on (a beat, a bar, 2/4/8 bars of the \
-      reference deck, phrases on its bars 1, 5, 9…; default 4) · sceneSave {name}: the loops \
+      reference deck, phrases on its bars 1, 5, 9…; default 4) · loopFollow {mode: \
+      louder|source}: which deck the loops' tempo follows (louder: the louder playing deck, the \
+      default; source: each loop the deck it was taken from) · sceneSave {name}: the loops \
       playing now (and their levels) as a scene (overwrites one of that name) · sceneLaunch \
       {name}: its loops in, every other out, all on the next launch boundary · sceneRename \
       {name, to} · sceneDelete {name} (dj_state.loops.scenes, .quantize) · \

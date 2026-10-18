@@ -48,6 +48,13 @@ extension AppModel {
         throw ControlRequestError.bad(
           "use dj_generate, dj_load_share or dj_load_file to load a deck")
       }
+      if case .clipImport(let id, _, _, let beats, _) = action {
+        guard engine?.sampleLibrary[id] != nil, beats > 0 else {
+          throw ControlRequestError.bad(
+            "clipImport needs the content id of audio already loaded and beats > 0 "
+              + "(dj_stock_loops addToRow puts a stock loop on the row)")
+        }
+      }
       if let deck = a["deck"]?.string {
         let d = try requireDeck(deck)
         let netOnly = [
@@ -68,7 +75,8 @@ extension AppModel {
         case .voiceTweak(_, let ch, _), .voiceSynth(_, let ch, _):
           guard d.channelVoice(ch) != nil else {
             let chs = d.roleVoices.map { "\($0.channel) (\($0.role))" }.joined(separator: ", ")
-            throw ControlRequestError.bad("deck \(deck) has nothing on channel \(ch) (channels: \(chs))")
+            throw ControlRequestError.bad(
+              "deck \(deck) has nothing on channel \(ch) (channels: \(chs))")
           }
         default: break
         }
@@ -79,7 +87,9 @@ extension AppModel {
           throw ControlRequestError.bad(
             "unknown palette \(p) (one of: \(SoundPalette.all.map(\.id).joined(separator: ", ")))")
         }
-        if case .setRoleVoice(_, let role, _) = action, !d.roleSounds.contains(where: { $0.role == role }) {
+        if case .setRoleVoice(_, let role, _) = action,
+          !d.roleSounds.contains(where: { $0.role == role })
+        {
           throw ControlRequestError.bad(
             "deck \(deck) has no role \(role) (roles: "
               + d.roleSounds.map(\.role).joined(separator: ", ") + ")")
@@ -91,6 +101,18 @@ extension AppModel {
           throw ControlRequestError.bad(
             "wanderLock dimension must be one of \(WanderLock.dimensions) or keep:<role>")
         }
+        if case .grid(_, let bpm, let offset) = action {
+          guard d.mode == .sample else {
+            throw ControlRequestError.bad("deck \(deck) is playing a net; grid needs a sample deck")
+          }
+          guard bpm > 0, bpm.isFinite, offset.isFinite else {
+            throw ControlRequestError.bad("grid bpm must be > 0 (and offset a number of seconds)")
+          }
+        }
+      }
+      if case .loopFollow(let mode) = action, LoopFollow(rawValue: mode) == nil {
+        throw ControlRequestError.bad(
+          "loopFollow mode must be one of \(LoopFollow.allCases.map(\.rawValue))")
       }
       // the library's ops go the way the Loops row's buttons do (its Undo, its removed/)
       switch action {

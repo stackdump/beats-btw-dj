@@ -236,6 +236,32 @@ struct AppControlTests {
     await #expect(throws: (any Error).self) { try await call(m, "nope") }
   }
 
+  @Test func loopFollowAndGridGoThroughPerform() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    let rec = try SessionRecorder.start(on: dj)
+    _ = try await call(m, "perform", #"{"action":{"op":"loopFollow","mode":"source"}}"#)
+    #expect(dj.loopFollow == .source)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"grid","deck":"A","bpm":96,"offset":0.25}}"#)
+    #expect(dj["A"]?.beatGrid?.bpm == 96)
+    #expect(dj["A"]?.beatGrid?.offset == 0.25)
+    let kinds = rec.finish().events.map(\.kind)
+    #expect(kinds.contains(.action(.loopFollow(mode: "source"))))
+    #expect(kinds.contains(.action(.grid(deck: "A", bpm: 96, offset: 0.25))))
+    for (params, words) in [
+      (#"{"action":{"op":"loopFollow","mode":"quieter"}}"#, "loopFollow mode"),
+      (#"{"action":{"op":"grid","deck":"A","bpm":0}}"#, "bpm must be > 0"),
+      (#"{"action":{"op":"grid","deck":"B","bpm":-120}}"#, "bpm must be > 0"),
+    ] {
+      await #expect {
+        try await call(m, "perform", params)
+      } throws: { "\($0)".contains(words) }
+    }
+    #expect(dj.loopFollow == .source)
+    #expect(dj["A"]?.beatGrid?.bpm == 96)
+  }
+
   @Test func generateLoadsALiveNetAndMacrosThenWork() async throws {
     let m = try model()
     let b = try await call(
