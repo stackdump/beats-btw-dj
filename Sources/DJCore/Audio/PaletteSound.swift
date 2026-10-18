@@ -23,6 +23,9 @@ public struct TrackSound: Sendable, Equatable {
   public var kit: String?
   /// The composer's instrument, kept when a pick or a palette's synth voice replaced it.
   public var composed: String?
+  /// A stinger net's curated one-shot (`StingerAssignment.option`, `Project.curateStingers`):
+  /// played instead of the palette's pick, under the user's override. nil = none.
+  public var curated: String?
 
   public init() {}
 }
@@ -60,7 +63,9 @@ extension Project {
         t.sound.kit = nil
       } else {
         if let c = t.sound.composed, !t.picked { t.instrument = c }
-        let opt = t.sound.override ?? palette?.pick(role: pool, key: key, seed: seed, dir: dir)
+        let opt =
+          t.sound.override ?? (pool == "stinger" ? t.sound.curated : nil)
+          ?? palette?.pick(role: pool, key: key, seed: seed, dir: dir)
         t.sound.option = opt
         t.sound.kit = nil
         if let opt, let name = SoundPalette.synthName(opt), !t.picked {

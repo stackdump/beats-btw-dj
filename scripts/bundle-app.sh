@@ -17,6 +17,7 @@ cp "$bin/DJApp" "$app/Contents/MacOS/DJApp"
 cp -R Sources/DJCore/Resources/profiles "$app/Contents/Resources/profiles"
 cp -R Sources/DJCore/Resources/beats "$app/Contents/Resources/beats"
 cp -R Sources/DJCore/Resources/voices "$app/Contents/Resources/voices"
+cp -R Sources/DJCore/Resources/stingers "$app/Contents/Resources/stingers"
 
 # Build id, read back by BuildInfo: the commit, "-dirty" with tracked changes; "unknown"
 # outside a git checkout.

@@ -224,7 +224,10 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
   private static let optionCache = LockedBox<[String: String?]>([:])
 
   /// Look at what is installed again (after `make soundfonts` or `djctl minecraft import`).
-  public static func rescan() { optionCache.withLock { $0 = [:] } }
+  public static func rescan() {
+    optionCache.withLock { $0 = [:] }
+    StingerCuration.clearCache()
+  }
 
   static func check(option: String, role: String, dir: String) -> String? {
     let fm = FileManager.default
@@ -284,6 +287,8 @@ public struct SoundPalette: Sendable, Equatable, Identifiable {
     if InstrumentTable.shared.entries[name] != nil || VoiceCatalog.shared.categoryOf[name] != nil {
       return true
     }
+    // beats' stinger voices (airhorn, subdrop, booj…) are in no genre's set, only the stingers'
+    if name != "unbound", BeatsTables.shared.stingerInstrumentSet.contains(name) { return true }
     return BeatsTables.shared.instrumentSets.values.contains { set in
       set.values.contains { $0.contains(name) }
     }

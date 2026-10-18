@@ -967,6 +967,8 @@ extension AppModel {
       if let c = s.currentSection { o["currentSection"] = .int(c) }
       o["roles"] = .object(JSONObject(s.roles.map { ($0, .bool(s.rolesOn.contains($0))) }))
       o["beatInBar"] = .int(s.beatInBar)
+      // what Hit 1–4 fire: curated from the genre and palette (StingerCuration)
+      o["stingers"] = .array(d.stingers.map(\.json))
       // the macros in effect: net ones, then the master chain's
       o["macrosRunning"] = .array(
         (NetMacro.allCases.filter { s.macroPulse.isRunning($0) }.map(\.id)

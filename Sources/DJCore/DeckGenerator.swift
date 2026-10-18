@@ -178,9 +178,15 @@ public final class PreparedTrack: @unchecked Sendable {
     o.voicingSeed = seed
     switch source {
     case .net(let spec):
-      played =
+      var p =
         opts.musicality.isEmpty
         ? project : DJMusicality.apply(project, spec: spec, fixes: opts.musicality)
+      // Hit 1–4 curated for the genre and palette: on what plays, never on the composition
+      if let content = opts.stingers {
+        p.curateStingers(
+          p.resolvedStingers(genre: spec.genre, seed: seed, installed: content), seed: seed)
+      }
+      played = p
       passApplied = !opts.musicality.isEmpty
       o = o.forGenre(spec.genre).forPalette(project.palette, genre: spec.genre)
     default:

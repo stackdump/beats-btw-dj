@@ -147,7 +147,9 @@ public struct MCPBridge {
       role stays off through new tracks too, until disabled again with on false · macro {deck, macro: id from \
       dj_catalog, a net macro or a master-chain FX / pitch / feel one; a sample deck takes the \
       master-chain ones (vinyl-brake too), on its next bar} · panic {deck} · \
-      stinger {deck, n 0-3} · sync {deck, align: beat|bar|tempo} \
+      stinger {deck, n 0-3}: Hit n+1, curated from the genre and palette (a one-shot, a macro \
+      or a loop on the loop row; dj_state.decks.X.stingers says which) · \
+      sync {deck, align: beat|bar|tempo} \
       · quantize {deck, mode: off|beat|bar} · follow {deck, leader: deck or null} · \
       grid {deck, bpm > 0, offset s}: a sample deck's beat grid by hand (the first beat at \
       offset seconds into the sample), replacing the analysis · \
