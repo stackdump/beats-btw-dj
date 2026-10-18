@@ -217,7 +217,10 @@ public enum DJMusicality {
     /// rolls up and down in sixteenths, synthwave climbs in eighths with octave jumps, edm
     /// plays up or broken sixteenths; other genres keep `.arpeggio`'s pool (house has no arp).
     public static let arpStyle = Fixes(rawValue: 1 << 40)
-    /// The arp rate follows the phrase's density. Runner (p64-arp-density).
+    /// The arp's rate follows the phrase's density, bar by bar (`arpDensityRates`,
+    /// p64-arp-density): sixteenths under a busy melody bar, eighths under a sparse one,
+    /// quarters where it rests, the section's energy where no melody plays, a step busier in
+    /// each phrase's fourth bar and in buildups. Needs `.arpeggio`.
     public static let arpDensity = Fixes(rawValue: 1 << 41)
     /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`, p65-chill-backbeat).
     public static let backbeat = Fixes(rawValue: 1 << 42)
@@ -287,8 +290,9 @@ public enum DJMusicality {
     if fixes.contains(.variety) { varyFigures(&p, genre: genre, spec: spec) }
     if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
-    if fixes.contains(.arpeggio) {
-      arpeggiate(&p, seed: spec.seed, genre: fixes.contains(.arpStyle) ? spec.genre : nil)
+    let arpGenre = fixes.contains(.arpStyle) ? spec.genre : nil
+    if fixes.contains(.arpeggio) && !fixes.contains(.arpDensity) {
+      arpeggiate(&p, seed: spec.seed, genre: arpGenre)
     }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
@@ -300,6 +304,13 @@ public enum DJMusicality {
     if fixes.contains(.bassMotif) { restateBassRhythm(&p, genre: genre, spec: spec) }
     if fixes.contains(.approach) { approachChordChanges(&p, genre: genre) }
     if fixes.contains(.legato) { holdMelodyNotes(&p) }
+    // After every melody rewrite, so the arp follows the melody as it plays (nothing in
+    // between touches the arp or the pads).
+    if fixes.contains(.arpeggio) && fixes.contains(.arpDensity) {
+      arpeggiate(
+        &p, seed: spec.seed, genre: arpGenre,
+        rates: arpDensityRates(p, seed: spec.seed, genre: arpGenre))
+    }
     if fixes.contains(.dynamics) { accentByMeter(&p) }
     if fixes.contains(.fills) { playFills(&p, genre: genre) }
     if fixes.contains(.buildup) { rollIntoDrops(&p, genre: genre) }
@@ -965,19 +976,10 @@ public enum DJMusicality {
   /// mid/side pan, and `spread`, a tonal lane's voices alternating that far either side of it
   /// (a chord's notes across the field; an arp's successive notes left, right, left), the
   /// runner narrowing it for notes below G4 so nothing at or under E3 leaves the middle. `kind`
-  /// is the lane's drum kind or "tonal"; `group` the net's part.
+  /// is the lane's drum kind or "tonal"; `group` the net's part. From `targets.json`'s `stereo`
+  /// (`MixTargets`): hats 0.3 right, crash 0.3 left, harmony spread 0.5, arp 0.45.
   public static func stereoPlacement(kind: String, group: String) -> (pan: Double, spread: Double) {
-    switch kind {
-    case "hat", "openhat": return (0.3, 0)
-    case "crash": return (-0.3, 0)
-    case "tonal":
-      switch group {
-      case "harmony": return (0, 0.5)
-      case "arp": return (0, 0.45)
-      default: return (0, 0)
-      }
-    default: return (0, 0)
-    }
+    MixTargets.shared.placement(kind: kind, group: group)
   }
 
   // MARK: ducking
@@ -1247,7 +1249,12 @@ public enum DJMusicality {
   /// eighth: seeded from the track's seed and the slot's variant), one step long, at the
   /// velocity it had. Bars it left silent stay silent: the arrangement's phrasing is kept, the
   /// notes are the chord's. With `genre` (`.arpStyle`) the figure is drawn from its pool.
-  static func arpeggiate(_ p: inout Project, seed: Double, genre: String? = nil) {
+  ///
+  /// With `rates` (`.arpDensity`: net → ring bar → steps between notes) a bar listed there
+  /// plays at that rate instead of the figure's.
+  static func arpeggiate(
+    _ p: inout Project, seed: Double, genre: String? = nil, rates: [String: [Int: Int]]? = nil
+  ) {
     let (chords, padBars) = padChords(p)
     guard padBars > 0 else { return }
     for id in p.nets.keys {
@@ -1277,7 +1284,7 @@ public enum DJMusicality {
           n += 1
         }
         guard ladder.count == figure.span else { continue }
-        for s in stride(from: 0, to: 16, by: figure.rate) {
+        for s in stride(from: 0, to: 16, by: rates?[id]?[bar] ?? figure.rate) {
           var b = template
           b.note = max(0, min(127, ladder[figure.tone(s)] + figure.octave(s)))
           b.velocity = velocity
@@ -1290,6 +1297,112 @@ public enum DJMusicality {
       nb.bindings = bound
       p.nets[id] = nb
     }
+  }
+
+  // MARK: arp density
+
+  /// Which way the arp's density goes against the melody's: 1 follows it (a busy melody bar,
+  /// a busy arp), -1 answers it (the arp fills where the melody rests). The one place the
+  /// direction is decided; it's an ear call.
+  static let arpDensityDirection = 1
+  /// Steps between arp notes at each density level: quarters, eighths, sixteenths.
+  static let arpDensityLevels = [4, 2, 1]
+  /// Melody onsets in a bar from which it counts as busy (more than one a beat).
+  static let arpBusyOnsets = 5
+  /// Section energy (the feel curve's, over the loudest section's) from which the arp plays
+  /// eighths, and sixteenths, where no melody plays.
+  static let arpEnergyLevels = (eighths: 0.45, sixteenths: 0.75)
+
+  /// `.arpDensity`'s rate for every bar of every arp slot ring that plays (net → ring bar →
+  /// steps between notes). A song bar's level: where a melody slot plays (`slotWindows`), its
+  /// onsets in that bar (none: quarters, fewer than `arpBusyOnsets`: eighths, else
+  /// sixteenths; turned round when `arpDensityDirection` is -1); where none does, the
+  /// section's feel-curve energy; with neither (a loop), the figure's own rate. Then a level
+  /// up in the fourth bar of each four (rising into the phrase's end) and in a buildup
+  /// (`EnergyCurve.rampSections`), at most sixteenths. A ring bar heard in several song bars
+  /// (a section played twice) takes their mean level. Bars the slot leaves silent stay silent
+  /// (`arpeggiate` only rewrites bars that had notes).
+  static func arpDensityRates(_ p: Project, seed: Double, genre: String?) -> [String: [Int: Int]] {
+    let melody = melodyOnsetsByBar(p)
+    let energy = sectionEnergy(p)
+    var sectionStart: [Int] = []
+    var at = 0
+    for s in p.structure {
+      sectionStart.append(at)
+      at += s.steps
+    }
+    let top = arpDensityLevels.count - 1
+    var out: [String: [Int: Int]] = [:]
+    for (id, windows) in slotWindows(p, role: "arp") {
+      guard let nb = p.nets[id], nb.transitions.count >= 16 else { continue }
+      let figure = ArpFigure.seeded(seed, variant: nb.riffVariant, genre: genre)
+      let base = arpDensityLevels.firstIndex(of: figure.rate) ?? top
+      let length = nb.transitions.count
+      var levels: [Int: [Int]] = [:]
+      for w in windows {
+        let ringLength = w.ringLength ?? length
+        for step in stride(from: w.start, to: w.end, by: 16) {
+          let bar = step / 16
+          var level: Int
+          if let n = melody[bar] {
+            level = n == 0 ? 0 : n < arpBusyOnsets ? 1 : 2
+            if arpDensityDirection < 0 { level = top - level }
+          } else if let e = energy?[w.section] ?? nil {
+            level = e >= arpEnergyLevels.sixteenths ? 2 : e >= arpEnergyLevels.eighths ? 1 : 0
+          } else {
+            level = base
+          }
+          if (step - sectionStart[w.section]) / 16 % 4 == 3 { level += 1 }
+          if EnergyCurve.rampSections.contains(w.sectionName) { level += 1 }
+          let ring = ((w.ringStart ?? w.start) + step - w.start) % ringLength
+          levels[ring / 16, default: []].append(min(top, level))
+        }
+      }
+      out[id] = levels.mapValues { ls in
+        arpDensityLevels[Int((Double(ls.reduce(0, +)) / Double(ls.count)).rounded())]
+      }
+    }
+    return out
+  }
+
+  /// Melody onsets (distinct steps with a note) in each song bar a melody slot plays in.
+  static func melodyOnsetsByBar(_ p: Project) -> [Int: Int] {
+    var out: [Int: Int] = [:]
+    for (id, windows) in slotWindows(p, role: "melody") {
+      guard let nb = p.nets[id], nb.transitions.count > 0 else { continue }
+      let onsets = Set(ringNotes(nb).map(\.step))
+      for w in windows {
+        let length = w.ringLength ?? nb.transitions.count
+        for step in stride(from: w.start, to: w.end, by: 16) {
+          let ring = ((w.ringStart ?? w.start) + step - w.start) % length
+          let n = onsets.filter { ($0 - ring + length) % length < 16 }.count
+          out[step / 16, default: 0] += n
+        }
+      }
+    }
+    return out
+  }
+
+  /// Each section's energy (its feel-curve `x`) over the most energetic section's, by
+  /// structure index (nil for a section it doesn't mark); nil without a feel curve or with no energy in it. The composer marks
+  /// each section name once, at its first start (as `EnergyCurve` reads it).
+  static func sectionEnergy(_ p: Project) -> [Double?]? {
+    guard p.structure.count > 1, let feel = p.nets["feel-curve"] else { return nil }
+    var x: [Int: Double] = [:]
+    for (t, c) in feel.controlBindings.pairs where c.action == "set-feel" {
+      guard t.hasPrefix("ft"), let step = Int(t.dropFirst(2)),
+        let v = c.macroParams?["x"]?.double
+      else { continue }
+      x[step] = v
+    }
+    var byName: [String: Double] = [:]
+    var at = 0
+    for s in p.structure {
+      if byName[s.name] == nil, let v = x[at] { byName[s.name] = v }
+      at += s.steps
+    }
+    guard let peak = byName.values.max(), peak > 0 else { return nil }
+    return p.structure.map { s in byName[s.name].map { min(1, $0 / peak) } }
   }
 
   // MARK: shared

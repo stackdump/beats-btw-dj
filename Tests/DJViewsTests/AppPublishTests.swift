@@ -58,6 +58,35 @@ struct AppPublishTests {
     #expect(m.status.contains("mirror still syncing"))
   }
 
+  @Test func aSetWithAStockLoopOnTheRowIsNeverPublished() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj)
+    m.start()
+    let rec = try SessionRecorder.start(on: dj)
+    let tone = (0..<44_100).map { Float($0 % 100) / 500 - 0.1 }  // a 220 Hz saw
+    let audio = SampleBuffer(left: tone, right: tone, sampleRate: 22_050)
+    // what LoopProvenance.stock writes, as far as the refusal cares
+    let provenance = try JSONValue.parse(#"{"op":"import","kind":"stock","title":"Tone"}"#)
+    dj.perform(
+      .clipImport(id: "", title: "Tone", bpm: 0, beats: 4, provenance: provenance), buffer: audio)
+    m.lastSessionValue = rec.finish()
+    let blobs = makeScratchDir()
+    defer { removeTree(blobs) }
+    await m.publish(
+      options: .init(includeAudio: false, allowLocalOnly: true),
+      transport: DirectoryTransport(path: blobs),
+      probe: PublicProbe(attempts: 1, interval: 0, head: { _ in 200 }))
+    guard case .failed(let why) = m.publishState else {
+      Issue.record("expected .failed, got \(m.publishState)")
+      return
+    }
+    #expect(why.contains("stock loops"))
+    #expect(listDirectory(blobs).isEmpty, "nothing was staged")
+  }
+
   struct Refusing: CDNTransport {
     func stage(_ bundle: SessionBundle) throws {
       throw PublishError.commandFailed("stage session.json", 255, "ssh: connection refused")

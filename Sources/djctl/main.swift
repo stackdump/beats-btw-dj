@@ -655,6 +655,9 @@ case "render":
   }
   let dips = render.preDropDips(track.played)
   if !dips.isEmpty { audio["preDropDipDB"] = round3(dips.reduce(0, +) / Double(dips.count)) }
+  // `.bandStop`: the beat before each chorus against the one before it, song family only
+  let stops = render.bandStopDips(track.played, genre: spec.genre)
+  if !stops.isEmpty { audio["bandStopDipDB"] = round3(stops.reduce(0, +) / Double(stops.count)) }
   // --room: render it again without `.space`; what the room adds, against the dry mix
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts

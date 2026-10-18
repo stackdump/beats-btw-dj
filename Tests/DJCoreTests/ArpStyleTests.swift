@@ -83,12 +83,15 @@ struct ArpStyleTests {
   @Test(arguments: ["trance", "edm", "synthwave"])
   func playedArpsKeepTheChords(genre: String) throws {
     for seed in [7.0, 42] {
-      let p = played(genre, seed)
+      // the figure's own rate (`.arpDensity` varies it bar by bar: ArpDensityTests)
+      let p = played(genre, seed, fixes: .all.subtracting(.arpDensity))
       #expect(try #require(report(p).arpChordTones) == 1, "\(genre)/\(seed)")
       let arp = NoteLog.capture(p).filter { $0.group == "arp" }
       #expect(!arp.isEmpty, "\(genre)/\(seed)")
-      let plain = NoteLog.capture(played(genre, seed, fixes: .all.subtracting(.arpStyle)))
-        .filter { $0.group == "arp" }
+      let plain = NoteLog.capture(
+        played(genre, seed, fixes: .all.subtracting([.arpStyle, .arpDensity]))
+      )
+      .filter { $0.group == "arp" }
       #expect(
         arp.map { [$0.tick, $0.note] } != plain.map { [$0.tick, $0.note] }, "\(genre)/\(seed)")
       for (_, bar) in Dictionary(grouping: arp, by: { ($0.tick - 1) / 16 }) {
