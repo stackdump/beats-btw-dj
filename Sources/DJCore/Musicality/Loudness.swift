@@ -13,7 +13,7 @@ public enum Loudness {
   /// voices after the master gain: calibrated so a whole track plays at the app's reference
   /// (`LevelMatch.referenceLUFS`, integrated; the probe's two bars of the busiest section read
   /// about 0.4 dB under a whole track's integrated loudness, measured over six genres). The deck's
-  /// `PeakLimiter` holds the peaks this brings over −1 dBFS. (Was −18 under beats' tanh curve:
+  /// `PeakLimiter` holds the peaks this brings over −1 dBTP. (Was −18 under beats' tanh curve:
   /// −17…−22 LUFS, about 10 dB under a stock loop.)
   public static let targetDB = LevelMatch.referenceLUFS - 0.4
   /// The gain stays within −12…+18 dB (the sparsest genres — lofi, ambient — need about +13 at

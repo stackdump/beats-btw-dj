@@ -384,8 +384,8 @@ its copy; the two are now independent. Rules inherited from that split:
   and fader. Net decks: `.loudness` (`Loudness.targetDB` = reference − 0.4, calibrated on whole
   songs; the probe plays sampled parts at `Loudness.sampledPartDB` under their synth voice) and,
   with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
-  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
-  `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
+  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBTP from BS.1770's 4× FIR,
+  `lookahead` 1.5 ms + 12 samples, uncompensated; preallocated, `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
   shares) measured once per buffer (`SampleBuffer.level`, cached; on first read, so only with
   auto-gain on; the app's favorite / stock-loop decode tasks read it off the main thread, a plain
   file load (`AppModel.load(_:url:)`) decodes and measures on it; ten minutes take ~0.16 s in
@@ -399,7 +399,7 @@ its copy; the two are now independent. Rules inherited from that split:
   nil / −200 for silence) and its short-term form `LoudnessMeter`. Clips on a deck (`loadClip`) keep their level: a take is the deck
   after its EQ. `Deck.shortTermLUFS` / `momentaryLUFS` (pre-EQ meter in `DeckRenderer`) and
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
-  percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
+  percentiles, output `truePeakDBTP`); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
   each file's level and auto-gain, then the spread before / after against each one's target and
   the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp). The loop channel
   starts at trim −3 dB (`DJEngine.loopChannelGain` = gain 0.25, trim 1/√2: the centred
