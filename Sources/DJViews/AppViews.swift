@@ -812,23 +812,27 @@ public final class AppModel {
   /// Route to the Inpulse (on) or back to stereo (off); a no-op when already there.
   func routeInpulseOutput(_ on: Bool) async {
     guard let dj, on != inpulseRouted else { return }
-    dj.stop()
-    do {
-      if inpulseRouted {
-        try dj.disableCueRouting()
+    // In a main-actor Task (as the toggle always did): `dj` crosses into the nonisolated
+    // `enableCueOutput` from the Task's region, which strict concurrency accepts.
+    await Task { @MainActor in
+      dj.stop()
+      do {
+        if inpulseRouted {
+          try dj.disableCueRouting()
+          inpulseRouted = false
+        } else if let dev = findInpulse() {
+          try await dj.enableCueOutput(device: dev)
+          inpulseRouted = true
+        }
+        try dj.start()
+        status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
+      } catch {
+        status = "cue output: \(error)"
+        try? dj.disableCueRouting()
         inpulseRouted = false
-      } else if let dev = findInpulse() {
-        try await dj.enableCueOutput(device: dev)
-        inpulseRouted = true
+        try? dj.start()
       }
-      try dj.start()
-      status = inpulseRouted ? "Inpulse out: master 1/2, cue 3/4" : "\(Int(dj.sampleRate)) Hz"
-    } catch {
-      status = "cue output: \(error)"
-      try? dj.disableCueRouting()
-      inpulseRouted = false
-      try? dj.start()
-    }
+    }.value
   }
 
   func loadDemo(_ deck: String) {
