@@ -164,7 +164,7 @@ struct ModelPreparedTests {
     #expect(
       m.status.hasPrefix("model · rendering ") && m.status.hasSuffix(" kernels…"), "\(m.status)")
     #expect(!m.hasTables, "nothing is deposited until a lane's table is in")
-    m.waitForKernels()
+    m.waitForKernels(timeout: coldKernelTimeout)
     #expect(m.tablesReady)
     #expect(m.status.hasPrefix("model · ") && m.status.hasSuffix(" ms)"), "\(m.status)")
     #expect(m.kernelCount >= 5 && m.kernelCount <= 5 * 3)
@@ -179,7 +179,7 @@ struct ModelPreparedTests {
     let m = ModelEngine(engine: nil, cache: cache)
     m.setLanes(a)
     m.setLanes(b)  // the job for `a` is cancelled; its result must never be adopted
-    m.waitForKernels()
+    m.waitForKernels(timeout: coldKernelTimeout)
     #expect(m.lanes == b && m.tablesReady)
     for (i, lane) in b.enumerated() {
       let wanted = ModelKernels.laneKernelSpecs(for: lane).map(\.note)
