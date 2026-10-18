@@ -90,6 +90,12 @@ extension DJEngine {
     .loopFollow(mode: LoopFollow.louder.rawValue),
   ]
 
+  /// The row-wide settings back to a fresh engine's (`defaultLoopSettings`, FX link off).
+  func resetLoopSettings() {
+    for a in Self.defaultLoopSettings { applyAction(a) }
+    setLoopFxLink(false)
+  }
+
   // MARK: countdown
 
   /// The deck frame a waiting clip switches at: comes in (`.starting`) or goes out
@@ -182,6 +188,9 @@ extension DJEngine {
   }
 
   public func deleteScene(_ name: String) { scenes.removeAll { $0.name == name } }
+
+  /// Every scene gone (a reset, `DJEngine.reset(to:clip:)`).
+  func clearScenes() { scenes = [] }
 
   /// Put saved scenes back (after any already there; a name already taken is skipped).
   public func restoreScenes(_ restored: [LoopScene]) {

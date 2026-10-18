@@ -422,6 +422,26 @@ extension DJEngine {
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
   }
 
+  /// Clear the row for a reset (`DJEngine.reset(to:clip:)`): every loop out now, on a short
+  /// fade (a voice keeps its clip id until the fade is over, so a clip put back under the same
+  /// id picks its voice up again), takes in progress dropped, and every clip off the row and
+  /// forgotten — not remembered as removed (the library's files are not touched), with no level,
+  /// mute, solo or key lock kept. The voices' buffers retire through their rings when the next
+  /// load replaces them, as on any load.
+  func clearLoopRow() {
+    for id in Set(loopVoices.compactMap(\.clipID)) { stopLoop(id, now: true) }
+    loopTakes = [:]
+    clips = []
+    removedClips = []
+    clipGains = [:]
+    clipMutes = []
+    clipSolos = []
+    clipKeyLocks = [:]
+    stretchCache = [:]
+    loopCount = 0
+    pushClipLevels()
+  }
+
   /// Put clip `id` on `deck`. On "L" it joins the loops playing under the mixer (from the next
   /// downbeat, `setLooping`). On A or B it loads there as a looping sample with its grid, in
   /// time with the other deck, keeping that deck's transport; it is moved, not copied, so it
