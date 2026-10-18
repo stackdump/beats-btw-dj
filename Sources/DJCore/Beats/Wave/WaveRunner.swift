@@ -92,6 +92,9 @@ public struct WaveOptions {
   /// The parts' trims (`DJMusicality.Fixes.balance`, dB by `MixBalance` part) to prepare with
   /// instead of measuring them: another start of the same song reuses the playing project's.
   public var trackBalance: [String: Double]?
+  /// The rest schedule (`RestSchedule.build`) to prepare with instead of building one: another
+  /// start of the same song reuses the playing project's.
+  public var trackRests: RestSchedule?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -212,8 +215,10 @@ final class Lane {
   var pan = 0.0
   var voiceSpread: [Double] = []
   var voicePan: [Double] = []
-  /// `.dropGap`: a rhythm-section lane (non-fill drums, bass) that rests in the gap before a drop.
-  var gapped = false
+  /// What the lane is for the rest schedule (`WaveProject.rests`): it drops its hits while the
+  /// step's mask holds its class. Empty (never rests): fills' and crashes' drums, stingers,
+  /// overrides, the live keys.
+  var restClass: RestSchedule.Class = []
   /// `.choke`: the open hat a hit on this (closed hat) lane chokes; on the open hat lane,
   /// whether it is being choked and how fast it dies then (per sample).
   var choke: Lane?
@@ -542,8 +547,10 @@ public final class WaveProject: @unchecked Sendable {
   /// How far bass and pad dip on each kick (0: no ducking), and the sampler slots they play.
   public let duckDepth: Double
   let duckSlots: UInt64
-  /// First step of each drop gap (`DJMusicality.dropGaps`), ascending; empty without `.dropGap`.
-  public let gaps: [Int]
+  /// When which lanes rest (`.dropGap` and 6.2's gestures); empty = none.
+  public let rests: RestSchedule
+  /// Where the audio thread is in `rests`; reset when the project is installed or stopped.
+  var restCursor = RestSchedule.Cursor()
   /// The room this project plays in (`.space`); nil = dry.
   public let space: SpaceSpec?
   /// The sampler slots of lanes that send to the room.
@@ -561,7 +568,7 @@ public final class WaveProject: @unchecked Sendable {
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
-    gaps: [Int] = [], space: SpaceSpec? = nil, echo: EchoSpec? = nil,
+    rests: RestSchedule = .empty, space: SpaceSpec? = nil, echo: EchoSpec? = nil,
     balance: [String: Double]? = nil
   ) {
     self.gain = gain
@@ -569,7 +576,7 @@ public final class WaveProject: @unchecked Sendable {
     self.balance = balance
     self.energy = energy
     self.duckDepth = duckDepth
-    self.gaps = gaps
+    self.rests = rests
     self.space = space
     var slots: UInt64 = 0
     var sending: UInt64 = 0
@@ -599,13 +606,6 @@ public final class WaveProject: @unchecked Sendable {
   deinit {
     guard let samplers else { return }
     for lane in lanes where lane.sampledSlot >= 0 { samplers.release(lane.sampledSlot) }
-  }
-
-  /// Is `step` inside a drop gap? Allocation-free.
-  @inline(__always)
-  func inGap(_ step: Int) -> Bool {
-    for s in gaps where step >= s && step < s + DJMusicality.dropGapSteps { return true }
-    return false
   }
 
   // MARK: voice settings (the sound panel)
@@ -638,7 +638,8 @@ public final class WaveProject: @unchecked Sendable {
 
 private func buildLanes(
   _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
-  geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, gaps: [Int] = []
+  geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil,
+  rests: RestSchedule = .empty
 ) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
@@ -751,11 +752,9 @@ private func buildLanes(
         }
         // the loudness probe: a sampled part about as loud as its sampler
         if key == "tonal", let level = opts.probeLevels[n.id] { lane.st[slotLevel] *= level }
-        if !gaps.isEmpty && override == nil && !g.isStingerNet[n.index] {
-          lane.gapped =
-            key == "tonal"
-            ? (tr.group ?? n.bundle.riffGroup) == "bass"
-            : key != "crash" && !n.id.hasPrefix("fill-")
+        if !rests.isEmpty && override == nil && !g.isStingerNet[n.index] {
+          lane.restClass = RestSchedule.Class.of(
+            kind: key, group: tr.group ?? n.bundle.riffGroup, net: n.id)
         }
         kindLane[key] = lanes.count
         kindOrder.append(key)
@@ -805,7 +804,7 @@ private func buildLanes(
   let project = WaveProject(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
-    gain: gain, energy: energy, duckDepth: opts.duckDepth, gaps: gaps,
+    gain: gain, energy: energy, duckDepth: opts.duckDepth, rests: rests,
     space: space ? opts.space ?? .room : nil, echo: echo ? opts.echo : nil,
     balance: trims.isEmpty ? nil : trims)
   project.sampledGroups = sampledGroups
@@ -1035,10 +1034,10 @@ public final class WaveRunner {
     let gain = opts.trackGain ?? 1
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
-    let gaps = opts.musicality.contains(.dropGap) ? DJMusicality.dropGaps(project) : []
+    let rests = opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality)
     let prepared = buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
-      geometry: project, gain: gain, energy: energy, gaps: gaps)
+      geometry: project, gain: gain, energy: energy, rests: rests)
     prepared.turntableBrake = opts.turntableBrake
     if measureGain {
       prepared.gain = Loudness.gain(
@@ -1086,6 +1085,7 @@ public final class WaveRunner {
       fading = old
     }
     current = next
+    next.restCursor.reset()
     reverb?.tune(next.space)
     echoFx?.tune(next.echo, bpm: next.graph.tempo)
     setTempo(next.graph.tempo)
@@ -1107,6 +1107,7 @@ public final class WaveRunner {
     clockBroken = true
     macroHoldTicks = 0
     graph?.reset()
+    current?.restCursor.reset()
     samplersAllOff()
     energyPrimed = false
     toneLP.0.reset()
@@ -2093,12 +2094,12 @@ public final class WaveRunner {
     // that looks at the fires first and the anchors second finds the anchor of every fire.
     anchor(proj, tick: g.tick + 1, swap: false)
     let groove = grooveOn && (proj.graph.project.swing > 0 || proj.graph.project.humanize > 0)
-    // `.dropGap`: the step about to play (`advance` moves the tick past it)
-    let gap = !proj.gaps.isEmpty && proj.inGap(g.tick)
+    // the rest schedule (`.dropGap`, …) at the step about to play (`advance` moves the tick past it)
+    let resting = proj.rests.isEmpty ? [] : proj.restCursor.mask(at: g.tick, in: proj.rests)
     g.advance { n, t in
       let li = n.lane[t]
       if li >= 0 {
-        if gap && lanes[li].gapped { return }
+        if !resting.isEmpty && !resting.isDisjoint(with: lanes[li].restClass) { return }
         if groove {
           self.grooveHit(proj, lanes[li], n, t, lane: li)
         } else {

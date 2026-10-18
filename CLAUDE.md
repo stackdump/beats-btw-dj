@@ -336,7 +336,7 @@ its copy; the two are now independent. Rules inherited from that split:
   half a bar of rest, or the last note before a 2-bar line — on a chord tone), `.approach`
   (a moving bass line steps into the next root; not offbeat-bass genres or jazz), and in the
   runner `.dropGap` (kick / snare / hats / bass skip the last beat of a buildup into a drop:
-  `DJMusicality.dropGaps`, `WaveProject.gaps`), `.choke` (a net's closed hat chokes its open
+  `DJMusicality.dropGaps`, a stretch of `WaveProject.rests`), `.choke` (a net's closed hat chokes its open
   hat) and `.space` (`Space.swift`: an 8-line FDN send reverb per runner, allocated at init;
   room by genre `SpaceSpec.forGenre`, set by `PreparedTrack` like `duckDepth`; per-lane
   `send`; sampled slots that send render as their own group and reach the room a block late
@@ -389,6 +389,11 @@ its copy; the two are now independent. Rules inherited from that split:
   percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
   each file's level and auto-gain, then the spread before / after against each one's target and
   the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp).
+- Runner rests are one `RestSchedule` (`WaveProject.rests`): disjoint (from, to, class mask)
+  stretches built at prepare from `.dropGap` and 6.2's `.layerBudget` / `.bandStop` / `.kickOut`
+  (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
+  `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
+  `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
