@@ -35,6 +35,8 @@ public enum WaveCommand: BitwiseCopyable {
   case masterFx(key: UInt8, value: Int16)
   /// A channel's voice settings, from the sound panel (`WaveRunner.setVoice`).
   case voice(VoiceLaneParams)
+  /// The FX unit (FxUnit.swift): a control, a reset, the kill.
+  case fxUnit(FxUnitCommand)
 }
 
 /// A `WaveRunner` that a deck can play: the Petri-net executor and the wave synthesis
@@ -122,6 +124,12 @@ public final class WaveDeckSource: @unchecked Sendable {
   // macro automation that drives it, on the deck's transport clock (see MasterFx/).
   private let fx: FxAutomation
   private let chain: MasterChain
+  /// The FX unit's hands on the chain and the runner's sends (FxUnit.swift).
+  private let unit: FxUnitLayer
+  /// The sends last handed to the runner: room gain, echo gain, feedback boost.
+  private var sentRoom = 1.0
+  private var sentEcho = 1.0
+  private var sentFeedback = 0.0
   /// `vinyl-brake` on a project prepared with `WaveOptions.turntableBrake` (TurntableBrake.swift):
   /// varispeed on the runner's whole output, before the master chain.
   private let brake: TurntableBrake
@@ -139,7 +147,9 @@ public final class WaveDeckSource: @unchecked Sendable {
   private let opIndex: UnsafeMutablePointer<Int>
   private let opTime: UnsafeMutablePointer<Double>
   private let opKey: UnsafeMutablePointer<UInt8>
-  private let opValue: UnsafeMutablePointer<Int32>
+  private let opValue: UnsafeMutablePointer<Double>
+  /// The op is the FX unit's (a ramp over the block), not a macro's slider.
+  private let opLive: UnsafeMutablePointer<Bool>
   private var opCount = 0
   /// Audio → main: which master macros are in effect (`MasterMacro.bit`), the chain's HP / LP
   /// corners (Double bits) and whether it is bypassed.
@@ -168,12 +178,14 @@ public final class WaveDeckSource: @unchecked Sendable {
     runner.anchorRing = anchors
     fx = FxAutomation()
     chain = MasterChain(sampleRate: sampleRate)
+    unit = FxUnitLayer(sampleRate: sampleRate)
     brake = TurntableBrake(sampleRate: sampleRate)
     limiter = opts.master == "limit" ? PeakLimiter(sampleRate: sampleRate) : nil
     opIndex = .allocate(capacity: Self.opCapacity)
     opTime = .allocate(capacity: Self.opCapacity)
     opKey = .allocate(capacity: Self.opCapacity)
     opValue = .allocate(capacity: Self.opCapacity)
+    opLive = .allocate(capacity: Self.opCapacity)
     let ring = retired
     runner.onRetire = { project in
       // Retain into the ring *before* the runner drops its own reference, so the last
@@ -191,6 +203,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     opTime.deallocate()
     opKey.deallocate()
     opValue.deallocate()
+    opLive.deallocate()
   }
 
   // MARK: main-thread side
@@ -285,6 +298,13 @@ public final class WaveDeckSource: @unchecked Sendable {
     masterFxSet[key] = value
     send(.masterFx(key: UInt8(key.rawValue), value: Int16(clamping: value)))
   }
+
+  /// The FX unit (FxUnit.swift; the deck sends it, `Deck.setFx`).
+  func sendFxUnit(_ c: FxUnitCommand) { send(.fxUnit(c)) }
+
+  /// Does the latest project have a room (`.space`) / an echo (`.echo`) for the FX unit's sends?
+  public var hasRoom: Bool { latest?.space != nil }
+  public var hasEcho: Bool { latest?.echo != nil }
 
   public func noteOn(_ note: Int, velocity: Int) {
     send(.noteOn(note: Int16(clamping: note), velocity: UInt8(clamping: velocity)))
@@ -556,6 +576,18 @@ public final class WaveDeckSource: @unchecked Sendable {
     fx.setNow(blockTransport)
     while let c = commands.pop() { apply(c) }
     syncFx()
+    unit.beginBlock(frames: frames, startFrame: startFrame, automation: fx) { key, value in
+      queue(key, value, at: 0, live: true)
+    }
+    let room = unit.roomGain
+    let echo = unit.echoGain
+    let feedback = unit.feedbackBoost
+    if room != sentRoom || echo != sentEcho || feedback != sentFeedback {
+      sentRoom = room
+      sentEcho = echo
+      sentFeedback = feedback
+      runner.setUnitSends(room: room, echo: echo, feedback: feedback, frames: frames)
+    }
     if runner.playing {
       fx.advance(until: blockTransport + Double(frames) / sampleRate) { handle($0) }
       transportFrames += Int64(frames)
@@ -570,7 +602,9 @@ public final class WaveDeckSource: @unchecked Sendable {
         chain.process(left, right, from: s, to: k)
         s = k
       }
-      chain.apply(MasterFxKey(rawValue: Int(opKey[i]))!, Int(opValue[i]), at: opTime[i])
+      chain.apply(
+        MasterFxKey(rawValue: Int(opKey[i]))!, opValue[i], at: opTime[i],
+        live: opLive[i] ? Double(frames) / sampleRate : nil)
     }
     chain.process(left, right, from: s, to: frames)
     chain.finish(frames: frames)
@@ -665,6 +699,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     case .masterFx(let key, let value):
       if let k = MasterFxKey(rawValue: Int(key)) { fx.setSlider(k, Double(value)) }
     case .voice(let p): runner.setVoice(p)
+    case .fxUnit(let u): unit.take(u)
     }
   }
 
@@ -690,15 +725,22 @@ public final class WaveDeckSource: @unchecked Sendable {
   private func handle(_ e: FxAutomationEvent) {
     switch e {
     case .fx(let t, let key, let value):
-      guard opCount < Self.opCapacity else { return }
-      let offset = max(0, t - blockTransport)
-      opIndex[opCount] = min(blockFrames, max(0, Int((offset * sampleRate).rounded(.up))))
-      opTime[opCount] = chain.time(at: 0) + offset
-      opKey[opCount] = UInt8(key.rawValue)
-      opValue[opCount] = Int32(value)
-      opCount += 1
+      // the macro's slider, on the FX unit's setting (FxUnit.swift: at neutral, the slider)
+      queue(key, unit.automated(key, value, automation: fx), at: t - blockTransport, live: false)
     case .tempo(_, let bpm):
       runner.setTempo(bpm)
     }
+  }
+
+  /// A chain op for this block, `offset` seconds into it.
+  private func queue(_ key: MasterFxKey, _ value: Double, at offset: Double, live: Bool) {
+    guard opCount < Self.opCapacity else { return }
+    let offset = max(0, offset)
+    opIndex[opCount] = min(blockFrames, max(0, Int((offset * sampleRate).rounded(.up))))
+    opTime[opCount] = chain.time(at: 0) + offset
+    opKey[opCount] = UInt8(key.rawValue)
+    opValue[opCount] = value
+    opLive[opCount] = live
+    opCount += 1
   }
 }

@@ -107,31 +107,49 @@ struct MasterParams {
   mutating func apply(
     _ key: MasterFxKey, _ value: Int, at now: Double, log: ((MasterParamOp) -> Void)? = nil
   ) {
-    let v = Double(value)
+    apply(key, Double(value), at: now, live: nil, log: log)
+  }
+
+  /// `applyFx` with a value between the slider's steps. `live` (the FX unit, `FxUnitLayer`): a
+  /// hand on a knob, ramped over `live` seconds (one block) with no cancel first, so each block's
+  /// ramp starts where the last one ended (Tone's cancel-then-ramp would jump back every block);
+  /// the crusher's bits are not rounded. nil is beats' setter exactly (the macros, the faders).
+  mutating func apply(
+    _ key: MasterFxKey, _ v: Double, at now: Double, live: Double?,
+    log: ((MasterParamOp) -> Void)? = nil
+  ) {
     switch key {
     case .hpFreq:
       let f = max(20, min(5000, Self.hpFreq(v)))
+      if let live {
+        hp.rampTo(f, duration: live, at: now)
+        return
+      }
       hp.cancelScheduledValues(now)
       hp.rampTo(f, duration: 0.1, at: now)
       log?(MasterParamOp(time: now, param: .hpFrequency, kind: .cancel, a: now))
       log?(MasterParamOp(time: now, param: .hpFrequency, kind: .ramp, a: f, b: 0.1))
     case .lpFreq:
       let f = max(100, min(20000, Self.lpFreq(v)))
+      if let live {
+        lp.rampTo(f, duration: live, at: now)
+        return
+      }
       lp.cancelScheduledValues(now)
       lp.rampTo(f, duration: 0.1, at: now)
       log?(MasterParamOp(time: now, param: .lpFrequency, kind: .cancel, a: now))
       log?(MasterParamOp(time: now, param: .lpFrequency, kind: .ramp, a: f, b: 0.1))
     case .phaserFreq:
-      let rate = value == 0 ? 0 : 0.1 + (v / 100) * 9.9
+      let rate = v == 0 ? 0 : 0.1 + (v / 100) * 9.9
       let r = max(0.1, min(10, rate))
-      phaserRate.rampTo(r, duration: 0.1, at: now)
+      phaserRate.rampTo(r, duration: live ?? 0.1, at: now)
       log?(MasterParamOp(time: now, param: .phaserFrequency, kind: .ramp, a: r, b: 0.1))
     case .phaserDepth:
       octaves = max(0.5, (v / 100) * 6)
       log?(MasterParamOp(time: now, param: .phaserOctaves, kind: .set, a: octaves))
     case .phaserWet:
       let w = max(0, min(1, v / 100))
-      phaserWet.rampTo(w, duration: 0.05, at: now)
+      phaserWet.rampTo(w, duration: live ?? 0.05, at: now)
       log?(MasterParamOp(time: now, param: .phaserWet, kind: .ramp, a: w, b: 0.05))
     case .crushBits:
       let amount = v / 100
@@ -139,7 +157,7 @@ struct MasterParams {
       crusherWet.rampTo(wet, duration: 0.05, at: now)
       log?(MasterParamOp(time: now, param: .crusherWet, kind: .ramp, a: wet, b: 0.05))
       if amount > 0 {
-        let bits = max(1, jsRound(16 - amount * 15))
+        let bits = live == nil ? max(1, jsRound(16 - amount * 15)) : max(1, 16 - amount * 15)
         crusherBits.setImmediate(bits, at: now)
         log?(MasterParamOp(time: now, param: .crusherBits, kind: .set, a: bits))
       }
@@ -359,7 +377,13 @@ final class MasterChain {
 
   /// `applyFx(key, value)` at context time `now` (taking effect from the next sample processed).
   func apply(_ key: MasterFxKey, _ value: Int, at now: Double) {
-    params.apply(key, value, at: now)
+    apply(key, Double(value), at: now, live: nil)
+  }
+
+  /// `apply` with a value between the slider's steps; `live`: the FX unit's ramp over one block
+  /// (`MasterParams.apply(_:_:at:live:)`).
+  func apply(_ key: MasterFxKey, _ value: Double, at now: Double, live: Double?) {
+    params.apply(key, value, at: now, live: live)
     switch key {
     case .distortion:
       if params.distortionAmount != curveAmount { rebuildCurve(params.distortionAmount) }

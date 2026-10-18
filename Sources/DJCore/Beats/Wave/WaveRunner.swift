@@ -1558,6 +1558,14 @@ public final class WaveRunner {
     for i in 0..<frames { samplerSide.process(&smpL[i], &smpR[i]) }
   }
 
+  /// The FX unit's sends (FxUnit.swift): the room's and the echo's input gains and the echo's
+  /// feedback boost, reached over the next `frames` samples. Without `.space` / `.echo` (the parity
+  /// path) there is nothing to send to. Allocation-free (audio thread).
+  func setUnitSends(room: Double, echo: Double, feedback: Double, frames: Int) {
+    reverb?.setSend(room, frames: frames)
+    echoFx?.setSend(echo, feedback: feedback, frames: frames)
+  }
+
   public func setTempo(_ bpm: Double) {
     guard bpm > 0 else { return }
     let frac = clock[clkTickPos] / clock[clkSpt]
