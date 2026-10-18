@@ -141,11 +141,7 @@ public final class SurfaceController {
       // a slider position on its own range, as beats' FX panel sends it
       if let d = deck, let k = b.macro.flatMap(MasterFxKey.init(id:)) {
         let v = Int((Double(k.min) + e.value * Double(k.max - k.min)).rounded())
-        if let bus = d.bank?.master {
-          bus.setSlider(k, v)  // aimed at the loops: their master bus
-        } else if d.mode == .net {
-          d.wave.setMasterFx(k, v)
-        }
+        d.setMasterFx(k, v)  // the net's chain, a sample deck's bus, or the loops'
       }
     case .reverbWet: deck?.reverb.wet = e.value
     case .reverbSize: deck?.reverb.size = e.value
@@ -425,8 +421,14 @@ public final class SurfaceController {
         }
         return (Self.color(m), bus.isActive(m))
       }
-      guard d.mode == .net else { return (Color.off, false) }
       let id = b.macro ?? ""
+      guard d.mode == .net else {
+        // a sample deck plays the master macros on its own bus (not the brake, yet)
+        guard let m = MasterMacro.allCases.first(where: { $0.id == id }), m != .vinylBrake else {
+          return (Color.off, false)
+        }
+        return (Self.color(m), d.isMasterActive(m))
+      }
       if let m = NetMacro.allCases.first(where: { $0.id == id }) {
         let tempo = [NetMacro.halfTime, .tapeStop, .tempoAnchor].contains(m)
         return (tempo ? Color.yellow : Color.red, d.wave.activeMacros.contains(m))

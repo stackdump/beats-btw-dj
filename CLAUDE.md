@@ -174,9 +174,15 @@ its copy; the two are now independent. Rules inherited from that split:
   (`TurntableBrake.swift`, GO-DIVERGENCE.md §5): varispeed on the runner's output, *before* the
   chain (the chain is the mixer's insert and keeps real time), r = 1 − t / (¾ D), silent for the
   last quarter, then `WaveRunner.catchUp` puts the tick clock where an unbraked deck would be
-  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. Master macros are
-  net-only on A/B (`Deck.fire(MasterMacro)` guards `mode == .net`), so sample decks never brake;
-  on "L" they go to the loops' master bus (below).
+  and it fades in over 5 ms. Panic releases (5 ms fade), stop / freeze cancel. On "L" master
+  macros go to the loops' master bus (below).
+- **Sample decks run the chain too**: each A/B `DeckRenderer` owns a `LoopMasterBus` (`master`,
+  built at deck init), turntable → clip FX → bus → limiter in sample mode; a neutral bus is
+  bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
+  wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
+  `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
+  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
+  on a sample deck before this (then a no-op) now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
   voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
