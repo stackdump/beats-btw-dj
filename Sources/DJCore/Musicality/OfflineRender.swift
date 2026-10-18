@@ -144,6 +144,8 @@ public struct AudioMetrics: Sendable {
   public var sideDB = -200.0
   /// The same below 150 Hz, where a mix should stay mono (kick and bass in the middle).
   public var lowSideDB = -200.0
+  /// Long-term spectrum, slope, 16 kHz bump and mono fold, third-octave (`Spectrum`).
+  public var spectrum = Spectrum(left: [], right: [], sampleRate: 0)
 
   public static let bandEdges: [(String, Double, Double)] = [
     ("sub", 20, 60), ("low", 60, 250), ("lowMid", 250, 2000), ("high", 2000, 6000),
@@ -212,6 +214,7 @@ public struct AudioMetrics: Sendable {
       Self.filter(&lowM, biquad(type: "lowpass", fc: 150, q: 0.7071, sr: sr))
     }
     lowSideDB = ratio(lowS, lowM)
+    spectrum = Spectrum(left: left, right: right, sampleRate: sr)
   }
 
   private static func filter(_ x: inout [Double], _ b: [Double]) {
@@ -232,6 +235,10 @@ public struct AudioMetrics: Sendable {
       "clippedSamples": clipped, "bands": bands.mapValues(round3),
       "shortTermP10DB": round3(shortTermP10DB), "shortTermP95DB": round3(shortTermP95DB),
       "sideDB": round3(sideDB), "lowSideDB": round3(lowSideDB),
+      "spectrumHz": Spectrum.bandsHz, "ltasDB": spectrum.ltasDB.map(round3),
+      "slopeDBPerOct": round3(spectrum.slopeDBPerOct), "hfBumpDB": round3(spectrum.hfBumpDB),
+      "monoFoldLossDB": spectrum.monoFoldLossDB.map(round3),
+      "monoFoldDB": round3(spectrum.monoFoldDB),
     ]
   }
 }
