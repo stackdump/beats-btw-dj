@@ -294,6 +294,12 @@ extension DJEngine {
       } else {
         setClipFade(id, nil)
       }
+    case .clipFollow(let id, let mode):
+      if let mode {
+        if let f = LoopFollow(rawValue: mode) { setClipFollow(id, f) }
+      } else {
+        setClipFollow(id, nil)
+      }
     case .tapBars(let bars): setTapTakeBars(bars)
     case .voiceTweak(let n, let channel, let params):
       deck(n)?.setVoiceTweak(params, channel: channel)

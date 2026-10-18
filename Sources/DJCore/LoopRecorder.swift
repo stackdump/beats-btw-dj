@@ -416,7 +416,7 @@ extension DJEngine {
     stopLoop(id, now: true)
     let sound = ClipSound(
       muted: clipMutes.contains(id), soloed: clipSolos.contains(id), keyLock: clipKeyLocks[id],
-      quantum: clipQuanta[id], fade: clipFades[id])
+      quantum: clipQuanta[id], fade: clipFades[id], follow: clipFollows[id])
     rememberRemovedClip(clips.remove(at: i), at: i, sound: sound)
     forgetClipSound(id)
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
@@ -718,7 +718,8 @@ extension DJEngine {
   func serviceLoops() {
     guard let bank = loopChannel.bank else { return }
     let now = loopChannel.renderedFrames
-    let louder = loopFollow == .louder ? updateDominantDeck() : nil
+    // once per pass, whatever each loop follows: per voice it could hand over mid-pass
+    let louder = anyLoopFollowsLouder ? updateDominantDeck() : nil
     for v in loopVoices.indices {
       guard let id = loopVoices[v].clipID else { continue }
       if let stop = loopVoices[v].stopFrame {
@@ -736,10 +737,11 @@ extension DJEngine {
       }
       guard let clip = clip(id) else { continue }
       // following the louder deck, a playing loop takes its tempo from whichever that is now;
-      // following its own deck, back to that one when it plays
-      if let louder, louder.clipID != id, bank.isActive(v) {
+      // following its own deck, back to that one when it plays (each clip by its own follow)
+      let follows = follow(for: id)
+      if follows == .louder, let louder, louder.clipID != id, bank.isActive(v) {
         loopVoices[v].ref = louder.name
-      } else if loopFollow == .source, let own = decks[clip.source], own.playing, own.clipID != id,
+      } else if follows == .source, let own = decks[clip.source], own.playing, own.clipID != id,
         bank.isActive(v)
       {
         loopVoices[v].ref = own.name
@@ -817,7 +819,8 @@ extension DJEngine {
   func loopClock(for clip: LoopClip?) -> LoopClock {
     let sr = sampleRate
     // following the louder deck, that one first; else the clip's own deck first
-    let first = loopFollow == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] }
+    let first =
+      follow(for: clip?.id) == .louder ? updateDominantDeck() : clip.flatMap { decks[$0.source] }
     let candidates =
       ([first, clip.flatMap { decks[$0.source] }] + decks.values.sorted { $0.name < $1.name })
       .compactMap { $0 }
