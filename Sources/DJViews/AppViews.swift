@@ -144,8 +144,10 @@ public final class AppModel {
   var showMap = false
   /// The Controllers panel: every device drawn with its bindings.
   var showControllers = false
-  /// The Soundboard panel (SoundboardView.swift): every loop as one big pad.
+  /// The Soundboard panel (SoundboardView.swift): every loop as one big pad. Saved in the app's
+  /// defaults as `showSoundboard` (`setShowSoundboard`); closed until opened.
   var showSoundboard = false
+  static let showSoundboardKey = "showSoundboard"
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
@@ -280,6 +282,7 @@ public final class AppModel {
     guard dj == nil else { return }
     let savedTap = defaults.integer(forKey: Self.tapBarsKey)
     if Self.tapBarChoices.contains(savedTap) { tapBars = savedTap }
+    showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
     if let injected {
       dj = injected
       scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
