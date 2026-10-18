@@ -348,6 +348,9 @@ extension AppModel {
     case "journal":
       return try await controlJournal(p)
 
+    case "loops":
+      return try await controlLoops(p)
+
     default:
       throw ControlRequestError.bad("unknown method \(method)")
     }

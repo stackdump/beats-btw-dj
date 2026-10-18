@@ -22,7 +22,7 @@ public struct MCPBridge {
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
     "dj_notes": "notes", "dj_journal": "journal", "dj_palettes": "palettes",
-    "dj_view": "view",
+    "dj_view": "view", "dj_loops": "loops",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -177,7 +177,8 @@ public struct MCPBridge {
       clipCrop {id, from, to}: keep its beats from..<to · clipSequence {steps: [{clip, repeats}], \
       replacing?}: join clips into a sequence (or rewrite one) · clip {deck: L|A|B, id}: move a \
       clip onto a deck (L = under the mixer) · clipRemove {id}: off the row, its audio kept \
-      (dj_state.loops.removed) · clipRestore {id, at?}: a removed clip back where it was (or at \
+      (dj_state.loops.removed; dj_loops undo puts it back, and has the row's load source, \
+      export and stop all) · clipRestore {id, at?}: a removed clip back where it was (or at \
       index at) · clipForget {id}: delete a removed clip for good · clipRename {id, title} · \
       clipColor {id, color: red|orange|yellow|green|teal|blue|violet|pink or null} · clipMute \
       {id, on}: silent but still looping, in phase · clipSolo {id, on}: while any clip is soloed \
@@ -434,6 +435,26 @@ public struct MCPBridge {
         "target": prop("string", "A target key, e.g. track:z4EBG…"),
         "text": prop("string", "The note"),
         "id": prop("string", "A note's id, from list"),
+      ]),
+    tool(
+      "dj_loops",
+      """
+      The Loops row's buttons that are not deck actions. action list (default) returns \
+      dj_state.loops; undo puts back the loop last taken off the row (the row's Undo, for a few \
+      seconds after dj_perform clipRemove; clipRestore {id} brings back any removed loop); \
+      loadSource {id, deck} loads the track a clip was taken from onto deck A or B (a net \
+      composed again, at the section it was in; a sample while its audio is in memory; does not \
+      start playback); export {id, path} writes a clip's audio as a 32-bit float stereo WAV to \
+      path (an absolute .wav path, or a folder: named after the clip) and returns its frames and \
+      sampleRate; stopAll takes every looping clip out on the next launch boundary (a clipLoop \
+      off each, recorded) and returns the ids stopped. Starting, stopping, gain, crop, mute, \
+      solo and a clip's FX (clipFx) are dj_perform ops.
+      """,
+      [
+        "action": prop("string", "list | undo | loadSource | export | stopAll"),
+        "id": prop("string", "A clip's id (dj_state.loops.clips[].id)"),
+        "deck": prop("string", "A or B (loadSource)"),
+        "path": prop("string", "export: an absolute .wav path, or a folder"),
       ]),
     tool(
       "dj_journal",
