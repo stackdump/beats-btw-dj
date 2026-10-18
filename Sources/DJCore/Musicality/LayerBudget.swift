@@ -58,20 +58,28 @@ extension DJMusicality {
   }
 
   /// Each section's budget (`autoLayerBudget`, others 2) and which of the melodic parts play
-  /// in it: a part plays where any of its roles' slot nets has a window (`slotWindows`).
+  /// in it: a part plays where any of its roles' slot nets has a window (`slotWindows`), or
+  /// where a net of it with no slots (beats' single `harmony` pad) is unmuted (`netWindows`).
   static func layerBudgets(_ project: Project) -> [LayerBudget] {
     var roles: [String: RestSchedule.Class] = [:]
-    for (id, nb) in project.nets.pairs where nb.role != "control" && !nb.riffGroup.isEmpty {
+    var single: [String: RestSchedule.Class] = [:]
+    for (id, nb) in project.nets.pairs where nb.role != "control" {
       guard nb.track.group != "stinger", !isStingerID(id), !id.hasPrefix("fill-") else {
         continue
       }
       let c = RestSchedule.Class.of(kind: "tonal", group: part(nb), net: id)
-      if layerClassPriority.contains(c) { roles[nb.riffGroup] = c }
+      guard layerClassPriority.contains(c) else { continue }
+      if nb.riffGroup.isEmpty { single[id] = c } else { roles[nb.riffGroup] = c }
     }
     var playing = [RestSchedule.Class](repeating: [], count: project.structure.count)
     for (role, c) in roles.sorted(by: { $0.key < $1.key }) {
       for windows in slotWindows(project, role: role).values {
         for w in windows where w.section < playing.count { playing[w.section].formUnion(c) }
+      }
+    }
+    for (id, c) in single.sorted(by: { $0.key < $1.key }) {
+      for w in netWindows(project, net: id) where w.section < playing.count {
+        playing[w.section].formUnion(c)
       }
     }
     return project.structure.enumerated().map { i, s in
