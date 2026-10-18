@@ -149,7 +149,7 @@ public struct JournalState: Equatable, Sendable {
   public static let schema = "dj-vevr-se/state/v1"
   public var sampleRate: Double
   public var decks: [String: DeckCheckpoint]
-  /// The loop channel's strip: volume, reverb (in `params`) and mute.
+  /// The loop channel's strip: volume, trim, reverb (in `params`) and mute.
   public var loopChannel: DeckParams
   public var loopMute: Bool
   public var crossfader: Double
@@ -387,6 +387,7 @@ public struct JournalState: Equatable, Sendable {
     }
     for (name, d) in decks { if let l = d.leader { dj[name]?.follow(dj.decks[l]) } }
     dj.loopChannel.volume = loopChannel.volume
+    dj.loopChannel.gain = loopChannel.gain  // the run's trim, not the engine's default
     dj.loopChannel.reverb.wet = loopChannel.reverbWet
     dj.loopChannel.reverb.size = loopChannel.reverbSize
     dj.loopChannel.reverb.tone = loopChannel.reverbTone
