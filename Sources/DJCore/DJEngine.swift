@@ -336,6 +336,11 @@ public final class Deck: JogClock {
   /// The raw-`nets` share payload the deck is playing, when it is playing one (then
   /// `currentSpec` is nil).
   public internal(set) var currentRawNets: JSONValue?
+  /// The musicality fixes the net on the deck plays with (`PreparedTrack.fixes`; a hand-built
+  /// net: the deck's options'), and whether dj's pass rewrote it (`passApplied`; never for a
+  /// raw-`nets` share or a hand-built net). nil / false off a net. Section jumps keep them.
+  public internal(set) var fixes: DJMusicality.Fixes?
+  public internal(set) var passApplied = false
   /// The seed this deck's sampled instruments are picked with (`WaveOptions.voicingSeed`):
   /// the spec's, or a raw-`nets` share's; recompiles (section jumps) must keep it.
   var voicingSeed: Double {
@@ -668,6 +673,8 @@ public final class Deck: JogClock {
     turntable.send(.loopOff)
     currentSpec = nil
     currentRawNets = nil
+    fixes = nil
+    passApplied = false
     seedTarget = nil
     clipID = nil
     sourceFile = nil
@@ -721,6 +728,8 @@ public final class Deck: JogClock {
     // A hand-built net has no spec; `loadNet(_:)` for a track sets its source after.
     currentSpec = nil
     currentRawNets = nil
+    fixes = waveOptions.musicality
+    passApplied = false
     seedTarget = nil
     clipID = nil
     sourceFile = nil
@@ -757,6 +766,8 @@ public final class Deck: JogClock {
     wave.isActive = false
     mode = .sample
     netProject = nil
+    fixes = nil
+    passApplied = false
     playing = false
   }
 

@@ -261,6 +261,24 @@ public enum DJMusicality {
       .shimmer,
     ]
 
+    /// The fixes that live wholly in the runner (`WaveRunner.prepare` / `hit` / `render`,
+    /// `forGenre`'s settings, the rest schedule): what a deck whose nets the pass never saw — a
+    /// raw-`nets` share — still plays with. Not the pass's flags, nor the runner halves of pass
+    /// flags (`.fills` / `.buildup` / `.crash` / `.openHats` voice what the pass binds,
+    /// `.backbeat`'s brushes, `.sectionHarmony` / `.harmonicRhythm` move the composer's
+    /// sections and slots), which would re-voice or re-pitch nets the composer did not build.
+    public static let runnerOnly: Fixes = [
+      .loudness, .groove, .energy, .duck, .stereo, .dropGap, .choke, .space, .subtractive,
+      .unison, .echo, .kickTune, .balance, .feel, .drift, .sweep, .layerBudget, .bandStop,
+      .kickOut, .riser, .subOctave, .hfTilt, .shimmer,
+    ]
+
+    /// The names (`named`) of the flags in this set, in bit order: what `dj_state` reports.
+    public var names: [String] {
+      Fixes.named.filter { $0.value.rawValue.nonzeroBitCount == 1 && contains($0.value) }
+        .sorted { $0.value.rawValue < $1.value.rawValue }.map(\.key)
+    }
+
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,

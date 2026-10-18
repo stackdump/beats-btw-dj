@@ -151,6 +151,13 @@ are the contracts.
   pixel-for-pixel against headless Chrome at dpr 1 and 2 for bolts, seeds, corona, sonar, petal.
 * **Panel arrangement** (24): section names other than the five beats names keep their old hue
   where beats paints them all `#888`.
+* **What a net deck plays is not always the pass's** (ROADMAP 6.7): a composed track (songs and
+  endless loops alike) plays `PreparedTrack.played`, dj's musicality pass over the composer's
+  nets, so a net view shows the rewritten bindings; a raw-`nets` share plays its nets as sent,
+  with only `DJMusicality.Fixes.runnerOnly` (stereo, room, balance, voice design, loudness,
+  rests, …: what the runner adds, never a rebound note) and the settings of the payload's genre
+  (neutral ones without a genre). `dj_state.decks.X.fixes` says which: `pass` and the flag
+  `names`. Section jumps keep the deck's set.
 * Pulse cap is 65 live particles (the JS shifts above 64 *before* the push) — the pinned source
   wins over the SPEC text.
 

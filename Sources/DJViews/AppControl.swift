@@ -976,6 +976,13 @@ extension AppModel {
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
       o["mixingOut"] = .bool(s.mixingOut)
       o["mixingIn"] = .bool(s.mixingIn)
+      // what dj plays the net with: its pass (composed tracks) and the runner's fixes
+      if let f = d.fixes {
+        o["fixes"] = .object(
+          JSONObject([
+            ("pass", .bool(d.passApplied)), ("names", .array(f.names.map { .string($0) })),
+          ]))
+      }
       // what reloads this track: a favorite, dj_load_share, a copy
       if let cid = s.sourceCID {
         var share = JSONObject([("cid", .string(cid))])
