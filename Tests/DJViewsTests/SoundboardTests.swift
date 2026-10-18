@@ -220,6 +220,67 @@ struct SoundboardTests {
     #expect(m.originCID(editing) == nil && m.decksPlayingOrigin(editing).isEmpty)
   }
 
+  /// A sequence's pad edits its steps as the row's tile does (`SequenceStepsEditor`): repeats,
+  /// a loop added from the menu, a step moved and one removed; each edit remakes the sequence in
+  /// its place under a new id, and the settings follow it.
+  @Test func aSequencesStepsAreEditableFromItsPad() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let take = try #require(m.clips.first)
+    // a second, different loop: two beats from the middle of the take twice over
+    dj.perform(.clipSequence(steps: [SequenceStep(clipID: take.id, repeats: 2)], replacing: nil))
+    m.poll()
+    let twice = try #require(m.clips.last?.id)
+    m.cropClip(twice, from: take.beats - 1, to: take.beats + 1)
+    let other = try #require(m.clips.last)
+    #expect(other.steps == nil && other.beats == 2)
+    dj.perform(
+      .clipSequence(
+        steps: [SequenceStep(clipID: take.id), SequenceStep(clipID: other.id)], replacing: nil))
+    m.poll()
+    #expect(m.clips.count == 3 && m.soundPads.count == 3)
+    var editing = try #require(m.clips.last?.id)
+    #expect(ClipSettingsView.clip(editing, in: m)?.steps?.map(\.clipID) == [take.id, other.id])
+    // the menu offers every other loop on the row, never the sequence itself
+    #expect(SequenceStepsEditor.addable(to: editing, in: m).map(\.id) == [take.id, other.id])
+    #expect(SequenceStepsEditor.nextRepeats(1) == 2 && SequenceStepsEditor.nextRepeats(4) == 1)
+
+    func steps() -> [SequenceStep]? {
+      ClipSettingsView.clip(editing, in: m)?.steps.map(SequenceStepsEditor.sequenceSteps)
+    }
+    func edit(_ change: (inout [SequenceStep]) -> Void) throws {
+      let before = editing
+      var s = try #require(steps())
+      change(&s)
+      SequenceStepsEditor.edit(editing, s, in: m) { editing = $0 }
+      m.poll()
+      #expect(editing != before, "the remade sequence has a new id, which the settings follow")
+      #expect(m.clips.count == 3 && m.clips[2].id == editing, "in the old one's place")
+      #expect(m.soundPads.map(\.id) == m.clips.map(\.id), "its pad follows")
+    }
+    let t = take.beats
+    let o = other.beats
+    // a tap on the first chip: ×1 → ×2
+    try edit { $0[0].repeats = SequenceStepsEditor.nextRepeats($0[0].repeats) }
+    #expect(steps()?.map(\.repeats) == [2, 1])
+    #expect(ClipSettingsView.clip(editing, in: m)?.beats == 2 * t + o)
+    // "Add a loop": the take as a new last step
+    try edit { $0.append(SequenceStep(clipID: take.id)) }
+    #expect(steps()?.map(\.clipID) == [take.id, other.id, take.id])
+    #expect(ClipSettingsView.clip(editing, in: m)?.beats == 3 * t + o)
+    // "Move later" on the middle step, then "Remove" on the first
+    try edit { $0.swapAt(1, 2) }
+    #expect(steps()?.map(\.clipID) == [take.id, take.id, other.id])
+    try edit { $0.remove(at: 0) }
+    #expect(steps()?.map(\.clipID) == [take.id, other.id])
+    let last = try #require(ClipSettingsView.clip(editing, in: m))
+    #expect(last.beats == t + o && m.soundPads[2].lengthLabel == last.lengthLabel)
+
+    let view = ClipSettingsView(id: .constant(editing), model: m).background(Color(white: 0.12))
+    savePNG(view, width: 400, height: 640, name: "soundboard-sequence-settings")
+    #expect(renderPixels(view, width: 400, height: 640) != nil)
+  }
+
   /// A loop taken from a net can open that track's instruments while a deck plays it.
   @Test func aNetLoopsSettingsReachItsInstruments() async throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)

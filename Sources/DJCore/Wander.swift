@@ -12,7 +12,9 @@ import Foundation
 // 2. the rule: `Wander.plan` — weighted move kinds, seeded from the spec's share CID + step;
 // 3. the boundary: moves are taken on entering the last bar of a phrase, so a macro lands on
 //    the phrase end and a swap (a new seed, instrument, structure or genre) lands at the bar
-//    after it: the next phrase's first bar, the transport still running.
+//    after it: the next phrase's first bar, the transport still running. A bar before that
+//    (`lookAheadWander`) the move is planned read-only and a swap is composed ahead, so it is
+//    ready by the move; the move takes it only if it would compose the same thing.
 
 /// What the walk must not change on a deck (`DeckAction.wanderLock`). Each removes move kinds
 /// or constrains them; per-role keeps are `keep:<role>`.
@@ -663,6 +665,7 @@ extension Deck {
   /// is in now does not count as a fresh one.
   public func setWander(_ on: Bool) {
     wander.on = on
+    if !on { lookAhead.drop() }
     wander.paused = false
     wander.quietBars = 0
     wander.lastBar = mode == .net ? wave.tick / 16 : nil
@@ -687,6 +690,7 @@ extension Deck {
   public func setWanderLock(_ dimension: String, _ on: Bool) {
     guard WanderLock.isValid(dimension) else { return }
     if on { wander.locks.insert(dimension) } else { wander.locks.remove(dimension) }
+    lookAhead.drop()  // the plan it was made from may have changed
     switch dimension {
     case "tempo": wander.anchorBPM = on ? currentSpec.map(Wander.bpm(of:)) : nil
     case "key": wander.key = on ? wanderKey : nil
@@ -700,6 +704,7 @@ extension Deck {
     guard wander.on else { return }
     wander.paused = true
     wander.quietBars = 0
+    lookAhead.drop()
   }
 
   /// Bars until the walk's next move (or, paused, until it resumes); nil when it is off, the
@@ -742,6 +747,9 @@ extension Deck {
       }
       return
     }
+    if (bar + 2) % wander.pace == 0 {
+      return lookAheadWander(bar: bar + 1, lockedActions: lockedActions)
+    }
     guard (bar + 1) % wander.pace == 0 else { return }
     // a tempo or key lock restored at launch (no track then) holds what plays at its first move
     if wander.isLocked("tempo"), wander.anchorBPM == nil {
@@ -750,6 +758,37 @@ extension Deck {
     if wander.isLocked("key"), wander.key == nil { wander.key = wanderKey }
     takeWanderMove(bar: bar, lockedActions: lockedActions)
   }
+
+  /// A bar before the move at `bar` (a phrase's last bar): plan it read-only and, if it is a
+  /// swap, start composing that into `lookAhead` so it is ready when the move is taken. Moves
+  /// nothing: never advances `wander.step`, never reads the deck's clock (the start comes from
+  /// `bar`). `deterministic` replay composes inline at the move and skips this.
+  func lookAheadWander(bar: Int, lockedActions: Set<String>) {
+    guard !deterministic, let key = wanderSwapKey(bar: bar, lockedActions: lockedActions) else {
+      return lookAhead.drop()
+    }
+    guard lookAhead.key != key else { return }
+    lookAhead.request(key, sampleRate: wave.sampleRate, samplers: wave.samplers)
+  }
+
+  /// The look-ahead key of the move at `bar`, if it is a swap: what `takeWanderMove` will plan
+  /// (with the anchors `advanceWander` fills in at the move, not written here).
+  func wanderSwapKey(bar: Int, lockedActions: Set<String>) -> LookAheadSlot.Key? {
+    guard var c = wanderContext(lockedActions: lockedActions) else { return nil }
+    if wander.isLocked("tempo"), c.anchorBPM == nil {
+      c.anchorBPM = currentSpec.map(Wander.bpm(of:))
+    }
+    if wander.isLocked("key"), c.key == nil { c.key = wanderKey }
+    guard let plan = Wander.plan(c, step: wander.step), case .swap(let spec) = plan.action else {
+      return nil
+    }
+    return LookAheadSlot.Key(
+      step: wander.step, spec: spec, start: wanderSwapStart(bar: bar), roleFilter: roleFilter)
+  }
+
+  /// Where the swap of the move at `bar` starts: the next phrase's first bar, the transport
+  /// still running (a loop starts at its top).
+  func wanderSwapStart(bar: Int) -> SwapStart { isNetLoop ? .top : .tick((bar + 1) * 16) }
 
   /// Take the walk's next move now, as if a phrase had just reached its last bar (`bar`).
   @discardableResult
@@ -760,6 +799,15 @@ extension Deck {
     var move = WanderMove(
       step: wander.step, bar: bar + 1, kind: plan.kind, detail: plan.detail, spec: c.spec,
       cid: nil)
+    // the look-ahead, if it composed this very swap (else it is dropped)
+    var ahead: LookAheadSlot.Taken?
+    if case .swap(let spec) = plan.action {
+      ahead = lookAhead.take(
+        LookAheadSlot.Key(
+          step: wander.step, spec: spec, start: wanderSwapStart(bar: bar), roleFilter: roleFilter))
+    } else {
+      lookAhead.drop()
+    }
     wander.step += 1
     switch plan.action {
     case .role(let r, let on): setRole(r, on: on)
@@ -770,8 +818,11 @@ extension Deck {
     case .swap(let spec):
       move.spec = spec
       move.cid = BeatsCID.shareCID(spec.payload)
-      // the next phrase's first bar, the transport still running (a loop starts at its top)
-      swap(to: spec, start: isNetLoop ? .top : .tick((bar + 1) * 16))
+      if let ahead, !deterministic {
+        swap(to: spec, start: wanderSwapStart(bar: bar), ahead: ahead)
+      } else {
+        swap(to: spec, start: wanderSwapStart(bar: bar))
+      }
     }
     wander.log.append(move)
     if wander.log.count > WanderState.logLimit {

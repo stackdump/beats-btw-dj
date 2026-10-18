@@ -315,7 +315,7 @@ struct ClipTile: View {
     VStack(alignment: .leading, spacing: DJStyle.xs) {
       ClipTitleField(clip: clip, model: model)
       waveform(on: on).frame(height: 40)
-      if let steps = clip.steps { stepChips(steps) }
+      if let steps = clip.steps { SequenceStepsEditor(id: clip.id, steps: steps, model: model) }
       HStack(spacing: DJStyle.xs) {
         let picked = model.selectedClips.contains(clip.id)
         Button {
@@ -406,8 +406,7 @@ struct ClipTile: View {
       if let steps = clip.steps {
         model.editSequence(
           clip.id,
-          steps.map { SequenceStep(clipID: $0.clipID, repeats: $0.repeats) }
-            + [SequenceStep(clipID: id)])
+          SequenceStepsEditor.sequenceSteps(steps) + [SequenceStep(clipID: id)])
       } else {
         model.moveClip(id, before: clip.id)
       }
@@ -442,30 +441,6 @@ struct ClipTile: View {
       }
     }
     .toggleStyle(.button).controlSize(.mini)
-  }
-
-  /// A sequence's steps: tap a chip for ×1 → ×2 → ×4; right-click to move or remove it.
-  private func stepChips(_ steps: [StepState]) -> some View {
-    func edited(_ change: (inout [SequenceStep]) -> Void) {
-      var s = steps.map { SequenceStep(clipID: $0.clipID, repeats: $0.repeats) }
-      change(&s)
-      model.editSequence(clip.id, s)
-    }
-    return FlowRow(spacing: 3) {
-      ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-        Button("\(step.name)\(step.repeats > 1 ? " ×\(step.repeats)" : "")") {
-          edited { $0[i].repeats = $0[i].repeats >= 4 ? 1 : $0[i].repeats * 2 }
-        }
-        .buttonStyle(.bordered).controlSize(.mini)
-        .foregroundStyle(step.name == "missing" ? Color.red : Color.primary)
-        .contextMenu {
-          if i > 0 { Button("Move earlier") { edited { $0.swapAt(i, i - 1) } } }
-          if i < steps.count - 1 { Button("Move later") { edited { $0.swapAt(i, i + 1) } } }
-          if steps.count > 1 { Button("Remove") { edited { $0.remove(at: i) } } }
-        }
-        .help("×1 → ×2 → ×4 (right-click: move or remove)")
-      }
-    }
   }
 
   /// Right-click on a tile.
