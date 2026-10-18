@@ -30,7 +30,7 @@
 //     `feed.window(count:)`; never from the view's draw and never from the engine).
 //   * The toolbar state: `selection` (the visualizer select, may be .shuffle) and `visualizer`
 //     (what is showing; never .shuffle), `overlays`, `scale`, `expandVariants`, `bgMode`,
-//     `cardOnChange`, `showBacks`, `showLabels`.
+//     `cardOnChange`, `showBacks`, `showLabels`, `showWander`.
 //   * `wander`: each source deck's walk (Wander.swift), read on the main actor once per frame
 //     (`StageWanderDeck`): on, paused, pace, countdown, the bar in the phrase, the last moves.
 //   * `epoch` changes whenever the panels were rebuilt (a new track, the expand toggle, a
@@ -423,6 +423,8 @@ public struct StageContext {
   public var cardOnChange: Bool
   public var showBacks: Bool
   public var showLabels: Bool
+  /// The ∿ button (`StageSettings.showWander`): the wander layer draws only while it is on.
+  public var showWander: Bool
   /// The perf monitor's level, 0...3.
   public var vizLevel: Int
 
@@ -454,8 +456,9 @@ public struct StageContext {
     visualizer: StageVisualizer = .constellation,
     overlays: Set<StageOverlay> = StageOverlay.defaults, scale: StageScale = .loop,
     expandVariants: Bool = false, bgMode: StageBackground = .void, cardOnChange: Bool = false,
-    showBacks: Bool = false, showLabels: Bool = false, vizLevel: Int = 0, epoch: Int = 0,
-    trackChanged: Bool = false, stats: String = "", wander: [StageWanderDeck] = []
+    showBacks: Bool = false, showLabels: Bool = false, showWander: Bool = true, vizLevel: Int = 0,
+    epoch: Int = 0, trackChanged: Bool = false, stats: String = "",
+    wander: [StageWanderDeck] = []
   ) {
     self.width = width
     self.height = height
@@ -479,6 +482,7 @@ public struct StageContext {
     self.cardOnChange = cardOnChange
     self.showBacks = showBacks
     self.showLabels = showLabels
+    self.showWander = showWander
     self.vizLevel = vizLevel
     self.epoch = epoch
     self.trackChanged = trackChanged
