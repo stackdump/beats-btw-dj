@@ -37,7 +37,8 @@ public struct MixTargets: Sendable {
   public struct Balance: Decodable, Equatable, Sendable {
     /// Each part's level against the others (`MixBalance.parts`), K-weighted dB.
     public var `default`: [String: Target]
-    /// Per-family overrides of single parts (none yet).
+    /// Per-family overrides of single parts (`chill`'s, ROADMAP 6.6; `MixBalance.entry(family:)`
+    /// says which a family uses).
     public var families: [String: [String: Target]]
     public var maxTrimDB: Target
   }

@@ -410,8 +410,9 @@ its copy; the two are now independent. Rules inherited from that split:
   it a block late through `echoFifo`, as the room's `sendFifo`), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
   pass's `.motif` (bar 2 of each 4-bar melody phrase restates bar 1 as a diatonic sequence; runs
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
-  toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
-  --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
+  toward the genre family's targets, `MixBalance.targets(family:)`: targets.json's
+  `balance.families` block, jazz borrowing chill's, else the default; `WaveOptions.trackBalance`
+  reused on section jumps; `djctl render --balance` prints the levels and the entry used). `Loudness.voiceFixes` are the fixes its probe must hear.
   Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
   arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
   `WaveProject.voiceDesign`). `.subOctave` (`SubOctave`, `WaveOptions.subOctave` set by

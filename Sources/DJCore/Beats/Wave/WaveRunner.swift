@@ -1360,7 +1360,8 @@ public final class WaveRunner {
     if startTick > 0 { g.fastForward(to: startTick) }
     var opts = opts
     if opts.musicality.contains(.balance) && opts.trackBalance == nil {
-      opts.trackBalance = MixBalance.trims(for: project, fixes: opts.musicality)
+      opts.trackBalance = MixBalance.trims(
+        for: project, fixes: opts.musicality, family: MixBalance.family(genre: opts.genre))
     }
     // (the compiled graph is built from the project's JSON, which has no coordinates: the
     // layout takes the net positions from the project itself)
