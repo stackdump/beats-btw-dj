@@ -620,9 +620,12 @@ case "render":
   let render = OfflineRender(track: track, source: source, seconds: seconds)
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   var audio = render.metrics.dictionary
-  // BS.1770 integrated loudness, and what the deck's peak limiter did (PeakLimiter.swift)
+  // BS.1770 integrated loudness, EBU loudness range and true peak, and what the deck's peak limiter did (PeakLimiter.swift)
   audio["lufs"] = round3(
     IntegratedLoudness.lufs(left: render.left, right: render.right, sampleRate: sr))
+  audio["lra"] = round3(
+    IntegratedLoudness.range(left: render.left, right: render.right, sampleRate: sr))
+  audio["truePeakDBTP"] = round3(TruePeak.dbtp(left: render.left, right: render.right))
   if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
   if let limiter = source.limiter { audio["limiter"] = limiter.statistics().dictionary }
   let levels = render.sectionLevels(track.played)
