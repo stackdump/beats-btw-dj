@@ -124,13 +124,23 @@ public struct MusicalityReport: Sendable {
   /// Melody leaps (a fourth or more, at most half a bar apart, one net) followed within half a
   /// bar by a step (1–2 semitones) the other way, of the leaps followed by a note at all.
   public var leapRecovery: Double?
+  /// Each section (in song order) and whether it has a beat: a kick and a snare or clap
+  /// together in at least half its bars, fills aside (`DJMusicality.hasBeat`).
+  public var beatBySection: [(section: String, beat: Bool)] = []
+  /// Of the sections where the genre's style has a beat (`DJMusicality.beatStyle`), the share
+  /// that has one; nil without a genre, for a style with no beat (ambient), or a song with no
+  /// such section.
+  public var hasBeat: Double?
 
   public init() {}
 
   /// The groups that carry pitch (everything but drums and stingers).
   static func isTonal(_ e: NoteEvent) -> Bool { !e.isDrum && e.group != "stinger" }
 
-  public init(project: Project, log: [NoteEvent], controls: [PartChange] = []) {
+  /// `genre` picks the sections `hasBeat` expects a beat in; without it `hasBeat` is nil.
+  public init(
+    project: Project, log: [NoteEvent], controls: [PartChange] = [], genre: String? = nil
+  ) {
     self.init()
     if !controls.isEmpty {
       let on = controls.filter { $0.tick % 16 == 0 }.count
@@ -548,6 +558,19 @@ public struct MusicalityReport: Sendable {
       }
       if let lo = perBar.min(), let hi = perBar.max() { sectionContrast = hi / max(lo, 1) }
     }
+
+    // A beat: kick and snare where the style has them
+    var beatStart = 0
+    for s in sections {
+      beatBySection.append((s.name, DJMusicality.hasBeat(log, from: beatStart, steps: s.steps)))
+      beatStart += s.steps
+    }
+    if let genre, let style = DJMusicality.beatStyle(genre: genre) {
+      let expected = beatBySection.filter { style.contains($0.section) }
+      if !expected.isEmpty {
+        hasBeat = Double(expected.filter(\.beat).count) / Double(expected.count)
+      }
+    }
   }
 
   /// A JSON-friendly dictionary (keys sorted by the caller's serializer).
@@ -596,6 +619,12 @@ public struct MusicalityReport: Sendable {
         ["section": $0.section, "agreement": round3($0.agreement)] as [String: Any]
       }
     }
+    if !beatBySection.isEmpty {
+      d["beatBySection"] = beatBySection.map {
+        ["section": $0.section, "beat": $0.beat] as [String: Any]
+      }
+    }
+    if let v = hasBeat { d["hasBeat"] = round3(v) }
     return d
   }
 }
