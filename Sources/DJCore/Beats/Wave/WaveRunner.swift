@@ -560,6 +560,15 @@ public final class WaveProject: @unchecked Sendable {
   /// The nets whose tonal lane plays a sampled instrument, with the lane's group: what the
   /// loudness probe stands in for them (`WaveRunner.prepare`).
   var sampledGroups: [String: String] = [:]
+  /// The level the loudness probe plays each of those nets' synth voice at, against the voice
+  /// as trimmed: where its sampler sits after `slotGain` (`SampledBalance.slot`).
+  var probeLevels: [String: Double] = [:]
+  /// Each sampler slot's gain (64 entries; 1 = as loaded): `.balance`'s trim for the part it
+  /// plays, less how far the instrument sits from its synth voice (`SampledBalance`). Set at
+  /// prepare, read by the audio thread.
+  let slotGain: [Float]
+  /// The slots whose `slotGain` is not 1: rendered one at a time through the scratch pair.
+  let gainSlots: UInt64
   /// The section energy arc the deck plays (`DJMusicality.Fixes.energy`); nil = none.
   public let energy: EnergyCurve?
   /// How far bass and pad dip on each kick (0: no ducking), and the sampler slots they play.
@@ -595,9 +604,17 @@ public final class WaveProject: @unchecked Sendable {
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
     rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
     space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil,
-    harmony: SectionHarmony? = nil
+    harmony: SectionHarmony? = nil, slotGain: [Float]? = nil
   ) {
     self.gain = gain
+    var gains = [Float](repeating: 1, count: 64)
+    var gained: UInt64 = 0
+    for (i, g) in (slotGain ?? []).prefix(64).enumerated() where abs(g - 1) > 1e-4 {
+      gains[i] = g
+      gained |= 1 << UInt64(i)
+    }
+    self.slotGain = gains
+    gainSlots = samplers == nil ? 0 : gained
     self.harmony = harmony
     self.echo = echo
     self.balance = balance
@@ -675,6 +692,10 @@ private func buildLanes(
   var byNet: [String: [Int]] = [:]
   var tables: [String: [Float]] = [:]
   var sampledGroups: [String: String] = [:]
+  var probeLevels: [String: Double] = [:]
+  // `.balance` on sampled parts: each slot's gain (dB), set by the first lane that plays it
+  let balanceSlots = opts.musicality.contains(.balance)
+  var slotGainDB = [Double?](repeating: nil, count: 64)
   // `.fills` / `.buildup` / `.crash`: beats' drum-fill nets are control nets with notes; give
   // them a voice.
   let voiceFills = !opts.musicality.isDisjoint(with: [.fills, .buildup, .crash])
@@ -729,7 +750,24 @@ private func buildLanes(
           bindSampler(
             lane, tr.instrument, tr.group ?? n.bundle.riffGroup, opts, picked: picked,
             option: option)
-          if lane.samplerSlot >= 0 { sampledGroups[n.id] = tr.group ?? n.bundle.riffGroup }
+          if lane.samplerSlot >= 0 {
+            let group = tr.group ?? n.bundle.riffGroup
+            sampledGroups[n.id] = group
+            if balanceSlots, let bank = opts.samplers, lane.samplerSlot < 64 {
+              let trim =
+                n.id.hasPrefix("fill-")
+                ? 0 : MixBalance.part(kind: "tonal", group: group).flatMap { trims[$0] } ?? 0
+              let level = bank.slotPartLevelDB(lane.samplerSlot, group: group)
+              let gainDB =
+                slotGainDB[lane.samplerSlot]
+                ?? SampledBalance.gainDB(trimDB: trim, partLevelDB: level)
+              slotGainDB[lane.samplerSlot] = gainDB
+              probeLevels[n.id] = SampledBalance.probeLevel(
+                trimDB: trim, partLevelDB: level, group: group, gainDB: gainDB)
+            } else {
+              probeLevels[n.id] = Loudness.sampledPartLevel(group: group)
+            }
+          }
           if subtractive { shapeVoice(lane, group: tr.group ?? n.bundle.riffGroup, sr) }
           if unison { detune(lane, group: tr.group ?? n.bundle.riffGroup, wide: stereo, sr) }
         } else {
@@ -840,8 +878,10 @@ private func buildLanes(
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, rests: rests,
     songRests: songRests, tail: tail, space: space ? opts.space ?? .room : nil,
-    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony)
+    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony,
+    slotGain: slotGainDB.map { Float(pow(10, ($0 ?? 0) / 20)) })
   project.sampledGroups = sampledGroups
+  project.probeLevels = probeLevels
   return project
 }
 
@@ -1006,6 +1046,10 @@ public final class WaveRunner {
   private var duckL = [Float](repeating: 0, count: 4096)
   private var duckR = [Float](repeating: 0, count: 4096)
   private var duckingSlots: UInt64 = 0
+  // `.balance` on sampled parts: the playing project's slots with a gain (`WaveProject.slotGain`),
+  // and those gains, copied in at the top of each block.
+  private var gainedSlots: UInt64 = 0
+  private var slotGainBuf = [Float](repeating: 1, count: 64)
   // Stereo (`DJMusicality.Fixes.stereo`): each sample's side signal beside the mid one (`acc`,
   // `accTone`): left = mid + side, right = mid − side. Off, side stays 0 and is never read.
   private let stereoOn: Bool
@@ -1092,7 +1136,7 @@ public final class WaveRunner {
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
         balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil,
-        sampled: prepared.sampledGroups.mapValues { Loudness.sampledPartLevel(group: $0) })
+        sampled: prepared.probeLevels)
     }
     return prepared
   }
@@ -1814,35 +1858,57 @@ public final class WaveRunner {
     }
     evCount = 0
     let fits = frames <= duckL.count
-    let ducked = fits ? live & duckingSlots : 0
-    let sent = fits ? live & sendingSlots : 0
-    bank.renderAll(live & ~ducked & ~sent, frames: frames, left, right)
+    // slots with a gain go one at a time (each with its own duck and send); the rest by group
+    let gained = fits ? live & gainedSlots : 0
+    let ducked = fits ? live & duckingSlots & ~gained : 0
+    let sent = fits ? live & sendingSlots & ~gained : 0
+    let sending = sent | (gained & sendingSlots)
+    bank.renderAll(live & ~ducked & ~sent & ~gained, frames: frames, left, right)
     // the slots that duck, send, or both, a group at a time through the scratch pair
-    if sent != 0 { for i in 0..<frames { sendBuf[i] = 0 } }
+    if sending != 0 { for i in 0..<frames { sendBuf[i] = 0 } }
     for group in 0..<3 {
       let mask = group == 0 ? ducked & ~sent : group == 1 ? sent & ~ducked : ducked & sent
       guard mask != 0 else { continue }
-      for i in 0..<frames {
-        duckL[i] = 0
-        duckR[i] = 0
-      }
-      duckL.withUnsafeMutableBufferPointer { l in
-        duckR.withUnsafeMutableBufferPointer { r in
-          bank.renderAll(mask, frames: frames, l.baseAddress!, right == nil ? nil : r.baseAddress!)
-        }
-      }
-      let ducks = group != 1
-      for i in 0..<frames {
-        let g: Float = ducks ? duckBuf[i] : 1
-        let l = duckL[i] * g
-        let r = duckR[i] * g
-        left[i] += l
-        right?[i] += r
-        if group != 0 { sendBuf[i] += right == nil ? l : 0.5 * (l + r) }
-      }
+      renderScratch(
+        bank, mask, gain: 1, ducks: group != 1, sends: group != 0, left, right, frames: frames)
+    }
+    var m = gained
+    while m != 0 {
+      let i = m.trailingZeroBitCount
+      m &= m - 1
+      let bit: UInt64 = 1 << UInt64(i)
+      renderScratch(
+        bank, bit, gain: slotGainBuf[i], ducks: duckingSlots & bit != 0,
+        sends: sendingSlots & bit != 0, left, right, frames: frames)
     }
     bank.endBlock()
-    if sent != 0 { queueSamplerSend(frames: frames) }
+    if sending != 0 { queueSamplerSend(frames: frames) }
+  }
+
+  /// Render `mask`'s slots into the cleared scratch pair, then add them to the block at `gain`,
+  /// ducked (`duckBuf`) and into the room's send (`sendBuf`) as asked. Inside `flushSamplers`.
+  @inline(__always)
+  private func renderScratch(
+    _ bank: SamplerBank, _ mask: UInt64, gain: Float, ducks: Bool, sends: Bool,
+    _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int
+  ) {
+    for i in 0..<frames {
+      duckL[i] = 0
+      duckR[i] = 0
+    }
+    duckL.withUnsafeMutableBufferPointer { l in
+      duckR.withUnsafeMutableBufferPointer { r in
+        bank.renderAll(mask, frames: frames, l.baseAddress!, right == nil ? nil : r.baseAddress!)
+      }
+    }
+    for i in 0..<frames {
+      let g: Float = ducks ? gain * duckBuf[i] : gain
+      let l = duckL[i] * g
+      let r = duckR[i] * g
+      left[i] += l
+      right?[i] += r
+      if sends { sendBuf[i] += right == nil ? l : 0.5 * (l + r) }
+    }
   }
 
   /// The sampled instruments' send of the block just rendered, into `sendFifo` for the room to
@@ -2346,6 +2412,15 @@ public final class WaveRunner {
     let depth = frames <= duckBuf.count ? current?.duckDepth ?? 0 : 0
     duckingSlots = depth > 0 ? current?.duckSlots ?? 0 : 0
     sendingSlots = reverb != nil && frames <= sendBuf.count ? current?.sendSlots ?? 0 : 0
+    gainedSlots = frames <= duckL.count ? current?.gainSlots ?? 0 : 0
+    if gainedSlots != 0, let p = current {
+      var m = gainedSlots
+      while m != 0 {
+        let i = m.trailingZeroBitCount
+        m &= m - 1
+        slotGainBuf[i] = p.slotGain[i]
+      }
+    }
     // the dip recovers over about an eighth note (3 time constants), attack 2 ms
     let duckRelease = exp(-6 * clock[clkTempo] / (60 * sampleRate))
     let duckAttack = 1 - exp(-1 / (0.002 * sampleRate))

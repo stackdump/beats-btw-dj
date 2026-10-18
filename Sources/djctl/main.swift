@@ -679,12 +679,13 @@ case "render":
     }
     if wet > 0 && base > 0 { audio["roomReturnDB"] = round3(10 * log10(wet / base)) }
   }
-  // --balance: each part soloed against the whole mix, K-weighted (synth voices)
+  // --balance: each part soloed against the whole mix, K-weighted, on the deck's samplers
+  // (synth voices with --synth)
   if balance {
-    var o = request.applied(to: .extended)
-    o.musicality = fixes
-    let levels = MixBalance.measure(track.played, opts: o.forGenre(spec.genre))
+    let levels = MixBalance.measure(
+      track.played, opts: track.options, samplers: synth ? nil : source.samplers)
     audio["balanceDB"] = levels.mapValues(round3)
+    audio["balanceSampled"] = !synth
     if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
   }
   // what each palette role plays (`TrackSound.option`), and what the sampler loaded per net

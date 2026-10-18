@@ -100,6 +100,9 @@ public final class PreparedTrack: @unchecked Sendable {
   /// `opts.musicality` asks), or `project` itself for a raw-`nets` share or without fixes.
   public let played: Project
   public let prepared: WaveProject
+  /// The options `prepared` was compiled with: the deck's, with the track's voicing seed and
+  /// its genre's and palette's settings (`MixBalance.measure` renders the parts with them).
+  public let options: WaveOptions
 
   /// The composed track's spec; nil for a raw-`nets` share.
   public var spec: TrackSpec? {
@@ -165,6 +168,7 @@ public final class PreparedTrack: @unchecked Sendable {
     if case .net(let spec) = source {
       o = o.forGenre(spec.genre).forPalette(project.palette, genre: spec.genre)
     }
+    options = o
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o, startTick: startTick)
   }
 }

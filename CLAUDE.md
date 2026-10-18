@@ -260,6 +260,11 @@ its copy; the two are now independent. Rules inherited from that split:
   → `SamplerBank.slotPartLevelDB(slot, group:)`. Unity-gain levels are cached by (file, size,
   mtime, rate, probe `version`) in `Application Support/DJApp/sampler-part-levels.json`
   (`$DJ_SAMPLER_PART_CACHE`; empty = memory only); bump `version` when a probe changes.
+  With `.balance` and a bank, each slot plays at its part's trim − that level (± 12 dB,
+  `SampledBalance` → `WaveProject.slotGain`; a shared slot keeps the first net's): non-unity
+  slots render one at a time through the scratch pair in `flushSamplers` (own duck and send),
+  and the loudness probe stands each sampled net in where it now sits (`probeLevels`).
+  `djctl render --balance` solos on the deck's samplers (`MixBalance.measure(samplers:)`).
 - Sampler eviction: a bank holds 24. `slot(for:)` takes a reference on the slot it returns
   (`release` gives it back); a `WaveProject` holds one per sampled lane until its `deinit`,
   which runs off the audio thread after the retire ring — so current, pending, fading and
