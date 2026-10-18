@@ -19,6 +19,70 @@ struct AllocationCounterTests {
     #expect(r.allocations >= 50, "the hook must actually fire (got \(r.allocations))")
     #expect(keep.count == 50)
   }
+
+  /// The same workload counts the same with stacks on as off, and the hook never re-enters
+  /// itself (`backtrace` allocating would show as `nested`, and would not be counted).
+  @Test func recordingStacksAllocatesNothingItself() {
+    func workload(stacks: Bool) -> AllocationReport {
+      var keep: [Box] = []
+      keep.reserveCapacity(20)
+      return countAllocations(stacks: stacks) {
+        for i in 0..<20 { keep.append(Box(i)) }
+        keep.removeAll(keepingCapacity: true)
+      }
+    }
+    _ = workload(stacks: true)  // first backtrace / lazy binding out of the way
+    let off = workload(stacks: false)
+    let on = workload(stacks: true)
+    // (exactly 20 each in release; a debug build adds its own)
+    #expect(off.allocations >= 20 && off.frees >= 20, "\(off)")
+    #expect(on.allocations == off.allocations && on.frees == off.frees, "\(on)\(on.stackText)")
+    #expect(on.nested == 0, "the hook allocated inside itself \(on.nested) times")
+    #expect(off.nested == 0)
+    #expect(countAllocations(stacks: true) {}.allocations == 0)
+  }
+
+  @Test func stacksSayWhereAllocationsCameFrom() {
+    var keep: [Box] = []
+    keep.reserveCapacity(20)
+    let r = countAllocations(stacks: true) {
+      for i in 0..<20 { keep.append(Box(i)) }
+    }
+    #expect(r.allocations >= 20)
+    #expect(r.stacks[0].hasPrefix("#1 malloc"), "\(r.stackText)")
+    // one call site through the Swift runtime's object allocator: one stack, hit 20 times
+    // (release keeps just that one; a debug build adds the array's own)
+    #expect(
+      r.stacks.contains { $0.contains("swift_allocObject") && $0.contains("×20") },
+      "\(r.stackText)")
+    #expect(r.unrecorded == 0 && r.stackIsFree.count == r.stacks.count)
+    #expect(keep.count == 20)
+  }
+
+  /// Every free is classified, not just the first few: past `maxStacks` distinct stacks the
+  /// rest are `unrecorded` and a tolerance refuses to judge.
+  @Test func everyFreeIsClassified() {
+    var keep: [Box] = []
+    keep.reserveCapacity(1)
+    let one = countAllocations(stacks: true) {
+      keep.append(Box(0))
+      keep.removeAll(keepingCapacity: true)
+    }
+    #expect(one.frees >= 1 && one.unrecorded == 0, "\(one.stackText)")
+    #expect(one.stackIsFree.contains(true))
+    #expect(one.freesAreOnly { _ in true })
+    #expect(!one.freesAreOnly { _ in false })
+    #expect(!one.freesAreOnlyListenerMapReclamation)
+    var r = one
+    r.unrecorded = 1
+    #expect(!r.freesAreOnly { _ in true }, "an unrecorded free can't be judged")
+    #expect(countAllocations {}.freesAreOnlyListenerMapReclamation)
+  }
+}
+
+private final class Box {
+  let v: Int
+  init(_ v: Int) { self.v = v }
 }
 
 private func project(_ genre: String, _ seed: Double, _ structure: String) -> Project {
@@ -145,7 +209,7 @@ struct WaveRunnerRealTimeTests {
       result.slot.store(bank.slot(for: [.gm(80)]) ?? -1, ordering: .releasing)
     }
     run(10)
-    let evicting = countAllocations {
+    let evicting = countAllocations(stacks: true) {
       result.go.store(true, ordering: .releasing)
       // clock_gettime_nsec_np reads the clock without allocating (Date() would not do here)
       let deadline = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + 120 * 1_000_000_000
@@ -168,8 +232,14 @@ struct WaveRunnerRealTimeTests {
     #expect(slot >= 0, "the load evicted a slot")
     #expect(!used.contains(slot), "never one the playing project references")
     #expect(bank.source(of: slot) == .gm(80))
-    #expect(evicting.allocations == 0, "render allocated \(evicting.allocations) times")
-    #expect(evicting.frees == 0, "render freed \(evicting.frees) times")
+    #expect(
+      evicting.allocations == 0,
+      "render allocated \(evicting.allocations) times\(evicting.stackText)")
+    // the one free a sampler's render may make: AudioToolbox reclaiming listener-map nodes
+    // (see SamplerConcurrentEngineRealTimeTests), judged per call by its stack
+    #expect(
+      evicting.freesAreOnlyListenerMapReclamation,
+      "render freed \(evicting.frees) times\(evicting.stackText)")
     if slot >= 0 { bank.release(slot) }
     src.drainRetired()
   }
@@ -202,9 +272,16 @@ struct WaveRunnerRealTimeTests {
     var engines: [DJEngine] = []
     for _ in 0..<2 {
       engines.append(try DJEngine(decks: ["X"], offline: true, sampleRate: sr))
-      let report = countAllocations { run(400) }
-      #expect(report.allocations == 0, "render allocated \(report.allocations) times")
-      #expect(report.frees == 0, "render freed \(report.frees) times")
+      let report = countAllocations(stacks: true) { run(400) }
+      #expect(
+        report.allocations == 0, "render allocated \(report.allocations) times\(report.stackText)")
+      // Seen in 2 of 10 serial full runs: 1-2 frees, every one AudioToolbox reclaiming
+      // listener-map nodes another thread removed (SamplerConcurrentEngineRealTimeTests).
+      // Removals made on this thread before measuring leave none behind, so it is a removal
+      // in flight elsewhere in the process; tolerated per call, by its stack.
+      #expect(
+        report.freesAreOnlyListenerMapReclamation,
+        "render freed \(report.frees) times\(report.stackText)")
     }
     #expect(engines.count == 2)
     src.drainRetired()
@@ -521,7 +598,7 @@ extension WaveDeckSourceTests {
       }
     }
     run(100)
-    let report = countAllocations {
+    let report = countAllocations(stacks: true) {
       for c in cmds {
         src.send(c)
         run(20)
@@ -533,8 +610,12 @@ extension WaveDeckSourceTests {
       for c in reset { src.send(c) }
       run(200)
     }
-    #expect(report.allocations == 0, "render allocated \(report.allocations) times")
-    #expect(report.frees == 0, "render freed \(report.frees) times")
+    #expect(
+      report.allocations == 0, "render allocated \(report.allocations) times\(report.stackText)")
+    // sampled lanes: only AudioToolbox's listener-map reclamation may free (per call, by stack)
+    #expect(
+      report.freesAreOnlyListenerMapReclamation,
+      "render freed \(report.frees) times\(report.stackText)")
   }
 
   @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))

@@ -24,10 +24,14 @@ private func project(_ genre: String, _ seed: Double, _ structure: String = "loo
 private struct Tally {
   var allocs = 0
   var frees = 0
+  /// The offending stacks over all regions, up to `maxStacks` (`Rig.measure` keeps them).
+  var stacks: [String] = []
   mutating func add(_ r: AllocationReport) {
     allocs += r.allocations
     frees += r.frees
+    stacks += r.stacks.prefix(maxStacks - stacks.count)
   }
+  var stackText: String { stacks.isEmpty ? "" : "\n" + stacks.joined(separator: "\n\n") }
 }
 
 /// A deck driven block by block on this thread, as the audio thread would drive it. Commands
@@ -53,7 +57,7 @@ private final class Rig {
   func measure(_ n: Int, size: Int = 128) {
     let deck = deck
     tally.add(
-      countAllocations {
+      countAllocations(stacks: true) {
         l.withUnsafeMutableBufferPointer { lp in
           r.withUnsafeMutableBufferPointer { rp in
             for _ in 0..<n {
@@ -156,8 +160,11 @@ struct DeckBlockRealTimeTests {
     rig.drain()
     deck.wave.readMarking(into: &snap)
 
-    #expect(rig.tally.allocs == 0, "renderBlock allocated \(rig.tally.allocs) times")
-    #expect(rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times")
+    #expect(
+      rig.tally.allocs == 0,
+      "renderBlock allocated \(rig.tally.allocs) times\(rig.tally.stackText)")
+    #expect(
+      rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times\(rig.tally.stackText)")
     // and the plumbing really ran
     #expect(deck.tap.frames == deck.renderedFrames && deck.tap.frames > 600_000)
     #expect(
@@ -203,8 +210,11 @@ struct DeckBlockRealTimeTests {
     framesBefore = deck.renderedFrames
     rig.measure(10, size: 4096)
     #expect(deck.renderedFrames == framesBefore + 40_960)
-    #expect(rig.tally.allocs == 0, "renderBlock allocated \(rig.tally.allocs) times")
-    #expect(rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times")
+    #expect(
+      rig.tally.allocs == 0,
+      "renderBlock allocated \(rig.tally.allocs) times\(rig.tally.stackText)")
+    #expect(
+      rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times\(rig.tally.stackText)")
     #expect(deck.tap.frames == deck.renderedFrames && deck.tap.frames > 250_000)
     var buf = [Float](repeating: 0, count: 20_000)
     let got = buf.withUnsafeMutableBufferPointer {
@@ -245,8 +255,11 @@ struct DeckBlockRealTimeTests {
     rig.measure(300)
     #expect(deck.tap.gapFrames >= 700 * 128 + 400 * 128)
     #expect(deck.tap.endFrame == deck.renderedFrames)
-    #expect(rig.tally.allocs == 0, "renderBlock allocated \(rig.tally.allocs) times")
-    #expect(rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times")
+    #expect(
+      rig.tally.allocs == 0,
+      "renderBlock allocated \(rig.tally.allocs) times\(rig.tally.stackText)")
+    #expect(
+      rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times\(rig.tally.stackText)")
     deck.tap.release()
   }
 
@@ -265,8 +278,11 @@ struct DeckBlockRealTimeTests {
     let firesBefore = deck.wave.fires.written
     // 100000 blocks of 128 frames at 48 kHz = 4.4 minutes: ~8500 ticks, with nobody reading
     rig.measure(100_000)
-    #expect(rig.tally.allocs == 0, "renderBlock allocated \(rig.tally.allocs) times")
-    #expect(rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times")
+    #expect(
+      rig.tally.allocs == 0,
+      "renderBlock allocated \(rig.tally.allocs) times\(rig.tally.stackText)")
+    #expect(
+      rig.tally.frees == 0, "renderBlock freed \(rig.tally.frees) times\(rig.tally.stackText)")
     #expect(deck.wave.fires.written - firesBefore > deck.wave.fireCapacity, "the fire ring wrapped")
     #expect(deck.wave.anchors.written > deck.wave.anchorCapacity, "and so did the anchor ring")
     rig.drain()

@@ -172,7 +172,11 @@ public final class SamplerInstrument: @unchecked Sendable {
   /// AudioToolbox answers that report by building the unit's parameter cache, lazily, on the
   /// render thread: about 54 mallocs and 50 frees per sampler, once. Building it here instead
   /// (adding a parameter listener builds it) leaves nothing for the render thread to build.
-  /// Measured by `samplersDoNotAllocateWhenAnotherEngineIsBuilt` (WaveDeckSourceTests).
+  /// Measured by `samplersDoNotAllocateWhenAnotherEngineIsBuilt` (WaveDeckSourceTests) and,
+  /// with the engine built during the renders, `SamplerConcurrentEngineRealTimeTests`. What
+  /// is left is not ours to fix: that same report walks AudioToolbox's process-wide listener
+  /// map, and the walk that leaves last frees the nodes other threads removed meanwhile (an
+  /// engine torn down while a deck plays: a few frees on the render thread, no mallocs).
   private static func buildParameterCache(_ unit: AudioUnit) {
     var listener: AUParameterListenerRef?
     let created = AUListenerCreateWithDispatchQueue(
