@@ -124,6 +124,10 @@ public final class WaveDeckSource: @unchecked Sendable {
   /// `vinyl-brake` on a project prepared with `WaveOptions.turntableBrake` (TurntableBrake.swift):
   /// varispeed on the runner's whole output, before the master chain.
   private let brake: TurntableBrake
+  /// The deck's last stage on the app's path (`WaveOptions.master == "limit"`): peaks held
+  /// under `PeakLimiter.ceilingDB`, after the chain, before the deck's EQ. nil = beats' tanh in
+  /// the runner (the parity path).
+  public let limiter: PeakLimiter?
   /// Frames the transport has run (it stops while the deck is paused or stopped).
   private var transportFrames: Int64 = 0
   /// The block being rendered: its transport time and length (for the automation's events).
@@ -164,6 +168,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     fx = FxAutomation()
     chain = MasterChain(sampleRate: sampleRate)
     brake = TurntableBrake(sampleRate: sampleRate)
+    limiter = opts.master == "limit" ? PeakLimiter(sampleRate: sampleRate) : nil
     opIndex = .allocate(capacity: Self.opCapacity)
     opTime = .allocate(capacity: Self.opCapacity)
     opKey = .allocate(capacity: Self.opCapacity)
@@ -518,6 +523,9 @@ public final class WaveDeckSource: @unchecked Sendable {
     }
   }
 
+  /// How far the limiter pulled the last block down, dB (0: not limiting, or no limiter).
+  public var limiterGainReductionDB: Double { limiter?.gainReductionDB ?? 0 }
+
   // MARK: audio-thread side
 
   /// Fill `frames` samples of `left` (and `right` if given). Real-time safe. Stamps fires
@@ -559,6 +567,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     }
     chain.process(left, right, from: s, to: frames)
     chain.finish(frames: frames)
+    limiter?.process(left, right, frames: frames)
     masterMaskAtomic.store(
       fx.activeMask | (brake.isOn ? MasterMacro.vinylBrake.bit : 0), ordering: .relaxed)
     let corners = chain.filterCorners()

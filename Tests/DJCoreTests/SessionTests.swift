@@ -189,12 +189,19 @@ private func performance(_ dj: DJEngine, _ router: ControllerRouter, block b: In
 
 struct SessionReplayTests {
   /// Perform the set live (recording), return its session and audio.
-  static func perform(blocks: Int = 520) throws -> (Session, RenderedAudio) {
+  static func perform(blocks: Int = 520, autoGain: Bool = false) throws -> (
+    Session, RenderedAudio
+  ) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
     dj.deterministic = true
+    // the app turns auto-gain on before anything loads (AppModel.applyAutoGainPreference)
+    if autoGain { dj.perform(.param(deck: "B", name: "autoGain", value: 1)) }
+    // compiled with the deck's options, as the app does and the replay will: the loudness gain
+    // counts the parts the deck's bank binds (`WaveProject.sampledGroups`)
     dj["A"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate))
+        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate,
+        opts: dj["A"]!.waveOptions))
     dj["B"]!.loadDemo()
     dj["A"]!.volume = 0.85
     try dj.start()
@@ -217,6 +224,17 @@ struct SessionReplayTests {
     #expect(session.frames == live.frames)
     #expect(session.events.count >= 25, "\(session.events.count) events")
     #expect(live.left.reduce(0) { max($0, abs($1)) } > 0.1)
+    let replay = try SessionPlayer(session: session).render()
+    #expect(replay.frames == live.frames)
+    #expect(replay.left == live.left && replay.right == live.right)
+  }
+
+  /// The app's normal case: auto-gain on before the sample loads, so the live deck plays at the
+  /// levelled gain from its first sample; the replay's starting state must too (no glide in).
+  @Test func theReplayIsTheSameAudioWithAutoGainOn() throws {
+    let (session, live) = try Self.perform(blocks: 300, autoGain: true)
+    #expect(session.params["B"]?.autoGain == true)
+    #expect(DemoLoop.make(sampleRate: rate).level.autoGainDB != 0)
     let replay = try SessionPlayer(session: session).render()
     #expect(replay.frames == live.frames)
     #expect(replay.left == live.left && replay.right == live.right)

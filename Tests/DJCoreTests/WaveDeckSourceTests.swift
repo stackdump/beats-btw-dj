@@ -393,6 +393,45 @@ struct WaveDeckSourceTests {
 }
 
 extension WaveDeckSourceTests {
+  /// The app's path end to end: `.extended` options (musicality, the runner's `scaled` sum, the
+  /// deck's `PeakLimiter` and meter), driven hot enough that the limiter works.
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func theAppPathWithTheLimiterDoesNotAllocate() {
+    let sr = 48_000.0
+    let opts = WaveOptions.extended
+    let src = WaveDeckSource(sampleRate: sr, opts: opts)
+    #expect(src.limiter != nil)
+    src.load(WaveRunner.prepare(project("techno", 42, "minimal"), sampleRate: sr, opts: opts))
+    let next = WaveRunner.prepare(project("dnb", 3, "minimal"), sampleRate: sr, opts: opts)
+    src.setTempo(480)
+    src.play()
+    var l = [Float](repeating: 0, count: 128)
+    var r = [Float](repeating: 0, count: 128)
+    func run(_ n: Int) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n { src.render(frames: 128, left: lp.baseAddress!, right: rp.baseAddress!) }
+        }
+      }
+    }
+    run(200)
+    var allocs = 0
+    var frees = 0
+    func measure(_ blocks: Int) {
+      let c = countAllocations { run(blocks) }
+      allocs += c.allocations
+      frees += c.frees
+    }
+    measure(1000)
+    src.load(next)
+    src.fire(.drop)
+    src.setMasterFx(.distortion, 100)  // hot: the limiter pulls down
+    measure(1500)
+    #expect(allocs == 0, "render allocated \(allocs) times")
+    #expect(frees == 0, "render freed \(frees) times")
+    src.drainRetired()
+  }
+
   @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
   func voiceTweaksDoNotAllocate() {
     // the sound panel while the song plays: every parameter, a pitch sweep switched on (a saw

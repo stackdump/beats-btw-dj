@@ -119,9 +119,10 @@ struct StereoTests {
   func aTrackIsWideAboveAndMonoBelow(genre: String) {
     let track = PreparedTrack(
       spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr)
-    let runner = WaveRunner(sampleRate: sr, opts: .extended)
-    runner.load(prepared: track.prepared)
-    runner.play()
+    // the deck (its limiter holds the peaks the track's loudness gain brings)
+    let source = WaveDeckSource(sampleRate: sr, opts: .extended)
+    source.load(track.prepared)
+    source.play()
     var l = [Float](repeating: 0, count: Int(12 * sr))
     var r = l
     l.withUnsafeMutableBufferPointer { lb in
@@ -129,7 +130,7 @@ struct StereoTests {
         var off = 0
         while off < lb.count {
           let n = min(512, lb.count - off)
-          runner.process(lb.baseAddress! + off, rb.baseAddress! + off, frames: n)
+          source.render(frames: n, left: lb.baseAddress! + off, right: rb.baseAddress! + off)
           off += n
         }
       }

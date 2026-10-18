@@ -887,7 +887,7 @@ extension Deck {
   /// Load a clip as a looping sample with its grid, its tempo matched to `ref` and its playhead
   /// at the point of the loop that lines up with `ref`'s bar.
   func loadClip(_ clip: LoopClip, against ref: Deck?) {
-    load(clip.buffer, title: clip.title)
+    load(clip.buffer, title: clip.title, level: false)
     clipID = clip.id
     setBeatGrid(clip.grid)
     let length = Double(clip.buffer.length)
