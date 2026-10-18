@@ -37,20 +37,29 @@ public enum NoteLog {
     return s > 0 ? s : max(1, project.bars ?? 4) * 16
   }
 
+  /// A net's group: its mixer group, else its riff group, else its id (`NoteEvent.group`).
+  static func groupName(_ nb: NetBundle, id: String) -> String {
+    let tg = nb.track.group ?? ""
+    return !tg.isEmpty ? tg : (!nb.riffGroup.isEmpty ? nb.riffGroup : id)
+  }
+
   /// Every note `project` plays in its first `ticks` ticks (default: the whole song). Stops
-  /// early when the song's own transport stops it.
-  public static func capture(_ project: Project, ticks: Int? = nil) -> [NoteEvent] {
-    run(WaveGraph(project: project), ticks: ticks ?? length(project)).notes
+  /// early when the song's own transport stops it. With `harmony`, tonal notes are mapped
+  /// through the section plan, as the runner plays them under `.sectionHarmony`.
+  public static func capture(
+    _ project: Project, ticks: Int? = nil, harmony: SectionHarmony? = nil
+  ) -> [NoteEvent] {
+    run(WaveGraph(project: project), ticks: ticks ?? length(project), harmony: harmony).notes
   }
 
   /// The notes and the part changes (mute / unmute / slot switches) of the first `ticks`.
-  public static func captureAll(_ project: Project, ticks: Int? = nil)
-    -> (notes: [NoteEvent], controls: [PartChange])
-  {
-    run(WaveGraph(project: project), ticks: ticks ?? length(project))
+  public static func captureAll(
+    _ project: Project, ticks: Int? = nil, harmony: SectionHarmony? = nil
+  ) -> (notes: [NoteEvent], controls: [PartChange]) {
+    run(WaveGraph(project: project), ticks: ticks ?? length(project), harmony: harmony)
   }
 
-  static func run(_ g: WaveGraph, ticks: Int)
+  static func run(_ g: WaveGraph, ticks: Int, harmony: SectionHarmony? = nil)
     -> (notes: [NoteEvent], controls: [PartChange])
   {
     var out: [NoteEvent] = []
@@ -58,17 +67,24 @@ public enum NoteLog {
     let tempo = g.tempo > 0 ? g.tempo : 120
     let msPerStep = 60000 / (tempo * 4)
     var group: [String] = []
+    var harmonyGroup: [Int] = []
     for n in g.nets {
-      let tg = n.bundle.track.group ?? ""
-      group.append(!tg.isEmpty ? tg : (!n.bundle.riffGroup.isEmpty ? n.bundle.riffGroup : n.id))
+      let name = groupName(n.bundle, id: n.id)
+      group.append(name)
+      harmonyGroup.append(harmony?.groupIndex(name) ?? -1)
     }
     for _ in 0..<ticks {
       g.advance { n, t in
         let steps = n.durSteps[t] > 0 ? n.durSteps[t] : n.durMs[t] / msPerStep
+        let channel = Int(n.channel[t])
+        var note = n.note[t]
+        if let h = harmony, harmonyGroup[n.index] >= 0, !isDrumChannel(channel) {
+          note = h.note(note, group: harmonyGroup[n.index], step: g.tick - 1)
+        }
         out.append(
           NoteEvent(
-            tick: g.tick, net: n.id, group: group[n.index], note: n.note[t], velocity: n.vel[t],
-            channel: Int(n.channel[t]), steps: steps))
+            tick: g.tick, net: n.id, group: group[n.index], note: note, velocity: n.vel[t],
+            channel: channel, steps: steps))
       }
       for i in stride(from: 0, to: g.controlCount, by: 2) {
         let n = g.nets[Int(g.controls[i])]
