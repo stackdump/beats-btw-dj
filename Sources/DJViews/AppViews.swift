@@ -242,6 +242,9 @@ public final class AppModel {
   private var refresh: Timer?
   private var injectedRouter: ControllerRouter?
   @ObservationIgnored var controlServer: ControlServer?
+  /// Minecraft gameplay events already taken, and each deck's last stinger bar
+  /// (`minecraftEvents`, MinecraftEvents.swift).
+  @ObservationIgnored var minecraftFeed = MinecraftEventFeed()
   /// The audition playing now (held so it isn't freed mid-sound).
   @ObservationIgnored var auditionSound: NSSound?
   /// Samplers for auditions, apart from the decks' (a sampler renders on one thread only).

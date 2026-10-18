@@ -764,10 +764,15 @@ case "measure":
 case "minecraft":
   // djctl minecraft import [--assets DIR] [--index N] [--out DIR]
   // djctl minecraft status
+  // djctl minecraft events [--deck A|B] [--prime] < mc_recent_events.json
+  //   hands an mc_recent_events window (the array, or the tool result) to the running app,
+  //   which fires each new event's stinger once (MinecraftEvents.swift)
   // Builds minecraft-local.sf2 + minecraft-local.json in the SoundFont folder from the game
   // sounds installed on this Mac (PrismLauncher's assets; $DJ_MINECRAFT_ASSETS or --assets
   // overrides; the newest asset index unless --index). Local only: never commit, ship or
   // publish the result.
+  let eventsDeck = value("--deck")
+  let prime = flag("--prime")
   let root = value("--assets") ?? MinecraftAssets.defaultRoot
   let index = value("--index")
   let out = value("--out") ?? SamplerSource.soundFontDir
@@ -798,8 +803,19 @@ case "minecraft":
         "\(MinecraftBank.path(dir: out))  asset index \(side.assetIndex)  "
           + "\(side.programs.count) programs + kit")
     }
+  case "events":
+    do {
+      let text = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+      let params = try MinecraftEventsCommand.params(stdin: text, deck: eventsDeck, prime: prime)
+      print(MinecraftEventsCommand.describe(try ControlClient().request("minecraftEvents", params)))
+    } catch {
+      stderr("minecraft events failed: \(error)")
+      exit(1)
+    }
   default:
-    stderr("usage: djctl minecraft import [--assets DIR] [--index N] [--out DIR] | status")
+    stderr(
+      "usage: djctl minecraft import [--assets DIR] [--index N] [--out DIR] | status"
+        + " | events [--deck A|B] [--prime] < events.json")
     exit(2)
   }
 

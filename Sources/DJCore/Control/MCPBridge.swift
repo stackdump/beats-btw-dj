@@ -22,7 +22,7 @@ public struct MCPBridge {
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
     "dj_set_instrument": "setInstrument", "dj_stock_loops": "stockLoops",
     "dj_notes": "notes", "dj_journal": "journal", "dj_palettes": "palettes",
-    "dj_view": "view", "dj_variations": "variations",
+    "dj_view": "view", "dj_variations": "variations", "dj_minecraft_events": "minecraftEvents",
   ]
 
   /// One JSON-RPC line in → the reply line, or nil for a notification.
@@ -394,6 +394,23 @@ public struct MCPBridge {
         "name": prop("string", "The variation's name"),
         "to": prop("string", "rename: the new name"),
       ]),
+    tool(
+      "dj_minecraft_events",
+      """
+      Minecraft gameplay fires stingers. Pass what the minecraft server's mc_recent_events \
+      returned (its array of {at, source, event, params}, oldest first) as `events`; each \
+      event is mapped through voices/minecraft-events.json (log:death → stinger 0, log:advancement → 1, minecraft:notification/players/joined → 2) and played \
+      on `deck` (default: the focus deck), recorded like a button. The app keeps a cursor, so \
+      re-sending an overlapping window fires each event once; a deck takes at most one \
+      stinger a bar (the rest are skipped, with the reason). prime: take the events without \
+      playing them (start a polling loop without replaying the backlog). Stingers need a net \
+      deck.
+      """,
+      [
+        "events": prop("array", "mc_recent_events' events, oldest first"),
+        "deck": prop("string", "A or B (default: the focus deck)"),
+        "prime": prop("boolean", "Take the events without playing any"),
+      ], required: ["events"]),
     tool(
       "dj_press_pad",
       "Press a pad on the APC mini grid (the real one, or the on-screen one, which this shows). "
