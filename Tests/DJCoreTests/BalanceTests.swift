@@ -16,7 +16,9 @@ private func levels(_ genre: String, _ fixes: DJMusicality.Fixes) -> [String: Do
 struct BalanceTests {
   /// In the dance genres the kick was the whole mix, the bass 12 dB or more under it; balanced,
   /// the bass sits within 8 dB of the kick, the lead within 7, and every part is nearer its
-  /// target place against the others.
+  /// target place against the others. The bass trim sits at the +6 dB clamp in all three, so
+  /// what the clamp leaves is the instrument's own level: funk's plain `bass` saw has an entry
+  /// in instruments.json (0.31 over the family's 0.26) that brings its gap from 8.59 to 7.07 dB.
   @Test(arguments: ["techno", "trance", "funk"])
   func theKickNoLongerIsTheMix(genre: String) throws {
     let before = levels(genre, DJMusicality.Fixes.all.subtracting(.balance))
