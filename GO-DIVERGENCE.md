@@ -176,5 +176,20 @@ the matching deviation note (ROADMAP 2.8 / 3.3).
    short phrase to the lead and take no `.balance` trim, and so sit 2–6 dB under the synth part
    they replace in a song (pads most).
 
+8. **A beat in the chill family's verses and choruses** (`.backbeat`, Backbeat.swift; ROADMAP
+   6.5). beats' theme table (`themes.<genre>.energy`) activates lofi, jazz and bossa's kick and
+   snare only in buildup / drop / pre-chorus (jazz and bossa's kick also in the outro), and
+   their `standard` blueprints have none of those, so those songs never play a beat. dj brings
+   both parts in for every verse, pre-chorus, chorus and drop (lofi also buildup) and plays the
+   family's figure: lofi boom-bap (kick 0 / 7 / 10, snare 4 / 12), jazz a feathered kick on every
+   beat under a soft 2 and 4, bossa a surdo (0 / 6 / 8 / 14) and the bossa clave on the rim
+   (0 / 3 / 6 / 10 / 13). dj may not add stages, so where the struct net has too few the edges
+   ride on the fill chains. The parity path and `compose()` are unchanged. For beats: add `kick`
+   and `snare` to those sections' theme roles (the control nets then carry the changes) and the
+   figures to the family's drum specs (`kick` / `snare` in the genre table, or a theme
+   `groove` drum map). beats' jazz drums are 12-step rings (three beats against a 16-step bar:
+   the pattern drifts a beat every bar); a 16-step ring would let jazz play a true 2 and 4, which
+   dj's 12-step fallback (snare on every beat) cannot.
+
 beats bugs found on the way (dj matches beats today; fix in beats first, then follow):
 - `scope-model.js` models Tone's `rolloff: -48` as four biquads; Tone cascades three.

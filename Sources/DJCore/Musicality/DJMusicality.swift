@@ -219,7 +219,11 @@ public enum DJMusicality {
     public static let arpStyle = Fixes(rawValue: 1 << 40)
     /// The arp rate follows the phrase's density. Runner (p64-arp-density).
     public static let arpDensity = Fixes(rawValue: 1 << 41)
-    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`, p65-chill-backbeat).
+    /// Kick and snare in chill / jazz verse and chorus (`Backbeat.swift`): beats' theme table
+    /// leaves lofi, jazz and bossa's verses and choruses without either. Both come in wherever
+    /// the style has a beat (`beatStyle`), playing boom-bap (lofi), a feathered kick under a soft
+    /// 2 and 4 (jazz), a surdo and the clave on the rim (bossa), on their own rings; the section
+    /// edges are mute / unmute bindings on existing control transitions.
     public static let backbeat = Fixes(rawValue: 1 << 42)
     /// The family's groove template and a tempo-scaled swing. Runner (p65-feel-runner).
     public static let feel = Fixes(rawValue: 1 << 43)
