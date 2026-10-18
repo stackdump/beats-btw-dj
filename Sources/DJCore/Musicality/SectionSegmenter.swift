@@ -21,7 +21,7 @@ import Foundation
 ///    the kernel is cut and renormalised by the weight it keeps, and needs `minSide` bars on
 ///    each side.
 /// 5. Peaks: a bar whose novelty is the largest within ±`peakRadius` bars (`kernelBars` / 2),
-///    above `threshold` standard deviations over the mean novelty and at least `minNovelty`.
+///    at least `threshold` × the median novelty and at least `minNovelty`.
 ///
 /// Ground truth so far is our own synth renders, whose structure we know
 /// (SectionSegmenterTests); today's structures hold 4-bar sections, so the kernel stays short.
@@ -34,11 +34,13 @@ public struct SectionSegmenter: Sendable {
   public static let chromaMaxHz = 4_000.0
   /// Bars the kernel needs on each side of a boundary.
   public static let minSide = 2
-  /// Standard deviations over the mean novelty a peak must reach. 0: a peak over the mean.
-  /// In our renders the breakdown → drop edges stand at 3-5× the rest, which lifts mean +
-  /// 0.5 sd over the quieter verse → buildup → drop edges (SectionSegmenterTests found half
-  /// the starts); the local-maximum rule and `minNovelty` keep a steady loop at none.
-  public static let threshold = 0.0
+  /// A peak must reach this many times the median novelty. The median, not mean + k·sd: in
+  /// our renders the breakdown → drop edges stand at 3-5× the rest and lift any mean / sd
+  /// floor over the quieter verse → buildup → drop edges (SectionSegmenterTests found half
+  /// the starts). Over techno / house / trance / dnb × seeds 4242, 7, 42, 1234, factors
+  /// 1.25-1.5 find ≥ 80 % of the starts in every render, within the spurious allowance; 1.75
+  /// misses some. A steady loop's novelty is 0 everywhere and gives none.
+  public static let threshold = 1.25
   /// The least novelty a peak must reach (cosine units, -2…2).
   public static let minNovelty = 0.05
   /// The least standard deviation a feature is scaled by: 1 dB for bands and RMS, 0.01 of a
@@ -309,15 +311,14 @@ public struct SectionSegmenter: Sendable {
     return out
   }
 
-  /// Bars whose novelty is the largest within ±`radius`, over mean + `threshold`·sd of the
-  /// bars where the kernel fits, and at least `minNovelty`.
+  /// Bars whose novelty is the largest within ±`radius`, at least `threshold` × the median
+  /// of the bars where the kernel fits, and at least `minNovelty`.
   static func peaks(_ nov: [Double], radius: Int) -> [Int] {
-    let valid = nov.filter { $0 != 0 }
+    let valid = nov.filter { $0 != 0 }.sorted()
     guard !valid.isEmpty else { return [] }
-    let mean = valid.reduce(0, +) / Double(valid.count)
-    let sd = (valid.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(valid.count))
-      .squareRoot()
-    let floor = max(minNovelty, mean + threshold * sd)
+    let mid = valid.count / 2
+    let median = valid.count % 2 == 1 ? valid[mid] : (valid[mid - 1] + valid[mid]) / 2
+    let floor = max(minNovelty, threshold * median)
     var out: [Int] = []
     for b in nov.indices where b > 0 && nov[b] >= floor {
       let lo = max(0, b - radius)
