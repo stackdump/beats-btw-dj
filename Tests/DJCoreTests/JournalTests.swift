@@ -55,7 +55,9 @@ struct JournalCodecTests {
       .favoriteTags(cid: "z4x", tags: []),
       .crateAdd(name: "set 1"),
       .crateDelete(name: "set 1"),
-      .variationSave(instrument: "laser", variation: VoiceVariation(name: "short", params: VoiceTweak(), useSynth: true)),
+      .variationSave(
+        instrument: "laser",
+        variation: VoiceVariation(name: "short", params: VoiceTweak(), useSynth: true)),
       .variationRename(instrument: "laser", name: "short", to: "shorter"),
       .variationDelete(instrument: "laser", name: "shorter"),
       .noteAdd(note),
@@ -66,15 +68,18 @@ struct JournalCodecTests {
       .noteAdd(TrackNote(id: "n-3", target: .clip(id: "abc"), text: "c", created: journalDate(1))),
       .noteEdit(id: "n-1", text: "the drop", at: journalDate(1_760_000_200.25)),
       .noteDelete(id: "n-1"),
+      .storesReplace(s.stores),
+      .storesReplace(JournalStoreState()),
       .mark("session.start"),
     ]
   }
 
   @Test func everyEventKindRoundTripsThroughItsLine() throws {
     let kinds = Set(Self.everyEvent.map(\.kind))
-    #expect(kinds.count == 17, "one of each kind: \(kinds.sorted())")
+    #expect(kinds.count == 18, "one of each kind: \(kinds.sorted())")
     for (i, ev) in Self.everyEvent.enumerated() {
-      let e = JournalEntry(seq: i, time: journalDate(1_760_000_000.5 + Double(i)), frame: i * 128, event: ev)
+      let e = JournalEntry(
+        seq: i, time: journalDate(1_760_000_000.5 + Double(i)), frame: i * 128, event: ev)
       let line = e.line
       #expect(!line.contains("\n"))
       let back = try #require(JournalEntry(line: line), "\(ev.kind) decodes")
@@ -120,7 +125,8 @@ struct JournalCodecTests {
     #expect(c.skipped.isEmpty)
     #expect(c.checkpoint != nil)
     // a bad line in the middle is skipped and reported, the rest still read
-    let middle = [lines[0], "{not json", lines[1], #"{"v":9,"seq":2,"f":0,"k":"from.the.future"}"#, lines[2]]
+    let middle =
+      [lines[0], "{not json", lines[1], #"{"v":9,"seq":2,"f":0,"k":"from.the.future"}"#, lines[2]]
       .joined(separator: "\n") + "\n"
     let m = Journal.parse(middle)
     #expect(m.entries.map(\.seq) == [0, 1, 2])
@@ -137,11 +143,14 @@ struct JournalCodecTests {
     #expect(s.favorites.first?.tags == ["intro", "heavy"])
     // starring again keeps the tags, as FavoritesStore.add does
     s.apply(.favoriteAdd(Favorite(title: "t2", source: .net(spec), added: wholeSecond(2))))
-    #expect(s.favorites.count == 1 && s.favorites[0].title == "t2" && s.favorites[0].tags.count == 2)
+    #expect(
+      s.favorites.count == 1 && s.favorites[0].title == "t2" && s.favorites[0].tags.count == 2)
     s.apply(.crateAdd(name: " set 1 "))
     s.apply(.crateAdd(name: "set 1"))
     #expect(s.crates == ["set 1"])
-    s.apply(.variationSave(instrument: "laser", variation: VoiceVariation(name: "a", params: VoiceTweak())))
+    s.apply(
+      .variationSave(
+        instrument: "laser", variation: VoiceVariation(name: "a", params: VoiceTweak())))
     s.apply(.variationRename(instrument: "laser", name: "a", to: "b"))
     #expect(s.variations["laser"]?.map(\.name) == ["b"])
     s.apply(.variationDelete(instrument: "laser", name: "b"))
@@ -157,6 +166,41 @@ struct JournalCodecTests {
     #expect(s == JournalStoreState(crates: ["set 1"]))
     let handled = s.apply(.action(.play(deck: "A", on: true)))
     #expect(!handled, "a poke is not a store event")
+  }
+
+  @Test func aStoresReplaceSetsEveryStore() throws {
+    let spec = Self.spec
+    var s = JournalStoreState()
+    s.apply(.favoriteAdd(Favorite(title: "gone", source: .net(spec), added: wholeSecond(1))))
+    s.apply(.crateAdd(name: "old crate"))
+    s.apply(
+      .variationSave(
+        instrument: "laser", variation: VoiceVariation(name: "a", params: VoiceTweak())))
+    s.apply(.noteAdd(Self.note))
+    let replaced = JournalStoreState(
+      favorites: [
+        Favorite(
+          title: "new", source: .net(TrackSpec(genre: "house", seed: 7)), added: wholeSecond(2),
+          tags: ["warm"])
+      ],
+      crates: ["warm", "set 2"],
+      variations: ["bass": [VoiceVariation(name: "deep", params: VoiceTweak(), useSynth: true)]],
+      notes: [
+        TrackNote(id: "n-9", target: .clip(id: "c"), text: "replaced", created: journalDate(3))
+      ])
+    let handled = s.apply(.storesReplace(replaced))
+    #expect(handled)
+    #expect(s == replaced, "nothing of the old stores is left")
+    // later edits build on the replaced stores
+    s.apply(.crateDelete(name: "set 2"))
+    #expect(s.crates == ["warm"] && s.favorites == replaced.favorites)
+    // an empty replace clears them all
+    s.apply(.storesReplace(JournalStoreState()))
+    #expect(s == JournalStoreState())
+    // the line carries the whole state
+    let e = JournalEntry(seq: 1, time: journalDate(4), frame: 0, event: .storesReplace(replaced))
+    #expect(try #require(JournalEntry(line: e.line)).event == .storesReplace(replaced))
+    #expect(e.event.foldKey == nil && !e.event.isNote)
   }
 }
 
@@ -208,7 +252,9 @@ struct JournalReplayTests {
         switch b {
         case 0:
           dj.perform(
-            .load(deck: "A", source: .sample(id: DeckSourceDescriptor.demoID, title: "demo", grid: nil)))
+            .load(
+              deck: "A", source: .sample(id: DeckSourceDescriptor.demoID, title: "demo", grid: nil))
+          )
           dj.perform(.load(deck: "B", source: .net(net)))
           dj.perform(.play(deck: "A", on: true))
           dj.perform(.play(deck: "B", on: true))
@@ -223,7 +269,9 @@ struct JournalReplayTests {
         case 32: dj.perform(.loopRecord(deck: "A", on: false))
         case 150: dj.perform(.section(deck: "B", index: 1))
         case 160:
-          store(.favoriteAdd(Favorite(title: "B track", source: .net(net), added: wholeSecond(1_760_000_001))))
+          store(
+            .favoriteAdd(
+              Favorite(title: "B track", source: .net(net), added: wholeSecond(1_760_000_001))))
           store(.favoriteTags(cid: BeatsCID.shareCID(net.payload), tags: ["peak", "set 1"]))
           store(.crateAdd(name: "set 1"))
           store(.favoriteTags(cid: starred.cid, tags: []))
@@ -284,14 +332,19 @@ struct JournalReplayTests {
     let frames = c.entries.map(\.frame)
     #expect(frames == frames.sorted(), "frames never go back")
     let kinds = Set(c.entries.map(\.event.kind))
-    for k in ["checkpoint", "act", "midi", "favorite.add", "favorite.tags", "crate.add", "note.add", "variation.save"] {
+    for k in [
+      "checkpoint", "act", "midi", "favorite.add", "favorite.tags", "crate.add", "note.add",
+      "variation.save",
+    ] {
       #expect(kinds.contains(k), "journaled \(k)")
     }
     #expect(live.state.clips.count == 2, "a take and a grab: \(live.state.clips.map(\.id))")
     #expect(live.state.clips.last?.title == "the take", "moved to the end, renamed")
     #expect(live.state.locked == ["B.section"])
     #expect(live.state.stores.notes.count == 2)
-    #expect(live.state.decks["B"]?.source == .net(TrackSpec(genre: "techno", seed: 7, structure: "standard")))
+    #expect(
+      live.state.decks["B"]?.source
+        == .net(TrackSpec(genre: "techno", seed: 7, structure: "standard")))
 
     let replay = try Journal.replay(c)
     #expect(replay.warnings.isEmpty, "\(replay.warnings)")
@@ -349,18 +402,25 @@ struct JournalReplayTests {
     let last = c.entries.last!.seq
     let session = try Journal.exportSession(c, from: section.seq, to: last)
     #expect(session.decks["B"] == .net(TrackSpec(genre: "techno", seed: 7, structure: "standard")))
-    #expect(session.decks["A"] == .sample(id: "demo-loop", title: "demo loop", grid: BeatGrid(bpm: 120, offset: 0, confidence: 1)))
+    #expect(
+      session.decks["A"]
+        == .sample(
+          id: "demo-loop", title: "demo loop", grid: BeatGrid(bpm: 120, offset: 0, confidence: 1)))
     #expect(session.params["A"]?.volume == 0.7)
     let kinds = session.events.map(\.kind)
     #expect(kinds.contains(.action(.play(deck: "A", on: true))), "a deck that was playing starts")
     #expect(kinds.contains(.action(.lock(key: "B.section", on: true))))
-    #expect(session.events.first { if case .action(.section) = $0.kind { true } else { false } }?.frame == 0)
+    #expect(
+      session.events.first { if case .action(.section) = $0.kind { true } else { false } }?.frame
+        == 0)
     // a normal session: it round-trips by CID and renders
     let back = try Session.decode(session.canonical, cid: session.cid)
     #expect(back == session)
     let audio = try SessionPlayer(session: session).render()
     #expect(audio.frames == session.frames)
-    #expect(throws: JournalError.emptySlice) { try Journal.exportSession(c, from: last + 1, to: last + 5) }
+    #expect(throws: JournalError.emptySlice) {
+      try Journal.exportSession(c, from: last + 1, to: last + 5)
+    }
   }
 }
 
@@ -376,10 +436,11 @@ struct JournalFileTests {
     #expect(dj.journal === c, "the last one opened is the engine's")
     for j in [a, b, c] { j.close() }
     #expect(
-      journalNames(dir) == [
-        "journal-20251009T090320.000Z.jsonl", "journal-20251009T085320.000Z.jsonl",
-        "journal-20251009T085320.000Z-2.jsonl",
-      ].sorted(by: >))
+      journalNames(dir)
+        == [
+          "journal-20251009T090320.000Z.jsonl", "journal-20251009T085320.000Z.jsonl",
+          "journal-20251009T085320.000Z-2.jsonl",
+        ].sorted(by: >))
     let text = newestJournalText(dir)
     #expect(text.hasPrefix(#"{"f":0,"k":"checkpoint","seq":0,"#))
     #expect(text.hasSuffix("\n"))
@@ -421,11 +482,14 @@ struct JournalFileTests {
     dj.perform(.load(deck: "B", source: .net(spec.nextVersion)))
     #expect(dj.noteTarget("B")?.target != a.target, "the next seed is another")
     #expect(dj.notePosition("A") == NotePosition(bar: 1, beat: 1, seconds: 0))
-    dj.perform(.load(deck: "B", source: .sample(id: DeckSourceDescriptor.demoID, title: "demo", grid: nil)))
+    dj.perform(
+      .load(deck: "B", source: .sample(id: DeckSourceDescriptor.demoID, title: "demo", grid: nil)))
     #expect(dj.noteTarget("B")?.target == .sample(id: "demo-loop", file: nil))
     let fav = Favorite(title: "t", source: .net(spec))
     #expect(a.target.matches(fav))
-    #expect(NoteTarget.sample(id: "x", file: "/a.caf").matches(Favorite(title: "s", source: .sample(id: "", title: "s", grid: nil), file: "/a.caf")))
+    #expect(
+      NoteTarget.sample(id: "x", file: "/a.caf").matches(
+        Favorite(title: "s", source: .sample(id: "", title: "s", grid: nil), file: "/a.caf")))
   }
 
   @Test func theNotesStoreIsTheJournalsProjection() throws {
@@ -458,5 +522,28 @@ struct JournalFileTests {
     j.record(.crateAdd(name: "new"))
     j.close()
     #expect(Journal.latestStores(in: dir) == JournalStoreState(crates: ["new"]))
+  }
+
+  @Test func aReplayEndsWithExactlyTheReplacedStores() throws {
+    let dir = tempJournalDir()
+    defer { removeDir(dir) }
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: rate)
+    let j = try Journal(
+      engine: dj, directory: dir, started: journalDate(1_760_000_000)
+    ) { JournalStoreState(crates: ["old"], notes: [JournalCodecTests.note]) }
+    j.record(.crateAdd(name: "before"))
+    let replaced = JournalStoreState(
+      favorites: [
+        Favorite(title: "f", source: .net(JournalCodecTests.spec), added: wholeSecond(5))
+      ],
+      crates: ["after"])
+    j.record(.storesReplace(replaced))
+    j.record(.action(.play(deck: "A", on: true)))
+    j.close()
+    #expect(Journal.latestStores(in: dir) == replaced)
+    let c = try Journal.read(j.file)
+    var stores = try #require(c.checkpoint?.stores)
+    for e in c.entries.dropFirst() { stores.apply(e.event) }
+    #expect(stores == replaced)
   }
 }
