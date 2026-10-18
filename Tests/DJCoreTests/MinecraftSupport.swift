@@ -32,6 +32,30 @@ func emptyScratchDir() -> String {
   return dir.path
 }
 
+/// `Fixtures/mc-recent-events.json`: what `mc_recent_events` returns, made by the valoper
+/// server's own EventBuffer + LogWatcher (the log events) with a players/joined notification
+/// in the management protocol's `[player]` params.
+func mcRecentEventsFixture() throws -> String {
+  guard
+    let url = Bundle.module.url(
+      forResource: "mc-recent-events", withExtension: "json", subdirectory: "Fixtures")
+  else { throw CocoaError(.fileNoSuchFile) }
+  return try String(contentsOf: url, encoding: .utf8)
+}
+
+/// The event map loaded with a scratch bundle holding `json` as voices/minecraft-events.json
+/// ahead of the default bundles (as the app's Contents/Resources is ahead of SwiftPM's).
+func eventMapWithOverride(_ json: String) throws -> MinecraftEventMap {
+  let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "mcmap-\(UUID().uuidString)")
+  let voices = dir.appendingPathComponent("voices")
+  try FileManager.default.createDirectory(at: voices, withIntermediateDirectories: true)
+  try json.write(
+    to: voices.appendingPathComponent("minecraft-events.json"), atomically: true, encoding: .utf8)
+  guard let b = Bundle(path: dir.path) else { throw CocoaError(.fileNoSuchFile) }
+  return try MinecraftEventMap.load(bundles: [b] + MinecraftEventMap.defaultBundles)
+}
+
 /// A sine at `freq` Hz, `seconds` long, amplitude 0.5.
 func sineWave(_ freq: Double, sampleRate sr: Double, seconds: Double) -> [Float] {
   (0..<Int(seconds * sr)).map { Float(0.5 * sin(2 * Double.pi * freq * Double($0) / sr)) }

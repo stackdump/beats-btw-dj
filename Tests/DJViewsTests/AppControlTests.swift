@@ -589,6 +589,49 @@ struct AppControlTests {
     }
   }
 
+  /// `minecraftEvents` (dj_minecraft_events): gameplay fires the focus deck's stinger through
+  /// the engine (recorded), once per event however often the window is re-sent.
+  @Test func minecraftEventsFireTheFocusDecksStingerOnce() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    _ = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    _ = try await call(m, "perform", #"{"action":{"op":"focus","deck":"B"}}"#)
+    let rec = try SessionRecorder.start(on: dj)
+    let window = """
+      {"events":[
+        {"at":"2026-10-18T16:16:22.349Z","source":"log","event":"log:chat",
+         "params":{"player":"stackdump","message":"hello world","time":"20:15:08"}},
+        {"at":"2026-10-18T16:16:22.845Z","source":"log","event":"log:death",
+         "params":{"player":"stackdump","message":"stackdump was slain by Zombie","time":"20:15:08"}}
+      ]}
+      """
+    let r = try await call(m, "minecraftEvents", window)
+    #expect(r["deck"]?.string == "B")
+    #expect(r["fired"]?.array?.count == 1)
+    #expect(r["fired"]?[0]?["player"]?.string == "stackdump")
+    #expect(r["skipped"]?[0]?["reason"]?.string == "unmapped")
+    #expect(r["cursor"]?.string == "2026-10-18T16:16:22.845Z")
+    let again = try await call(m, "minecraftEvents", window)
+    #expect(again["fired"]?.array?.isEmpty == true)
+    #expect(rec.finish().events.map(\.kind) == [.action(.stinger(deck: "B", n: 0))])
+    // a sample deck consumes the event and says why; bad requests say what is wrong
+    let a = try await call(
+      m, "minecraftEvents",
+      #"{"deck":"A","events":[{"at":"2026-10-18T16:30:00.000Z","source":"log","event":"log:advancement","params":{"player":"x"}}]}"#
+    )
+    #expect(a["fired"]?.array?.isEmpty == true)
+    #expect(a["skipped"]?[0]?["reason"]?.string?.contains("net") == true)
+    for (params, words) in [
+      (#"{}"#, "`events`"), (#"{"events":{"x":1}}"#, "mc_recent_events"),
+      (#"{"events":[],"deck":"C"}"#, "no deck"),
+    ] {
+      await #expect {
+        try await call(m, "minecraftEvents", params)
+      } throws: { "\($0)".contains(words) }
+    }
+  }
+
   @Test func generateLoadsALiveNetAndMacrosThenWork() async throws {
     let m = try model()
     let b = try await call(

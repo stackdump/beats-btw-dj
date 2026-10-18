@@ -620,6 +620,11 @@ its copy; the two are now independent. Rules inherited from that split:
   app can restart under a live MCP session. `make mcp-install` copies it to `build/mcp/` and
   registers `dj-vevr-se` at user scope. `djctl ctl <method> [json]` sends one raw request.
 - Publishing is deliberately not a tool (it's public and asks in a modal).
+- Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
+  on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
+  through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a
+  cursor over `at` so overlapping polls fire each event once, and one stinger a bar per deck. The
+  polling loop is ops work, outside the repo.
 - Outside audio joins the loop row only through `DJEngine.importClip` (recorded as `clipImport`
   by content id, provenance `LoopProvenance.stock`; `dj_stock_loops addToRow`). A set with one is
   refused by `SessionBundle` with no override (`Session.importedClips`): stock loops never reach

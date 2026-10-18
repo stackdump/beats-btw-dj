@@ -1,0 +1,53 @@
+[
+  {
+    "at": "2026-10-18T16:16:22.349Z",
+    "source": "log",
+    "event": "log:chat",
+    "params": {
+      "player": "stackdump",
+      "message": "hello world",
+      "time": "20:15:08"
+    }
+  },
+  {
+    "at": "2026-10-18T16:16:22.744Z",
+    "source": "rpc",
+    "event": "minecraft:notification/players/joined",
+    "params": [
+      {
+        "id": "853c80ef-3c37-49fd-aa49-938b674adae6",
+        "name": "stackdump"
+      }
+    ]
+  },
+  {
+    "at": "2026-10-18T16:16:22.845Z",
+    "source": "log",
+    "event": "log:advancement",
+    "params": {
+      "player": "stackdump",
+      "message": "stackdump has made the advancement [Stone Age]",
+      "time": "20:15:08"
+    }
+  },
+  {
+    "at": "2026-10-18T16:16:22.845Z",
+    "source": "log",
+    "event": "log:death",
+    "params": {
+      "player": "stackdump",
+      "message": "stackdump was slain by Zombie",
+      "time": "20:15:08"
+    }
+  },
+  {
+    "at": "2026-10-18T16:16:23.845Z",
+    "source": "log",
+    "event": "log:death",
+    "params": {
+      "player": "stackdump",
+      "message": "stackdump fell from a high place",
+      "time": "20:15:08"
+    }
+  }
+]

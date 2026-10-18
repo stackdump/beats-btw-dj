@@ -438,6 +438,9 @@ extension AppModel {
     case "loops":
       return try await controlLoops(p)
 
+    case "minecraftEvents":
+      return try controlMinecraftEvents(p)
+
     default:
       throw ControlRequestError.bad("unknown method \(method)")
     }
@@ -624,6 +627,31 @@ extension AppModel {
     }
     if !f.tags.isEmpty { o["tags"] = .array(f.tags.map { .string($0) }) }
     return .object(o)
+  }
+
+  /// `minecraftEvents` (dj_minecraft_events): mc_recent_events' window → the mapped actions
+  /// on `deck` (default: the focus deck), each new event once, a stinger at most once a bar.
+  /// Performed through the engine, so they record as a button's would.
+  func controlMinecraftEvents(_ p: JSONValue) throws -> JSONValue {
+    guard let dj = engine else { throw ControlRequestError.bad("the audio engine did not start") }
+    guard let list = p["events"] else {
+      throw ControlRequestError.bad("`events` must be mc_recent_events' array (or its result)")
+    }
+    let events: [MinecraftEvent]
+    do {
+      events = try MinecraftEvent.parse(json: list)
+    } catch {
+      throw ControlRequestError.bad("\(error)")
+    }
+    let deck = p["deck"]?.string ?? dj.focus
+    let d = try requireDeck(deck)
+    let (fired, skipped) = minecraftFeed.take(
+      events, deck: deck, bar: d.beatState?.bar, net: d.mode == .net,
+      prime: p["prime"]?.bool ?? false)
+    for f in fired { dj.perform(f.action) }
+    poll()
+    return MinecraftEventFeed.report(
+      deck: deck, fired: fired, skipped: skipped, cursor: minecraftFeed.cursor)
   }
 
   /// The control socket's `settings`: the monitoring settings the bottom bar and mixer set —

@@ -380,3 +380,125 @@ struct MinecraftTests {
     }
   }
 }
+
+/// Gameplay → stingers (MinecraftEvents.swift): mc_recent_events mapped through
+/// voices/minecraft-events.json, each event once, at most one stinger a bar per deck.
+extension MinecraftTests {
+  @Test func recentEventsParseFromTheToolAndItsResult() throws {
+    let text = try mcRecentEventsFixture()
+    let events = try MinecraftEvent.parse(text)
+    #expect(
+      events.map(\.event) == [
+        "log:chat", "minecraft:notification/players/joined", "log:advancement", "log:death",
+        "log:death",
+      ])
+    #expect(events.allSatisfy { $0.player == "stackdump" })
+    #expect(events[1].source == "rpc")
+    // the same array inside an MCP result (val_call's strings, or text parts)
+    let wrapped = JSONValue.object(JSONObject([("content", .array([.string(text)]))]))
+    #expect(try MinecraftEvent.parse(json: wrapped) == events)
+    let parts = JSONValue.object(
+      JSONObject([
+        (
+          "content",
+          .array([.object(JSONObject([("type", .string("text")), ("text", .string(text))]))])
+        )
+      ]))
+    #expect(try MinecraftEvent.parse(json: parts) == events)
+    #expect(try MinecraftEvent.parse("[]").isEmpty)
+    #expect(throws: MinecraftEventError.self) { try MinecraftEvent.parse(#"{"x":1}"#) }
+  }
+
+  @Test func eventsMapToStingers() throws {
+    let map = try MinecraftEventMap.load()
+    func at(_ s: String, _ e: String) -> MinecraftEvent { MinecraftEvent(at: s, event: e) }
+    #expect(map.action(for: at("t", "log:death"), deck: "A") == .stinger(deck: "A", n: 0))
+    #expect(map.action(for: at("t", "log:advancement"), deck: "B") == .stinger(deck: "B", n: 1))
+    #expect(
+      map.action(for: at("t", "minecraft:notification/players/joined"), deck: "A")
+        == .stinger(deck: "A", n: 2))
+    #expect(map.action(for: at("t", "log:chat"), deck: "A") == nil)
+    #expect(MinecraftEventMap.shared.actions.count == map.actions.count)
+  }
+
+  /// The app's Contents/Resources copy wins over SwiftPM's (Bundle.main first).
+  @Test func theMapLoadsFromTheFirstBundleThatHasIt() throws {
+    let over = try eventMapWithOverride(
+      #"{"events":{"log:chat":{"op":"stinger","n":3}}}"#)
+    #expect(
+      over.action(for: MinecraftEvent(at: "t", event: "log:chat"), deck: "A")
+        == .stinger(deck: "A", n: 3))
+    #expect(over.action(for: MinecraftEvent(at: "t", event: "log:death"), deck: "A") == nil)
+    // the test runner's main bundle has none: SwiftPM's is next
+    #expect(try MinecraftEventMap.load().actions["log:death"] != nil)
+  }
+
+  /// A re-read window fires nothing twice (events sharing a millisecond included), and a
+  /// deck takes one stinger a bar.
+  @Test func aRepeatedWindowFiresEachEventOnce() throws {
+    let events = try MinecraftEvent.parse(try mcRecentEventsFixture())
+    var feed = MinecraftEventFeed(map: try MinecraftEventMap.load())
+    var bar = 0
+    let first = feed.take(Array(events.prefix(3)), deck: "A", bar: bar)
+    #expect(first.fired.map(\.action) == [.stinger(deck: "A", n: 2)])
+    #expect(first.skipped.map(\.reason) == ["unmapped", "a stinger already fired in bar 0"])
+    #expect(feed.cursor == "2026-10-18T16:16:22.845Z")
+    // the next poll overlaps: only the new death at the cursor's millisecond and the one after
+    bar = 1
+    let second = feed.take(events, deck: "A", bar: bar)
+    #expect(second.fired.map(\.action) == [.stinger(deck: "A", n: 0)])
+    #expect(second.fired.first?.event.at == "2026-10-18T16:16:22.845Z")
+    #expect(second.skipped.map(\.reason) == ["a stinger already fired in bar 1"])
+    // the same window again: nothing new
+    bar = 2
+    let third = feed.take(events, deck: "A", bar: bar)
+    #expect(third.fired.isEmpty && third.skipped.isEmpty)
+    // the bar limit is per deck
+    var feedB = MinecraftEventFeed(map: try MinecraftEventMap.load())
+    let deaths = events.filter { $0.event == "log:death" }
+    let b = feedB.take(deaths, deck: "B", bar: 7)
+    #expect(b.fired.count == 1)
+    _ = feedB.take([], deck: "A", bar: 7)
+    let later = MinecraftEvent(at: "2026-10-18T16:17:00.000Z", event: "log:death")
+    #expect(feedB.take([later], deck: "A", bar: 7).fired.count == 1, "deck A's bar 7 is free")
+  }
+
+  @Test func primingTakesTheBacklogWithoutPlayingIt() throws {
+    let events = try MinecraftEvent.parse(try mcRecentEventsFixture())
+    var feed = MinecraftEventFeed(map: try MinecraftEventMap.load())
+    let primed = feed.take(events, deck: "A", bar: 0, prime: true)
+    #expect(primed.fired.isEmpty && primed.skipped.count == events.count)
+    #expect(feed.take(events, deck: "A", bar: 1).fired.isEmpty)
+    // a sample deck can't take stingers: the event is consumed with the reason
+    let next = MinecraftEvent(at: "2026-10-18T16:20:00.000Z", event: "log:advancement")
+    let s = feed.take([next], deck: "A", bar: 2, net: false)
+    #expect(s.fired.isEmpty && s.skipped.first?.reason.contains("net") == true)
+    // without a beat grid: one stinger per poll
+    let two = [
+      MinecraftEvent(at: "2026-10-18T16:21:00.000Z", event: "log:death"),
+      MinecraftEvent(at: "2026-10-18T16:21:01.000Z", event: "log:death"),
+    ]
+    #expect(feed.take(two, deck: "A", bar: nil).fired.count == 1)
+  }
+
+  /// `djctl minecraft events`: stdin → the request's params, the reply → lines.
+  @Test func theCommandBuildsTheRequest() throws {
+    let p = try MinecraftEventsCommand.params(
+      stdin: try mcRecentEventsFixture(), deck: "B", prime: false)
+    #expect(p["deck"]?.string == "B")
+    #expect(p["events"]?.array?.count == 5)
+    #expect(p["prime"] == nil)
+    let back = try MinecraftEvent.parse(json: p["events"]!)
+    #expect(back == (try MinecraftEvent.parse(try mcRecentEventsFixture())))
+    let q = try MinecraftEventsCommand.params(stdin: "[]", deck: nil, prime: true)
+    #expect(q["deck"] == nil && q["prime"]?.bool == true)
+    let ev = MinecraftEvent(
+      at: "t", event: "log:death", params: .object(JSONObject([("player", .string("x"))])))
+    let reply = MinecraftEventFeed.report(
+      deck: "A", fired: [.init(event: ev, action: .stinger(deck: "A", n: 0))], skipped: [],
+      cursor: "t")
+    let text = MinecraftEventsCommand.describe(reply)
+    #expect(text.contains("log:death (x) → A"))
+    #expect(text.hasSuffix("fired 1, skipped 0"))
+  }
+}
