@@ -365,7 +365,9 @@ its copy; the two are now independent. Rules inherited from that split:
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
   toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
   --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
-  Per-genre settings come from `WaveOptions.forGenre`.
+  Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
+  arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
+  `WaveProject.voiceDesign`).
 - Part G adds `.variety` (`TrackVariety.swift`): beats draws only the melody from the seed, so
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
