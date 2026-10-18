@@ -250,6 +250,35 @@ struct LoopSoundTests {
     #expect(rig.dj.loopState(one.id) == .off && rig.loopPeak() == 0)
   }
 
+  @Test func aClipsOwnFadeOverridesTheRowsAndFollowsACrop() async throws {
+    let rig = try SoundRig()
+    defer { rig.dj.stop() }
+    let one = try await rig.oneTake()
+    #expect(rig.dj.loopFade(for: one.id) == .declick && rig.dj.clipFade(one.id) == nil)
+    rig.dj.perform(.clipFade(id: one.id, mode: "bar"))
+    rig.dj.perform(.loopFade(mode: "off"))
+    #expect(rig.dj.clipFade(one.id) == .bar && rig.dj.loopFade == .off)
+    #expect(rig.dj.loopFadeFrames(for: one.id, bpm: 120) == bar, "its own")
+    #expect(rig.dj.loopFadeFrames(for: one.id, bpm: 120, short: true) == 480)
+    #expect(rig.dj.loopFadeFrames(for: "other", bpm: 120) == 0, "the row's")
+    #expect(rig.dj.loopFadeFrames(for: nil, bpm: 120) == 0)
+    // it goes out over its bar, though the row's fade is off
+    rig.dj.perform(.clipLoop(id: one.id, on: false))
+    let stop = try #require(rig.dj.loopVoices[try rig.voice(one.id)].stopFrame)
+    try rig.run(to: stop + bar / 2)
+    #expect(rig.dj.loopState(one.id) == .stopping, "half way through its own bar-long fade")
+    try rig.run(to: stop + bar + 4096)
+    #expect(rig.dj.loopState(one.id) == .off)
+    // a crop sounds the same; the original's is forgotten with it
+    rig.dj.perform(.clipQuantize(id: one.id, beats: 8))
+    let c = try #require(rig.dj.cropClip(one.id, from: 0, to: 2))
+    #expect(rig.dj.clipFade(c) == .bar && rig.dj.clipQuantum(c) == 8)
+    #expect(rig.dj.clipFade(one.id) == nil && rig.dj.clipQuantum(one.id) == nil)
+    // null: the row's again
+    rig.dj.perform(.clipFade(id: c, mode: nil))
+    #expect(rig.dj.clipFade(c) == nil && rig.dj.loopFade(for: c) == .off)
+  }
+
   // MARK: key lock
 
   @Test func wsolaKeepsTheLengthToTheRatio() {

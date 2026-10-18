@@ -415,7 +415,8 @@ extension DJEngine {
     guard let i = clips.firstIndex(where: { $0.id == id }) else { return }
     stopLoop(id, now: true)
     let sound = ClipSound(
-      muted: clipMutes.contains(id), soloed: clipSolos.contains(id), keyLock: clipKeyLocks[id])
+      muted: clipMutes.contains(id), soloed: clipSolos.contains(id), keyLock: clipKeyLocks[id],
+      quantum: clipQuanta[id], fade: clipFades[id])
     rememberRemovedClip(clips.remove(at: i), at: i, sound: sound)
     forgetClipSound(id)
     for d in decks.values where d.clipID == id { d.setPlaying(false) }
@@ -556,7 +557,7 @@ extension DJEngine {
   public enum LoopState: Sendable, Equatable {
     /// Not looping.
     case off
-    /// Comes in at the next launch boundary (`loopQuantum`).
+    /// Comes in at the next launch boundary (`quantum(for:)`).
     case starting
     case on
     /// Goes out at the next launch boundary.
@@ -630,15 +631,18 @@ extension DJEngine {
       loopVoices[v].stopFrame = nil
       loopVoices[v].boundary = nil
       // cancels the stop (or brings a fade-out back up)
-      bank.send(.start(voice: v, frame: 0, fade: loopFadeFrames(bpm: loopVoices[v].targetBPM)))
+      bank.send(
+        .start(voice: v, frame: 0, fade: loopFadeFrames(for: id, bpm: loopVoices[v].targetBPM)))
       return
     }
     guard let v = loopVoices.firstIndex(where: { $0.clipID == nil }) else { return }
     let clock = loopClock(for: clip)
     let earliest = loopChannel.renderedFrames + Self.loopLead
+    // its own boundary, but a scene's clips all switch on the row's
+    let every = frame == nil ? quantum(for: id) : loopQuantum
     let at =
       frame.map { max($0, earliest) }
-      ?? (atOnce ? earliest : clock.nextBoundary(after: earliest, every: loopQuantum))
+      ?? (atOnce ? earliest : clock.nextBoundary(after: earliest, every: every))
     let beats = Double(clip.beats)
     var b = (clock.beat(at) - (clock.ref?.name == clip.source ? clip.startBeat : 0))
       .truncatingRemainder(dividingBy: beats)
@@ -656,11 +660,12 @@ extension DJEngine {
     tt.send(.start)
     bank.send(.gain(voice: v, Float(audibleClipGain(id))))
     bank.send(.fx(voice: v, LoopFxParams(clip.fx, sampleRate: sampleRate)))
-    bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(bpm: target, short: atOnce)))
+    bank.send(
+      .start(voice: v, frame: at, fade: loopFadeFrames(for: id, bpm: target, short: atOnce)))
     loopVoices[v] = LoopVoice(
       clipID: id, ref: clock.ref?.name, ratio: ratio, bufferBPM: audio.bpm, targetBPM: target,
       startFrame: at, scheduledAt: loopChannel.renderedFrames, bufferLength: length,
-      boundary: atOnce ? nil : clock.waitingBoundary(every: loopQuantum))
+      boundary: atOnce ? nil : clock.waitingBoundary(every: every))
   }
 
   /// `at`: stop at that deck frame (a scene launch) instead of the next launch boundary.
@@ -675,16 +680,17 @@ extension DJEngine {
     }
     let earliest = loopChannel.renderedFrames + (now ? 0 : Self.loopLead)
     let clock = loopClock(for: clip(id))
+    let every = frame == nil ? quantum(for: id) : loopQuantum
     let at =
       now
       ? earliest
       : frame.map { max($0, earliest) }
-        ?? clock.nextBoundary(after: earliest, every: loopQuantum)
-    let fade = loopFadeFrames(bpm: loopVoices[v].targetBPM, short: now)
+        ?? clock.nextBoundary(after: earliest, every: every)
+    let fade = loopFadeFrames(for: id, bpm: loopVoices[v].targetBPM, short: now)
     bank.send(.stop(voice: v, frame: at, fade: fade))
     loopVoices[v].stopFrame = at
     loopVoices[v].scheduledAt = loopChannel.renderedFrames
-    loopVoices[v].boundary = now ? nil : clock.waitingBoundary(every: loopQuantum)
+    loopVoices[v].boundary = now ? nil : clock.waitingBoundary(every: every)
   }
 
   /// Housekeeping (from `serviceLoopTakes`): free voices whose loop is out, keep each loop at its
@@ -766,7 +772,7 @@ extension DJEngine {
     if let stop = voice.stopFrame {
       let at = max(clock.nearestBoundary(to: stop, every: boundary.beats), now + Self.loopLead)
       guard bank.isActive(v), moved(stop, at) else { return }
-      bank.send(.stop(voice: v, frame: at, fade: loopFadeFrames(bpm: voice.targetBPM)))
+      bank.send(.stop(voice: v, frame: at, fade: loopFadeFrames(for: id, bpm: voice.targetBPM)))
       loopVoices[v].stopFrame = at
       return
     }
@@ -778,7 +784,7 @@ extension DJEngine {
       .truncatingRemainder(dividingBy: beats)
     if b < 0 { b += beats }
     bank.voices[v].send(.seek(sample: b * voice.bufferLength / beats))
-    bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(bpm: voice.targetBPM)))
+    bank.send(.start(voice: v, frame: at, fade: loopFadeFrames(for: id, bpm: voice.targetBPM)))
     loopVoices[v].startFrame = at
   }
 

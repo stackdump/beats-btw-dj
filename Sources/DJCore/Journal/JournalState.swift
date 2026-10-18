@@ -46,6 +46,9 @@ public struct ClipCheckpoint: Equatable, Sendable {
   public var soloed: Bool
   /// Its own key lock; nil follows the row's.
   public var keyLock: Bool?
+  /// Its own launch boundary (beats) and fade; nil follows the row's.
+  public var quantum: Int?
+  public var fade: LoopFade?
   /// Looping (or on its way in) under the mixer.
   public var looping: Bool
   /// Its after effects (`LoopClip.fx`).
@@ -53,7 +56,8 @@ public struct ClipCheckpoint: Equatable, Sendable {
 
   public init(
     id: String, title: String, color: String? = nil, gain: Double = 1, muted: Bool = false,
-    soloed: Bool = false, keyLock: Bool? = nil, looping: Bool = false, fx: LoopFX = LoopFX()
+    soloed: Bool = false, keyLock: Bool? = nil, quantum: Int? = nil, fade: LoopFade? = nil,
+    looping: Bool = false, fx: LoopFX = LoopFX()
   ) {
     self.fx = fx
     self.id = id
@@ -63,6 +67,8 @@ public struct ClipCheckpoint: Equatable, Sendable {
     self.muted = muted
     self.soloed = soloed
     self.keyLock = keyLock
+    self.quantum = quantum
+    self.fade = fade
     self.looping = looping
   }
 }
@@ -219,7 +225,8 @@ public struct JournalState: Equatable, Sendable {
       ClipCheckpoint(
         id: c.id, title: c.title, color: c.color, gain: dj.clipGain(c.id),
         muted: dj.isClipMuted(c.id), soloed: dj.isClipSoloed(c.id),
-        keyLock: dj.clipKeyLocks[c.id], looping: looping.contains(c.id), fx: c.fx)
+        keyLock: dj.clipKeyLocks[c.id], quantum: dj.clipQuantum(c.id), fade: dj.clipFade(c.id),
+        looping: looping.contains(c.id), fx: c.fx)
     }
     scenes = dj.scenes
     removed = dj.removedClips.map { ($0.clip.id, $0.index) }
@@ -271,6 +278,9 @@ public struct JournalState: Equatable, Sendable {
             ])
             if let color = c.color { o["color"] = .string(color) }
             if let k = c.keyLock { o["keyLock"] = .bool(k) }
+            // only when set: checkpoints without them encode as before
+            if let q = c.quantum { o["quantum"] = .int(q) }
+            if let f = c.fade { o["fade"] = .string(f.rawValue) }
             if c.fx != LoopFX() { o["fx"] = c.fx.json }
             return .object(o)
           })
@@ -320,6 +330,7 @@ public struct JournalState: Equatable, Sendable {
         id: id, title: c["title"]?.string ?? "loop", color: c["color"]?.string,
         gain: c["gain"]?.double ?? 1, muted: c["muted"]?.bool ?? false,
         soloed: c["soloed"]?.bool ?? false, keyLock: c["keyLock"]?.bool,
+        quantum: c["quantum"]?.int, fade: c["fade"]?.string.flatMap(LoopFade.init(rawValue:)),
         looping: c["looping"]?.bool ?? false, fx: LoopFX(json: c["fx"]))
     }
     scenes = (v["scenes"]?.array ?? []).compactMap(LoopScene.init(json:))
@@ -367,6 +378,8 @@ public struct JournalState: Equatable, Sendable {
       if c.muted { dj.setClipMute(c.id, true) }
       if c.soloed { dj.setClipSolo(c.id, true) }
       if let k = c.keyLock { dj.setClipKeyLock(c.id, k) }
+      if let q = c.quantum { dj.setClipQuantum(c.id, q) }
+      if let f = c.fade { dj.setClipFade(c.id, f) }
       if dj.clipFx(c.id) != c.fx { dj.setClipFx(c.id, c.fx) }  // the run's, not the library's
     }
     dj.restoreScenes(scenes)

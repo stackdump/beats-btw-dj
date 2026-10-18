@@ -166,6 +166,12 @@ public enum DeckAction: Equatable, Sendable {
   case loopKeyLock(on: Bool)
   /// How loops come in and go out: off | 10ms | beat | bar (`LoopFade`).
   case loopFade(mode: String)
+  /// One clip's own launch boundary in beats (`DJEngine.launchQuanta`); nil follows the row's
+  /// (`DJEngine.setClipQuantum`).
+  case clipQuantize(id: String, beats: Int?)
+  /// One clip's own fade (a `LoopFade` raw value); nil follows the row's
+  /// (`DJEngine.setClipFade`).
+  case clipFade(id: String, mode: String?)
   /// How many bars a quick tap of a controller's LOOP button records (1…64), or nil for none
   /// (a tap records to the next downbeat) (`DJEngine.setTapTakeBars`).
   case tapBars(bars: Int?)
@@ -479,6 +485,10 @@ extension DeckAction {
       return o("clipKeyLock", [("id", .string(id)), ("on", .bool(on))])
     case .loopKeyLock(let on): return o("loopKeyLock", [("on", .bool(on))])
     case .loopFade(let mode): return o("loopFade", [("fade", .string(mode))])
+    case .clipQuantize(let id, let beats):
+      return o("clipQuantize", [("id", .string(id)), ("beats", beats.map { .int($0) } ?? .null)])
+    case .clipFade(let id, let mode):
+      return o("clipFade", [("id", .string(id)), ("fade", mode.map { .string($0) } ?? .null)])
     case .tapBars(let bars): return o("tapBars", [("bars", bars.map { .int($0) } ?? .null)])
     case .voiceTweak(let deck, let channel, let params):
       return o("voiceTweak", [d(deck), ("channel", .int(channel)), ("params", params.json)])
@@ -520,8 +530,9 @@ extension DeckAction {
     "clipGain", "clipSequence", "clipCrop", "clipRemove", "clipRestore", "clipForget",
     "clipRename", "clipColor", "loopQuantize", "loopFollow", "sceneSave", "sceneLaunch",
     "sceneRename", "sceneDelete", "clipMute", "clipSolo", "clipKeyLock", "loopKeyLock",
-    "loopFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove", "lock", "wander", "wanderPace",
-    "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink", "setRoleVoice", "clipImport",
+    "loopFade", "clipQuantize", "clipFade", "tapBars", "voiceTweak", "voiceSynth", "clipMove",
+    "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
+    "setRoleVoice", "clipImport",
   ]
 
   public init?(json v: JSONValue) {
@@ -589,6 +600,8 @@ extension DeckAction {
     case "clipKeyLock": self = .clipKeyLock(id: v["id"]?.string ?? "", on: v["on"]?.bool ?? false)
     case "loopKeyLock": self = .loopKeyLock(on: v["on"]?.bool ?? false)
     case "loopFade": self = .loopFade(mode: v["fade"]?.string ?? LoopFade.declick.rawValue)
+    case "clipQuantize": self = .clipQuantize(id: v["id"]?.string ?? "", beats: v["beats"]?.int)
+    case "clipFade": self = .clipFade(id: v["id"]?.string ?? "", mode: v["fade"]?.string)
     case "tapBars": self = .tapBars(bars: v["bars"]?.int)
     case "voiceTweak":
       guard let ch = v["channel"]?.int else { return nil }

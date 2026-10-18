@@ -27,7 +27,7 @@ struct JournalCodecTests {
     s.clips = [
       ClipCheckpoint(
         id: "abc", title: "A loop 1", color: "red", gain: 0.5, muted: true, soloed: false,
-        keyLock: true, looping: true)
+        keyLock: true, quantum: 16, fade: .bar, looping: true)
     ]
     s.scenes = [LoopScene(name: "Scene 1", clips: [SceneClip(clipID: "abc", gain: 0.5)])]
     s.removed = [("def", 2)]
@@ -43,6 +43,8 @@ struct JournalCodecTests {
       .action(.clipMove(id: "abc", before: nil)),
       .action(.lock(key: "A.hotcue.1", on: true)),
       .action(.lock(key: "A.hotcue.1", on: false)),
+      .action(.clipQuantize(id: "abc", beats: 8)),
+      .action(.clipFade(id: "abc", mode: nil)),
       .midi(port: apc, bytes: [0x90, 48, 0x7F]),
       .sampleFile(id: "abc123", path: "/tmp/a b.wav"),
       .libraryRestore(id: "abc", index: 3),
@@ -92,9 +94,41 @@ struct JournalCodecTests {
     for a in [
       DeckAction.clipMove(id: "a", before: "b"), .clipMove(id: "a", before: nil),
       .lock(key: "B.macro.drop", on: true), .lock(key: "B.macro.drop", on: false),
+      .clipQuantize(id: "a", beats: 32), .clipQuantize(id: "a", beats: nil),
+      .clipFade(id: "a", mode: "beat"), .clipFade(id: "a", mode: nil),
     ] {
       #expect(DeckAction(json: try JSONValue.parse(a.json.jsStringified)) == a)
     }
+  }
+
+  /// A clip's own launch boundary and fade are in a checkpoint only when it has them, and a
+  /// restore gives them back.
+  @Test func aCheckpointKeepsAClipsLaunchBoundaryAndFade() throws {
+    let plain = ClipCheckpoint(id: "abc", title: "A loop 1")
+    var s = JournalState(sampleRate: 48_000, clips: [plain])
+    let before = s.json.canonicalJS
+    #expect(!before.contains("quantum") && !before.contains("\"fade\""))
+    s.clips[0].quantum = 16
+    s.clips[0].fade = .off
+    let back = try #require(JournalState(json: try JSONValue.parse(s.json.canonicalJS)))
+    #expect(back.clips == s.clips)
+    s.clips = [plain]
+    #expect(s.json.canonicalJS == before, "without them: byte for byte as before")
+
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 48_000)
+    let n = 4800
+    let b = SampleBuffer(left: (0..<n).map { Float($0 % 50) * 1e-3 }, sampleRate: 48_000)
+    let c = LoopClip(
+      id: b.contentID, title: "A loop 1", source: "A", bars: 1, bpm: 120, startBeat: 0,
+      buffer: b, waveform: WaveformOverview(buffer: b, columns: 10))
+    dj.restoreClips([c])
+    dj.setClipQuantum(c.id, 32)
+    dj.setClipFade(c.id, .beat)
+    let state = JournalState(engine: dj)
+    #expect(state.clips.first?.quantum == 32 && state.clips.first?.fade == .beat)
+    let fresh = try DJEngine(decks: ["A"], offline: true, sampleRate: 48_000)
+    state.restore(into: fresh) { $0 == c.id ? c : nil }
+    #expect(fresh.clipQuantum(c.id) == 32 && fresh.clipFade(c.id) == .beat)
   }
 
   @Test func aLineCarriesTheFieldsTheFormatPromises() throws {
