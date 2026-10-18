@@ -64,7 +64,9 @@ public final class Journal: @unchecked Sendable {
       url = directory.appendingPathComponent("\(base)-\(n).\(Self.fileExtension)")
     }
     let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0o644)
-    guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: url.path]) }
+    guard fd >= 0 else {
+      throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: url.path])
+    }
     self.fd = fd
     file = url
     self.started = JournalTime.rounded(started)
@@ -119,7 +121,9 @@ public final class Journal: @unchecked Sendable {
     var bytes = Array((e.line + "\n").utf8)
     var off = 0
     while off < bytes.count {
-      let n = bytes.withUnsafeMutableBytes { Darwin.write(fd, $0.baseAddress! + off, $0.count - off) }
+      let n = bytes.withUnsafeMutableBytes {
+        Darwin.write(fd, $0.baseAddress! + off, $0.count - off)
+      }
       if n < 0 {
         if errno == EINTR { continue }
         writeError = String(cString: strerror(errno))
@@ -227,7 +231,9 @@ public final class Journal: @unchecked Sendable {
     -> JournalStoreState?
   {
     // Only the checkpoint and the store lines are parsed: a long set is mostly knobs.
-    let storeKinds = ["favorite.", "crate.", "variation.", "note."].map { #""k":""# + $0 }
+    let storeKinds = ["favorite.", "crate.", "variation.", "note.", "stores."].map {
+      #""k":""# + $0
+    }
     for url in list(in: directory) {
       guard let data = try? Data(contentsOf: url) else { continue }
       let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")

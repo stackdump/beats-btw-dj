@@ -94,6 +94,36 @@ struct JournalViewTests {
     m.defaults.removeObject(forKey: "crates")
   }
 
+  @Test func replacingTheStoresRewritesTheFilesAndJournalsIt() async throws {
+    let m = try await model()
+    let dir = try #require(m.journalDir)
+    defer { m.defaults.removeObject(forKey: AppModel.cratesKey) }
+    m.newCrate("old crate")
+    m.saveVariation("laser", name: "zap", VoiceSetting(instrument: "laser"))
+    _ = try await call(m, "notes", #"{"action":"add","deck":"A","text":"old note"}"#)
+    let replaced = replacementStores()
+    m.replaceStores(replaced)
+    // the files
+    #expect(m.favoritesStore.list().map(\.cid) == replaced.favorites.map(\.cid))
+    #expect(m.variationStore.all() == replaced.variations)
+    #expect(m.notesStore.list() == replaced.notes)
+    #expect(m.defaults.stringArray(forKey: AppModel.cratesKey) == replaced.crates)
+    // what the panels show
+    #expect(m.favorites.map(\.cid) == replaced.favorites.map(\.cid))
+    #expect(m.variations == replaced.variations)
+    #expect(m.notes == replaced.notes)
+    #expect(m.crates == ["warm", "set 2"])
+    #expect(m.storeSnapshot == replaced)
+    // the journal: one event, and a replay of it ends with exactly these stores
+    m.journal?.flush()
+    let c = try newestJournal(dir)
+    #expect(c.entries.map(\.event).contains(.storesReplace(replaced)))
+    var stores = try #require(c.checkpoint?.stores)
+    for e in c.entries.dropFirst() { stores.apply(e.event) }
+    #expect(stores == replaced)
+    #expect(Journal.latestStores(in: dir) == replaced)
+  }
+
   @Test func theNewestJournalWinsOverNotesJSON() async throws {
     let first = try await model()
     let dir = try #require(first.journalDir)
