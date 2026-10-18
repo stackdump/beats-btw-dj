@@ -663,6 +663,11 @@ case "render":
   // `.bandStop`: the beat before each chorus against the one before it, song family only
   let stops = render.bandStopDips(track.played, genre: spec.genre)
   if !stops.isEmpty { audio["bandStopDipDB"] = round3(stops.reduce(0, +) / Double(stops.count)) }
+  // `.riser`: the high band's climb into each drop (`RiserRise`)
+  if let r = render.riserSummary(track.played) {
+    audio["riserRiseDB"] = round3(r.riseDB)
+    audio["riserSpearman"] = round3(r.spearman)
+  }
   // --room: render it again without `.space`; what the room adds, against the dry mix
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts

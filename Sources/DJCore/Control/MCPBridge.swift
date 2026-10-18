@@ -119,8 +119,13 @@ public struct MCPBridge {
         + "track, level: the deck's short-term / momentary LUFS, autoGain on/off and the "
         + "autoGainDB a sample plays at, the sample's own LUFS when levelled, a net deck's "
         + "limiter), crossfader, master, the LOOP-record clips, the ones removed from the row and the "
-        + "loop channel (loops), "
-        + "connected controllers, recording, status line, and the "
+        + "loop channel (loops; loops.follow: the Tempo mode and the deck followed), "
+        + "connected controllers, recording, status line, locked (buttons disabled by "
+        + "right-click, by lock key), headphones (mix, level, pfl per deck), inpulseOutput "
+        + "(the Inpulse's audio device and whether it is routed, or null), awake (screen kept "
+        + "awake), view (which panels are open), scope (open, kind, source, measured), stage "
+        + "(window open and its toolbar settings), crates, saved voice variations by "
+        + "instrument, and the "
         + "app's build (id, version, build = git commit, date).",
       [:]),
     tool(
@@ -208,10 +213,15 @@ public struct MCPBridge {
       stinger, voice: an option from dj_palettes / dj_state.decks.X.sound[].options (gm:4, \
       synth:pwm-lead, cat:keys.epiano, inst:piano, a kit id…) or null = back to the palette}: \
       one role's sound, kept through new tracks until reset · setKit {deck, kit: a kit id or \
-      null}. Deck "L" also takes param volume / mute (1 = muted), \
+      null} · mixOut {deck, bars? 1-64, default 16}: play the deck out: at the next bar it \
+      jumps to the song's outro (or, in it or with none, plays on where it is), plays only its \
+      drums and bass for bars bars and stops on a bar line (the room rings out; section jumps \
+      keep it, a new track drops it) · mixIn {deck, bars? 1-64, default 4}: bring the deck in \
+      drums-forward: from the next bar its melodic parts rest for bars bars and come back on \
+      the bar line after. Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).
-      Net-only ops (section, role, macro, stinger, panic) need a deck in net mode. Use \
+      Net-only ops (section, role, macro, stinger, panic, mixOut, mixIn) need a deck in net mode. Use \
       dj_generate, not op load, to put a new track on a deck.
       """,
       ["action": prop("object", "The action, e.g. {\"op\":\"play\",\"deck\":\"A\",\"on\":true}")],
@@ -428,10 +438,16 @@ public struct MCPBridge {
       """
       The app's journal: the always-on log of every state change this run (deck actions, \
       controller MIDI, favorites, crates, variations, locks, notes), the record a run is \
-      rebuilt from (`djctl journal replay`). Returns the file and its latest entries (seq, \
-      time, engine frame, kind, a summary, and the event as JSON), newest last.
+      rebuilt from (`djctl journal replay`). action list (default): the file and its latest \
+      entries (seq, time, engine frame, kind, a summary, and the event as JSON), newest last. \
+      action rewind {seq}: put the app back where it stood at that seq — the journal is \
+      replayed to it, the decks, loop row, mixer and stores reset to the result — and journal a \
+      `rewind <seq>` mark and a checkpoint (nothing is deleted: the journal is append-only). \
+      Returns the checkpoint written and any clips or samples whose audio was gone.
       """,
       [
+        "action": prop("string", "list | rewind"),
+        "seq": prop("integer", "rewind: the entry to go back to (its seq, from list)"),
         "limit": prop("integer", "How many entries (default 50, at most 400)"),
         "kind": prop(
           "string", "Only entries of this kind, e.g. act, midi, note.add (prefix: note.)"),

@@ -12,22 +12,30 @@ import Foundation
 // within a block of where it was, and starts the decks' effect tails, reverbs and the controller
 // router's own state (pickup, shift) fresh. `fromStart` replays from line 0 for audio that is
 // byte-identical to the live run.
+//
+// A rewind (`AppModel.rewindJournal`) appends, never rewrites: its stores (`storesReplace`), a
+// `rewind <seq>` mark, and a checkpoint with playheads, the state it stood the app at. Nothing
+// before that checkpoint carries over, so a replay past it starts there (even `fromStart`), and
+// `exportSession` refuses a slice with a rewind in it.
 
 public enum JournalError: Error, Equatable, CustomStringConvertible {
   /// The file doesn't start with a checkpoint (empty, or not a journal).
   case noCheckpoint
   /// `export-session` was given a slice with nothing in it.
   case emptySlice
+  /// `export-session` was given a slice with a rewind in it (the rewind mark's seq).
+  case spansRewind(Int)
   public var description: String {
     switch self {
     case .noCheckpoint: "the journal does not start with a checkpoint"
     case .emptySlice: "no events in that slice"
+    case .spansRewind(let seq): "the slice spans a rewind (seq \(seq)): export either side of it"
     }
   }
 }
 
 /// What a replay rebuilt.
-public struct JournalReplayResult {
+public struct JournalReplayResult: Sendable {
   /// The state at the end (`JournalState(engine:stores:)` of the rebuilt engine).
   public let state: JournalState
   /// The stores as rebuilt.
@@ -52,10 +60,12 @@ extension Journal {
   /// frames after line 0 (`atSeconds` × rate on the command line). It starts from the last
   /// checkpoint inside those bounds (see the top of this file), or line 0 with `fromStart`.
   /// `samples` resolves a sample's content id (the `sampleFile` events' paths are tried too);
-  /// `clips` finds a loop clip's audio by id (the loop library). `render` keeps the audio.
+  /// `clips` finds a loop clip's audio by id (the loop library). `render` keeps the audio;
+  /// `playheads` keeps where each deck ended up in the result's state (`DeckCheckpoint.position`,
+  /// what a rewind stands the live decks at). A rewind's checkpoint is as far back as it goes.
   public static func replay(
     _ contents: Contents, toSeq: Int? = nil, endFrame: Int? = nil, render: Bool = false,
-    fromStart: Bool = false,
+    fromStart: Bool = false, playheads: Bool = false,
     samples: @escaping (String) -> SampleBuffer? = { _ in nil },
     clips: @escaping (String) -> LoopClip? = { _ in nil }
   ) throws -> JournalReplayResult {
@@ -66,14 +76,15 @@ extension Journal {
     func inBounds(_ e: JournalEntry) -> Bool {
       (toSeq.map { e.seq <= $0 } ?? true) && (endFrame.map { e.frame - origin <= $0 } ?? true)
     }
-    // the start: the last checkpoint in bounds (line 0 always is: it is where the file begins)
-    var startIndex = 0
-    if !fromStart {
-      for i in contents.checkpointIndices.reversed() where inBounds(contents.entries[i]) {
-        startIndex = i
-        break
-      }
+    // the start: the last checkpoint in bounds (line 0 always is: it is where the file begins);
+    // a rewind's checkpoint counts from its mark on (the two are one step)
+    let rewinds = Set(contents.rewindCheckpointIndices)
+    func startable(_ i: Int) -> Bool {
+      inBounds(contents.entries[i]) || (rewinds.contains(i) && inBounds(contents.entries[i - 1]))
     }
+    let checkpoints = contents.checkpointIndices.filter(startable)
+    var startIndex = checkpoints.last { rewinds.contains($0) } ?? 0
+    if !fromStart { startIndex = checkpoints.last ?? 0 }
     let start = contents.entries[startIndex]
     guard case .checkpoint(var state) = start.event else { throw JournalError.noCheckpoint }
     if !state.hasStores {
@@ -144,7 +155,8 @@ extension Journal {
       right.removeLast(right.count - endHere)
     }
     return JournalReplayResult(
-      state: JournalState(engine: dj, stores: stores), startSeq: start.seq, lastSeq: lastSeq,
+      state: JournalState(engine: dj, stores: stores, playheads: playheads), startSeq: start.seq,
+      lastSeq: lastSeq,
       frames: dj.frame + offset,
       audio: render ? RenderedAudio(sampleRate: sr, left: left, right: right) : nil,
       warnings: warnings)
@@ -203,6 +215,7 @@ extension Journal {
     }
     let slice = contents.entries.filter { $0.seq >= max(from, 1) && $0.seq <= to }
     guard let start = slice.first, let last = slice.last else { throw JournalError.emptySlice }
+    if let r = slice.first(where: \.event.isRewindMark) { throw JournalError.spansRewind(r.seq) }
     let at = try replay(
       contents, toSeq: start.seq - 1, endFrame: start.frame - first.frame, samples: samples,
       clips: clips
@@ -232,6 +245,25 @@ extension Journal {
       frames: last.frame - start.frame + Int(tail * at.sampleRate),
       decks: at.decks.mapValues(\.source), params: params, crossfader: at.crossfader,
       master: at.master, events: events)
+  }
+}
+
+extension Journal {
+  /// The mark a rewind to `seq` writes (`AppModel.rewindJournal`).
+  public static func rewindMark(_ seq: Int) -> String { "rewind \(seq)" }
+}
+
+extension JournalEvent {
+  /// A rewind's mark (`Journal.rewindMark`).
+  public var isRewindMark: Bool {
+    if case .mark(let t) = self { t.hasPrefix("rewind ") } else { false }
+  }
+}
+
+extension Journal.Contents {
+  /// The checkpoints rewinds wrote (indices in `entries`): each one right after its mark.
+  public var rewindCheckpointIndices: [Int] {
+    checkpointIndices.filter { $0 > 0 && entries[$0 - 1].event.isRewindMark }
   }
 }
 
