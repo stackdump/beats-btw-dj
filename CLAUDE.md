@@ -151,7 +151,10 @@ its copy; the two are now independent. Rules inherited from that split:
   `.feel` plays it in the runner (`WaveOptions.feel`, set by `forGenre`; `WaveProject.feelTable`):
   in place of the project's swing / humanize, a drum is late by its offset + (2r − 1) × half a pair
   (a sixteenth; jazz an eighth) on its off-beat, r at the tempo playing, its velocity scaled; tonal lanes
-  swing only. Without the flag (or the template) the template is never read.
+  swing only. Without the flag (or the template) the template is never read. `.drift` plays the
+  project's humanize (h) as Voss–McCartney 1/f noise (`Drift`, `WaveProject.drift` keyed by
+  `voicingSeed`): velocity ± 12 × h, 0…3 ms × h late, on top of `.feel` or `.groove`'s swing, in
+  place of beats' white jitter. A pure hash of (seed, net, song tick), so seeks and replays match.
   `Resources/beats/melody-bigrams.json` (`MelodyBigrams`: 7×7 P(next degree | degree), 0-based,
   b3/b7 folded; `moves` leaves repeats out) is counted from the RS200 vocal transcriptions (CC BY
   4.0, attributed in README) by `make melody-bigrams` (`.build/rs200`), the same way.
