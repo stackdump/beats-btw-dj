@@ -367,12 +367,14 @@ its copy; the two are now independent. Rules inherited from that split:
   with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
   end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
   `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
-  shares) measured once per buffer (`SampleBuffer.level`, cached), auto-gain toward the reference
+  shares) measured once per buffer (`SampleBuffer.level`, cached; on first read, so only with
+  auto-gain on), auto-gain toward the reference
   (−4 LU for a one-band loop: bass / kick / hats), ±12 dB, never lifting the peak past −1 dBFS;
   applied by the turntable (`TurntableCommand.gain`). Derived from the audio, so never recorded;
   the deck setting `Deck.autoGain` is (`.param(name: "autoGain")`, `DeckParams.autoGain`, both
   off by default and written only when on, so older sessions replay at the samples' own level;
-  the app turns it on from its `autoGain` default). One BS.1770: `IntegratedLoudness` (offline;
+  the app turns it on from its `autoGain` default; `Deck.apply(DeckParams)` sets the gain at
+  once, as on a deck that had it on at load, so replays match). One BS.1770: `IntegratedLoudness` (offline;
   nil / −200 for silence) and its short-term form `LoudnessMeter`. Clips on a deck (`loadClip`) keep their level: a take is the deck
   after its EQ. `Deck.shortTermLUFS` / `momentaryLUFS` (pre-EQ meter in `DeckRenderer`) and
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction

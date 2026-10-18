@@ -123,7 +123,10 @@ extension Deck {
     reverb.wet = p.reverbWet
     reverb.size = p.reverbSize
     reverb.tone = p.reverbTone
+    // a starting state: the gain is there from the first sample, as on a live deck that
+    // had it on when the audio loaded (the didSet glides it in)
     autoGain = p.autoGain
+    applyAutoGain(now: true)
     for r in p.disabledRoles { setRoleDisabled(r, true) }
     wander = p.wander
   }

@@ -484,7 +484,7 @@ public final class Deck: JogClock {
     sourceFile = nil
     waveform = nil
     loaded = buffer
-    sampleLevel = level ? buffer.level : nil
+    levelSource = level ? buffer : nil
     beatGrid = nil
     isDemo = false
     computeWaveform(buffer)
@@ -506,8 +506,11 @@ public final class Deck: JogClock {
   /// Off by default (as `DeckParams.autoGain`: older sessions replay as they were); the app turns
   /// it on per deck from its preference (`AppModel.autoGain`), through `perform`, so it records.
   public var autoGain = false { didSet { if autoGain != oldValue { applyAutoGain(now: false) } } }
-  /// What the loaded sample measured (nil for a clip, a net, or nothing loaded).
-  public internal(set) var sampleLevel: SampleLevel?
+  /// What the loaded sample measured (nil for a clip, a net, or nothing loaded). Measured on
+  /// first read (a full pass over the audio, cached on the buffer), so a load with auto-gain
+  /// off never pays for it.
+  public var sampleLevel: SampleLevel? { levelSource?.level }
+  private var levelSource: SampleBuffer?
   /// The auto-gain the turntable plays the sample at, dB (0 when off or nothing to level).
   public var autoGainDB: Double { autoGain ? sampleLevel?.autoGainDB ?? 0 : 0 }
 

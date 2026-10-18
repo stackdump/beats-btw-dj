@@ -646,7 +646,7 @@ extension AppModel {
       ("momentaryLUFS", r1(max(-120, d.momentaryLUFS))), ("autoGain", .bool(d.autoGain)),
       ("autoGainDB", r1(d.autoGainDB)),
     ])
-    if let l = d.sampleLevel {
+    if d.autoGain, let l = d.sampleLevel {  // reading it measures: only when it is used
       if let lufs = l.lufs { level["sampleLUFS"] = r1(lufs) }
       level["samplePartial"] = .bool(l.partial)
     }
