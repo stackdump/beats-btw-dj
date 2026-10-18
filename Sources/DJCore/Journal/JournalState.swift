@@ -16,11 +16,17 @@ public struct DeckCheckpoint: Equatable, Sendable {
   public var clip: String?
   /// The sound panel's settings per channel (session-only state, but the session is live).
   public var voices: [Int: VoiceSetting]
+  /// Where the deck was, when the checkpoint was asked for its playheads
+  /// (`JournalState(engine:stores:playheads: true)`): the sample frame on a sample deck, the net
+  /// tick on a net deck. Nil (and not written) otherwise: line 0 and older files have none.
+  public var position: Double?
 
   public init(
     source: DeckSourceDescriptor = .none, params: DeckParams = DeckParams(), playing: Bool = false,
-    leader: String? = nil, clip: String? = nil, voices: [Int: VoiceSetting] = [:]
+    leader: String? = nil, clip: String? = nil, voices: [Int: VoiceSetting] = [:],
+    position: Double? = nil
   ) {
+    self.position = position
     self.source = source
     self.params = params
     self.playing = playing
@@ -182,15 +188,20 @@ public struct JournalState: Equatable, Sendable {
     self.stores = stores
   }
 
-  /// The engine's state now, with the stores' contents.
-  public init(engine dj: DJEngine, stores: JournalStoreState = JournalStoreState()) {
+  /// The engine's state now, with the stores' contents. `playheads` also keeps where each deck
+  /// is (`DeckCheckpoint.position`); off by default, because states compare by their JSON and a
+  /// replay's playheads are not the live run's to the frame. Loop clips' phases are never kept.
+  public init(
+    engine dj: DJEngine, stores: JournalStoreState = JournalStoreState(), playheads: Bool = false
+  ) {
     sampleRate = dj.sampleRate
     var decks: [String: DeckCheckpoint] = [:]
     for (name, d) in dj.decks {
       decks[name] = DeckCheckpoint(
         source: dj.journalSource(d), params: d.currentParams, playing: d.playing,
         leader: d.leader?.name, clip: d.clipID,
-        voices: d.mode == .net ? d.wave.voiceSettings : [:])
+        voices: d.mode == .net ? d.wave.voiceSettings : [:],
+        position: playheads ? d.journalPosition : nil)
     }
     self.decks = decks
     loopChannel = dj.loopChannel.currentParams
@@ -220,6 +231,7 @@ public struct JournalState: Equatable, Sendable {
       ])
       if let l = d.leader { o["leader"] = .string(l) }
       if let c = d.clip { o["clip"] = .string(c) }
+      if let p = d.position { o["position"] = .number(p) }
       if !d.voices.isEmpty {
         o["voices"] = .array(
           d.voices.keys.sorted().map { ch in
@@ -288,7 +300,7 @@ public struct JournalState: Equatable, Sendable {
       decks[name] = DeckCheckpoint(
         source: source, params: d["params"].map(DeckParams.init(json:)) ?? DeckParams(),
         playing: d["playing"]?.bool ?? false, leader: d["leader"]?.string,
-        clip: d["clip"]?.string, voices: voices)
+        clip: d["clip"]?.string, voices: voices, position: d["position"]?.double)
     }
     self.decks = decks
     let loop = v["loopChannel"]
@@ -326,7 +338,9 @@ public struct JournalState: Equatable, Sendable {
   /// Stand a fresh engine (with these decks) where this state was. `clip` finds a clip's audio
   /// by id (the loop library: the row, then `removed/`); a clip it can't find is left out and
   /// named in the returned warnings. The deck sources' samples come from `dj.sampleResolver`.
-  /// Playheads are not part of the state: decks and loops start from their beginnings.
+  /// A deck with a `position` is put there after its load and params, before it plays (a net
+  /// deck's relocation is inline in `deterministic` mode, else it lands like a section launch);
+  /// decks without one, and every loop clip, start from their beginnings.
   @discardableResult
   public func restore(into dj: DJEngine, clip: (String) -> LoopClip?) -> [String] {
     var warnings: [String] = []
@@ -369,6 +383,7 @@ public struct JournalState: Equatable, Sendable {
         if !v.tweak.isEmpty { deck.setVoiceTweak(v.tweak, channel: ch) }
         if v.useSynth { deck.setSynthVoice(true, channel: ch) }
       }
+      if let p = d.position { deck.seek(journalPosition: p) }
     }
     for (name, d) in decks { if let l = d.leader { dj[name]?.follow(dj.decks[l]) } }
     dj.loopChannel.volume = loopChannel.volume
@@ -399,6 +414,25 @@ extension DJEngine {
       guard let buffer = d.loaded else { return .none }
       let id = d.isDemo ? DeckSourceDescriptor.demoID : (d.clipID ?? sampleID(buffer))
       return .sample(id: id, title: d.title, grid: d.beatGrid)
+    }
+  }
+}
+
+extension Deck {
+  /// Where the deck is, as a checkpoint keeps it: the sample frame (sample deck) or the net tick
+  /// (net deck); nil with nothing loaded.
+  var journalPosition: Double? {
+    switch mode {
+    case .sample: loaded == nil ? nil : turntable.position
+    case .net: netProject == nil ? nil : Double(wave.tick)
+    }
+  }
+
+  /// Put the deck at a checkpoint's `position` (see `journalPosition`).
+  func seek(journalPosition p: Double) {
+    switch mode {
+    case .sample: if loaded != nil { turntable.send(.seek(sample: p)) }
+    case .net: relocate(toTick: Int(p.rounded()))
     }
   }
 }
