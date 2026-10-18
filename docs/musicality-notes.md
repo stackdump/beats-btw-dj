@@ -633,3 +633,66 @@ bass ≥ 8, harmony ≥ 6, drums ≥ 4, arp ≥ 10 distinct 4-bar patterns and 3
 pairwise pitch Jaccard ≤ 0.25; the seven-note genres ≥ 3 progressions relative to the root;
 without the flag the bass is still the genre's (≤ 3); in key, chord tones on beats and semitone
 rubs no worse than without it.
+
+## 10. Level match (2026-10-18): net decks at the app's reference
+
+A net deck on the app's path (`WaveOptions.extended`) is gained to `LevelMatch.referenceLUFS`
+(−12 LUFS integrated) by `Loudness.targetDB` and held under −1 dBFS by the deck's `PeakLimiter`;
+beats' `tanh` curve no longer bends it. The parity path (`WaveOptions()`) is unchanged: no limiter,
+beats' curve, no loudness gain (`theParityPathHasNoLimiter`). Measured, not listened to: whether
+the limiter pumps is an ear call, so the gain-reduction numbers are the whole claim.
+
+Matrix (`scripts/musicality-matrix.py OUTDIR`, 12 genres × seeds 42 / 7, 75 s, synth voices;
+`--compare` main against the branch):
+
+| metric | main (118a950) | branch |
+|---|---|---|
+| integrated loudness, mean ± sd | −16.9 ± 0.5 LUFS | −11.7 ± 0.5 |
+| range | −18.0 (ambient 42) … −15.7 (edm 42) | −12.6 (ambient 42) … −10.6 (edm 42) |
+| sample peak, worst | −1.3 dBFS | −1.0 (the ceiling, every track) |
+| clipped samples | 0 | 0 |
+| loudness range (LRA), mean | 4.6 LU | 3.9 |
+| section spread, mean change | – | −0.7 dB (the limiter works hardest in the loudest sections) |
+| every musicality column (key, root, phrasing, fills, …) | | unchanged |
+
+60 s from the top (`djctl render <g> 4242 --seconds 60 [--synth]`), LUFS; GR = the limiter's gain
+reduction, P50 / P95 / P99 / max dB:
+
+| genre | main synth | branch synth | main sampled | branch sampled | branch synth GR |
+|---|---|---|---|---|---|
+| techno | −17.7 | −12.4 | −18.7 | −12.6 | 0 / 0.8 / 2.2 / 6.5 |
+| house | −18.3 | −12.9 | −19.6 | −12.8 | 0 / 0.5 / 1.6 / 4.8 |
+| trance | −16.4 | −11.5 | −17.3 | −11.8 | 0.1 / 1.4 / 3.8 / 8.1 |
+| dnb | −17.7 | −12.2 | −18.4 | −12.4 | 0 / 0.4 / 1.2 / 4.9 |
+| lofi | −17.7 | −12.1 | −22.3 | −13.3 | 0 / 0.2 / 0.9 / 3.4 |
+| jazz | −16.6 | −11.5 | −20.4 | −12.2 | 0 / 1.0 / 2.8 / 6.7 |
+
+Main's peaks were −1.6 … −6.4 dBFS; the branch's are −1.0 on all twelve. Sampled is every
+instrument this Mac has installed, so those columns are this machine's.
+
+Whole songs (`LevelSurveyTests.wholeSongsAgainstTheReference`, seed 4242, standard structure to
+the end, 24 kHz, ten genres): synth −12.0 ± 0.5 LUFS (−12.8 synthwave … −11.0 jazz), sampled
+−12.3 ± 0.5 (−13.1 lofi … −11.5 dubstep). The probe's gain ran +2.1 (dnb) … +9.3 dB (lofi) synth,
+up to +13.1 sampled (lofi), all inside `Loudness.range` (−12 … +18 dB): neither `targetDB`
+(reference − 0.4) nor the range needed to move. Median gain reduction 0 … 0.2 dB, P99 0.6 …
+5.2 dB, max 4.3 … 11.2 dB (synthwave sampled); 7 % (lofi synth) to 63 % (trance sampled) of
+samples limited by more than 0.1 dB. `aNetTrackPlaysAtTheReference` holds techno, house,
+trance, dnb, lofi and jazz to ±1.5 LU, peak < 0 dBFS and ≤ the ceiling, median GR ≤ 0.5 dB.
+
+`Loudness.sampledPartDB`, re-measured under the default palette (Studio) by
+`LevelSurveyTests.sampledPartsAgainstTheirSynthVoices` (each part soloed, sampled − synth, 40 s,
+seed 4242, ten genres): bass −4.1 ± 1.9 (was −4.3), harmony −5.0 ± 1.3 (was −5.8), melody
+−1.7 ± 1.5 (was −1.6); house is the outlier (bass −8.9, melody −4.8). No arp played on a sampler.
+The new values move the sampled whole songs −0.1 LU (−12.2 → −12.3): what is left between
+sampled and synth is not in the soloed parts' levels.
+
+The loop channel ("L") at its defaults against a deck at the centred crossfader
+(`LevelSurveyTests.theLoopChannelAgainstACentredDeck`: a 2-bar take of a techno net deck looped
+on L alone, against the deck alone, on the master): **L plays 2.9 LU louder** (A −16.1, L −13.2
+LUFS; the channel gains alone 3.01 dB). A and B take the crossfader's equal-power −3 dB at the
+centre, L takes none (`DJEngine.crossfadeGain`); the −3 dB trim for L is ow-level-loop-channel's.
+(A take loops on L as soon as it is made: the survey takes it off L before measuring the deck.)
+
+The surveys are measurements, not checks: `DJ_LEVEL_SURVEY=1 swift test -c release -Xswiftc
+-enable-testing --filter LevelSurveyTests` (with the Makefile's framework flags; about three
+minutes in release, the sampled parts need the installed instruments).
