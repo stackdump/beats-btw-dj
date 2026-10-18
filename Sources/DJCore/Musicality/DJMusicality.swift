@@ -275,6 +275,7 @@ public enum DJMusicality {
   public static func apply(_ project: Project, spec: TrackSpec, fixes: Fixes = .all) -> Project {
     guard !fixes.isEmpty, let genre = BeatsTables.shared.genres[spec.genre] else { return project }
     var p = project
+    if !spec.partSeeds.isEmpty { transplantSeededMelody(&p, spec: spec) }
     if fixes.contains(.key) { keepVariantsInKey(&p, genre: genre, spec: spec) }
     if fixes.contains(.phrases) { alignPhrases(&p) }
     if fixes.contains(.timing) { fixStructureTiming(&p) }
@@ -288,7 +289,8 @@ public enum DJMusicality {
     if fixes.contains(.color) { colorChords(&p, genre: genre) }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     if fixes.contains(.arpeggio) {
-      arpeggiate(&p, seed: spec.seed, genre: fixes.contains(.arpStyle) ? spec.genre : nil)
+      arpeggiate(
+        &p, seed: spec.seed(forPart: "arp"), genre: fixes.contains(.arpStyle) ? spec.genre : nil)
     }
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }

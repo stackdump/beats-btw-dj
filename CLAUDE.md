@@ -417,6 +417,10 @@ its copy; the two are now independent. Rules inherited from that split:
   tonal lane (`Lane.harmonyGroup`) plays through, mapped at the fire's step (the groove queue
   carries the mapped note); `FireEvent.note` is mapped, live keys aren't, net views show the
   bound note. Measure with `NoteLog.capture(…, harmony:)` (what `djctl render` does).
+- `TrackSpec.partSeeds` (bass / kick / snare / hihat / melody / arp → seed) are dj-only: the
+  session writes them beside the share, never in `extra` / `layers` / the payload, so the share
+  CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
+  transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)

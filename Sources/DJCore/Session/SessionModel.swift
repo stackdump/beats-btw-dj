@@ -309,6 +309,22 @@ extension TrackSpec {
       genre: genre, seed: seed, structure: p["structure"]?.string,
       cohesion: p["cohesion"]?.string ?? "v2", extra: extra, layers: layers)
   }
+
+  /// `partSeeds` as the session writes it, beside the share (never inside it): nil when
+  /// there are none, so a spec without them writes exactly what it always did.
+  var partSeedsJSON: JSONValue? {
+    guard !partSeeds.isEmpty else { return nil }
+    return .object(JSONObject(partSeeds.keys.sorted().map { ($0, .number(partSeeds[$0]!)) }))
+  }
+
+  /// This spec with the part seeds `v` holds (a session's `partSeeds` object; nil adds none).
+  func withPartSeeds(_ v: JSONValue?) -> TrackSpec {
+    var s = self
+    for (k, x) in v?.object?.entries ?? [] {
+      if let seed = x.double { s.partSeeds[k] = seed }
+    }
+    return s
+  }
 }
 
 extension DeckSourceDescriptor {
@@ -316,11 +332,12 @@ extension DeckSourceDescriptor {
     switch self {
     case .none: return .object(JSONObject([("kind", .string("none"))]))
     case .net(let spec):
-      return .object(
-        JSONObject([
-          ("kind", .string("net")), ("share", spec.payload),
-          ("cid", .string(BeatsCID.shareCID(spec.payload))),
-        ]))
+      var o = JSONObject([
+        ("kind", .string("net")), ("share", spec.payload),
+        ("cid", .string(BeatsCID.shareCID(spec.payload))),
+      ])
+      if let seeds = spec.partSeedsJSON { o["partSeeds"] = seeds }
+      return .object(o)
     case .rawNets(let payload):
       return .object(
         JSONObject([
@@ -344,7 +361,7 @@ extension DeckSourceDescriptor {
     case "none": self = .none
     case "net":
       guard let p = v["share"], let spec = TrackSpec(payload: p) else { return nil }
-      self = .net(spec)
+      self = .net(spec.withPartSeeds(v["partSeeds"]))
     case "rawNets":
       guard let p = v["share"], Share(payload: p).nets != nil else { return nil }
       self = .rawNets(payload: p)
@@ -417,7 +434,10 @@ extension DeckAction {
     case .crossfader(let v): return o("crossfader", [("value", .number(v))])
     case .master(let v): return o("master", [("value", .number(v))])
     case .load(let deck, let source): return o("load", [d(deck), ("source", source.json)])
-    case .queueNext(let deck, let spec): return o("queueNext", [d(deck), ("share", spec.payload)])
+    case .queueNext(let deck, let spec):
+      var fields: [(String, JSONValue)] = [d(deck), ("share", spec.payload)]
+      if let seeds = spec.partSeedsJSON { fields.append(("partSeeds", seeds)) }
+      return o("queueNext", fields)
     case .nextTrack(let deck): return o("nextTrack", [d(deck)])
     case .autoAdvance(let deck, let on): return o("autoAdvance", [d(deck), ("on", .bool(on))])
     case .section(let deck, let i): return o("section", [d(deck), ("index", .int(i))])
@@ -530,7 +550,7 @@ extension DeckAction {
       self = .load(deck: deck, source: s)
     case "queueNext":
       guard let s = v["share"].flatMap(TrackSpec.init(payload:)) else { return nil }
-      self = .queueNext(deck: deck, spec: s)
+      self = .queueNext(deck: deck, spec: s.withPartSeeds(v["partSeeds"]))
     case "nextTrack": self = .nextTrack(deck: deck)
     case "autoAdvance": self = .autoAdvance(deck: deck, on: v["on"]?.bool ?? false)
     case "section": self = .section(deck: deck, index: v["index"]?.int ?? 0)
