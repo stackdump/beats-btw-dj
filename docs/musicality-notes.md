@@ -568,14 +568,21 @@ chords, so every trance seed had the same arp (13 distinct arp bars in 30 seeds,
 - **Key** (`transposeTrack`): every tonal note −5…+6 semitones, the project's `rootNote` with it
   (so `.kickTune`, `DeckPerform`'s keys and every later fix read the new key). `.register` then
   puts each part back in its octave.
-- **Progression** (`reharmonize`, cohesion v2, seven-note keys): a root per bar from
-  `progressionTable` (by scale: minor, major, dorian, mixolydian, phrygian; 5–8 each; beats'
+- **Progression** (`reharmonize`, cohesion v2, seven-note and pentatonic keys): a root per bar
+  from `progressionTable` (by scale: minor, major, dorian, mixolydian, phrygian, 5–8 each; minor
+  and major pentatonic, 2–3 each, in five-degree space; beats'
   own `chordProgs` for the genre join the pool first). Each bar's pad chord and bass move along
   the key by the shortest number of scale steps that puts the root there (triads stay triads);
   a walking bass's chromatic approach is re-aimed a semitone from the moved next note; melody
   and arp notes on the beat that are no longer chord tones go to the nearest one that does not
-  repeat a neighbour (beats snaps its motif's beats the same way). Pentatonic / blues genres
-  (ambient, lofi, blues) only change key: beats' degree arithmetic is mod 7 there.
+  repeat a neighbour (beats snaps its motif's beats the same way). Pentatonic genres (lofi:
+  minor, ambient: major) move in five-degree space (2026-10-18): beats' mod-7 roots are wrapped
+  mod 5 as `degreeToMidi` plays them, dj's tables add e.g. minor 1–5–4–b7 / 1–4–5–1 / 1–b7–5–4
+  and major 1–5–6–3 / 1–3–5–2; a chord two pentatonic steps apart is a sus / quartal shape
+  and stays in key, each move at most two steps. Blues (six notes) only changes key. The bass
+  figure, `.harmonicCadence` and `SectionHarmony` stay seven-note (`sevenNoteKey`; the figure's
+  fifth falls back to the perfect fifth). Measure: (pending, matrix compare on lofi / ambient).
+  Whether the quartal shapes sound like lofi needs an ear.
 - **Bass figure** (`varyBassFigure`, after `.register` and `.bassLine`, root-per-bar basses
   only): rhythm (as composed / a pickup into every second bar, on the 16th before the downbeat
   in four-on-the-floor genres, else the last off-beat eighth, never on a kick / every other hit
