@@ -1,0 +1,254 @@
+{
+  "provenance": {
+    "about": "Mix targets the musicality fixes aim at (ROADMAP 6.1), as data that names where each number came from. Loaded once by MixTargets (Bundle.main first, then Bundle.module), at prepare, never on the audio thread.",
+    "editing": "Hand-edited, not generated: make beats-tables writes only tables.json. A value replaced by a measurement says so in its source (corpus, tool, date).",
+    "families": "beats' structure.js family order (BeatsTables.family(of:)): dance, song, jazz, chill"
+  },
+  "loudness": {
+    "probeOffsetDB": {
+      "value": -0.4,
+      "source": "measured (ow-level-calibrate, 2026-10-18): the probe's two bars of the busiest section read about 0.4 dB under a whole track's integrated loudness, six genres; Loudness.targetDB = LevelMatch.referenceLUFS + this"
+    },
+    "gainRange": {
+      "min": 0.25,
+      "max": 8.0,
+      "source": "rule-of-thumb (pre-6.1): -12...+18 dB; the sparsest genres (lofi, ambient) need about +13 at the app's reference"
+    }
+  },
+  "balance": {
+    "default": {
+      "kick": {
+        "value": 0,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "bass": {
+        "value": -3,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "lead": {
+        "value": -4,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "snare": {
+        "value": -6,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "pad": {
+        "value": -7,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "arp": {
+        "value": -8,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "hats": {
+        "value": -10,
+        "source": "rule-of-thumb (pre-6.1): the hat level, about 10 dB under the kick"
+      }
+    },
+    "families": {},
+    "maxTrimDB": {
+      "value": 6.0,
+      "source": "rule-of-thumb (pre-6.1)"
+    }
+  },
+  "space": {
+    "default": {
+      "seconds": 1.5,
+      "wet": 0.3,
+      "damping": 6000,
+      "source": "rule-of-thumb (pre-6.1): a neutral medium room"
+    },
+    "genres": {
+      "ambient": {
+        "seconds": 4.0,
+        "wet": 0.27,
+        "damping": 5000,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "trance": {
+        "seconds": 2.4,
+        "wet": 0.45,
+        "damping": 7500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "synthwave": {
+        "seconds": 2.4,
+        "wet": 0.45,
+        "damping": 7500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "edm": {
+        "seconds": 2.0,
+        "wet": 0.38,
+        "damping": 7000,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "techno": {
+        "seconds": 1.3,
+        "wet": 0.33,
+        "damping": 6000,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "house": {
+        "seconds": 1.3,
+        "wet": 0.33,
+        "damping": 6000,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "garage": {
+        "seconds": 1.3,
+        "wet": 0.33,
+        "damping": 6000,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "funk": {
+        "seconds": 1.0,
+        "wet": 0.22,
+        "damping": 5500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "disco": {
+        "seconds": 1.0,
+        "wet": 0.22,
+        "damping": 5500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "lofi": {
+        "seconds": 1.8,
+        "wet": 0.16,
+        "damping": 3500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "jazz": {
+        "seconds": 1.6,
+        "wet": 0.19,
+        "damping": 4500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "bossa": {
+        "seconds": 1.6,
+        "wet": 0.19,
+        "damping": 4500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "dnb": {
+        "seconds": 1.6,
+        "wet": 0.33,
+        "damping": 6500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "dubstep": {
+        "seconds": 1.6,
+        "wet": 0.33,
+        "damping": 6500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      },
+      "trap": {
+        "seconds": 1.6,
+        "wet": 0.33,
+        "damping": 6500,
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      }
+    }
+  },
+  "stereo": {
+    "hat": {
+      "pan": 0.3,
+      "spread": 0,
+      "source": "rule-of-thumb (pre-6.1)"
+    },
+    "openhat": {
+      "pan": 0.3,
+      "spread": 0,
+      "source": "rule-of-thumb (pre-6.1)"
+    },
+    "crash": {
+      "pan": -0.3,
+      "spread": 0,
+      "source": "rule-of-thumb (pre-6.1)"
+    },
+    "harmony": {
+      "pan": 0,
+      "spread": 0.5,
+      "source": "rule-of-thumb (pre-6.1)"
+    },
+    "arp": {
+      "pan": 0,
+      "spread": 0.45,
+      "source": "rule-of-thumb (pre-6.1)"
+    }
+  },
+  "bands": {
+    "lufs": {
+      "dance": {
+        "source": "unmeasured (6.1)"
+      },
+      "song": {
+        "source": "unmeasured (6.1)"
+      },
+      "jazz": {
+        "source": "unmeasured (6.1)"
+      },
+      "chill": {
+        "source": "unmeasured (6.1)"
+      }
+    },
+    "lra": {
+      "dance": {
+        "source": "unmeasured (6.1)"
+      },
+      "song": {
+        "source": "unmeasured (6.1)"
+      },
+      "jazz": {
+        "source": "unmeasured (6.1)"
+      },
+      "chill": {
+        "source": "unmeasured (6.1)"
+      }
+    },
+    "truePeak": {
+      "dance": {
+        "source": "unmeasured (6.1)"
+      },
+      "song": {
+        "source": "unmeasured (6.1)"
+      },
+      "jazz": {
+        "source": "unmeasured (6.1)"
+      },
+      "chill": {
+        "source": "unmeasured (6.1)"
+      }
+    },
+    "slope": {
+      "dance": {
+        "source": "unmeasured (6.1)"
+      },
+      "song": {
+        "source": "unmeasured (6.1)"
+      },
+      "jazz": {
+        "source": "unmeasured (6.1)"
+      },
+      "chill": {
+        "source": "unmeasured (6.1)"
+      }
+    },
+    "side": {
+      "dance": {
+        "source": "unmeasured (6.1)"
+      },
+      "song": {
+        "source": "unmeasured (6.1)"
+      },
+      "jazz": {
+        "source": "unmeasured (6.1)"
+      },
+      "chill": {
+        "source": "unmeasured (6.1)"
+      }
+    }
+  }
+}
