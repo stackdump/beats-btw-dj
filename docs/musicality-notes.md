@@ -1133,3 +1133,24 @@ flat to Nyquist.
   soloed hats' 12.5 / 16 kHz power ≥ 4 dB down. Not yet run (built without renders). Ear check
   pending: hats may read dull at the chill / jazz cutoffs; if the measure shows sampled kits
   carry the bump, they need their own EQ.
+
+## 19. 6.7 the fixes under gestures (2026-10-18): mutes, macros, the brake and the hand
+
+Each runner fix held against a DJ's gestures (`FixesUnderGesturesTests`, RT
+`FixesUnderGesturesRealTimeTests`). Built without renders (fast mode): the numbers come from the
+test run that follows.
+
+| Pair | Verdict |
+|---|---|
+| duck × role mute of the kick | intended: a muted net fires no hits, so nothing ducks (`aMutedKickDucksNothing`: the pad plays as with no kick) |
+| duck × `breakdown` / `cut` | intended: the dip recovers within an eighth of the last audible kick (`aBreakdownLetsThePadSwellBack`, ± 0.2 dB) |
+| `.balance` / `.loudness` × role mutes | intended: a mute is a gesture, not a remix; trims, slot gains and the track gain stay (`roleMutesLeaveTheTrims`) |
+| room × role mutes | intended: a muted lane's tail rings on in the room, as an unmuted note's release does |
+| `.energy` lowpass × master `sweep-lp` / FX macros | intended: two lowpasses in series (the curve in the runner, the macro on the mixer insert after it); the sweep ends where the curve has the deck (`theMasterSweepComesBackToTheEnergyCurve`, ± 0.5 dB) |
+| echo × tape stop / half time | intended: the delay glides with the tempo (`PingPong.setTempo`), a tape bend rather than a click |
+| brake × room / echo / duck | intended: braked, they run in source time with the record (TurntableBrake.swift) |
+| stop under the brake × voices, room, `sendFifo` | **fixed**: the cancel faded the stopped record's frozen voices and room back in. `WaveDeckSource` calls `WaveRunner.silence` (voices, sampled notes all-sound-off, riser, duck, room, shimmer, both fifos) on a stop while the brake is on |
+| stop under the brake × echo | **open, "echo reset"**: `PingPong` has no reset (Echo.swift), so its repeats still come back; `aStopUnderTheBrakeSilencesTheEcho` is disabled until it gets one |
+| dry song between echo songs | **fixed**: an echo (and shimmer) tuned off froze its line, so the next echo song began with the last one's repeats; the lines now run empty while off and die away (`anEchoTurnedOffDiesAwayBeforeTheNextEchoSong`) |
+| plain stop × room / echo | intended: tails ring out (no click to silence) and die away (`aStopWithoutTheBrakeLetsTheRoomRingOut`) |
+| hand on the platter × room / voices | intended: a still hand holds the clock and fires nothing; what was playing rings out in real time (`aStillHandLetsTheTailsRingOut`); the riser is silent while scratching |

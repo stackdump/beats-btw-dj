@@ -366,6 +366,31 @@ final class Lane {
     ] + (postOn ? post : [])
   }
 
+  /// Every voice silent and every filter's memory cleared: nothing the lane was playing sounds
+  /// again (`WaveRunner.silence`). The voice settings stay. Allocation-free (writes in place).
+  func silence() {
+    active = false
+    choking = false
+    st[slotEnv] = 0
+    st[slotPrev] = 0
+    for e in 0..<s.count { s[e] = 0 }
+    for k in 0..<sd.count { sd[k] = 0 }
+    for k in 0..<sa.count { sa[k] = 0 }
+    for k in 0..<hold.count { hold[k] = false }
+    for k in 0..<heldNote.count { heldNote[k] = -1 }
+    for i in 0..<dl.count { dl[i] = 0 }
+    for k in 0..<lp.count { lp[k] = 0 }
+    for k in 0..<excite.count { excite[k] = 0 }
+    for k in 0..<fz1.count { fz1[k] = 0 }
+    for k in 0..<fz2.count { fz2[k] = 0 }
+    pz1 = 0
+    pz2 = 0
+    uz1 = 0
+    uz2 = 0
+    tz1 = 0
+    tz2 = 0
+  }
+
   /// Remember what prepare made of the voice (the end of `buildLanes`).
   func captureBase() {
     sampledSlot = samplerSlot
@@ -1503,6 +1528,26 @@ public final class WaveRunner {
     duckEnv = 0
     samplerSide.reset()
     for i in 0..<slotSide.count { slotSide[i].reset() }
+  }
+
+  /// Clear every tail the runner holds: the synth voices, the sampled notes (all sound off),
+  /// the riser, the duck, the room and the shimmer and what waits for them in `sendFifo` (and
+  /// `echoFifo`). For a reset that must not ring on — a stop under the turntable brake, whose
+  /// record had stopped (`WaveDeckSource`); `stop` alone lets the tails ring out, as a deck's
+  /// room does. The echo's own line is not cleared (`PingPong` has no reset yet: its repeats ring
+  /// on; docs/musicality-notes.md §19). Allocation-free.
+  func silence() {
+    if let bank = samplers { for slot in 0..<bank.count { queue(slot, 0xB0, 120, 0) } }
+    samplersAllOff()
+    if let p = current { for lane in p.lanes { lane.silence() } }
+    if let p = fading { for lane in p.lanes { lane.silence() } }
+    current?.riser?.reset()
+    reverb?.reset()
+    shimmer?.reset()
+    fifoCount = 0
+    echoCount = 0
+    duckHold = 0
+    duckEnv = 0
   }
 
   /// `.stereo`: the samplers' block (in `smpL` / `smpR`) mono below 150 Hz.
@@ -2916,6 +2961,10 @@ public final class WaveRunner {
           acc += mid
           accS += side
         }
+      } else if let echoFx {
+        // off (a dry song): the line still runs, empty, so what an earlier song left in it
+        // dies away now instead of waiting for the next song with an echo (6.7)
+        _ = echoFx.process(0)
       }
       if let reverb {
         var x = accSend
@@ -2924,7 +2973,10 @@ public final class WaveRunner {
           fifoRead = fifoRead + 1 == sendFifo.count ? 0 : fifoRead + 1
           fifoCount -= 1
         }
-        if let shimmer, shimmer.isOn { x += shimmer.process(accShimmer) }
+        if let shimmer {
+          // off, it runs empty (its line dies away, as the echo's)
+          if shimmer.isOn { x += shimmer.process(accShimmer) } else { _ = shimmer.process(0) }
+        }
         let (wl, wr) = reverb.process(x)
         let mid = 0.5 * (wl + wr)
         let side = 0.5 * (wl - wr)
