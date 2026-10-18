@@ -15,3 +15,8 @@
 *.sf3
 *.dls
 minecraft-local.*
+# test MCP (tools/testmcp): its venv, and what it builds and renders
+/tools/testmcp/.venv/
+/tools/testmcp/*.egg-info/
+__pycache__/
+/build/testmcp/

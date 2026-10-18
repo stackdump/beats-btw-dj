@@ -496,11 +496,134 @@ struct LoopRecordTests {
     #expect(l.strip.outputVolume == 0.5)
   }
 
+  /// Two bars of a 220 Hz tone at 120 bpm, a few frames short (as AAC decodes an Apple Loop).
+  func stockAudio() -> SampleBuffer {
+    let n = 2 * bar - 3
+    let tone = (0..<n).map { Float(0.3 * sin(2 * Double.pi * 220 * Double($0) / 48_000)) }
+    return SampleBuffer(left: tone, right: tone, sampleRate: 48_000)
+  }
+
+  let stockLoop = StockLoop(
+    path: "/Library/Audio/Apple Loops/Test/Tone 01.caf", name: "Tone 01", pack: "Test",
+    category: "Synths", subcategory: "", genre: "", beats: 8, seconds: 4, key: "A")
+
+  @Test func anImportJoinsTheRowAndLoopsInTimeOnce() throws {
+    let rig = try Rig(decks: ["A", "B"])
+    let a = try #require(rig.dj["A"])
+    let src = ramp(bars: 8)
+    rig.dj.perform(.load(deck: "A", source: .sample(id: "", title: "ramp", grid: nil)), buffer: src)
+    rig.dj.perform(.grid(deck: "A", bpm: 120, offset: 0))
+    let rec = try SessionRecorder.start(on: rig.dj)
+    rig.dj.perform(.play(deck: "A", on: true))
+    try rig.dj.start()
+    defer { rig.dj.stop() }
+    try rig.run(to: bar + bar / 3)
+    let audio = stockAudio()
+    let prov = LoopProvenance.stock(stockLoop, id: audio.contentID)
+    rig.dj.perform(
+      .clipImport(id: "", title: "Tone 01", bpm: 0, beats: 8, provenance: prov), buffer: audio)
+    let clip = try #require(rig.dj.clip(audio.contentID))
+    #expect(rig.dj.clips.count == 1 && clip.source == "L" && clip.beats == 8)
+    #expect(clip.title == "Tone 01" && clip.provenance?["kind"]?.string == "stock")
+    #expect(clip.originTitle == "Tone 01")
+    #expect(
+      clip.originSource
+        == .sample(
+          id: audio.contentID, title: "Tone 01",
+          grid: BeatGrid(bpm: 120, offset: 0, confidence: 1)))
+    // its tempo from its length, so it lasts exactly 2 bars at A's tempo
+    #expect(abs(clip.bpm - 8 * 60 * 48_000 / Double(audio.length)) < 1e-9)
+    #expect(rig.dj.loopState(clip.id) == .starting, "it waits for the next launch boundary")
+    try rig.run(to: 3 * bar + bar / 3)
+    #expect(rig.dj.loopState(clip.id) == .on)
+    let v = try #require(rig.dj.loopVoices.firstIndex { $0.clipID == clip.id })
+    let tt = rig.dj.loopChannel.bank!.voices[v]
+    let s = try #require(a.beatState)
+    let phase = (tt.position / Double(audio.length) * 2).truncatingRemainder(dividingBy: 1)
+    let err = abs(phase - s.barPhase)
+    #expect(min(err, 1 - err) < 0.01, "the import at \(phase) of its bar, A at \(s.barPhase)")
+    // the same audio again: still one clip, still looping
+    rig.dj.perform(
+      .clipImport(id: "", title: "Tone 01 again", bpm: 0, beats: 8, provenance: prov),
+      buffer: audio)
+    #expect(rig.dj.clips.count == 1 && rig.dj.clips[0].title == "Tone 01")
+    #expect(rig.dj.loopState(clip.id) == .on)
+    // removed, then imported again: the removed one comes back, not a second copy
+    rig.dj.perform(.clipRemove(id: clip.id))
+    rig.dj.perform(
+      .clipImport(id: "", title: "Tone 01", bpm: 0, beats: 8, provenance: prov), buffer: audio)
+    #expect(rig.dj.clips.count == 1 && rig.dj.removedClips.isEmpty)
+
+    // recorded by content id and tempo, with its provenance
+    let session = rec.finish()
+    let imports = session.events.compactMap { e -> DeckAction? in
+      if case .action(let x) = e.kind, case .clipImport = x { return x }
+      return nil
+    }
+    #expect(imports.count == 3)
+    guard case .clipImport(let id, _, let bpm, let beats, let p)? = imports.first else {
+      Issue.record("no import recorded")
+      return
+    }
+    #expect(id == audio.contentID && abs(bpm - clip.bpm) < 1e-9 && beats == 8 && p == prov)
+    let decoded = try Session.decode(session.canonical)
+    #expect(decoded == session, "it round-trips through the session text")
+    #expect(session.importedClips.count == 3 && session.importedClips[0].hasPrefix("stock loop"))
+
+    // replayed by content id on a fresh engine
+    let fresh = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    fresh.sampleResolver = { $0 == audio.contentID ? audio : nil }
+    fresh.applyAction(imports[0])
+    let again = try #require(fresh.clip(audio.contentID))
+    #expect(again.beats == 8 && abs(again.bpm - clip.bpm) < 1e-9 && again.source == "L")
+    #expect(again.provenance == prov)
+    // a session player wants the audio before the first frame
+    #expect(throws: SessionError.missingSample(id: audio.contentID)) {
+      _ = try SessionPlayer(session: session, samples: { $0 == src.contentID ? src : nil })
+        .render()
+    }
+  }
+
+  @Test func publishingASetWithAStockLoopOnTheRowIsRefused() throws {
+    let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 48_000)
+    let rec = try SessionRecorder.start(on: dj)
+    let audio = stockAudio()
+    dj.perform(
+      .clipImport(
+        id: "", title: "Tone 01", bpm: 0, beats: 8,
+        provenance: LoopProvenance.stock(stockLoop, id: audio.contentID)), buffer: audio)
+    let session = rec.finish()
+    for allow in [false, true] {
+      #expect(throws: PublishError.self) {
+        _ = try SessionBundle(session: session, renderedAt: "2026-10-18", allowLocalOnly: allow)
+      }
+    }
+    do {
+      _ = try SessionBundle(session: session, renderedAt: "2026-10-18", allowLocalOnly: true)
+    } catch let e as PublishError {
+      guard case .importedClips(let what) = e else {
+        Issue.record("refused for the wrong reason: \(e)")
+        return
+      }
+      #expect(what == ["stock loop Tone 01 @0"])
+      #expect("\(e)".contains("stock loops"))
+    }
+    // without the import the same set may go
+    var plain = session
+    plain.events.removeAll()
+    #expect(plain.importedClips.isEmpty)
+    #expect((try? SessionBundle(session: plain, renderedAt: "2026-10-18")) != nil)
+  }
+
   @Test func theActionsRoundTrip() {
     for a in [
       DeckAction.loopRecord(deck: "A", on: true), .loopRecord(deck: "B", on: false),
       .clip(deck: "L", id: "abc"), .clipLoop(id: "abc", on: true),
       .clipGain(id: "abc", value: 0.5), .clipCrop(id: "abc", from: 1, to: 3),
+      .clipImport(id: "abc", title: "Tone", bpm: 120, beats: 8, provenance: nil),
+      .clipImport(
+        id: "abc", title: "Tone", bpm: 119.5, beats: 4,
+        provenance: .object(JSONObject([("kind", .string("stock"))]))),
     ] {
       #expect(DeckAction(json: a.json) == a)
     }

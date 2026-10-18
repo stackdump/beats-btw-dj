@@ -376,6 +376,125 @@ struct LoopLaunchTests {
     bank.render(frames: 512, left: l, right: nil, startFrame: 2048)
     #expect(UnsafeBufferPointer(start: l, count: 512).allSatisfy { abs($0 - 0.5) < 1e-6 })
   }
+
+  // MARK: a clip's own launch boundary
+
+  @Test func aClipsOwnBoundaryOverridesTheRowsButAScenesDoesNot() async throws {
+    let rig = try Rig()
+    defer { rig.dj.stop() }
+    let (one, two) = try await twoTakes(rig)
+    rig.dj.stopAllLoops()
+    try rig.settle()
+    rig.dj.perform(.loopQuantize(beats: 1))
+    rig.dj.perform(.clipQuantize(id: one.id, beats: 16))
+    rig.dj.perform(.clipQuantize(id: two.id, beats: 3))  // not offered: refused
+    #expect(rig.dj.clipQuantum(one.id) == 16 && rig.dj.clipQuantum(two.id) == nil)
+    #expect(rig.dj.quantum(for: one.id) == 16 && rig.dj.quantum(for: two.id) == 1)
+    #expect(rig.dj.quantum(for: nil) == 1)
+
+    // one waits for a 4-bar phrase line, two (following the row) at most a beat
+    let now = rig.dj.loopChannel.renderedFrames
+    rig.dj.perform(.clipLoop(id: one.id, on: true))
+    rig.dj.perform(.clipLoop(id: two.id, on: true))
+    let a = try #require(rig.dj.loopSwitchFrame(one.id))
+    let b = try #require(rig.dj.loopSwitchFrame(two.id))
+    #expect(onLine(rig.dj.loopClock(for: one).beat(a), every: 16), "its own boundary")
+    #expect(b - now <= beat + DJEngine.loopLead, "the row's")
+    #expect(onLine(rig.dj.loopClock(for: two).beat(b), every: 1))
+    try rig.settle()
+
+    // its stop waits for its own line too
+    rig.dj.perform(.clipLoop(id: one.id, on: false))
+    let out = try #require(rig.dj.loopSwitchFrame(one.id))
+    #expect(onLine(rig.dj.loopClock(for: one).beat(out), every: 16))
+    try rig.settle()
+
+    // a scene switches on the row's boundary, whatever its clips say
+    rig.dj.perform(.loopQuantize(beats: 4))
+    rig.dj.perform(.clipQuantize(id: one.id, beats: 32))
+    let then = rig.dj.loopChannel.renderedFrames
+    rig.dj.perform(.sceneLaunch(name: "s", clips: [SceneClip(clipID: one.id)]))
+    let at = try #require(rig.dj.loopSwitchFrame(one.id))
+    #expect(at - then <= 4 * beat + DJEngine.loopLead, "a bar at most, not 8")
+    #expect(rig.dj.loopSwitchFrame(two.id) == at)
+
+    // null follows the row again
+    rig.dj.perform(.clipQuantize(id: one.id, beats: nil))
+    #expect(rig.dj.clipQuantum(one.id) == nil && rig.dj.quantum(for: one.id) == 4)
+  }
+
+  @Test func aClipsBoundaryAndFadeGoWithItAndAreForgottenWithIt() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let c = testClip(1)
+    let d = testClip(2)
+    dj.restoreClips([c, d])
+    dj.setClipQuantum(c.id, 8)
+    dj.setClipFade(c.id, .bar)
+    #expect(dj.clipLaunch == [c.id: ClipLaunch(quantum: 8, fade: .bar)], "only clips with one")
+    // taken off and put back: as it was
+    dj.removeClip(c.id)
+    #expect(dj.clipQuantum(c.id) == nil && dj.clipFade(c.id) == nil && dj.clipLaunch.isEmpty)
+    #expect(dj.removedClips.first?.sound == ClipSound(quantum: 8, fade: .bar))
+    dj.restoreClip(c.id)
+    #expect(dj.clipQuantum(c.id) == 8 && dj.clipFade(c.id) == .bar)
+    // the library's, back on a fresh row (unknown ids skipped)
+    let fresh = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    fresh.restoreClips([c, d])
+    fresh.restoreClipLaunch([c.id: ClipLaunch(quantum: 16), "gone": ClipLaunch(fade: .off)])
+    #expect(fresh.clipQuantum(c.id) == 16 && fresh.clipFade(c.id) == nil)
+    #expect(fresh.clipLaunch.keys.sorted() == [c.id])
+  }
+
+  @Test func theClipLaunchActionsRoundTripAndRecord() throws {
+    for a in [
+      DeckAction.clipQuantize(id: "abc", beats: 16), .clipQuantize(id: "abc", beats: nil),
+      .clipFade(id: "abc", mode: "bar"), .clipFade(id: "abc", mode: nil),
+    ] {
+      #expect(DeckAction(json: a.json) == a, "\(a.json.canonicalJS)")
+      #expect(a.clipIDs == ["abc"])
+    }
+    #expect(
+      DeckAction.clipQuantize(id: "x", beats: nil).json.canonicalJS
+        == #"{"beats":null,"id":"x","op":"clipQuantize"}"#)
+    #expect(JournalEvent.action(.clipQuantize(id: "x", beats: 4)).foldKey == "quantize.x")
+    #expect(JournalEvent.action(.clipFade(id: "x", mode: nil)).foldKey == "fade.x")
+
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let c = testClip(1)
+    dj.restoreClips([c])
+    let rec = try SessionRecorder.start(on: dj)
+    dj.perform(.clipQuantize(id: c.id, beats: 32))
+    dj.perform(.clipFade(id: c.id, mode: "beat"))
+    dj.perform(.clipFade(id: c.id, mode: "nonsense"))  // not a fade: ignored
+    let events = rec.finish().events.map(\.kind)
+    #expect(events.count == 3)
+    #expect(dj.clipQuantum(c.id) == 32 && dj.clipFade(c.id) == .beat)
+    // a replay, on a fresh engine, does the same
+    let fresh = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    fresh.restoreClips([c])
+    for case .action(let a) in events { fresh.perform(a) }
+    #expect(fresh.clipQuantum(c.id) == 32 && fresh.clipFade(c.id) == .beat)
+    fresh.perform(.clipFade(id: c.id, mode: nil))
+    #expect(fresh.clipFade(c.id) == nil)
+  }
+
+  @Test func clipLaunchSurvivesTheLibraryAndIsLeftOutWithout() throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let row = [testClip(1), testClip(2)]
+    try lib.save(row)
+    let plain = try String(contentsOf: lib.indexFile, encoding: .utf8)
+    #expect(!plain.contains("quantum") && !plain.contains("\"fade\""), "nothing when unset")
+    #expect(LoopLibrary.entry(row[0]) == LoopLibrary.entry(row[0], launch: ClipLaunch()))
+    let launch = [row[0].id: ClipLaunch(quantum: 8, fade: .beat)]
+    try lib.save(row, launch: launch)
+    #expect(lib.loadLaunch() == launch)
+    try lib.save(row)
+    #expect(lib.loadLaunch() == launch, "saving the row alone keeps them")
+    try lib.save(row, launch: [:])
+    #expect(lib.loadLaunch().isEmpty)
+    #expect(try String(contentsOf: lib.indexFile, encoding: .utf8) == plain, "byte for byte")
+  }
 }
 
 /// A one-bar clip at 120 bpm whose samples say which clip it is.

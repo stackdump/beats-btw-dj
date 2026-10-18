@@ -48,6 +48,13 @@ extension AppModel {
         throw ControlRequestError.bad(
           "use dj_generate, dj_load_share or dj_load_file to load a deck")
       }
+      if case .clipImport(let id, _, _, let beats, _) = action {
+        guard engine?.sampleLibrary[id] != nil, beats > 0 else {
+          throw ControlRequestError.bad(
+            "clipImport needs the content id of audio already loaded and beats > 0 "
+              + "(dj_stock_loops addToRow puts a stock loop on the row)")
+        }
+      }
       if let deck = a["deck"]?.string {
         let d = try requireDeck(deck)
         let netOnly = [
@@ -273,8 +280,14 @@ extension AppModel {
         guard await loadStockLoop(deck, loop) else { throw ControlRequestError.bad(status) }
         poll()
         return deckJSON(deck) ?? .null
+      case "addToRow":
+        guard let path = p["path"]?.string, let loop = stockLoops.first(where: { $0.path == path })
+        else { throw ControlRequestError.bad("`path` must be a loop from action list") }
+        guard let id = await addStockLoopToRow(loop) else { throw ControlRequestError.bad(status) }
+        poll()
+        return controlState()["loops"]?["clips"]?.array?.first { $0["id"]?.string == id } ?? .null
       case let other:
-        throw ControlRequestError.bad("action must be list | load, not \(other)")
+        throw ControlRequestError.bad("action must be list | load | addToRow, not \(other)")
       }
 
     case "copyDeck":

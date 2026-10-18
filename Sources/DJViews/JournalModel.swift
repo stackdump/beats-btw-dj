@@ -13,6 +13,24 @@ extension AppModel {
       variations: variationStore.all(), notes: notes)
   }
 
+  /// Replace every store wholesale (an import, a restore): journaled first (the source of
+  /// truth), then the files — favorites, variations, notes — the crates default, and what the
+  /// panels show. A file that fails to write still shows the new value, and `status` says so.
+  func replaceStores(_ s: JournalStoreState) {
+    journal?.record(.storesReplace(s))
+    var failed: [String] = []
+    do { try favoritesStore.replaceAll(s.favorites) } catch { failed.append("favorites: \(error)") }
+    do { try variationStore.replaceAll(s.variations) } catch {
+      failed.append("variations: \(error)")
+    }
+    do { _ = try notesStore.replaceAll(s.notes) } catch { failed.append("notes: \(error)") }
+    defaults.set(s.crates, forKey: Self.cratesKey)
+    favorites = s.favorites
+    variations = s.variations
+    notes = s.notes
+    if !failed.isEmpty { status = "stores: " + failed.joined(separator: "; ") }
+  }
+
   /// Start this run's journal in `dir` (its checkpoint is the state now). The newest journal is
   /// the notes' source of truth: if `notes.json` disagrees with it (a crash between the two
   /// writes, a file restored from a backup), the journal's notes win.
@@ -35,9 +53,11 @@ extension AppModel {
     journal?.close()
   }
 
-  /// Per poll: the History panel's lines when the journal moved, each deck's note key when its
-  /// track changed.
+  /// Per poll: a mid-file checkpoint when one is due (`Journal.checkpointIfDue`: a minute of
+  /// engine time or 2000 entries), the History panel's lines when the journal moved, each deck's
+  /// note key when its track changed.
   func pollJournal(_ dj: DJEngine) {
+    journal?.checkpointIfDue()
     if let j = journal, j.lastSeq != journalSeen {
       journalSeen = j.lastSeq
       journalEntries = j.recent

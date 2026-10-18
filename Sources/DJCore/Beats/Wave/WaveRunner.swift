@@ -95,6 +95,13 @@ public struct WaveOptions {
   /// The rest schedule (`RestSchedule.build`) to prepare with instead of building one: another
   /// start of the same song reuses the playing project's.
   public var trackRests: RestSchedule?
+  /// A mix-out tail (`MixOutTail`): the melodic lanes rest from its `fromTick`, the song's
+  /// `stop-transport` is ignored, and the deck stops on its `endTick`. nil = the song as it
+  /// ends (parity, and every deck until `Deck.mixOut` sets one).
+  public var tail: MixOutTail?
+  /// The track's genre, set by `forGenre`; nil (raw nets, parity) = unknown, and the gestures
+  /// a genre gates (`.bandStop`: the song family) stay off.
+  public var genre: String?
   /// Roles whose notes are dropped at compile time (`djctl export --mute/--solo`): the nets
   /// still run, so everything else plays exactly as it would. nil = all play.
   public var roleFilter: RoleFilter?
@@ -224,11 +231,11 @@ final class Lane {
   var voiceSpread: [Double] = []
   var voicePan: [Double] = []
   /// What the lane is for the rest schedule (`WaveProject.rests`): it drops its hits while the
-  /// step's mask holds its class. Empty (never rests): fills' and crashes' drums, stingers,
-  /// overrides, the live keys.
+  /// step's mask holds its class. Empty (never rests): crashes, stingers, overrides, the live
+  /// keys.
   var restClass: RestSchedule.Class = []
-  /// `.sectionHarmony`: the lane's group in `WaveProject.harmony` (-1: not moved, e.g. drums
-  /// and the live keys).
+  /// `.sectionHarmony` / `.harmonicRhythm`: the lane's group in `WaveProject.harmony` (-1: not
+  /// moved, e.g. drums and the live keys).
   var harmonyGroup = -1
   /// `.choke`: the open hat a hit on this (closed hat) lane chokes; on the open hat lane,
   /// whether it is being choked and how fast it dies then (per sample).
@@ -558,11 +565,17 @@ public final class WaveProject: @unchecked Sendable {
   /// How far bass and pad dip on each kick (0: no ducking), and the sampler slots they play.
   public let duckDepth: Double
   let duckSlots: UInt64
-  /// When which lanes rest (`.dropGap` and 6.2's gestures); empty = none.
+  /// When which lanes rest (`.dropGap` and 6.2's gestures, and the mix-out tail's); empty = none.
   public let rests: RestSchedule
+  /// The song's own rests, without the tail's: what another start of the song reuses
+  /// (`WaveOptions.trackRests`).
+  public let songRests: RestSchedule
+  /// The mix-out tail this project plays (`WaveOptions.tail`); nil = it ends with the song.
+  public let tail: MixOutTail?
   /// Where the audio thread is in `rests`; reset when the project is installed or stopped.
   var restCursor = RestSchedule.Cursor()
-  /// The section plan the tonal lanes play through (`.sectionHarmony`); nil = as bound.
+  /// The section plan the tonal lanes play through (`.sectionHarmony`, `.harmonicRhythm`); nil =
+  /// as bound.
   public let harmony: SectionHarmony?
   /// The room this project plays in (`.space`); nil = dry.
   public let space: SpaceSpec?
@@ -581,8 +594,9 @@ public final class WaveProject: @unchecked Sendable {
     graph: WaveGraph, lanes: [Lane], byNet: [String: [Int]], sources: [Lane], liveLane: Int,
     samplers: SamplerBank? = nil, trackSerial: Int32? = nil, startTick: Int = 0,
     geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil, duckDepth: Double = 0,
-    rests: RestSchedule = .empty, space: SpaceSpec? = nil, echo: EchoSpec? = nil,
-    balance: [String: Double]? = nil, harmony: SectionHarmony? = nil
+    rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
+    space: SpaceSpec? = nil, echo: EchoSpec? = nil, balance: [String: Double]? = nil,
+    harmony: SectionHarmony? = nil
   ) {
     self.gain = gain
     self.harmony = harmony
@@ -591,6 +605,8 @@ public final class WaveProject: @unchecked Sendable {
     self.energy = energy
     self.duckDepth = duckDepth
     self.rests = rests
+    self.songRests = songRests ?? rests
+    self.tail = tail
     self.space = space
     var slots: UInt64 = 0
     var sending: UInt64 = 0
@@ -653,7 +669,8 @@ public final class WaveProject: @unchecked Sendable {
 private func buildLanes(
   _ g: WaveGraph, _ sr: Double, _ opts: WaveOptions, trackSerial: Int32? = nil, startTick: Int = 0,
   geometry: Project? = nil, gain: Double = 1, energy: EnergyCurve? = nil,
-  rests: RestSchedule = .empty, harmony: SectionHarmony? = nil
+  rests: RestSchedule = .empty, songRests: RestSchedule? = nil, tail: MixOutTail? = nil,
+  harmony: SectionHarmony? = nil
 ) -> WaveProject {
   var lanes: [Lane] = []
   var byNet: [String: [Int]] = [:]
@@ -823,8 +840,8 @@ private func buildLanes(
     graph: g, lanes: lanes, byNet: byNet, sources: sources, liveLane: liveIndex,
     samplers: opts.samplers, trackSerial: trackSerial, startTick: startTick, geometry: geometry,
     gain: gain, energy: energy, duckDepth: opts.duckDepth, rests: rests,
-    space: space ? opts.space ?? .room : nil, echo: echo ? opts.echo : nil,
-    balance: trims.isEmpty ? nil : trims, harmony: harmony)
+    songRests: songRests, tail: tail, space: space ? opts.space ?? .room : nil,
+    echo: echo ? opts.echo : nil, balance: trims.isEmpty ? nil : trims, harmony: harmony)
   project.sampledGroups = sampledGroups
   return project
 }
@@ -1061,13 +1078,17 @@ public final class WaveRunner {
     let gain = opts.trackGain ?? 1
     let energy =
       opts.musicality.contains(.energy) ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
-    let rests = opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality)
-    // `.sectionHarmony`: the band moves with the section (a pure function of the played
-    // project, cheap: rebuilt on section jumps rather than carried)
+    let songRests =
+      opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
+    let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
+    // `.sectionHarmony` / `.harmonicRhythm`: the band moves with the section and its chords
+    // (a pure function of the played project, cheap: rebuilt on section jumps rather than
+    // carried)
     let harmony = SectionHarmony.playing(project, fixes: opts.musicality)
     let prepared = buildLanes(
       g, sampleRate, opts, trackSerial: trackSerial, startTick: max(0, startTick),
-      geometry: project, gain: gain, energy: energy, rests: rests, harmony: harmony)
+      geometry: project, gain: gain, energy: energy, rests: rests, songRests: songRests,
+      tail: opts.tail, harmony: harmony)
     prepared.turntableBrake = opts.turntableBrake
     if measureGain {
       prepared.gain = Loudness.gain(
@@ -1296,6 +1317,7 @@ public final class WaveRunner {
     var n = 0
     while Double(n) < whole && !g.stopRequested {
       g.advance { _, _ in }
+      if let proj = current { _ = songEnds(proj) }  // a mix-out tail aligns on past the end
       n += 1
     }
     clock[clkTickPos] += (ticks - whole) * clock[clkSpt]
@@ -1319,9 +1341,10 @@ public final class WaveRunner {
         install(next)
         continue
       }
+      if endsTail(proj) { return }
       g.advance { _, _ in }
       if macroHoldTicks > 0 { macroHoldTicks -= 1 }
-      if g.stopRequested {
+      if songEnds(proj) {
         stopped = true
         stop()
         return
@@ -1329,6 +1352,33 @@ public final class WaveRunner {
     }
     clock[clkTickPos] = max(0, pos) * clock[clkSpt]
   }
+
+  /// The song's `stop-transport` fired, and no mix-out tail plays on past it. A tail takes the
+  /// request back: it stops the deck itself, on its own bar line (`endsTail`), even when the
+  /// song's last step is the one before it. Allocation-free.
+  @inline(__always)
+  private func songEnds(_ proj: WaveProject) -> Bool {
+    let g = proj.graph
+    guard g.stopRequested else { return false }
+    if proj.tail != nil {
+      g.stopRequested = false
+      return false
+    }
+    return true
+  }
+
+  /// The mix-out tail's bar line: at the tick boundary of its `endTick` the deck stops instead
+  /// of playing that step (true: stopped). Allocation-free.
+  @inline(__always)
+  private func endsTail(_ proj: WaveProject) -> Bool {
+    guard let tail = proj.tail, proj.graph.tick >= tail.endTick else { return false }
+    stopped = true
+    stop()
+    return true
+  }
+
+  /// The tick the playing project's mix-out tail stops on, or -1 (none).
+  var tailEndTick: Int { current?.tail?.endTick ?? -1 }
 
   /// Does the project playing want `vinyl-brake` as a turntable brake?
   var turntableBrake: Bool { current?.turntableBrake ?? false }
@@ -2167,6 +2217,7 @@ public final class WaveRunner {
       anchor(next, tick: next.graph.tick, swap: true)
       return
     }
+    if endsTail(proj) { return }
     let lanes = proj.lanes
     let ring = fireRing
     let macro = ring != nil && macroActive
@@ -2194,7 +2245,7 @@ public final class WaveRunner {
     if macroHoldTicks > 0 { macroHoldTicks -= 1 }
     ticksInBlock += 1
     opts.onTick?(self)
-    if g.stopRequested {
+    if songEnds(proj) {
       stopped = true
       stop()
     }

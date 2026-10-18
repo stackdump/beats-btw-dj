@@ -19,27 +19,18 @@ public struct SpaceSpec: Sendable, Equatable {
     self.damping = damping
   }
 
-  /// A neutral medium room, for a deck whose genre has none of its own.
-  public static let room = SpaceSpec(seconds: 1.5, wet: 0.3, damping: 6000)
+  /// A neutral medium room, for a deck whose genre has none of its own (`targets.json`'s
+  /// `space.default`).
+  public static let room = MixTargets.shared.space.default.spec
 
-  /// The room for a genre: long and bright for trance, synthwave, edm and ambient; a short,
-  /// tight one for techno, house and funk; darker rooms for lofi, jazz and bossa.
+  /// The room for a genre (`targets.json`'s `space.genres`, `MixTargets`): long and bright for
+  /// trance, synthwave, edm and ambient; a short, tight one for techno, house and funk; darker
+  /// rooms for lofi, jazz and bossa. Returns measured against the dry mix (`djctl render <g> 42
+  /// --synth --room`): ambient −8 dB; trance, synthwave −14 … −15; edm, dnb −17; lofi, jazz,
+  /// bossa −13 … −16 (pad-heavy mixes send most of themselves, so their wet is lower); techno,
+  /// house, dubstep, funk −19 … −22.
   public static func forGenre(_ name: String) -> SpaceSpec {
-    switch name {
-    // returns measured against the dry mix (`djctl render <g> 42 --synth --room`): ambient
-    // −8 dB; trance, synthwave −14 … −15; edm, dnb −17; lofi, jazz, bossa −13 … −16 (pad-heavy
-    // mixes send most of themselves, so their wet is lower); techno, house, dubstep, funk
-    // −19 … −22
-    case "ambient": SpaceSpec(seconds: 4.0, wet: 0.27, damping: 5000)
-    case "trance", "synthwave": SpaceSpec(seconds: 2.4, wet: 0.45, damping: 7500)
-    case "edm": SpaceSpec(seconds: 2.0, wet: 0.38, damping: 7000)
-    case "techno", "house", "garage": SpaceSpec(seconds: 1.3, wet: 0.33, damping: 6000)
-    case "funk", "disco": SpaceSpec(seconds: 1.0, wet: 0.22, damping: 5500)
-    case "lofi": SpaceSpec(seconds: 1.8, wet: 0.16, damping: 3500)
-    case "jazz", "bossa": SpaceSpec(seconds: 1.6, wet: 0.19, damping: 4500)
-    case "dnb", "dubstep", "trap": SpaceSpec(seconds: 1.6, wet: 0.33, damping: 6500)
-    default: room
-    }
+    MixTargets.shared.room(genre: name)
   }
 
   /// How much of itself a lane sends to the room (`kind`: its drum kind or "tonal"; `group`:

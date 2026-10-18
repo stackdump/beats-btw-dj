@@ -80,6 +80,7 @@ public final class WaveDeckSource: @unchecked Sendable {
   private let tempoBits = Atomic<UInt64>(0)
   private let playingAtomic = Atomic<Bool>(false)
   private let stoppedAtomic = Atomic<Bool>(false)
+  private let tailEndAtomic = Atomic<Int>(-1)
   private let hasProjectAtomic = Atomic<Bool>(false)
   private let scrubbingAtomic = Atomic<Bool>(false)
   private let macroAtomic = Atomic<Bool>(false)
@@ -446,6 +447,12 @@ public final class WaveDeckSource: @unchecked Sendable {
   public var isPlaying: Bool { playingAtomic.load(ordering: .relaxed) }
   /// A `stop-transport` control fired (the song ended). Cleared by the next `play`.
   public var hasEnded: Bool { stoppedAtomic.load(ordering: .relaxed) }
+  /// The tick the sounding project's mix-out tail stops on (`WaveOptions.tail`), or nil: the
+  /// song ends as composed. A tail that has stopped the deck reads as `hasEnded`.
+  public var tailEndTick: Int? {
+    let t = tailEndAtomic.load(ordering: .relaxed)
+    return t < 0 ? nil : t
+  }
   public var hasProject: Bool { hasProjectAtomic.load(ordering: .relaxed) }
   public var isScrubbing: Bool { scrubbingAtomic.load(ordering: .relaxed) }
   /// A macro is in effect: a pending mute restore (drop, breakdown, cut...), a beat repeat, or
@@ -582,6 +589,7 @@ public final class WaveDeckSource: @unchecked Sendable {
     tempoBits.store(runner.tempo.bitPattern, ordering: .relaxed)
     playingAtomic.store(runner.playing, ordering: .relaxed)
     stoppedAtomic.store(runner.stopped, ordering: .relaxed)
+    tailEndAtomic.store(runner.tailEndTick, ordering: .relaxed)
     hasProjectAtomic.store(runner.graph != nil, ordering: .relaxed)
     scrubbingAtomic.store(runner.isScrubbing, ordering: .relaxed)
     macroAtomic.store(runner.macroActive, ordering: .relaxed)

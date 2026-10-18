@@ -323,6 +323,75 @@ public final class SamplerInstrument: @unchecked Sendable {
     return 10 * log10(max(sum / Double(max(1, total)), 1e-20))
   }
 
+  /// What `measurePartLevels` found: how loud each part (`SamplerPartLevels.groups`) plays on
+  /// this instrument against its synth voice, K-weighted, at the instrument's `gain` (dB).
+  /// Empty until measured (and for kits).
+  public private(set) var partLevelDB: [String: Double] = [:]
+
+  /// Off the audio thread, after `normalize` and before publishing: each part probe's K-weighted
+  /// level here (unity gain, the mean of `SamplerPartLevels.passes` passes, from `cache` when it
+  /// has this sound at this rate) plus `gain`, less the synth voice's on the same probe.
+  func measurePartLevels(sampleRate sr: Double, cache: SamplerPartLevels.Cache?) {
+    let key = SamplerPartLevels.cacheKey(source, sampleRate: sr)
+    var raw = key.flatMap { cache?.levels(for: $0) }
+    if raw.map({ Set($0.keys) != Set(SamplerPartLevels.groups) }) ?? true {
+      var m: [String: Double] = [:]
+      for g in SamplerPartLevels.groups {
+        let p = SamplerPartLevels.probe(g)
+        m[g] = unityLevel(p.notes, seconds: p.seconds, sampleRate: sr)
+      }
+      raw = m
+      if let key { cache?.store(m, for: key) }
+    }
+    let gainDB = 20 * log10(gain)
+    var out: [String: Double] = [:]
+    for g in SamplerPartLevels.groups {
+      out[g] = raw![g]! + gainDB - SamplerPartLevels.synthLevelDB(group: g, sampleRate: sr)
+    }
+    partLevelDB = out
+  }
+
+  /// K-weighted mean square (dB) of `phrase` at velocity 100 and unity gain over `seconds`,
+  /// averaged over `SamplerPartLevels.passes` (round-robin and modulated patches vary), the
+  /// unit silenced and reset after each.
+  private func unityLevel(
+    _ phrase: [(note: Int, at: Double, seconds: Double)], seconds: Double, sampleRate sr: Double
+  ) -> Double {
+    let saved = gain
+    gain = 1
+    defer { gain = saved }
+    let total = Int(seconds * sr)
+    let block = 512
+    var buf = [Float](repeating: 0, count: block)
+    let ons = phrase.map { Int(($0.at * sr).rounded()) }
+    let offs = phrase.map { Int((($0.at + $0.seconds) * sr).rounded()) }
+    var mean = 0.0
+    for _ in 0..<SamplerPartLevels.passes {
+      var k = KWeighting(sampleRate: sr)
+      var sum = 0.0
+      var t = 0
+      while t < total {
+        let n = min(block, total - t)
+        for (j, p) in phrase.enumerated() {
+          if offs[j] >= t && offs[j] < t + n { send(0x80, UInt8(p.note), 0, at: offs[j] - t) }
+          if ons[j] >= t && ons[j] < t + n { send(0x90, UInt8(p.note), 100, at: ons[j] - t) }
+        }
+        for i in 0..<n { buf[i] = 0 }
+        buf.withUnsafeMutableBufferPointer { renderAdding(frames: n, $0.baseAddress!, nil) }
+        for i in 0..<n {
+          let y = k.process(Double(buf[i]))
+          sum += y * y
+        }
+        t += n
+      }
+      send(0xB0, 123, 0, at: 0)
+      au.reset()
+      timestamp.mSampleTime = 0
+      mean += 10 * log10(max(sum / Double(max(1, total)), 1e-20))
+    }
+    return mean / Double(SamplerPartLevels.passes)
+  }
+
   deinit {
     Self.lifecycle.withLock { au.deallocateRenderResources() }
     left.deallocate()
@@ -404,14 +473,20 @@ public final class SamplerBank: @unchecked Sendable {
   /// References and what each slot plays, behind their own short lock: releasing a project
   /// or asking what a slot plays never waits behind a load.
   private let table = Mutex(Table())
+  /// Where measured part levels are kept between runs (nil: measured on every load).
+  private let partLevelCache: SamplerPartLevels.Cache?
+  /// Off: loads skip the part-level probes (tests timing them).
+  var measuresPartLevels = true
 
   private struct Table {
     var refs = [Int](repeating: 0, count: SamplerBank.capacity)
     var sources = [SamplerSource?](repeating: nil, count: SamplerBank.capacity)
+    var partLevels = [[String: Double]](repeating: [:], count: SamplerBank.capacity)
   }
 
-  public init(sampleRate: Double) {
+  public init(sampleRate: Double, partLevelCache: SamplerPartLevels.Cache? = .shared) {
     self.sampleRate = sampleRate
+    self.partLevelCache = partLevelCache
     slots = .allocate(capacity: Self.capacity)
     slots.initialize(repeating: nil, count: Self.capacity)
   }
@@ -473,10 +548,17 @@ public final class SamplerBank: @unchecked Sendable {
             : "out of tune (\(cents) cents, limit \(Int(SamplerInstrument.maxDetuneCents)))"
         continue
       }
+      if !s.isKit && measuresPartLevels {
+        inst.measurePartLevels(sampleRate: sampleRate, cache: partLevelCache)
+      }
       if target < filled { evict(target) } else { filled += 1 }
       slots[target] = Unmanaged.passRetained(inst)
       bySource[s] = target
-      table.withLock { $0.sources[target] = s }
+      let levels = inst.partLevelDB
+      table.withLock {
+        $0.sources[target] = s
+        $0.partLevels[target] = levels
+      }
       acquire(target)
       active.bitwiseOr(1 << UInt64(target), ordering: .releasing)
       return target
@@ -511,6 +593,21 @@ public final class SamplerBank: @unchecked Sendable {
     return table.withLock { $0.sources[slot] }
   }
 
+  /// How loud `group`'s part plays on `slot`'s instrument against its synth voice (dB,
+  /// K-weighted, measured at load: `SamplerInstrument.measurePartLevels`). Groups without a
+  /// probe of their own take the nearest (`SamplerPartLevels.probeGroup`). nil for an empty
+  /// slot, a kit, or a bank that skipped the probes. Any thread but the audio thread.
+  public func slotPartLevelDB(_ slot: Int, group: String) -> Double? {
+    guard slot >= 0, slot < Self.capacity else { return nil }
+    return table.withLock { $0.partLevels[slot][SamplerPartLevels.probeGroup(for: group)] }
+  }
+
+  /// Every part level measured for `slot` (by probe group; empty when none were).
+  public func slotPartLevelDB(_ slot: Int) -> [String: Double] {
+    guard slot >= 0, slot < Self.capacity else { return [:] }
+    return table.withLock { $0.partLevels[slot] }
+  }
+
   /// References held on a slot (tests).
   func references(of slot: Int) -> Int { table.withLock { $0.refs[slot] } }
 
@@ -542,7 +639,10 @@ public final class SamplerBank: @unchecked Sendable {
       while epoch.load(ordering: .acquiring) == e { usleep(100) }
     }
     if let old = table.withLock({ t -> SamplerSource? in
-      defer { t.sources[i] = nil }
+      defer {
+        t.sources[i] = nil
+        t.partLevels[i] = [:]
+      }
       return t.sources[i]
     }) {
       bySource[old] = nil
@@ -585,6 +685,150 @@ public final class SamplerBank: @unchecked Sendable {
       let i = m.trailingZeroBitCount
       m &= m - 1
       slots[i]!._withUnsafeGuaranteedRef { $0.renderAdding(frames: frames, out, outR) }
+    }
+  }
+}
+
+/// How loud a sampled instrument plays a part, against the synth voice it replaces.
+/// `normalize` levels every sampler on one short phrase; in a track a pad's long chords or a
+/// bass's eighths sit elsewhere (`Loudness.sampledPartDB` is the average over a palette). So
+/// each load also plays part-shaped probes (120 BPM, velocity 100), K-weighted like a loudness
+/// meter, and keeps each against the group's synth voice (`tonalVoice(instrument: nil,
+/// group:)`, `WaveRunner.audition`) on the same probe: `SamplerInstrument.partLevelDB`.
+public enum SamplerPartLevels {
+  /// The parts measured.
+  public static let groups = ["bass", "harmony", "melody", "arp"]
+  /// Passes per probe, averaged: round-robin guitars and modulated patches vary between plays.
+  static let passes = 3
+  /// Bumped when a probe changes, so cached levels are measured again.
+  static let version = 1
+
+  /// The probe group for a part's group: a pad plays like harmony, anything else without a
+  /// probe of its own like melody (as `Loudness.sampledPartLevel` falls back).
+  public static func probeGroup(for group: String) -> String {
+    if group == "pad" { return "harmony" }
+    return groups.contains(group) ? group : "melody"
+  }
+
+  /// The probe for `group` (one of `groups`): pad chords held half a bar each, bass eighths,
+  /// a lead line of mixed lengths, a sixteenth-note arpeggio.
+  static func probe(_ group: String) -> (
+    notes: [(note: Int, at: Double, seconds: Double)], seconds: Double
+  ) {
+    switch group {
+    case "harmony":
+      return (
+        [
+          (48, 0, 0.75), (52, 0, 0.75), (55, 0, 0.75), (45, 0.75, 0.75), (48, 0.75, 0.75),
+          (52, 0.75, 0.75),
+        ], 1.5
+      )
+    case "bass":
+      return ([36, 36, 43, 41].enumerated().map { ($0.element, Double($0.offset) * 0.25, 0.2) }, 1)
+    case "arp":
+      return (
+        [60, 64, 67, 72, 67, 64, 60, 64].enumerated().map {
+          ($0.element, Double($0.offset) * 0.125, 0.1)
+        }, 1
+      )
+    default:
+      return ([(72, 0, 0.375), (74, 0.375, 0.125), (76, 0.5, 0.25), (79, 0.75, 0.25)], 1)
+    }
+  }
+
+  private static let synthCache = Mutex<[Double: [String: Double]]>([:])
+
+  /// K-weighted level (dB) of `group`'s synth voice on its probe at `sampleRate`, computed
+  /// once per rate.
+  static func synthLevelDB(group: String, sampleRate sr: Double) -> Double {
+    synthCache.withLock { cache in
+      if let l = cache[sr]?[group] { return l }
+      let p = probe(group)
+      let a = WaveRunner.audition(
+        tonalVoice(instrument: nil, group: group), notes: p.notes, sampleRate: sr,
+        seconds: p.seconds)
+      var k = KWeighting(sampleRate: sr)
+      var sum = 0.0
+      for x in a {
+        let y = k.process(Double(x))
+        sum += y * y
+      }
+      let l = 10 * log10(max(sum / Double(max(1, a.count)), 1e-20))
+      cache[sr, default: [:]][group] = l
+      return l
+    }
+  }
+
+  /// What a measurement is cached under: the sound (its file's path, size and modification
+  /// time, so a reinstalled sound is measured again), the rate and the probes' `version`. nil
+  /// for kits (not measured) and sounds whose file can't be read.
+  static func cacheKey(_ source: SamplerSource, sampleRate: Double) -> String? {
+    let file: String
+    let tag: String
+    switch source {
+    case .exs(let p):
+      (file, tag) = (p, "exs")
+    case .gm(let n):
+      (file, tag) = (SamplerSource.gmBank.path, "gm#\(n)")
+    case .sf2(let p, let n):
+      (file, tag) = (p, "sf2#\(n)")
+    case .kit:
+      return nil
+    }
+    guard let a = try? FileManager.default.attributesOfItem(atPath: file) else { return nil }
+    let size = (a[.size] as? NSNumber)?.int64Value ?? -1
+    let mtime = (a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+    return "\(tag)|\(file)|\(size)|\(Int64(mtime))|\(Int(sampleRate))|v\(version)"
+  }
+
+  /// Part levels measured at unity gain (dB by group), by `cacheKey`, in a JSON file read on
+  /// first use and rewritten on each store. Measured levels only: the `gain` and the synth
+  /// reference are applied fresh at every load.
+  public final class Cache: @unchecked Sendable {
+    public let url: URL?
+    private let entries = Mutex<[String: [String: Double]]?>(nil)
+
+    /// `url` nil: in memory only.
+    public init(url: URL?) { self.url = url }
+
+    /// `~/Library/Application Support/DJApp/sampler-part-levels.json` (beside the patched
+    /// EXS copies), or `$DJ_SAMPLER_PART_CACHE` (empty: in memory only).
+    public static let shared = Cache(url: defaultURL)
+
+    static var defaultURL: URL? {
+      if let p = ProcessInfo.processInfo.environment["DJ_SAMPLER_PART_CACHE"] {
+        return p.isEmpty ? nil : URL(fileURLWithPath: p)
+      }
+      return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("DJApp/sampler-part-levels.json")
+    }
+
+    func levels(for key: String) -> [String: Double]? {
+      entries.withLock { e in
+        if e == nil { e = load() }
+        return e?[key]
+      }
+    }
+
+    func store(_ levels: [String: Double], for key: String) {
+      entries.withLock { e in
+        if e == nil { e = load() }
+        e![key] = levels
+        guard let url else { return }
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.sortedKeys, .prettyPrinted]
+        guard let data = try? enc.encode(e!) else { return }
+        try? FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+      }
+    }
+
+    private func load() -> [String: [String: Double]] {
+      guard let url, let data = try? Data(contentsOf: url),
+        let e = try? JSONDecoder().decode([String: [String: Double]].self, from: data)
+      else { return [:] }
+      return e
     }
   }
 }
