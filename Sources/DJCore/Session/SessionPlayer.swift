@@ -99,6 +99,7 @@ public final class SessionPlayer {
     }
     for e in session.events {
       if case .action(.load(_, .sample(let id, _, _))) = e.kind { needed.append(id) }
+      if case .action(.clipImport(let id, _, _, _, _)) = e.kind { needed.append(id) }
     }
     for id in needed where id != DeckSourceDescriptor.demoID && samples(id) == nil {
       throw SessionError.missingSample(id: id)

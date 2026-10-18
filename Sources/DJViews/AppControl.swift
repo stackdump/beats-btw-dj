@@ -258,8 +258,14 @@ extension AppModel {
         guard await loadStockLoop(deck, loop) else { throw ControlRequestError.bad(status) }
         poll()
         return deckJSON(deck) ?? .null
+      case "addToRow":
+        guard let path = p["path"]?.string, let loop = stockLoops.first(where: { $0.path == path })
+        else { throw ControlRequestError.bad("`path` must be a loop from action list") }
+        guard let id = await addStockLoopToRow(loop) else { throw ControlRequestError.bad(status) }
+        poll()
+        return controlState()["loops"]?["clips"]?.array?.first { $0["id"]?.string == id } ?? .null
       case let other:
-        throw ControlRequestError.bad("action must be list | load, not \(other)")
+        throw ControlRequestError.bad("action must be list | load | addToRow, not \(other)")
       }
 
     case "copyDeck":

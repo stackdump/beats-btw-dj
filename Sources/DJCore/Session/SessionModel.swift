@@ -209,6 +209,11 @@ public enum DeckAction: Equatable, Sendable {
   /// the palette's own pick again — also dropping an instrument or kit picked for it
   /// (`Deck.setRoleVoice`): the same song at the next bar; carried into every new track.
   case setRoleVoice(deck: String, role: String, voice: String?)
+  /// Outside audio (a stock loop) onto the row, looping from the next launch boundary
+  /// (`DJEngine.importClip`): `beats` long at `bpm`, named by its content id like a sample load
+  /// (performed with the buffer, replayed through the sample resolver). `provenance` is
+  /// `LoopProvenance.stock` for a stock loop, which a publish refuses (`Session.importedClips`).
+  case clipImport(id: String, title: String, bpm: Double, beats: Int, provenance: JSONValue?)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -487,6 +492,13 @@ extension DeckAction {
       return o(
         "setRoleVoice",
         [d(deck), ("role", .string(role)), ("voice", voice.map { .string($0) } ?? .null)])
+    case .clipImport(let id, let title, let bpm, let beats, let provenance):
+      return o(
+        "clipImport",
+        [
+          ("id", .string(id)), ("title", .string(title)), ("bpm", .number(bpm)),
+          ("beats", .int(beats)), ("provenance", provenance ?? .null),
+        ])
     }
   }
 
@@ -584,6 +596,12 @@ extension DeckAction {
     case "setRoleVoice":
       guard let role = v["role"]?.string, !role.isEmpty else { return nil }
       self = .setRoleVoice(deck: deck, role: role, voice: v["voice"]?.string)
+    case "clipImport":
+      guard let id = v["id"]?.string else { return nil }
+      let provenance = v["provenance"].flatMap { $0 == .null ? nil : $0 }
+      self = .clipImport(
+        id: id, title: v["title"]?.string ?? "", bpm: v["bpm"]?.double ?? 0,
+        beats: v["beats"]?.int ?? 0, provenance: provenance)
     default: return nil
     }
   }

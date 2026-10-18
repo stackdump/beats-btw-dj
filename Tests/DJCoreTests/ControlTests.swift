@@ -139,4 +139,20 @@ struct MCPBridgeTests {
       try reply(b, #"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"dj_nope"}}"#)[
         "error"]?["code"]?.int == -32602)
   }
+
+  @Test func importingAStockLoopOntoTheRowIsDocumented() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":10,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    func text(_ name: String) -> String {
+      tools.first { $0["name"]?.string == name }?["description"]?.string ?? ""
+    }
+    #expect(text("dj_perform").contains("clipImport {id, title, bpm, beats, provenance?}"))
+    #expect(text("dj_stock_loops").contains("addToRow {path}"))
+    #expect(text("dj_stock_loops").contains("never published"))
+    let stock = tools.first { $0["name"]?.string == "dj_stock_loops" }
+    #expect(
+      stock?["inputSchema"]?["properties"]?["action"]?["description"]?.string
+        == "list | load | addToRow")
+  }
 }

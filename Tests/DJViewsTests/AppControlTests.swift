@@ -101,6 +101,37 @@ struct AppControlTests {
   }
 
   @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func aStockLoopGoesOnTheRowOnceAndTheSetIsNotPublished() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites(), loops: try temporaryLoopLibrary())
+    m.start()
+    let list = try await call(m, "stockLoops", #"{"category":"Drums"}"#)
+    let path = try #require(list["loops"]?.array?.first?["path"]?.string)
+    let rec = try SessionRecorder.start(on: dj)
+    let clip = try await call(m, "stockLoops", "{\"action\":\"addToRow\",\"path\":\"\(path)\"}")
+    #expect(clip["title"]?.string == "Chill Hip-Hop Beat 08" && clip["source"]?.string == "L")
+    #expect(clip["provenance"]?["kind"]?.string == "stock")
+    #expect(clip["provenance"]?["path"]?.string == path)
+    let id = try #require(clip["id"]?.string)
+    #expect(dj.loopingClips == [id], "it loops under the mixer")
+    // the same loop again is the same clip
+    let again = try await call(m, "stockLoops", "{\"action\":\"addToRow\",\"path\":\"\(path)\"}")
+    #expect(again["id"]?.string == id)
+    #expect(try await call(m, "state")["loops"]?["clips"]?.array?.count == 1)
+    let session = rec.finish()
+    #expect(session.importedClips.count == 2)
+    #expect(throws: PublishError.self) {
+      _ = try SessionBundle(session: session, renderedAt: "now", allowLocalOnly: true)
+    }
+    await #expect {
+      try await call(m, "stockLoops", #"{"action":"addToRow","path":"/nope.caf"}"#)
+    } throws: { "\($0)".contains("from action list") }
+  }
+
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
   func aStockLoopCanBeStarredTaggedAndReloaded() async throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
     dj["A"]!.loadDemo()

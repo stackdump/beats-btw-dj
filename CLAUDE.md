@@ -487,6 +487,10 @@ its copy; the two are now independent. Rules inherited from that split:
   app can restart under a live MCP session. `make mcp-install` copies it to `build/mcp/` and
   registers `dj-vevr-se` at user scope. `djctl ctl <method> [json]` sends one raw request.
 - Publishing is deliberately not a tool (it's public and asks in a modal).
+- Outside audio joins the loop row only through `DJEngine.importClip` (recorded as `clipImport`
+  by content id, provenance `LoopProvenance.stock`; `dj_stock_loops addToRow`). A set with one is
+  refused by `SessionBundle` with no override (`Session.importedClips`): stock loops never reach
+  the CDN.
 - Build id: `bundle-app.sh` stamps `CFBundleVersion` (short commit, `-dirty` with tracked
   changes) and `DJBuildDate` into Info.plist; `BuildInfo.current` reads them ("dev" unbundled).
   It shows in the app's footer, in `dj_state.build`, and as MCP `serverInfo.version`
