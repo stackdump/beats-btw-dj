@@ -141,6 +141,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `RestSchedule` entry rests the melodic classes from `fromTick`, stop-transport is ignored, and
   the runner stops on `endTick`'s tick boundary. The room and echo ring out after the stop.
   `WaveProject.songRests` (no tail) is what `sameSongOptions` reuses; it carries the tail too.
+  The deck control is `DeckAction.mixOut(deck, bars)` (`Deck.mixOut`: the outro at the next bar,
+  else plays on) and `.mixIn(deck, bars)` (`RestSchedule.mixIn`, the same mask, joined to the
+  song's rests): one recorded action each, through `relocate(toTick:tail:rest:)`, never apart.
 - Generated data tables are checked in as `Resources/beats/tables.json` (regenerate with
   `make beats-tables`). The JS generator is canonical (GO-DIVERGENCE.md), except where dj deliberately
   differs: there dj keeps its behaviour and the improvement is backported to beats
@@ -439,6 +442,13 @@ its copy; the two are now independent. Rules inherited from that split:
   `.bandStop`: song family only, all but the lead (and crashes) rest the beat before a chorus
   not covered by the drop gap, only where the lead has a note; fill chains are `Class.fill`,
   which nothing else rests. `djctl render` reports `bandStopDipDB` (below 200 Hz).
+- `.riser` (6.2, `Riser.swift`): `WaveProject.riser` (`RiserVoice`, built at prepare from
+  `DJMusicality.riserWindows`: last 2 bars of a buildup into a drop / chorus) is a stinger-class
+  lane rendered into `acc` (never rested, ducked or energy-lowpassed): seeded xorshift noise, SVF
+  lowpass 300 Hz → 8 kHz, −30 → −12 dB, cut at the drop, side under `.stereo`, send under `.space`.
+  Its place is the step `doTick` played (`riserStep`), so a jump starts it in phase; it returns
+  false while silent, so bytes before a window are unchanged. `djctl render` prints `riserRiseDB`
+  / `riserSpearman` (`RiserRise`: ≥ 4 kHz per beat).
 - Mix targets are data (ROADMAP 6.1): `Resources/beats/targets.json` (`MixTargets`, hand-edited;
   `make beats-tables` writes only tables.json) holds `Loudness.targetDB`'s probe offset and gain range,
   `MixBalance.targetDB` / `maxTrimDB`, `SpaceSpec.forGenre` rooms, `stereoPlacement`, and per-family
@@ -459,6 +469,10 @@ its copy; the two are now independent. Rules inherited from that split:
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
   transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
+- `.sweep` (`BuildupSweep`, in the runner): a subtractive voice struck in a ramp section
+  (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
+  `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.
+  It builds the `EnergyCurve` without `.energy`. Synth lanes only; samplers keep `.energy`'s bus LP.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -586,6 +600,12 @@ its copy; the two are now independent. Rules inherited from that split:
   `restore(into:)`. Live, each deck's `generation` moves on (in-flight compiles land nowhere)
   and net playheads are awaited as `jumpToTick`. Not recorded. Buffers retire through the rings
   (`JournalRewindRealTimeTests`).
+- In-app rewind: `AppModel.rewindJournal(toSeq:)` (socket `journal` {action: rewind, seq},
+  `dj_journal`) replays the flushed file off the main actor (`playheads: true`), `reset(to:)`s
+  the engine, `replaceStores`, then appends `rewind <seq>` (`Journal.rewindMark`) and a
+  playhead checkpoint — append-only, line 0 untouched. Nothing before a rewind's checkpoint
+  carries over: replays past it start there even `fromStart`; `exportSession` refuses a slice
+  with a rewind mark (`JournalError.spansRewind`).
 - **Notes** (`TrackNote`): text + target + optional bar/beat. A net track is keyed by its share
   CID (same genre + seed + settings = same track, so the note returns whenever that
   configuration plays again), a sample by content id (+ file, so starred samples carry them),
@@ -612,6 +632,13 @@ its copy; the two are now independent. Rules inherited from that split:
   `djtest_matrix` (musicality-matrix.py → summary rows), `djtest_replay` (`journal replay
   --json --render`; `twice` compares state + sha256 — round-robin samplers may differ on
   purpose), `djtest_journal_list`. Never the speakers, the app or its socket.
+- `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
+  never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
+  limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
+  under an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`; dies with its
+  holder, so never stale; MCP runs only — a terminal `make` ignores it); `djtest_lock` says who
+  holds it. Failures are tagged known_failing / flaky_under_load / new from
+  `djtest_mcp/known_tests.json`, a copy of ROADMAP's Release checks lists — edit both.
 - Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s
   FakeRunner, so `make testmcp-test` (unittest) never builds Swift or renders.
 - `make testmcp-install` only prints the `claude mcp add --scope user dj-vevr-se-test …`

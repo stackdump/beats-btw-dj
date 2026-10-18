@@ -29,6 +29,7 @@ extension DJMusicality {
     case "jazz":
       // a feathered kick (soft, on every beat) under a soft 2 and 4; on a ring of whole beats
       // only (beats' 12-step jazz drums) the snare keeps time softly on every beat, as brushes do
+      // (and plays brushes: `WaveOptions.brushes`, `Brush` in SynthVoice.swift)
       BackbeatStyle(
         kick: BackbeatFigure(bar: [0: 0.45, 4: 0.45, 8: 0.45, 12: 0.45], beat: [0: 0.45]),
         snare: BackbeatFigure(bar: [4: 0.55, 12: 0.55], beat: [0: 0.4]))

@@ -10,10 +10,14 @@ every render is offline (`djctl render`, `djctl journal replay --render`).
 
 from __future__ import annotations
 
-from mcp.server.mcpserver import MCPServer
+import json
+
+from mcp.server.mcpserver import Image, MCPServer
 
 from . import render as rd
 from . import replay as rp
+from . import shots as sh
+from . import swifttest as st
 
 VERSION = "0.1.0"
 
@@ -28,6 +32,9 @@ mcp = MCPServer(
         "AudioMetrics (lufs, peakDB, ...) and the WAV path. djtest_matrix runs the 24-track "
         "musicality matrix (minutes). djtest_journal_list lists the app's journals; "
         "djtest_replay replays one offline, twice=true checks it replays byte-identical. "
+        "djtest_swift_test runs one filtered swift test (never unfiltered) under a lock shared "
+        "by every worktree, so runs never overlap; djtest_lock says who holds it. "
+        "djtest_shots returns the view tests' PNGs. "
         "Report numbers; never claim a render sounds better."
     ),
 )
@@ -84,8 +91,42 @@ def djtest_journal_list(journal_dir: str = "") -> list[dict]:
     return rp.journal_list(journal_dir)
 
 
+@mcp.tool()
+def djtest_swift_test(filter: str, release: bool = False, timeout: float = st.TEST_TIMEOUT) -> dict:
+    """Run `make swift-test-filter FILTER=<filter>` (release: `make swift-rt-test-filter`, the
+    optimised build the audio-thread allocation tests need) and parse swift-testing's output:
+    status, passed / failed / skipped / issues, seconds, the `Test run with N tests` line, and
+    each failure with its recorded issues, tagged known_failing / flaky_under_load (ROADMAP's
+    lists, known_tests.json) or new. filter is required (a suite or test name, `A|B` for
+    several). Runs one at a time across every worktree (a lock in ~/Library/Caches/dj-vevr-se):
+    a call waits for the one before it, and `lock.waited_seconds` / `waited_for` say so. The
+    full transcript is at `log`. timeout: seconds for the run itself (it builds first)."""
+    return st.swift_test(filter, release=release, timeout=timeout)
+
+
+@mcp.tool()
+def djtest_lock() -> dict:
+    """Whether a djtest_swift_test / djtest_shots run holds the swift test lock and, if so,
+    whose: pid (and whether it is alive), worktree root, filter, started, held_seconds. The
+    lock covers this server's runs only, not a `make swift-test` typed in a terminal."""
+    return st.lock_status()
+
+
+@mcp.tool()
+def djtest_shots(filter: str, limit: int = sh.DEFAULT_LIMIT):
+    """Run the view tests matching filter with DJ_SHOT_DIR set (`make swift-shots`), under the
+    same lock as djtest_swift_test, and return up to `limit` of the PNGs they wrote as images
+    you can see, then a JSON summary (test counts, every PNG's path). e.g. filter
+    "WindowShotTests"."""
+    r = sh.shots(filter, limit)
+    meta = {"summary": r["summary"], "shot_dir": r["shot_dir"], "total_pngs": r["total_pngs"],
+            "images": [{"path": i["path"], "bytes": i["bytes"]} for i in r["images"]]}
+    return [*(Image(data=i["data"], format="png") for i in r["images"]),
+            json.dumps(meta, indent=1)]
+
+
 TOOLS = ("djtest_build", "djtest_render", "djtest_matrix", "djtest_replay",
-         "djtest_journal_list")
+         "djtest_journal_list", "djtest_swift_test", "djtest_lock", "djtest_shots")
 
 
 def main() -> None:
