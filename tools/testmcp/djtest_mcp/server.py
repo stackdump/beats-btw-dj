@@ -1,7 +1,7 @@
 """dj-vevr-se-test — the test MCP server (stdio).
 
 Shaped like ~/Workspace/mcp/workbit_mcp: a thin MCPServer whose tools call
-plain functions (render.py, replay.py) that go through one swappable runner
+plain functions (render.py, replay.py, measure.py) that go through one swappable runner
 (runner.py). Tool names are `djtest_<verb>`.
 
 Nothing here touches the running DJApp, its control socket or the speakers:
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from mcp.server.mcpserver import MCPServer
 
+from . import measure as ms
 from . import render as rd
 from . import replay as rp
 
@@ -28,6 +29,10 @@ mcp = MCPServer(
         "AudioMetrics (lufs, peakDB, ...) and the WAV path. djtest_matrix runs the 24-track "
         "musicality matrix (minutes). djtest_journal_list lists the app's journals; "
         "djtest_replay replays one offline, twice=true checks it replays byte-identical. "
+        "djtest_measure measures any audio file like a render; djtest_compare diffs two files "
+        "(sha256 identity, LUFS / peak / band / side deltas with pass flags); "
+        "djtest_level_check renders genres × seeds and reports the LUFS spread. `lufs` is "
+        "always Swift's BS.1770 loudness; `ffmpegLufs` is ffmpeg ebur128, the matrix's. "
         "Report numbers; never claim a render sounds better."
     ),
 )
@@ -84,8 +89,47 @@ def djtest_journal_list(journal_dir: str = "") -> list[dict]:
     return rp.journal_list(journal_dir)
 
 
+@mcp.tool()
+def djtest_measure(file: str, start: float = 0, seconds: float | None = None,
+                   note: int | None = None, sections: bool = False,
+                   ffmpeg: bool = False) -> dict:
+    """Measure any local audio file (wav, aiff, mp3, m4a, flac) with `djctl measure`: the same
+    audio block djtest_render returns (lufs, lra, peakDB, truePeakDBTP, bands, sideDB, ...),
+    plus the file's sha256. lufs is Swift's (BS.1770, as the app); ffmpeg=true adds ffmpegLufs /
+    ffmpegLra from ffmpeg's ebur128 (the matrix's numbers). start / seconds: the part to
+    measure. note: also the pitch error of the first second against MIDI note N. sections:
+    also section boundaries in the file's bars."""
+    return ms.measure(file, start=start, seconds=seconds, note=note, sections=sections,
+                      ffmpeg=ffmpeg)
+
+
+@mcp.tool()
+def djtest_compare(a: str, b: str, thresholds: dict | None = None, start: float = 0,
+                   seconds: float | None = None, ffmpeg: bool = False) -> dict:
+    """Compare two audio files: identical (same sha256) and the b − a deltas of lufs, lra,
+    peakDB, truePeakDBTP, sideDB, lowSideDB, slopeDBPerOct and each band's share, each with a
+    pass flag. Defaults: |Δlufs| ≤ 0.5 LU, both peaks < 0 dBFS, |Δlra| ≤ 1 LU, |Δside| ≤ 1 dB,
+    |Δband| ≤ 0.02; override any with thresholds {"lufs": 0.2, ...}. Judged on Swift's lufs;
+    ffmpeg=true also reports ffmpeg's ebur128 lufs for both."""
+    return ms.compare(a, b, thresholds=thresholds, start=start, seconds=seconds, ffmpeg=ffmpeg)
+
+
+@mcp.tool()
+def djtest_level_check(genres: list[str], seeds: list[float], seconds: float = 20,
+                       target_lufs: float | None = None, tolerance: float = 1.0,
+                       structure: str = "", fixes: str = "", sampled: bool = False,
+                       ffmpeg: bool = True) -> dict:
+    """Render every genre × seed offline (synth voices unless sampled) and report each track's
+    lufs (Swift) and its offset from target_lufs (the median when none), pass when within
+    tolerance LU, and the spread (max − min). ffmpeg (default on): also each track's ffmpeg
+    ebur128 lufs, swiftMinusFfmpeg and ffmpegSpread, to cross-check the matrix."""
+    return ms.level_check(genres, seeds, seconds=seconds, target_lufs=target_lufs,
+                          tolerance=tolerance, structure=structure, fixes=fixes,
+                          sampled=sampled, ffmpeg=ffmpeg)
+
+
 TOOLS = ("djtest_build", "djtest_render", "djtest_matrix", "djtest_replay",
-         "djtest_journal_list")
+         "djtest_journal_list", "djtest_measure", "djtest_compare", "djtest_level_check")
 
 
 def main() -> None:

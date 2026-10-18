@@ -199,8 +199,9 @@ fixtures-go:
 	BEATS_REPO=$(BEATS_REPO) node scripts/beats-go-oracle.mjs
 
 # --- Test MCP (tools/testmcp, Python) -----------------------------------------
-# dj-vevr-se-test: djtest_build / render / matrix / replay / journal_list over stdio, offline
-# (never the speakers or the running app). testmcp-test uses a fake runner: no Swift build.
+# dj-vevr-se-test: djtest_build / render / matrix / replay / journal_list / measure / compare /
+# level_check over stdio, offline (never the speakers or the running app). testmcp-test uses a
+# fake runner: no Swift build.
 # testmcp-install only PRINTS the registration command; run it yourself.
 .PHONY: testmcp-venv testmcp-test testmcp-install
 TESTMCP := $(CURDIR)/tools/testmcp
