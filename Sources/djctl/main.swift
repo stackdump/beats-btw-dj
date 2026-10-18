@@ -605,7 +605,9 @@ case "render":
   var trackOpts = WaveOptions.extended(samplers: synth ? nil : source.samplers)
   trackOpts.musicality = fixes
   let track = PreparedTrack(spec: spec, sampleRate: sr, opts: trackOpts)
-  let (log, controls) = NoteLog.captureAll(track.played)
+  // `.sectionHarmony`: the notes as the runner plays them, the band moved per section
+  let (log, controls) = NoteLog.captureAll(
+    track.played, harmony: SectionHarmony.playing(track.played, fixes: fixes))
   // the played project: `.variety` moves the key, and the report reads it from the project
   let report = MusicalityReport(project: track.played, log: log, controls: controls)
   if let notesOut {

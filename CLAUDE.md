@@ -397,6 +397,12 @@ its copy; the two are now independent. Rules inherited from that split:
   (each gesture its own file, `DJMusicality.<name>Rests`), a `RestSchedule.Class` per lane, read in
   `doTick` by a forward cursor (reset on install / stop, re-seeks when the tick goes back);
   `WaveOptions.trackRests` carries it across section jumps (`sameSongOptions`).
+- `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
+  the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
+  builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
+  tonal lane (`Lane.harmonyGroup`) plays through, mapped at the fire's step (the groove queue
+  carries the mapped note); `FireEvent.note` is mapped, live keys aren't, net views show the
+  bound note. Measure with `NoteLog.capture(…, harmony:)` (what `djctl render` does).
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
