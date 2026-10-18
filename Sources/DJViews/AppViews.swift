@@ -160,6 +160,9 @@ public final class AppModel {
   var stockPadQuery = ""
   /// Stock loops being decoded for the row from their pads (shown as loading).
   var stockPadsLoading: Set<String> = []
+  /// Clips being rendered again with other instruments (`retuneClip`; their pads say
+  /// "retuning…").
+  var retuningClips: Set<String> = []
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved

@@ -130,6 +130,19 @@ extension AppModel {
       // as the panel's buttons do: remembered for the deck
       case .wanderPace(let deck, let bars): setWanderPace(deck, bars)
       case .wanderLock(let deck, let dim, let on): setWanderLock(deck, dim, on)
+      // rendered off the main thread, as the clip settings' "Retune" does
+      case .clipRetune(let id, let voices):
+        guard dj.clip(id) != nil else { throw ControlRequestError.bad("no loop \(id) on the row") }
+        guard !voices.isEmpty else {
+          throw ControlRequestError.bad("clipRetune needs voices: {\"<channel>\": instrument}")
+        }
+        do {
+          guard try await retuneClip(id, voices: voices) != nil else {
+            throw ControlRequestError.bad("loop \(id) left the row (or is already retuning)")
+          }
+        } catch let r as ClipRetune.Refusal {
+          throw ControlRequestError.bad(r.message)
+        }
       default: dj.perform(action)
       }
       poll()

@@ -371,6 +371,9 @@ struct SoundPadView: View {
         HStack(spacing: DJStyle.xs) {
           Text(pad.lengthLabel).font(.caption.bold()).monospacedDigit()
           if pad.isSequence { Image(systemName: "list.bullet").font(.caption2) }
+          if pad.retuning {
+            Text("retuning…").font(.caption2).foregroundStyle(.secondary)
+          }
           Spacer(minLength: 0)
           if pad.muted { badge("M", .orange) }
           if pad.soloed { badge("S", .yellow) }
