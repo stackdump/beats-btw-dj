@@ -344,10 +344,13 @@ its copy; the two are now independent. Rules inherited from that split:
   Its `groove` block is `GrooveReport` over the hits the deck played (`WaveOptions.onHit` →
   `HitLog`: sample-exact frame, grid frame, tick, kind, velocity; offline only, read once at
   runner init, a nil check per hit when unset, never changes the render).
-  `djctl measure <file> [--start S] [--seconds N] [--note N]` runs any local audio file
-  (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
+  `djctl measure <file> [--start S] [--seconds N] [--note N] [--sections [--kernel K]]`
+  runs any local audio file (references) through the same audio block (`FileMeasure.audioBlock`, shared with render;
   decoded by `Deck.decode` at the file's rate), named by basename + sha256 prefix, never
-  copied; `--note` adds `PitchMeasure` (wraps the sampler's `pitchClassError`, unmoved).
+  copied; `--note` adds `PitchMeasure` (wraps the sampler's `pitchClassError`, unmoved);
+  `--sections` adds `SectionSegmenter` (per-bar bands + chroma + RMS on `BeatTracker`'s
+  downbeats, cosine self-similarity, Foote novelty, `--kernel` bars a side, 4): boundaries in
+  the file's own bars.
 - Part C adds `.fills`, `.voicing`, `.energy` (`EnergyCurve`: section level + tonal lowpass,
   measured per section at prepare and reused on section jumps via `WaveOptions.trackEnergy`),
   `.duck` (`WaveOptions.duckDepth`, set by `PreparedTrack` from the genre), `.contour`,
@@ -378,7 +381,9 @@ its copy; the two are now independent. Rules inherited from that split:
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
   toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
   --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
-  Per-genre settings come from `WaveOptions.forGenre`.
+  Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
+  arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
+  `WaveProject.voiceDesign`).
 - Part G adds `.variety` (`TrackVariety.swift`): beats draws only the melody from the seed, so
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
@@ -397,8 +402,8 @@ its copy; the two are now independent. Rules inherited from that split:
   and fader. Net decks: `.loudness` (`Loudness.targetDB` = reference − 0.4, calibrated on whole
   songs; the probe plays sampled parts at `Loudness.sampledPartDB` under their synth voice) and,
   with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
-  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBFS; preallocated,
-  `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
+  end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBTP from BS.1770's 4× FIR,
+  `lookahead` 1.5 ms + 12 samples, uncompensated; preallocated, `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
   shares) measured once per buffer (`SampleBuffer.level`, cached; on first read, so only with
   auto-gain on; the app's favorite / stock-loop decode tasks read it off the main thread, a plain
   file load (`AppModel.load(_:url:)`) decodes and measures on it; ten minutes take ~0.16 s in
@@ -412,7 +417,7 @@ its copy; the two are now independent. Rules inherited from that split:
   nil / −200 for silence) and its short-term form `LoudnessMeter`. Clips on a deck (`loadClip`) keep their level: a take is the deck
   after its EQ. `Deck.shortTermLUFS` / `momentaryLUFS` (pre-EQ meter in `DeckRenderer`) and
   `dj_state.decks.X.level`. `djctl render` prints `lufs` and `limiter` (gain-reduction
-  percentiles); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
+  percentiles, output `truePeakDBTP`); `djctl levels [file…] [--stock N]` (`LevelSurvey`: N stock loops per category)
   each file's level and auto-gain, then the spread before / after against each one's target and
   the misses over ±1.5 LU (`limitedBy`: `peak` ceiling or `maxGain` clamp). The loop channel
   starts at trim −3 dB (`DJEngine.loopChannelGain` = gain 0.25, trim 1/√2: the centred
