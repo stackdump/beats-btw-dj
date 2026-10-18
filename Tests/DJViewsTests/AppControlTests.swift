@@ -202,6 +202,46 @@ struct AppControlTests {
     #expect(s["build"]?["id"]?.string == BuildInfo.current.id)
   }
 
+  @Test func stateReportsLocksFollowHeadphonesAndView() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: temporaryFavorites())
+    m.defaults = scratchDefaults()
+    m.start()
+    m.setLocked("play", true)
+    m.setPFL("B", true)
+    m.setHeadphoneMix(0.25)
+    m.setHeadphoneLevel(0.5)
+    m.showSoundboard = true
+    m.scopeKind = .spectro
+    m.scopeSource = .deck("A")
+    m.newCrate("warmup")
+    m.variations = ["bass": [VoiceVariation(name: "deep", params: VoiceTweak(), useSynth: true)]]
+    _ = try await call(m, "perform", #"{"action":{"op":"loopFollow","mode":"source"}}"#)
+
+    let s = try await call(m, "state")
+    #expect(s["locked"]?.array?.compactMap(\.string) == ["play"])
+    #expect(s["loops"]?["follow"]?["mode"]?.string == "source")
+    #expect(s["headphones"]?["mix"]?.double == 0.25)
+    #expect(s["headphones"]?["level"]?.double == 0.5)
+    #expect(s["headphones"]?["pfl"]?["A"]?.bool == false)
+    #expect(s["headphones"]?["pfl"]?["B"]?.bool == true)
+    #expect(s["inpulseOutput"] != nil, "present, null when no Inpulse is attached")
+    #expect(s["awake"]?.bool == false)
+    #expect(s["view"]?["soundboard"]?.bool == true)
+    #expect(s["scope"]?["kind"]?.string == "spectro")
+    #expect(s["scope"]?["source"]?.string == "A")
+    #expect(s["scope"]?["measured"]?.bool == false)
+    #expect(s["stage"]?["open"]?.bool == false)
+    #expect(s["stage"]?["visualizer"]?.string == "constellation")
+    #expect(m.stageModel?.isAttached == false, "reading the stage does not attach its feed")
+    #expect(s["crates"]?.array?.compactMap(\.string) == ["warmup"])
+    #expect(s["variations"]?["bass"]?.array?.first?["name"]?.string == "deep")
+    #expect(s["variations"]?["bass"]?.array?.first?["useSynth"]?.bool == true)
+  }
+
   @Test func performGoesThroughTheEngine() async throws {
     let m = try model()
     let a = try await call(m, "perform", #"{"action":{"op":"play","deck":"A","on":true}}"#)

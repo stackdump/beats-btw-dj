@@ -153,12 +153,14 @@ public enum DJMusicality {
     /// Saw and square voices as an analogue synth plays them: band-limited oscillators with
     /// every partial that fits under Nyquist (beats' tables stop at the 8th, so a 55 Hz bass has
     /// nothing above 440 Hz), through a lowpass per voice that opens on the note — further the
-    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Applied by the runner.
+    /// harder it is struck — and closes as it plays (`FilterEnvelope`). Trance, edm and
+    /// synthwave's arp takes the pluck envelope (`VoiceDesign.forGenre`). Applied by the runner.
     public static let subtractive = Fixes(rawValue: 1 << 26)
 
     /// Pads and saw leads as two oscillators detuned a few cents apart (`Unison`): a held
     /// chord moves and a lead is full instead of one static oscillator. With `.stereo` the
-    /// pad's pair spreads across the field. Applied by the runner.
+    /// pad's pair spreads across the field (narrower in ambient, `VoiceDesign.forGenre`).
+    /// Applied by the runner.
     public static let unison = Fixes(rawValue: 1 << 27)
 
     /// A tempo-synced ping-pong echo on the lead and arp where the style has one (`EchoSpec`:

@@ -1,0 +1,18 @@
+{
+  "about": "A copy of ROADMAP.md's Release checks lists (2026-10-17): tests known to fail, and tests that fail only under parallel load. djtest_swift_test tags a failure with the first entry whose test (and arguments, when given) matches; anything else is 'new'. Edit with ROADMAP.",
+  "known_failing": [
+    {"suite": "MusicalityTests", "test": "tracksPlayAtOneLoudness"},
+    {"suite": "BalanceTests", "test": "theKickNoLongerIsTheMix", "arguments": "funk"},
+    {"suite": "WindowShotTests", "test": "theWindowInTheDark"},
+    {"suite": "PerfBookingTests", "test": "theHeaderLeavesRoomForTheStatusAtTheWindowsMinimumWidth"}
+  ],
+  "flaky_under_load": [
+    {"suite": "WaveDeckSourceTests", "test": "sampledInstrumentsDoNotAllocate",
+     "note": "the background sampler load times out: slot -2"},
+    {"suite": "ModelEngineFeedTests", "test": "aNewTrackRebuildsTheLanesAndTheirKernels"},
+    {"suite": "WanderTests", "test": "aReplayWalksTheSamePath"},
+    {"suite": "ScopeRealTimeTests", "test": "switchingTheTapOnAndOffAroundTheBlocksDoesNotAllocate",
+     "note": "occasional RT frees"},
+    {"test": "voiceTweaksDoNotAllocate", "note": "occasional RT frees"}
+  ]
+}

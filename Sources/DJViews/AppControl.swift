@@ -596,6 +596,15 @@ extension AppModel {
         ),
         ("tapBars", .int(tapBars)),
         ("quantize", .int(loopQuantum)),
+        // whose tempo the loops follow (the row's "Tempo") and, for louder, the deck that is now
+        (
+          "follow",
+          .object(
+            JSONObject([
+              ("mode", .string(loopFollow.rawValue)),
+              ("deck", followingDeck.map { .string($0) } ?? .null),
+            ]))
+        ),
         (
           "scenes",
           .array(
@@ -639,6 +648,51 @@ extension AppModel {
     o["padsOnScreen"] = .bool(showPads)
     o["view"] = viewJSON
     o["keepScreenAwake"] = .bool(keepScreenAwake)
+    o["awake"] = .bool(keepScreenAwake)
+    // buttons locked by right-click ▸ Disable (their `lockKey`s), sorted
+    o["locked"] = .array(lockedButtons.sorted().map { .string($0) })
+    // the headphone cue: mix (0 cue … 1 master), level, and which decks are cued
+    o["headphones"] = .object(
+      JSONObject([
+        ("mix", .number(headphoneMix)), ("level", .number(headphoneLevel)),
+        (
+          "pfl",
+          .object(
+            JSONObject(
+              decks.keys.sorted().map { n in (n, .bool(engine?[n]?.pfl ?? false)) }))
+        ),
+      ]))
+    if let out = inpulseOutput {
+      o["inpulseOutput"] = .object(
+        JSONObject([
+          ("name", .string(out.name)), ("uid", .string(out.uid)),
+          ("channels", .int(out.outputChannels)), ("routed", .bool(inpulseRouted)),
+        ]))
+    } else {
+      o["inpulseOutput"] = .null
+    }
+    o["scope"] = .object(
+      JSONObject([
+        ("open", .bool(showScopes)), ("kind", .string(scopeKind.rawValue)),
+        ("source", .string(Self.scopeSourceID(scopeSource))), ("measured", .bool(scopeMeasured)),
+      ]))
+    if let stage = stageModel { o["stage"] = stageJSON(stage) }  // reads; never attaches the feed
+    o["crates"] = .array(crates.map { .string($0) })
+    o["variations"] = .object(
+      JSONObject(
+        variations.sorted { $0.key < $1.key }.map { instrument, saved in
+          (
+            instrument,
+            .array(
+              saved.map {
+                .object(
+                  JSONObject([
+                    ("name", .string($0.name)), ("useSynth", .bool($0.useSynth)),
+                    ("params", $0.params.json),
+                  ]))
+              })
+          )
+        }))
     let b = BuildInfo.current
     var build = JSONObject([
       ("id", .string(b.id)), ("version", .string(b.version)), ("build", .string(b.build)),
@@ -646,6 +700,30 @@ extension AppModel {
     if let d = b.dateString { build["date"] = .string(d) }
     o["build"] = .object(build)
     return .object(o)
+  }
+
+  /// "master", or the deck's name.
+  static func scopeSourceID(_ s: ScopeSource) -> String {
+    switch s {
+    case .master: "master"
+    case .deck(let n): n
+    }
+  }
+
+  /// The Stage window: whether it is up (its model attached to the feed) and its toolbar's
+  /// settings. Only reads the model, so asking does not switch a feed's tap on.
+  func stageJSON(_ stage: StageModel) -> JSONValue {
+    let s = stage.settings
+    return .object(
+      JSONObject([
+        ("open", .bool(stage.isAttached)), ("source", .string(Self.scopeSourceID(s.source))),
+        ("visualizer", .string(s.visualizer.rawValue)),
+        ("overlays", .array(s.overlays.map(\.rawValue).sorted().map { .string($0) })),
+        ("scale", .string(s.scale.rawValue)), ("expandVariants", .bool(s.expandVariants)),
+        ("showBacks", .bool(s.showBacks)), ("showLabels", .bool(s.showLabels)),
+        ("cardOnChange", .bool(s.cardOnChange)), ("background", .string(s.bgMode.rawValue)),
+        ("showWander", .bool(s.showWander)), ("menuCollapsed", .bool(s.menuCollapsed)),
+      ]))
   }
 
   func deckJSON(_ name: String) -> JSONValue? {

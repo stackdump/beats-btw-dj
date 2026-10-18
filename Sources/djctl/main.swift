@@ -15,7 +15,7 @@
 //                                     plays each file at, and the spread before / after
 //                                     (LevelSurvey, LevelMatch.swift); --stock: N stock loops
 //                                     per category
-//   djctl measure <file> [--start S] [--seconds N] [--note N]
+//   djctl measure <file> [--start S] [--seconds N] [--note N] [--sections [--kernel K]]
 //                                     any audio file through render's audio block (LUFS, LRA,
 //                                     true peak, spectrum) as JSON, named by basename + sha256;
 //                                     --note: its pitch against that MIDI note (FileMeasure.swift)
@@ -648,7 +648,8 @@ case "render":
   if let out { try render.wav().write(to: URL(fileURLWithPath: out)) }
   let groove = GrooveReport(hits.records, sampleRate: sr, bpm: track.played.tempo)
   // AudioMetrics, BS.1770 integrated loudness, EBU loudness range and true peak (the block
-  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift)
+  // `djctl measure` prints for a file), and what the deck's peak limiter did (PeakLimiter.swift:
+  // GR percentiles, grP95DB among them, and its output truePeakDBTP)
   var audio = FileMeasure.audioBlock(left: render.left, right: render.right, sampleRate: sr)
   if let palette { audio["palette"] = SoundPalette.named(palette)?.id ?? palette }
   if let limiter = source.limiter { audio["limiter"] = limiter.statistics().dictionary }
@@ -662,6 +663,11 @@ case "render":
   // `.bandStop`: the beat before each chorus against the one before it, song family only
   let stops = render.bandStopDips(track.played, genre: spec.genre)
   if !stops.isEmpty { audio["bandStopDipDB"] = round3(stops.reduce(0, +) / Double(stops.count)) }
+  // `.riser`: the high band's climb into each drop (`RiserRise`)
+  if let r = render.riserSummary(track.played) {
+    audio["riserRiseDB"] = round3(r.riseDB)
+    audio["riserSpearman"] = round3(r.spearman)
+  }
   // --room: render it again without `.space`; what the room adds, against the dry mix
   if room && fixes.contains(.space) {
     var dryDeck = deckOpts
@@ -751,7 +757,7 @@ case "levels":
   try line(["summary": survey.summary])
 
 case "measure":
-  // djctl measure <file> [--start S] [--seconds N] [--note N] (MeasureCommand.swift)
+  // djctl measure <file> [--start S] [--seconds N] [--note N] [--sections] (MeasureCommand.swift)
   measureCommand()
 
 case "minecraft":
