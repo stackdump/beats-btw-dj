@@ -166,7 +166,13 @@ struct SoundboardTests {
       (.color(nil), .clipColor(id: id, color: nil)),
       (.rename("  kick  "), .clipRename(id: id, title: "kick")),
       (.rename("  "), nil),
-      (.fade(.bar), .loopFade(mode: "bar")),
+      (.fade(.bar), .clipFade(id: id, mode: "bar")),
+      (.fade(nil), .clipFade(id: id, mode: nil)),
+      (.quantize(8), .clipQuantize(id: id, beats: 8)),
+      (.quantize(nil), .clipQuantize(id: id, beats: nil)),
+      (.follow(.source), .clipFollow(id: id, mode: "source")),
+      (.follow(nil), .clipFollow(id: id, mode: nil)),
+      (.loopFade(.bar), .loopFade(mode: "bar")),
       (.move("B"), .clip(deck: "B", id: id)),
       (.move("L"), .clip(deck: "L", id: id)),
       (.remove, .clipRemove(id: id)),
@@ -179,7 +185,12 @@ struct SoundboardTests {
     m.soundboard(.fade(.beat), id)
     m.poll()
     #expect(m.clips.first?.title == "kick" && m.clips.first?.keyLock == true)
-    #expect(m.loopChannel.fade == .beat && dj.loopFade == .beat)
+    #expect(m.clips.first?.fade == .beat && dj.clipFade(id) == .beat, "the pad's own fade")
+    #expect(m.loopChannel.fade == .declick && dj.loopFade == .declick, "not the row's")
+    m.soundboard(.loopFade(.bar), id)
+    m.poll()
+    #expect(m.loopChannel.fade == .bar && dj.loopFade == .bar, "all loops")
+    #expect(dj.loopFade(for: id) == .beat, "its own fade still wins")
     // onto deck B and back under the mixer
     m.soundboard(.move("B"), id)
     m.poll()
@@ -194,6 +205,72 @@ struct SoundboardTests {
     m.undoRemove()
     m.poll()
     #expect(m.soundPads.map(\.id) == [id] && m.soundPads.first?.title == "kick")
+  }
+
+  /// A pad's fade, launch boundary and tempo follow are its clip's alone: the other pads keep the
+  /// row's, the pad (and its settings) shows them, and "row" hands it back to the loop channel.
+  @Test func aPadsLaunchRulesAreItsOwn() throws {
+    let (m, dj) = try pads(2)
+    defer { dj.stop() }
+    let ids = m.soundPads.map(\.id)
+    let (one, other) = (ids[0], ids[1])
+    #expect(m.soundPads.allSatisfy { $0.launchBadge == nil }, "no rules of their own yet")
+
+    m.soundboard(.fade(.bar), one)
+    m.soundboard(.quantize(8), one)
+    m.soundboard(.follow(.source), one)
+    m.poll()
+    #expect(dj.clipFade(one) == .bar && dj.clipQuantum(one) == 8 && dj.clipFollow(one) == .source)
+    #expect(
+      dj.clipFade(other) == nil && dj.clipQuantum(other) == nil, "the other clip is as it was")
+    #expect(dj.loopFade(for: other) == .declick && dj.quantum(for: other) == dj.loopQuantum)
+    #expect(dj.loopFade == .declick && dj.loopFollow == .louder, "the row is as it was")
+    let pad = try #require(m.soundPads.first { $0.id == one })
+    #expect(pad.fade == .bar && pad.quantum == 8 && pad.follow == .source)
+    #expect(pad.launchBadge == "2 bars · fade 1 bar · own deck", "\(pad.launchBadge ?? "nil")")
+    #expect(m.soundPads.first { $0.id == other }?.launchBadge == nil)
+    let shown = try #require(ClipSettingsView.clip(one, in: m))
+    #expect(shown.fade == .bar && shown.quantum == 8 && shown.follow == .source)
+    #expect(
+      shown.hasLaunchOverride && !(ClipSettingsView.clip(other, in: m)?.hasLaunchOverride ?? true))
+
+    // the settings' "row" choices give it back to the loop channel
+    m.setClipFade(one, nil)
+    m.setClipQuantum(one, nil)
+    m.setClipFollow(one, nil)
+    m.poll()
+    #expect(dj.clipFade(one) == nil && dj.clipQuantum(one) == nil && dj.clipFollow(one) == nil)
+    #expect(m.soundPads.first { $0.id == one }?.launchBadge == nil)
+  }
+
+  /// The badge draws on the pad: a red pad with rules of its own shows the loops' violet in its
+  /// bottom line, the same pad without them shows none.
+  @Test func aPadWithItsOwnRulesShowsTheBadge() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let id = try #require(m.clips.first?.id)
+    m.setClipColor(id, "red")
+    m.soundboard(.toggle, id)  // going out: the pad's face stays dim
+    try run(dj, Self.bar + Self.bar / 4)
+    m.poll()
+    let (w, h) = (220, 130)
+    func violet(_ pad: SoundPad) throws -> Int {
+      let view = SoundPadView(pad: pad).frame(width: CGFloat(w), height: CGFloat(h))
+        .background(Color.black).environment(\.colorScheme, .dark)
+      savePNG(
+        view, width: w, height: h, name: "sound-pad-\(pad.launchBadge == nil ? "row" : "own")")
+      let px = try #require(renderPixels(view, width: w, height: h))
+      return px.count(inX: 0..<w, y: (h - 30)..<h) { r, g, b in b > 150 && r > 90 && g < r }
+    }
+    let plain = try #require(m.soundPads.first)
+    #expect(plain.launchBadge == nil)
+    m.soundboard(.quantize(16), id)
+    m.soundboard(.fade(.beat), id)
+    m.poll()
+    let own = try #require(m.soundPads.first)
+    #expect(own.launchBadge == "4 bars · fade 1 beat")
+    let (before, after) = (try violet(plain), try violet(own))
+    #expect(after > before + 50, "the badge: \(before) → \(after) violet pixels")
   }
 
   /// The settings editor shows the row's own clip: a change from the row shows there and on the
@@ -301,6 +378,46 @@ struct SoundboardTests {
     #expect(m.decks["A"]?.voices.isEmpty == false, "its instruments, for the sound panel")
   }
 
+  /// "Retune this loop" works with no deck playing the track: the loop's instruments come from
+  /// its provenance, the render runs off the main thread, and the retuned loop takes its place
+  /// (its pad and the settings follow it), keeping its level.
+  @Test func aNetLoopRetunesFromItsSettingsWithNoDeck() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
+    let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
+    m.start()
+    #expect(await m.prepareAndLoad("A", .net(TrackSpec(genre: "techno", seed: 42))))
+    dj["A"]!.wave.setTempo(300)
+    dj["A"]!.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    try run(dj, 40 * 4096)
+    let id = try #require(dj.grabLastBars("A", bars: 1))
+    // another track on the deck: nothing plays the loop's own now
+    #expect(await m.prepareAndLoad("A", .net(TrackSpec(genre: "house", seed: 7))))
+    m.poll()
+    #expect(m.decksPlayingOrigin(id).isEmpty)
+    let voices = m.retuneVoices(id)
+    let v = try #require(voices.first { !$0.role.contains(" · ") })
+    let other = try #require(v.options.first { $0 != v.instrument })
+    m.setClipGain(id, 0.5)
+    m.poll()
+    let index = try #require(m.clips.firstIndex { $0.id == id })
+    var editing = id
+    try await ClipSettingsView.retune(id, voices: [v.channel: other], in: m) { editing = $0 }
+    m.poll()
+    #expect(editing != id && m.clips[index].id == editing, "in its place, followed")
+    #expect(m.clips[index].gain == 0.5, "its level carries over")
+    #expect(m.soundPads.map(\.id) == m.clips.map(\.id) && m.retuningClips.isEmpty)
+    #expect(m.soundPads[index].retuning == false)
+    #expect(m.retuneVoices(editing).first { $0.channel == v.channel }?.instrument == other)
+    #expect(
+      m.clips[index].provenance.first?.hasPrefix("Retuned (ch \(v.channel) → \(other))") == true)
+    // while it renders, its pad says so
+    let pad = SoundPad(m.clips[index], slot: nil, retuning: true)
+    #expect(pad.retuning)
+  }
+
   /// At the window's narrowest the pads fill the width in whole columns for any count.
   @Test func padsLayOutAtTheWindowsMinimumWidth() throws {
     // the window's 720 less its padding (16 each side) and the card's (14 each side)
@@ -358,10 +475,14 @@ struct SoundboardTests {
   }
 
   /// A fresh engine with deck A playing the demo loop (120 bpm), nothing on the row.
-  func stockModel(_ defaults: UserDefaults? = nil) throws -> (AppModel, DJEngine) {
+  /// `playing: false` leaves it loaded at rest: a `SessionRecorder` only starts on decks at
+  /// rest (`SessionError.notAtRest`).
+  func stockModel(_ defaults: UserDefaults? = nil, playing: Bool = true) throws -> (
+    AppModel, DJEngine
+  ) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
     dj["A"]!.loadDemo()
-    dj["A"]!.setPlaying(true)
+    dj["A"]!.setPlaying(playing)
     try dj.start()
     let m = AppModel(engine: dj)
     m.defaults = defaults ?? scratchDefaults()
@@ -375,7 +496,7 @@ struct SoundboardTests {
   /// boundary; it lights as its clip does; a click on a sounding one takes it out, and another
   /// brings the same clip back. The Row page shows the clip like any other loop.
   @Test func aStockPadImportsAndLaunchesTheLoop() async throws {
-    let (m, dj) = try stockModel()
+    let (m, dj) = try stockModel(playing: false)  // it records a session
     defer { dj.stop() }
     let loop = try temporaryStockLoop("Test Beat 01", category: "Drums")
     m.stockLoops = [loop]
@@ -468,6 +589,135 @@ struct SoundboardTests {
     let (m3, dj3) = try stockModel(defaults)
     defer { dj3.stop() }
     #expect(m3.soundboardPage == .crate)
+  }
+
+  /// A fresh engine (deck A holding the demo loop, at rest so a `SessionRecorder` can start)
+  /// over a temporary favorites store, with two stand-in stock loops starred into crates:
+  /// both in "warm", the second in "peak" too.
+  func crateModel(
+    _ defaults: UserDefaults? = nil, favorites: FavoritesStore? = nil
+  ) throws -> (AppModel, DJEngine, [StockLoop]) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: Self.rate)
+    dj["A"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, favorites: favorites ?? temporaryFavorites())
+    m.defaults = defaults ?? scratchDefaults()
+    m.start()
+    let loops = [
+      try temporaryStockLoop("Crate Beat", category: "Drums"),
+      try temporaryStockLoop("Crate Bass", category: "Bass", pitch: 110),
+    ]
+    m.stockLoops = loops
+    m.addToCrate(loops[0].path, "warm")
+    m.addToCrate(loops[1].path, "warm")
+    m.addToCrate(loops[1].path, "peak")
+    m.poll()
+    return (m, dj, loops)
+  }
+
+  func loads(_ s: Session) -> [(String, DeckSourceDescriptor)] {
+    s.events.compactMap { e in
+      if case .action(let a) = e.kind, case .load(let deck, let source) = a {
+        return (deck, source)
+      }
+      return nil
+    }
+  }
+
+  /// A Crate pad loads its favorite on the focus deck through `loadFavorite` (a recorded load);
+  /// it shows the deck holding it, and lights once that deck plays it.
+  @Test func aCratePadLoadsItsFavoriteOnTheAimedDeck() async throws {
+    let (m, dj, loops) = try crateModel()
+    defer { dj.stop() }
+    m.setSoundboardPage(.crate)
+    #expect(m.crates == ["warm", "peak"] && m.crateBoardCrate == "warm", "the first crate")
+    #expect(m.cratePads.map(\.title) == ["Crate Beat", "Crate Bass"])
+    let pad = try #require(m.cratePads.first)
+    #expect(pad.id == Favorite.fileCID(loops[0].path) && pad.isSample)
+    #expect(pad.detail.hasPrefix("Sample · 120 BPM"), "\(pad.detail)")
+    #expect(pad.onDecks.isEmpty && pad.light == .off && !pad.sounding)
+    #expect(m.cratePads.last?.detail.contains("#peak") == true, "its other crates")
+
+    dj.focus = "B"
+    #expect(m.crateBoardDeck() == "B" && m.crateBoardDeck(other: true) == "A")
+    let rec = try SessionRecorder.start(on: dj)
+    let load = try #require(m.cratePadPress(pad.id))
+    #expect(await load.value)
+    m.poll()
+    #expect(m.decks["B"]?.title == "Crate Beat", "on the focus deck")
+    #expect(m.decks["A"]?.sourceCID != pad.id, "deck A keeps its loop")
+    let loaded = try #require(m.cratePads.first)
+    #expect(loaded.onDecks == ["B"] && loaded.playingOn.isEmpty && loaded.light == .off)
+    dj["B"]!.setPlaying(true)
+    m.poll()
+    let lit = try #require(m.cratePads.first)
+    #expect(lit.playingOn == ["B"] && lit.light == .full && lit.sounding)
+    #expect(m.cratePads.last?.light == .off, "only the pad a deck plays")
+    let recorded = loads(rec.finish())
+    #expect(recorded.count == 1 && recorded.first?.0 == "B", "the load is recorded")
+    if case .sample(_, let title, let grid)? = recorded.first?.1 {
+      #expect(title == "Crate Beat" && grid?.bpm == 120)
+    } else {
+      Issue.record("a sample load: \(String(describing: recorded.first?.1))")
+    }
+    #expect(m.cratePadPress("file:/nowhere.wav") == nil, "an unknown pad does nothing")
+  }
+
+  /// ⌥-click loads the other deck: the focus stays where it was.
+  @Test func optionClickLoadsTheOtherDeck() async throws {
+    let (m, dj, _) = try crateModel()
+    defer { dj.stop() }
+    m.setSoundboardPage(.crate)
+    m.setSoundboardCrate("peak")
+    #expect(m.cratePads.map(\.title) == ["Crate Bass"])
+    let pad = try #require(m.cratePads.first)
+    #expect(dj.focus == "A")
+    let rec = try SessionRecorder.start(on: dj)
+    let load = try #require(m.cratePadPress(pad.id, other: true))
+    #expect(await load.value)
+    m.poll()
+    #expect(dj.focus == "A", "the focus doesn't move")
+    #expect(m.decks["B"]?.title == "Crate Bass" && m.decks["B"]?.sourceCID == pad.id)
+    #expect(m.decks["A"]?.sourceCID != pad.id)
+    #expect(m.cratePads.first?.onDecks == ["B"])
+    #expect(loads(rec.finish()).map(\.0) == ["B"], "the load is recorded")
+  }
+
+  /// The chosen crate is remembered across launches; a deleted one falls back to the first.
+  @Test func theCratePagesCrateIsRemembered() throws {
+    let defaults = scratchDefaults()
+    let store = temporaryFavorites()
+    let (m, dj, _) = try crateModel(defaults, favorites: store)
+    m.setSoundboardCrate("peak")
+    #expect(m.crateBoardCrate == "peak")
+    dj.stop()
+    let next = AppModel(engine: try DJEngine(decks: ["A", "B"], offline: true), favorites: store)
+    next.defaults = defaults
+    next.start()
+    #expect(next.soundboardCrate == "peak" && next.crateBoardCrate == "peak")
+    #expect(next.cratePads.map(\.title) == ["Crate Bass"])
+    next.deleteCrate("peak")
+    #expect(next.crateBoardCrate == "warm", "a crate since deleted shows the first")
+    #expect(next.cratePads.count == 2)
+  }
+
+  /// The Crate page draws its crate strip and pads at the window's minimum width.
+  @Test func theCratePageDrawsItsPads() throws {
+    let (m, dj, _) = try crateModel()
+    defer { dj.stop() }
+    m.setSoundboardPage(.crate)
+    let width = 720 - 2 * 16 - 2 * Int(DJStyle.cardPadding)
+    let view = SoundboardView(model: m).frame(width: CGFloat(width)).padding(0)
+      .background(Color.black).environment(\.colorScheme, .dark)
+    let grid = SoundboardLayout.size(count: 2, width: CGFloat(width))
+    let height = Int(grid.height) + 120
+    savePNG(view, width: width, height: height, name: "soundboard-crate")
+    let px = try #require(renderPixels(view, width: width, height: height))
+    // the pads' faint yellow outlines and the chosen crate's chip, wherever the stack sits
+    let yellow = px.count(inX: 0..<width, y: 0..<height) { r, g, b in
+      r > 60 && g > 45 && b < 40 && g <= r
+    }
+    #expect(yellow > 100, "the pads' outlines (\(yellow) pixels)")
   }
 
   /// The Stock page draws its pads (and the switch above them) at the window's minimum width.

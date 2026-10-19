@@ -70,14 +70,40 @@ struct PartSeedTests {
     #expect(rhythms.count == 1, "\(genre): \(rhythms.count) melody rhythms")
   }
 
-  /// Song structures too (slot nets by id): a seeded melody transplants into every section.
+  /// Song structures too (slot nets by id): a seeded melody transplants into the song's
+  /// sections. The song's arrangement stays the track seed's (in "minimal", 4242 plays intro /
+  /// drop / breakdown / drop and 808 intro / buildup / drop / outro), so the two songs' note logs
+  /// cannot match: each slot net the donor composes (same id, same transitions) plays the
+  /// donor's bindings, where the track seed puts it. A slot net the donor lacks (4242's 128-step
+  /// breakdown nets) keeps the track's own (TrackVariety.transplantSeededMelody). `.loudness`
+  /// alone: the pass runs (and transplants) but no fix rewrites a binding (`.key` moves a net
+  /// by the context it plays in, which differs between the two songs).
   @Test func aSeededMelodyTransplantsIntoASong() {
-    let a = parts(
-      played("trance", 4242, parts: ["melody": 808], structure: "minimal", fixes: [.key]),
-      ticks: nil)
-    let b = parts(played("trance", 808, structure: "minimal", fixes: [.key]), ticks: nil)
-    #expect(a["melody"] == b["melody"])
-    #expect(!(a["melody"] ?? []).isEmpty)
+    let a = played("trance", 4242, parts: ["melody": 808], structure: "minimal", fixes: [.loudness])
+    let b = TrackSpec(genre: "trance", seed: 808, structure: "minimal").project()
+    let own = TrackSpec(genre: "trance", seed: 4242, structure: "minimal").project()
+    let melody = { (p: Project) in
+      p.nets.keys.filter {
+        p.nets[$0]!.role != "control" && DJMusicality.part(p.nets[$0]!) == "melody"
+      }
+    }
+    let shared = Set(melody(a)).intersection(melody(b)).filter {
+      a.nets[$0]!.transitions.keys == b.nets[$0]!.transitions.keys
+    }
+    #expect(shared.count >= 4, "\(shared.sorted())")
+    let bound = { (p: Project, id: String) in
+      p.nets[id]!.bindings.keys.sorted().map { ($0, p.nets[id]!.bindings[$0]!) }
+    }
+    let alike = { (x: Project, y: Project, id: String) in
+      bound(x, id).elementsEqual(bound(y, id)) { $0.0 == $1.0 && $0.1 == $1.1 }
+    }
+    let same = shared.filter { alike(a, b, $0) }
+    #expect(same == shared, "not the donor's: \(shared.subtracting(same).sorted())")
+    #expect(shared.contains { !alike(a, own, $0) }, "the track's own melody")
+    // the transplanted nets play in the first drop (ticks 32..<160) and the last (288..<416)
+    let ticks = NoteLog.capture(a, ticks: nil).filter { shared.contains($0.net) }.map(\.tick)
+    #expect(ticks.contains { (32..<160).contains($0) })
+    #expect(ticks.contains { (288..<416).contains($0) })
   }
 
   /// A part seed moves only its part: every other part plays as without it. The arp's figure
@@ -184,6 +210,14 @@ struct PartSeedTests {
     let elapsed = clock.now - start
     print("PartSeedTests: prepare \(Int(seconds)) s song, 2 seeded parts: \(elapsed)")
     #expect(track.spec?.partSeeds == spec.partSeeds)
-    #expect(elapsed < .seconds(120))
+    // a hang guard, not a benchmark: a debug build takes ~100 s alone and 163 s under the full
+    // parallel suite (round 3), so debug gets room for load; optimized keeps the 120 s
+    #expect(elapsed < .seconds(optimized ? 120 : 600))
   }
 }
+
+#if DEBUG
+  private let optimized = false
+#else
+  private let optimized = true
+#endif

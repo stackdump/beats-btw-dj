@@ -38,3 +38,16 @@ final class ChangeFlag: @unchecked Sendable {
   var changed: Bool { lock.withLock { fired } }
   func set() { lock.withLock { fired = true } }
 }
+
+/// A path for a WAV in the temporary directory (not created).
+func tempWAVPath() -> String {
+  FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString).wav")
+    .path
+}
+
+func removeFile(_ path: String) { try? FileManager.default.removeItem(atPath: path) }
+
+/// How many frames the audio file at `path` decodes to, at `sampleRate`.
+func decodedWAVFrames(_ path: String, sampleRate: Double) throws -> Int {
+  try Deck.decode(URL(fileURLWithPath: path), sampleRate: sampleRate).length
+}

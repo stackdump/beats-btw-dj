@@ -26,11 +26,13 @@ struct LoopMasterBusTests {
     let rig = FxBankRig(twoTones())
     rig.bank.master.fire(.sweepLp, bars: 1, frame: 0, bpm: 240)  // one bar = 1 s
     let wet = rig.render(4 * bar120 / 2)
-    #expect(wet.left[24_000..<48_000] != dry.left[24_000..<48_000], "the sweep is heard")
+    #expect(
+      sameSamples(wet.left[24_000..<48_000], dry.left[24_000..<48_000]) != .identical,
+      "the sweep is heard")
     // 1 s, then the filter's last ramp: well after, the same bytes again
     let from = 96_000
-    #expect(Array(wet.left[from...]) == Array(dry.left[from...]))
-    #expect(Array(wet.right[from...]) == Array(dry.right[from...]))
+    #expect(sameSamples(Array(wet.left[from...]), Array(dry.left[from...])) == .identical)
+    #expect(sameSamples(Array(wet.right[from...]), Array(dry.right[from...])) == .identical)
     #expect(rig.bank.master.filterCorners.bypassed && rig.bank.master.activeMasterMacros.isEmpty)
     #expect(rig.bank.limiter.idle)
   }
@@ -84,8 +86,11 @@ struct LoopMasterBusTests {
     let fire = 10_000
     rig.bank.master.fire(.vinylBrake, bars: 1, frame: fire, bpm: 120)
     let wet = rig.render(bar120)
-    #expect(wet.left[..<fire] == dry.left[..<fire], "nothing before its frame")
-    #expect(wet.left[fire..<(fire + 256)] != dry.left[fire..<(fire + 256)], "the brake from it")
+    #expect(
+      sameSamples(wet.left[..<fire], dry.left[..<fire]) == .identical, "nothing before its frame")
+    #expect(
+      sameSamples(wet.left[fire..<(fire + 256)], dry.left[fire..<(fire + 256)]) != .identical,
+      "the brake from it")
   }
 
   // MARK: vinyl brake
@@ -113,7 +118,7 @@ struct LoopMasterBusTests {
     #expect(peak(Array(out[stop])) < 1e-4)
     // released at fire + 1 bar over 5 ms: every loop where it would have been, to the byte
     let back = fire + bar120 + 480
-    #expect(Array(out[back..<dry.left.count]) == Array(dry.left[back...]))
+    #expect(sameSamples(Array(out[back..<dry.left.count]), Array(dry.left[back...])) == .identical)
     #expect(!rig.bank.master.isActive(.vinylBrake))
   }
 
@@ -133,7 +138,8 @@ struct LoopMasterBusTests {
     let rest = rig.render(3 * bar120 - start)
     // the LP's jump back and the pitch shifter's fade out, then the dry loops again
     let from = bar120 / 2
-    #expect(Array(rest.left[from...]) == Array(dry.left[(start + from)...]))
+    #expect(
+      sameSamples(Array(rest.left[from...]), Array(dry.left[(start + from)...])) == .identical)
   }
 
   @Test func panicReleasesABrakeInTime() {
@@ -144,7 +150,9 @@ struct LoopMasterBusTests {
     rig.bank.master.panic()
     let rest = rig.render(2 * bar120 - rig.frame)
     let start = bar120 / 2
-    #expect(Array(rest.left[1024...]) == Array(dry.left[(start + 1024)...]), "back in time")
+    #expect(
+      sameSamples(Array(rest.left[1024...]), Array(dry.left[(start + 1024)...])) == .identical,
+      "back in time")
   }
 
   // MARK: the limiter stays last
@@ -296,9 +304,12 @@ struct LoopMasterEngineTests {
     s.handle(bytes: [0x90, 8, 0x7F])  // sweep-lp
     #expect(bus.isActive(.sweepLp))
     s.handle(bytes: [0x90, 0, 0x7F])  // drop
-    let lit = s.ledFrame(now: 1_000_000)
+    // past the presses' flash (`flashSeconds`, on the uptime clock): 1e6 s was before the
+    // presses once the Mac had been up 11.6 days, so every pressed pad still read flashed
+    let later = 1e12
+    let lit = s.ledFrame(now: later)
     #expect(lit.contains([0x96, 8, 37]), "sweep-lp bright cyan while it runs on the loops")
-    let pads = s.lights(now: 1_000_000)["pads"]
+    let pads = s.lights(now: later)["pads"]
     #expect(pads?[0] == PadLight(colorIndex: 0, level: .dim), "drop: dark on the loops")
     #expect(pads?[8] == PadLight(colorIndex: 37, level: .full))
     s.handle(bytes: [0x90, 0x77, 0x7F])  // panic
@@ -344,16 +355,21 @@ struct LoopMasterEngineTests {
     let brake = DeckAction.macro(deck: "L", id: "vinyl-brake")
     #expect(live.session.events.contains { $0.kind == .action(brake) })
     let replay = try SessionPlayer(session: live.session).render()
-    #expect(replay.left == live.audio.left && replay.right == live.audio.right, "session replay")
+    #expect(sameSamples(replay.left, live.audio.left) == .identical, "session replay")
+    #expect(sameSamples(replay.right, live.audio.right) == .identical, "session replay")
     let j = try Journal.replay(live.journal, endFrame: blocks * 128, render: true)
     let audio = try #require(j.audio)
     let n = min(audio.frames, live.audio.frames)
     #expect(n > blocks * 128 - 1024)
-    #expect(Array(audio.left.prefix(n)) == Array(live.audio.left.prefix(n)), "journal replay")
+    #expect(
+      sameSamples(Array(audio.left.prefix(n)), Array(live.audio.left.prefix(n))) == .identical,
+      "journal replay")
     // and the bus was heard: the same set without it differs
     let dry = try loopMasterSet(blocks: blocks) { _, _, _ in }
-    #expect(dry.audio.left != live.audio.left)
+    #expect(sameSamples(dry.audio.left, live.audio.left) != .identical)
     let before = 4 * 344 * 128  // up to the first poke, the same
-    #expect(Array(dry.audio.left.prefix(before)) == Array(live.audio.left.prefix(before)))
+    #expect(
+      sameSamples(Array(dry.audio.left.prefix(before)), Array(live.audio.left.prefix(before)))
+        == .identical)
   }
 }

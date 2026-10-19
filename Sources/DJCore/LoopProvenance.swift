@@ -116,6 +116,18 @@ public enum LoopProvenance {
     return .object(o)
   }
 
+  /// `parent` rendered again with `voices` (MIDI channel → beats instrument) over the
+  /// instruments it had (`ClipRetune`): the same bars, so its beats and tempo are the parent's.
+  static func retune(_ parent: LoopClip, voices: [Int: String]) -> JSONValue {
+    var o = JSONObject([
+      ("op", .string("retune")), ("from", .string(parent.id)),
+      ("recorded", .string(iso.string(from: Date()))),
+      ("build", .string(BuildInfo.current.build)), ("voices", DeckAction.voicesJSON(voices)),
+    ])
+    if let p = parent.provenance { o["parent"] = p }
+    return .object(o)
+  }
+
   /// A sequence of `steps` (each with its clip's own provenance, so it outlives the clips).
   static func sequence(_ steps: [(SequenceStep, LoopClip)]) -> JSONValue {
     .object(

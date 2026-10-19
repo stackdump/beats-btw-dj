@@ -50,15 +50,38 @@ extension DJMusicality {
   /// fallback, but must work on the ring steps the window covers (`ringStart ..< ringStart +
   /// end - start`, mod `ringLength`), not assume 0.
   public static func slotWindows(_ project: Project, role: String) -> [String: [SlotWindow]] {
-    let nets = project.nets.pairs.filter {
-      $0.value.riffGroup == role && $0.value.role != "control"
-    }
+    windows(
+      project, role: role,
+      nets: project.nets.pairs.filter {
+        $0.value.riffGroup == role && $0.value.role != "control"
+      })
+  }
+
+  /// The windows of one net that isn't a slot net (no `riffGroup`: a single `harmony` pad, a
+  /// `snare`), keyed by its id: where its mutes / unmutes leave it playing, by `role`'s phrase
+  /// grid (its id when it has no phrases). `slotWindows` never returns these, so the passes
+  /// that rewrite slots don't see them.
+  static func netWindows(_ project: Project, net id: String) -> [SlotWindow] {
+    guard let nb = project.nets[id], nb.role != "control" else { return [] }
+    return windows(project, role: id, nets: [(key: id, value: nb)])[id] ?? []
+  }
+
+  private static func windows(
+    _ project: Project, role: String, nets: [(key: String, value: NetBundle)]
+  ) -> [String: [SlotWindow]] {
     guard !nets.isEmpty, !project.structure.isEmpty else { return [:] }
     let ids = Set(nets.map(\.key))
     let rings: [String: (at: Int, count: Int)] = Dictionary(
       uniqueKeysWithValues: nets.compactMap { id, nb in ringShape(nb).map { (id, $0) } })
 
-    // The role's changes, as (step from which they hold, net playing or nil).
+    // The role's changes, as (step from which they hold, net playing or nil). A change's
+    // `tick` counts from 1 and section starts are steps from 0: compare on `PartChange.step`,
+    // from the song's net order (`partOnly` ran without the targets, so its own `step` is the
+    // tick). A control net before its target acts on the tick it fires (its step tick − 1:
+    // a mute on a section's first step leaves the section silent); after it (beats' order),
+    // from the next.
+    let order = Dictionary(
+      uniqueKeysWithValues: project.nets.keys.enumerated().map { ($1, $0) })
     let muted = Set(project.initialMutes)
     let initial = nets.first { !muted.contains($0.key) }?.key
     var playing = initial
@@ -71,7 +94,9 @@ extension DJMusicality {
       case .toggle: playing = playing == c.target ? nil : c.target
       default: continue
       }
-      changes.append((c.tick, playing))
+      let step = PartChange.actingStep(
+        tick: c.tick, control: order[c.net] ?? Int.max, target: order[c.target])
+      changes.append((step, playing))
     }
 
     var out: [String: [SlotWindow]] = [:]

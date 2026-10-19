@@ -53,6 +53,12 @@ public final class DJEngine {
   /// Clips taken off the row, newest first, each with the place it had (`removeClip`,
   /// `restoreClip`).
   public internal(set) var removedClips: [RemovedClip] = []
+  /// Curated stingers' loops (`fireStingerLoop`), by clip id: launched like clips, never on the
+  /// row, so never saved, journalled as clips or published (Apple Loops are local-only).
+  var stingerClips: [String: LoopClip] = [:]
+  /// A stinger loop that has been launched and is to go out after one pass: clip id → the deck
+  /// frame, scheduled once its voice is in (`serviceStingerStops`).
+  var stingerStops: [String: Int] = [:]
   /// How many bars a tap of LOOP records (let go within `DJEngine.loopTapFrames` of the
   /// press), when the press does not say: what a controller's LOOP button uses. The app sets it
   /// from its own setting through `perform(.tapBars)`, so a session records it (a controller's
@@ -175,6 +181,9 @@ public final class DJEngine {
       }
       deck.onSourceFile = { [weak self, unowned deck] url in self?.journalSampleFile(deck, url) }
       deck.onMasterMacro = { [weak self] m, bars in self?.linkedLoopMaster(m, bars: bars) }
+      deck.onStingerLoop = { [weak self, unowned deck] a in
+        self?.fireStingerLoop(a, on: deck) ?? false
+      }
       decks[name] = deck
     }
     wire(loopChannel)
@@ -336,6 +345,11 @@ public final class Deck: JogClock {
   /// The raw-`nets` share payload the deck is playing, when it is playing one (then
   /// `currentSpec` is nil).
   public internal(set) var currentRawNets: JSONValue?
+  /// The musicality fixes the net on the deck plays with (`PreparedTrack.fixes`; a hand-built
+  /// net: the deck's options'), and whether dj's pass rewrote it (`passApplied`; never for a
+  /// raw-`nets` share or a hand-built net). nil / false off a net. Section jumps keep them.
+  public internal(set) var fixes: DJMusicality.Fixes?
+  public internal(set) var passApplied = false
   /// The seed this deck's sampled instruments are picked with (`WaveOptions.voicingSeed`):
   /// the spec's, or a raw-`nets` share's; recompiles (section jumps) must keep it.
   var voicingSeed: Double {
@@ -368,6 +382,12 @@ public final class Deck: JogClock {
   /// A master macro fired on this deck (nil: its panic), net or sample: the loops' master bus
   /// takes it from here (on the loop channel itself, or linked: LoopMasterFx.swift).
   var onMasterMacro: ((MasterMacro?, Int?) -> Void)?
+  /// The FX unit's settings on this deck's chain (FxUnit.swift, FxUnitDeck.swift): kept through
+  /// track loads and mode switches, sent to whichever chain the deck plays through.
+  public internal(set) var fxUnit = FxUnitSettings()
+  /// A curated stinger's loop to launch on the loop row (StingerLaunch.swift); false when it
+  /// can't play, and the Hit plays its stinger net instead.
+  var onStingerLoop: ((StingerAssignment) -> Bool)?
   var netNudge = 0.0
   var ringShapes: [String: RingShape] = [:]
   /// Tempo and first-beat position of a sample deck (analysed, tapped or known).
@@ -668,6 +688,8 @@ public final class Deck: JogClock {
     turntable.send(.loopOff)
     currentSpec = nil
     currentRawNets = nil
+    fixes = nil
+    passApplied = false
     seedTarget = nil
     clipID = nil
     sourceFile = nil
@@ -721,6 +743,8 @@ public final class Deck: JogClock {
     // A hand-built net has no spec; `loadNet(_:)` for a track sets its source after.
     currentSpec = nil
     currentRawNets = nil
+    fixes = waveOptions.musicality
+    passApplied = false
     seedTarget = nil
     clipID = nil
     sourceFile = nil
@@ -731,6 +755,7 @@ public final class Deck: JogClock {
       turntable.send(.transport(playing: false))
       mode = .net
       wave.isActive = true
+      syncFxUnit()  // the FX unit moves to the net's chain
     }
     netProject = project
     ringShapes = [:]
@@ -756,7 +781,10 @@ public final class Deck: JogClock {
     wave.pause()
     wave.isActive = false
     mode = .sample
+    syncFxUnit()  // the FX unit moves to the sample deck's bus
     netProject = nil
+    fixes = nil
+    passApplied = false
     playing = false
   }
 

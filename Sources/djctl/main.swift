@@ -381,12 +381,16 @@ case "publish":
 case "mix":
   // djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S]
   //           [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish]
-  //           [--mirror] [--dry-run] [--store DIR]
+  //           [--mirror] [--dry-run] [--store DIR] [--report]
   // Writes a set as a session, offline (`SessionMix`): tracks alternate decks A/B, each plays
   // its whole song, the next comes in synced to the bar `--xfade` seconds (default 20) before
   // the end. Saves it to the store; --export renders it; --publish stages it as `publish`
-  // does (--dry-run lists the bundle instead).
+  // does (--dry-run lists the bundle instead). --report renders it (once, shared with
+  // --export) and prints `SessionMix.Report`: each track's LUFS / dBTP alone, the level step at
+  // each crossfade (8 s alone before against after) and the whole set's; exit 1 if it misses
+  // ROADMAP 6.7's bar (≥ 600 s, steps ≤ 2 LU, ≤ −1 dBTP), and a real --publish is refused.
   let store = storeOption()
+  let wantReport = flag("--report")
   let dry = flag("--dry-run")
   let mirror = flag("--mirror")
   let doPublish = flag("--publish") || mirror
@@ -396,7 +400,7 @@ case "mix":
   let title = value("--title")
   let export = value("--export")
   let usage =
-    "usage: djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S] [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish] [--mirror] [--dry-run] [--store DIR]"
+    "usage: djctl mix <genre[:seed[:structure]]> <genre[:seed[:structure]]> [more…] [--structure S] [--xfade SECONDS] [--seed-base N] [--title T] [--export out.wav] [--publish] [--mirror] [--dry-run] [--store DIR] [--report]"
   if let bad = positional.first(where: { $0.hasPrefix("--") }) {
     stderr("unknown option \(bad)\n\(usage)")
     exit(2)
@@ -435,15 +439,30 @@ case "mix":
     print(
       "\(saved.cid)  \(clock(session.frames))  (\(String(format: "%.1f", session.duration)) s, \(session.events.count) events)"
     )
-    if let export {
-      try SessionStore.exportWAV(session, to: URL(fileURLWithPath: export))
-      print("wrote \(export)")
+    var missed = false
+    if export != nil || wantReport {
+      let audio = try SessionPlayer(session: session).render()
+      if let export {
+        try WAV.encode(audio).write(to: URL(fileURLWithPath: export), options: .atomic)
+        print("wrote \(export)")
+      }
+      if wantReport {
+        let report = mix.report(audio)
+        print("report")
+        for line in report.lines { print(line) }
+        missed = !report.problems().isEmpty
+        if missed && doPublish && !dry {
+          stderr("not publishing: the set misses the bar")
+          exit(1)
+        }
+      }
     }
     if doPublish {
       try publish(
         session, audio: export, title: title ?? mix.title, draft: false, host: "valoper.local",
         blobs: nil, noReload: false, mirror: mirror, dry: dry)
     }
+    if missed { exit(1) }
   } catch {
     stderr("mix failed: \(error)")
     exit(1)
@@ -516,12 +535,14 @@ case "ctl":
   }
 
 case "render":
-  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--layers] [--kit ID] [--palette NAME]
-  //              [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]
+  // djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] [--notes f.txt] [--synth] [--room] [--balance] [--translate] [--layers] [--kit ID]
+  //              [--palette NAME] [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]
   // Composes the track as a deck would, renders it offline (nothing on the speakers) and
   // prints its musicality report and audio metrics as JSON. --synth skips sampled instruments;
   // --room renders it a second time without the reverb and reports the room's return level;
-  // --balance solos each part (`MixBalance`) and reports its level against the mix; --layers
+  // --balance solos each part (`MixBalance`) and reports its level against the mix; --translate
+  // plays each soloed part through phone / headphones / monitors curves and folded to mono
+  // (`Translation`) and flags what a device loses more than 12 dB of; --layers
   // counts the melodic parts sounding in each section (`OfflineRender.layersPerSection`). The
   // `groove` block is how the played hits sit against the grid (`GrooveReport`).
   // --mute / --solo render stems (`RenderRequest`: roles, mixer groups or net ids; the --room
@@ -575,14 +596,17 @@ case "render":
   let synth = positional.contains("--synth")
   let room = positional.contains("--room")
   let balance = positional.contains("--balance")
+  let translate = positional.contains("--translate")
   let layers = positional.contains("--layers")
   positional.removeAll {
-    $0 == "--synth" || $0 == "--room" || $0 == "--balance" || $0 == "--layers"
+    $0 == "--synth" || $0 == "--room" || $0 == "--balance" || $0 == "--translate"
+      || $0 == "--layers"
   }
   guard positional.count >= 2, let seed = Double(positional[1]) else {
     stderr(
       "usage: djctl render <genre> <seed> [--structure S|loop] [--seconds N] [--out f.wav] "
-        + "[--notes f.txt] [--synth] [--room] [--balance] [--layers] [--kit ID] [--palette NAME] "
+        + "[--notes f.txt] [--synth] [--room] [--balance] [--translate] [--layers] [--kit ID] "
+        + "[--palette NAME] "
         + "[--fixes all|none|a,…] [--cohesion v1|v2] [--options JSON] [--mute r,…] [--solo r,…]"
     )
     exit(2)
@@ -694,9 +718,18 @@ case "render":
   if balance {
     let levels = MixBalance.measure(
       track.played, opts: track.opts, samplers: synth ? nil : source.samplers)
+    let report = MixBalance.Report(levels: levels, genre: spec.genre)
     audio["balanceDB"] = levels.mapValues(round3)
     audio["balanceSampled"] = !synth
-    if let e = MixBalance.error(levels) { audio["balanceErrorDB"] = round3(e) }
+    // the targets.json entry the error is against (the family's, else the default)
+    audio["balanceTargets"] = report.entry
+    audio["balanceTargetDB"] = report.targets
+    if let e = report.errorDB { audio["balanceErrorDB"] = round3(e) }
+  }
+  // --translate: each part soloed through the device curves and the mono fold (`Translation`)
+  if translate {
+    audio["translation"] = Translation.measure(
+      track.played, opts: track.opts, samplers: synth ? nil : source.samplers)
   }
   // --layers: the melodic parts sounding in each section, from solo renders (synth voices)
   if layers {
@@ -764,10 +797,15 @@ case "measure":
 case "minecraft":
   // djctl minecraft import [--assets DIR] [--index N] [--out DIR]
   // djctl minecraft status
+  // djctl minecraft events [--deck A|B] [--prime] < mc_recent_events.json
+  //   hands an mc_recent_events window (the array, or the tool result) to the running app,
+  //   which fires each new event's stinger once (MinecraftEvents.swift)
   // Builds minecraft-local.sf2 + minecraft-local.json in the SoundFont folder from the game
   // sounds installed on this Mac (PrismLauncher's assets; $DJ_MINECRAFT_ASSETS or --assets
   // overrides; the newest asset index unless --index). Local only: never commit, ship or
   // publish the result.
+  let eventsDeck = value("--deck")
+  let prime = flag("--prime")
   let root = value("--assets") ?? MinecraftAssets.defaultRoot
   let index = value("--index")
   let out = value("--out") ?? SamplerSource.soundFontDir
@@ -795,11 +833,22 @@ case "minecraft":
       print("unavailable: \(why)")
     } else if let side = MinecraftBank.Sidecar.load(dir: out) {
       print(
-        "\(MinecraftBank.path(dir: out))  asset index \(side.assetIndex)  "
+        "\(MinecraftBank.path(dir: out))  asset index \(side.assetIndex)  format \(side.format)  "
           + "\(side.programs.count) programs + kit")
     }
+  case "events":
+    do {
+      let text = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+      let params = try MinecraftEventsCommand.params(stdin: text, deck: eventsDeck, prime: prime)
+      print(MinecraftEventsCommand.describe(try ControlClient().request("minecraftEvents", params)))
+    } catch {
+      stderr("minecraft events failed: \(error)")
+      exit(1)
+    }
   default:
-    stderr("usage: djctl minecraft import [--assets DIR] [--index N] [--out DIR] | status")
+    stderr(
+      "usage: djctl minecraft import [--assets DIR] [--index N] [--out DIR] | status"
+        + " | events [--deck A|B] [--prime] < events.json")
     exit(2)
   }
 

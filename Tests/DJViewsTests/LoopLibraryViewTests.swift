@@ -134,7 +134,11 @@ struct LoopLibraryViewTests {
     let (m, dj) = try model(takes: 1)
     defer { dj.stop() }
     let flag = ChangeFlag()
-    withObservationTracking { _ = m.playingTempo } onChange: { flag.set() }
+    withObservationTracking {
+      _ = m.playingTempo
+    } onChange: {
+      flag.set()
+    }
     for _ in 0..<3 {
       _ = try renderOffline(dj, frames: 2048)
       m.poll()

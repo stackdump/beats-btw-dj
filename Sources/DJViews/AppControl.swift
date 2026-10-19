@@ -59,14 +59,14 @@ extension AppModel {
         let d = try requireDeck(deck)
         let netOnly = [
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
-          "setPalette", "setRoleVoice", "mixOut", "mixIn",
+          "setPalette", "setRoleVoice", "mixOut", "mixIn", "stemMute",
         ]
-        // the loop channel and the sample decks take the master macros and panic (their master
-        // FX bus; a sample deck's has no vinyl brake yet)
+        // the loop channel and the sample decks take the master macros (the vinyl brake too)
+        // and panic: their master FX bus
         let masterBus: Bool = {
           if case .panic = action { return true }
-          guard case .macro(_, let id) = action, let m = MasterMacro(id: id) else { return false }
-          return deck == "L" || m != .vinylBrake
+          guard case .macro(_, let id) = action else { return false }
+          return MasterMacro(id: id) != nil
         }()
         if let op = a["op"]?.string, netOnly.contains(op), d.mode != .net, !masterBus {
           throw ControlRequestError.bad("deck \(deck) is playing a sample; \(op) needs a net deck")
@@ -101,6 +101,37 @@ extension AppModel {
           }
         default: break
         }
+        if case .stemMute(_, let stem, _) = action, !Deck.stemNames.contains(stem) {
+          throw ControlRequestError.bad(
+            "stemMute stem must be one of \(Deck.stemNames.joined(separator: ", "))")
+        }
+        // the master FX sliders: on a net's chain, a sample deck's bus, or the loops' ("L")
+        if case .masterFx(_, let key, let value) = action {
+          guard MasterFxKey(id: key) != nil else {
+            throw ControlRequestError.bad(
+              "unknown master FX key \(key) (one of: "
+                + MasterFxKey.allCases.map(\.id).joined(separator: ", ") + ")")
+          }
+          guard value.isFinite, (0...1).contains(value) else {
+            throw ControlRequestError.bad("masterFx value must be 0…1 (the slider's travel)")
+          }
+        }
+        // the FX unit: a known control, inside its travel, on a deck that has it
+        if case .fx(_, let param, let value) = action {
+          guard let p = FxParam(id: param) else {
+            throw ControlRequestError.bad(
+              "unknown FX unit param \(param) (one of: "
+                + FxParam.allCases.map(\.id).joined(separator: ", ") + ")")
+          }
+          guard value.isFinite, p.range.contains(value) else {
+            throw ControlRequestError.bad(
+              "fx \(param) value must be \(jsNumberString(p.range.lowerBound))…"
+                + "\(jsNumberString(p.range.upperBound))")
+          }
+          if let why = d.fxUnitMissing(p) {
+            throw ControlRequestError.bad("deck \(deck): no \(param) (\(why))")
+          }
+        }
         if case .wanderPace(_, let bars) = action, !WanderState.paces.contains(bars) {
           throw ControlRequestError.bad("wanderPace bars must be one of \(WanderState.paces)")
         }
@@ -130,6 +161,19 @@ extension AppModel {
       // as the panel's buttons do: remembered for the deck
       case .wanderPace(let deck, let bars): setWanderPace(deck, bars)
       case .wanderLock(let deck, let dim, let on): setWanderLock(deck, dim, on)
+      // rendered off the main thread, as the clip settings' "Retune" does
+      case .clipRetune(let id, let voices):
+        guard dj.clip(id) != nil else { throw ControlRequestError.bad("no loop \(id) on the row") }
+        guard !voices.isEmpty else {
+          throw ControlRequestError.bad("clipRetune needs voices: {\"<channel>\": instrument}")
+        }
+        do {
+          guard try await retuneClip(id, voices: voices) != nil else {
+            throw ControlRequestError.bad("loop \(id) left the row (or is already retuning)")
+          }
+        } catch let r as ClipRetune.Refusal {
+          throw ControlRequestError.bad(r.message)
+        }
       default: dj.perform(action)
       }
       poll()
@@ -382,7 +426,10 @@ extension AppModel {
       return deckJSON(deck) ?? .null
 
     case "view":
-      return controlView(p)
+      return try controlView(p)
+
+    case "settings":
+      return try await controlSettings(p)
 
     case "screenshot":
       return try screenshot(to: p["path"]?.string)
@@ -403,6 +450,12 @@ extension AppModel {
 
     case "variations":
       return try await controlVariations(p)
+
+    case "loops":
+      return try await controlLoops(p)
+
+    case "minecraftEvents":
+      return try controlMinecraftEvents(p)
 
     default:
       throw ControlRequestError.bad("unknown method \(method)")
@@ -592,6 +645,82 @@ extension AppModel {
     return .object(o)
   }
 
+  /// `minecraftEvents` (dj_minecraft_events): mc_recent_events' window → the mapped actions
+  /// on `deck` (default: the focus deck), each new event once, a stinger at most once a bar.
+  /// Performed through the engine, so they record as a button's would.
+  func controlMinecraftEvents(_ p: JSONValue) throws -> JSONValue {
+    guard let dj = engine else { throw ControlRequestError.bad("the audio engine did not start") }
+    guard let list = p["events"] else {
+      throw ControlRequestError.bad("`events` must be mc_recent_events' array (or its result)")
+    }
+    let events: [MinecraftEvent]
+    do {
+      events = try MinecraftEvent.parse(json: list)
+    } catch {
+      throw ControlRequestError.bad("\(error)")
+    }
+    let deck = p["deck"]?.string ?? dj.focus
+    let d = try requireDeck(deck)
+    let (fired, skipped) = minecraftFeed.take(
+      events, deck: deck, bar: d.beatState?.bar, net: d.mode == .net,
+      prime: p["prime"]?.bool ?? false)
+    for f in fired { dj.perform(f.action) }
+    poll()
+    return MinecraftEventFeed.report(
+      deck: deck, fired: fired, skipped: skipped, cursor: minecraftFeed.cursor)
+  }
+
+  /// The control socket's `settings`: the monitoring settings the bottom bar and mixer set —
+  /// `pfl` {deck: bool}, `headphoneMix` / `headphoneLevel` (0…1), `awake`, `inpulseOutput`.
+  /// Applies only the keys given (all checked first, so a bad one changes nothing) and returns
+  /// every value as it stands. None of it is recorded: the cue never reaches the master mix.
+  func controlSettings(_ p: JSONValue) async throws -> JSONValue {
+    var pfl: [(String, Bool)] = []
+    if let given = p["pfl"] {
+      guard let o = given.object else {
+        throw ControlRequestError.bad("`pfl` must be an object of deck: bool, e.g. {\"A\": true}")
+      }
+      for (name, v) in o.entries {
+        guard let on = v.bool else { throw ControlRequestError.bad("pfl.\(name) must be a bool") }
+        _ = try requireDeck(name)
+        pfl.append((name, on))
+      }
+    }
+    func level(_ key: String) throws -> Double? {
+      guard let v = p[key] else { return nil }
+      guard let x = v.double, (0...1).contains(x) else {
+        throw ControlRequestError.bad("`\(key)` must be a number from 0 to 1")
+      }
+      return x
+    }
+    let mix = try level("headphoneMix")
+    let headLevel = try level("headphoneLevel")
+    let awake = p["awake"]?.bool
+    if p["awake"] != nil && awake == nil { throw ControlRequestError.bad("`awake` must be a bool") }
+    let route = p["inpulseOutput"]?.bool
+    if p["inpulseOutput"] != nil && route == nil {
+      throw ControlRequestError.bad("`inpulseOutput` must be a bool")
+    }
+    if route == true && !inpulseRouted && findInpulse() == nil {
+      throw ControlRequestError.bad(
+        "no DJControl Inpulse audio output is connected (plug it in over USB; "
+          + "dj_state.inpulseOutput is null while it is missing)")
+    }
+    for (name, on) in pfl { setPFL(name, on) }
+    if let mix { setHeadphoneMix(mix) }
+    if let headLevel { setHeadphoneLevel(headLevel) }
+    if let awake { setKeepScreenAwake(awake) }
+    if let route { await routeInpulseOutput(route) }
+    poll()
+    let state = controlState()
+    var o = JSONObject([
+      ("headphones", state["headphones"] ?? .null), ("awake", .bool(keepScreenAwake)),
+      ("inpulseOutput", state["inpulseOutput"] ?? .null),
+    ])
+    if route == true && !inpulseRouted { o["status"] = .string(status) }
+    return .object(o)
+  }
+
   func requireDeck(_ name: String) throws -> Deck {
     guard let d = engine?[name] else {
       let have = (engine?.decks.keys.sorted() ?? []).joined(separator: ", ")
@@ -608,6 +737,7 @@ extension AppModel {
     o["crossfader"] = .number(crossfader)
     o["master"] = .number(master)
     o["focus"] = .string(engine?.focus ?? "A")
+    o["fxUnit"] = fxUnitJSON()
     o["recording"] = .bool(isRecording)
     o["loops"] = .object(
       JSONObject([
@@ -838,6 +968,11 @@ extension AppModel {
     o["hotCues"] = .array(s.cues.sorted().map { .int($0) })
     // the deck's walk: on, pace, the countdown, paused (steering), locks, the newest moves
     o["wander"] = d.wanderJSON(lockedActions: engine?.lockedActions ?? [])
+    // a sample deck's master chain runs the master macros too (its own bus)
+    if !s.isNet {
+      o["macrosRunning"] = .array(
+        MasterMacro.allCases.filter { s.masterRunning.contains($0) }.map { .string($0.id) })
+    }
     if s.isNet {
       o["sections"] = .array(
         s.sections.enumerated().map { i, sec in
@@ -849,6 +984,8 @@ extension AppModel {
       if let c = s.currentSection { o["currentSection"] = .int(c) }
       o["roles"] = .object(JSONObject(s.roles.map { ($0, .bool(s.rolesOn.contains($0))) }))
       o["beatInBar"] = .int(s.beatInBar)
+      // what Hit 1–4 fire: curated from the genre and palette (StingerCuration)
+      o["stingers"] = .array(d.stingers.map(\.json))
       // the macros in effect: net ones, then the master chain's
       o["macrosRunning"] = .array(
         (NetMacro.allCases.filter { s.macroPulse.isRunning($0) }.map(\.id)
@@ -858,6 +995,13 @@ extension AppModel {
       o["nextTrack"] = .string(s.nextReady ? "ready" : (s.nextComposing ? "composing" : "none"))
       o["mixingOut"] = .bool(s.mixingOut)
       o["mixingIn"] = .bool(s.mixingIn)
+      // what dj plays the net with: its pass (composed tracks) and the runner's fixes
+      if let f = d.fixes {
+        o["fixes"] = .object(
+          JSONObject([
+            ("pass", .bool(d.passApplied)), ("names", .array(f.names.map { .string($0) })),
+          ]))
+      }
       // what reloads this track: a favorite, dj_load_share, a copy
       if let cid = s.sourceCID {
         var share = JSONObject([("cid", .string(cid))])

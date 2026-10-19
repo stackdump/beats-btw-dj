@@ -58,13 +58,13 @@ public struct ClipOrigin: Sendable, Equatable {
 }
 
 extension LoopClip {
-  /// The provenance of the take this clip is made from: a crop's original (all the way back),
-  /// a sequence's first step.
+  /// The provenance of the take this clip is made from: a crop's or a retune's original (all
+  /// the way back), a sequence's first step.
   var takeProvenance: JSONValue? {
     var p = provenance
     while let op = p?["op"]?.string {
       switch op {
-      case "crop": p = p?["parent"]
+      case "crop", "retune": p = p?["parent"]
       case "sequence": p = p?["steps"]?.array?.first?["provenance"]
       default: return p
       }
@@ -72,9 +72,34 @@ extension LoopClip {
     return p
   }
 
-  /// The deck's source as LOOP went down (`LoopProvenance.capture`), if it was recorded.
+  /// The deck's source as LOOP went down (`LoopProvenance.capture`), if it was recorded — with
+  /// the instruments a retune gave it (`retunedVoices`), so loading it plays what the clip does.
   public var originSource: DeckSourceDescriptor? {
-    takeProvenance?["source"].flatMap(DeckSourceDescriptor.init(json:))
+    guard var source = takeProvenance?["source"].flatMap(DeckSourceDescriptor.init(json:))
+    else { return nil }
+    for (channel, instrument) in retunedVoices.sorted(by: { $0.key < $1.key }) {
+      source = source.withInstrument(instrument, channel: channel) ?? source
+    }
+    return source
+  }
+
+  /// The instruments retunes gave this clip (MIDI channel → beats instrument), the latest's
+  /// over earlier ones, through crops of it (`LoopProvenance.retune`). Empty for a take as taken
+  /// and for a sequence (its steps keep their own).
+  public var retunedVoices: [Int: String] {
+    var voices: [Int: String] = [:]
+    var p = provenance
+    while let op = p?["op"]?.string {
+      switch op {
+      case "crop": p = p?["parent"]
+      case "retune":
+        // the newest retune is met first: what it set stands over the ones before it
+        voices.merge(DeckAction.voices(json: p?["voices"])) { now, _ in now }
+        p = p?["parent"]
+      default: return voices
+      }
+    }
+    return voices
   }
 
   /// The section the deck was playing then (net decks).

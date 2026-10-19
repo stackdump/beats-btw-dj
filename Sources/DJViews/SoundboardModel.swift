@@ -36,8 +36,17 @@ struct SoundPad: Equatable, Identifiable {
   var overview: WaveformOverview
   /// Its after effects; `fx.isActive` shows the FX badge.
   var fx: LoopFX
+  /// Its own launch boundary, fade and tempo follow (nil: the row's), as `ClipState` has them;
+  /// `launchBadge` shows them.
+  var quantum: Int?
+  var fade: LoopFade?
+  var follow: LoopFollow?
+  /// Its own rules, short ("bar · fade 1 beat"), for the pad's badge; nil: it follows the row.
+  var launchBadge: String?
+  /// Being rendered again with other instruments (`AppModel.retuneClip`).
+  var retuning = false
 
-  init(_ c: ClipState, slot: String?) {
+  init(_ c: ClipState, slot: String?, retuning: Bool = false) {
     id = c.id
     title = c.title
     color = c.color
@@ -56,6 +65,11 @@ struct SoundPad: Equatable, Identifiable {
     isSequence = c.steps != nil
     overview = c.overview
     fx = c.fx
+    quantum = c.quantum
+    fade = c.fade
+    follow = c.follow
+    launchBadge = c.launchBadge
+    self.retuning = retuning
   }
 
   /// A loop pad's LED, as the APC's loop page and the Inpulse's LOOP pads light it
@@ -94,8 +108,14 @@ enum SoundPadCommand: Equatable {
   case keyLock(Bool)
   case color(String?)
   case rename(String)
-  /// How every loop comes in and goes out (the loop channel's, not this clip's alone).
-  case fade(LoopFade)
+  /// How this loop comes in and goes out (nil: as the row's do).
+  case fade(LoopFade?)
+  /// What this loop starts and stops on, in beats (nil: the row's boundary).
+  case quantize(Int?)
+  /// Whose tempo this loop follows (nil: as the row says).
+  case follow(LoopFollow?)
+  /// How every loop comes in and goes out (the loop channel's: "all loops").
+  case loopFade(LoopFade)
   /// Onto deck A or B ("A", "B"), or back under the mixer ("L").
   case move(String)
   /// Off the row, with Undo (`AppModel.removeClip`).
@@ -166,6 +186,36 @@ struct StockPad: Equatable, Identifiable {
   var pending: Bool { state == .starting || state == .stopping || loading }
 }
 
+/// A Crate page pad: one favorite in the chosen crate (a starred net track or sample), lit while
+/// a deck plays it (by its CID, as the Favorites panel marks the current one).
+struct CratePad: Equatable, Identifiable {
+  /// The favorite's CID.
+  var id: String
+  var title: String
+  var isSample: Bool
+  /// "Sample · 120 BPM", "Net track"; its other tags after.
+  var detail: String
+  /// The decks holding it now, and the ones of those playing it.
+  var onDecks: [String]
+  var playingOn: [String]
+  var light: PadLight.Level
+
+  init(_ f: Favorite, crate: String, decks: [String: DeckState]) {
+    id = f.cid
+    title = f.title
+    isSample = f.isSample
+    var kind = f.isSample ? "Sample" : "Net track"
+    if case .sample(_, _, let g?) = f.source { kind += String(format: " · %.0f BPM", g.bpm) }
+    let others = f.tags.filter { $0 != crate }.map { "#\($0)" }
+    detail = ([kind] + others).joined(separator: " · ")
+    onDecks = decks.keys.sorted().filter { decks[$0]?.sourceCID == f.cid }
+    playingOn = onDecks.filter { decks[$0]?.playing == true }
+    light = playingOn.isEmpty ? .off : .full
+  }
+
+  var sounding: Bool { !playingOn.isEmpty }
+}
+
 /// How the pads are laid out for `count` pads in `width` points: as many columns as fit at the
 /// smallest pad size (never more than there are pads), each pad as wide as the columns leave,
 /// up to the largest size.
@@ -234,7 +284,11 @@ struct SoundboardGrid: Layout {
 
 extension AppModel {
   /// One pad per clip on the row, in row order (the Inpulse's loop pads follow the same order).
-  var soundPads: [SoundPad] { clips.map { SoundPad($0, slot: padSlot($0.id)) } }
+  var soundPads: [SoundPad] {
+    clips.map {
+      SoundPad($0, slot: padSlot($0.id), retuning: retuningClips.contains($0.id))
+    }
+  }
 
   /// How many stock loops the Stock page shows at once (search or pick a category for others).
   static let stockPadLimit = 32
@@ -304,6 +358,43 @@ extension AppModel {
     return id
   }
 
+  /// The crate the Crate page shows: the one chosen, while it exists, else the first crate.
+  var crateBoardCrate: String? {
+    let all = crates
+    if let c = soundboardCrate, all.contains(c) { return c }
+    return all.first
+  }
+
+  /// Choose the Crate page's crate (remembered across launches).
+  func setSoundboardCrate(_ c: String) {
+    soundboardCrate = c
+    defaults.set(c, forKey: Self.soundboardCrateKey)
+  }
+
+  /// The Crate page's pads: the chosen crate's favorites, in the order starred (first starred
+  /// first; the store keeps newest on top), so a pad keeps its place as favorites are added.
+  var cratePads: [CratePad] {
+    guard let crate = crateBoardCrate else { return [] }
+    return favorites.tagged(crate).reversed().map { CratePad($0, crate: crate, decks: decks) }
+  }
+
+  /// The deck a Crate pad loads onto: the focus deck, or (⌥) the other one.
+  func crateBoardDeck(other: Bool = false) -> String {
+    let names = engine.map { $0.decks.keys.sorted() } ?? decks.keys.sorted()
+    let focus = engine?.focus ?? names.first ?? "A"
+    guard other else { return focus }
+    return names.first { $0 != focus } ?? focus
+  }
+
+  /// A Crate pad's press (or Return on it): load its favorite on the focus deck (⌥: the other
+  /// one) through `loadFavorite`, so it is performed and recorded like the Favorites panel's.
+  /// Returns the load's task, nil for an unknown favorite.
+  @discardableResult
+  func cratePadPress(_ cid: String, other: Bool = false) -> Task<Bool, Never>? {
+    guard let f = favorites.first(where: { $0.cid == cid }) else { return nil }
+    return loadFavorite(crateBoardDeck(other: other), f)
+  }
+
   /// The window's Soundboard toggle, its View menu item and the control socket's `view`; saved
   /// in the app's defaults (`showSoundboard`) so the next launch opens as this one left it. Not
   /// a `DeckAction`: it changes nothing a session renders, so it isn't journaled.
@@ -336,7 +427,10 @@ extension AppModel {
     case .rename(let t):
       let t = t.trimmingCharacters(in: .whitespacesAndNewlines)
       return t.isEmpty ? nil : .clipRename(id: id, title: t)
-    case .fade(let f): return .loopFade(mode: f.rawValue)
+    case .fade(let f): return .clipFade(id: id, mode: f?.rawValue)
+    case .quantize(let beats): return .clipQuantize(id: id, beats: beats)
+    case .follow(let mode): return .clipFollow(id: id, mode: mode?.rawValue)
+    case .loopFade(let f): return .loopFade(mode: f.rawValue)
     case .move(let deck): return .clip(deck: deck, id: id)
     case .remove: return .clipRemove(id: id)
     case .fx(let fx): return .clipFx(id: id, fx: fx)
@@ -373,16 +467,160 @@ extension AppModel {
     }
   }
 
+  /// The instruments clip `id` can be retuned on, with no deck playing its track
+  /// (`ClipRetune.voices`): empty for a sample's loop, a sequence or a take with macros.
+  func retuneVoices(_ id: String) -> [RoleVoice] {
+    guard let c = engine?.clip(id) else { return [] }
+    return ClipRetune.voices(for: c)
+  }
+
+  /// Retune clip `id` (its settings' "Retune this loop"): its bars rendered again off the main
+  /// thread with `voices` (MIDI channel → instrument), then `DeckAction.clipRetune` with the
+  /// render puts the retuned clip in its place (so the journal records the action and a replay
+  /// renders it again). Its pad says "retuning…" meanwhile. Returns the retuned clip's id (nil if
+  /// the clip left the row while it rendered); throws `ClipRetune.Refusal`.
+  @discardableResult
+  func retuneClip(_ id: String, voices: [Int: String]) async throws -> String? {
+    guard let dj = engine, let clip = dj.clip(id), !retuningClips.contains(id) else { return nil }
+    retuningClips.insert(id)
+    defer { retuningClips.remove(id) }
+    let rate = dj.sampleRate
+    let render = try await Task.detached(priority: .userInitiated) {
+      try ClipRetune.render(clip: clip, voices: voices, sampleRate: rate)
+    }.value
+    guard dj.clip(id) != nil else { return nil }
+    let index = dj.clips.firstIndex { $0.id == id }
+    dj.perform(.clipRetune(id: id, voices: voices), buffer: render.buffer)
+    pollLoops(dj)
+    return index.flatMap { dj.clips.indices.contains($0) ? dj.clips[$0].id : nil }
+  }
+
   /// The control socket's `view`: show or hide the window's panels (`soundboard`,
-  /// `controllers`, `map`, `scopes`, `pads`); returns what shows now.
-  func controlView(_ p: JSONValue) -> JSONValue {
+  /// `controllers`, `map`, `scopes`, `pads`, `loopMasterFx`), fold the decks' sections
+  /// (`sections: {A: [...]}`, saved as `fold.<deck>` just as `DeckSections` saves a click), set
+  /// the scope panel (`scope: {kind, source, measured}`) and open / set the Stage window
+  /// (`stage: {open, source, visualizer, overlays, background}`). Everything is checked before
+  /// anything changes; returns what shows now.
+  func controlView(_ p: JSONValue) throws -> JSONValue {
+    let folds = try viewFolds(p["sections"])
+    let scope = p["scope"]
+    let kind = try scope?["kind"]?.string.map { k in
+      guard let v = ScopeKind(rawValue: k) else {
+        throw ControlRequestError.bad(
+          "unknown scope kind \(k) (\(ScopeKind.allCases.map(\.rawValue).joined(separator: ", ")))")
+      }
+      return v
+    }
+    let source = try scope?["source"]?.string.map(viewScopeSource)
+    let stage = p["stage"]
+    let stageSet = try stage.map(viewStage)
+    if stage?["open"]?.bool != nil, openStageWindow == nil {
+      throw ControlRequestError.bad("the Stage window opens only in the app")
+    }
+
     if let on = p["soundboard"]?.bool { setShowSoundboard(on) }
     if let on = p["controllers"]?.bool { showControllers = on }
     if let on = p["map"]?.bool { showMap = on }
-    if let on = p["scopes"]?.bool { showScopes = on }
+    if let on = p["scopes"]?.bool ?? scope?["open"]?.bool { showScopes = on }
     if let on = p["pads"]?.bool { setShowPads(on) }
+    if let on = p["loopMasterFx"]?.bool { showLoopMasterFx = on }
+    for (deck, list) in folds { defaults.set(list, forKey: DeckSections.foldKey(deck)) }
+    if let kind { scopeKind = kind }
+    if let source { scopeSource = source }
+    if let on = scope?["measured"]?.bool { scopeMeasured = on }
+    stageSet?()
+    if let on = stage?["open"]?.bool { (on ? openStageWindow : closeStageWindow)?() }
     poll()
-    return viewJSON
+    var o = viewJSON.object ?? JSONObject()
+    o["scope"] = .object(
+      JSONObject([
+        ("open", .bool(showScopes)), ("kind", .string(scopeKind.rawValue)),
+        ("source", .string(Self.scopeSourceID(scopeSource))), ("measured", .bool(scopeMeasured)),
+      ]))
+    if let stage = stageModel { o["stage"] = stageJSON(stage) }
+    return .object(o)
+  }
+
+  /// `sections: {A: ["perform", "history"], …}` as the `fold.<deck>` strings to save.
+  private func viewFolds(_ v: JSONValue?) throws -> [(String, String)] {
+    guard let v else { return [] }
+    guard let o = v.object else {
+      throw ControlRequestError.bad("sections is {deck: [section, …]}")
+    }
+    let names = DeckSections.Section.allCases.map(\.rawValue)
+    return try o.entries.map { deck, list in
+      guard decks[deck] != nil else { throw ControlRequestError.bad("no deck \(deck)") }
+      guard let items = list.array?.map(\.string), !items.contains(nil) else {
+        throw ControlRequestError.bad("sections.\(deck) is a list of section names")
+      }
+      let open = items.compactMap { $0 }
+      if let bad = open.first(where: { !names.contains($0) }) {
+        throw ControlRequestError.bad(
+          "unknown section \(bad) (\(names.joined(separator: ", ")))")
+      }
+      return (deck, DeckSections.foldList(Set(open)))
+    }
+  }
+
+  /// "master" or a deck's name, as `scopeSourceID` writes it.
+  private func viewScopeSource(_ id: String) throws -> ScopeSource {
+    if id == "master" { return .master }
+    guard decks[id] != nil else {
+      throw ControlRequestError.bad("unknown source \(id) (master, or a deck)")
+    }
+    return .deck(id)
+  }
+
+  /// The Stage's settings from `stage: {source, visualizer, overlays, background}`, checked;
+  /// the returned closure applies them.
+  private func viewStage(_ v: JSONValue) throws -> () -> Void {
+    let wants = ["source", "visualizer", "overlays", "background"].contains { v[$0] != nil }
+    guard wants else { return {} }
+    guard let stage = stageModel else {
+      throw ControlRequestError.bad("the Stage has no model yet (the audio engine did not start)")
+    }
+    let source = try v["source"]?.string.map(viewScopeSource)
+    let visualizer = try v["visualizer"]?.string.map { name in
+      // the raw value (stage.js' "mandala") or the case's name ("constellation")
+      guard
+        let viz = StageVisualizer(rawValue: name)
+          ?? StageVisualizer.allCases.first(where: { "\($0)" == name })
+      else {
+        throw ControlRequestError.bad(
+          "unknown visualizer \(name) "
+            + "(\(StageVisualizer.allCases.map(\.rawValue).joined(separator: ", ")))")
+      }
+      return viz
+    }
+    let overlays = try v["overlays"].map { list in
+      guard let names = list.array?.map(\.string), !names.contains(nil) else {
+        throw ControlRequestError.bad("overlays is a list of overlay names")
+      }
+      return try Set(
+        names.compactMap { $0 }.map { name in
+          guard let o = StageOverlay(rawValue: name) else {
+            throw ControlRequestError.bad(
+              "unknown overlay \(name) "
+                + "(\(StageOverlay.allCases.map(\.rawValue).joined(separator: ", ")))")
+          }
+          return o
+        })
+    }
+    let background = try v["background"]?.string.map { name in
+      guard let b = StageBackground(rawValue: name) else {
+        throw ControlRequestError.bad(
+          "unknown background \(name) "
+            + "(\(StageBackground.allCases.map(\.rawValue).joined(separator: ", ")))")
+      }
+      return b
+    }
+    return {
+      let s = stage.settings
+      if let source { s.source = source }
+      if let visualizer { s.visualizer = visualizer }
+      if let overlays { s.overlays = overlays }
+      if let background { s.bgMode = background }
+    }
   }
 
   var viewJSON: JSONValue {
@@ -390,6 +628,17 @@ extension AppModel {
       JSONObject([
         ("soundboard", .bool(showSoundboard)), ("controllers", .bool(showControllers)),
         ("map", .bool(showMap)), ("scopes", .bool(showScopes)), ("pads", .bool(showPads)),
+        ("loopMasterFx", .bool(showLoopMasterFx)),
+        (
+          "sections",
+          .object(
+            JSONObject(
+              decks.keys.sorted().map { deck in
+                let list =
+                  defaults.string(forKey: DeckSections.foldKey(deck)) ?? DeckSections.defaultOpen
+                return (deck, .array(DeckSections.openSections(list).map { .string($0) }))
+              }))
+        ),
       ]))
   }
 }

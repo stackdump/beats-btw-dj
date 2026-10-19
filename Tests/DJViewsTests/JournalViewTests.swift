@@ -1,4 +1,5 @@
 import DJCore
+import SwiftUI
 import Testing
 
 @testable import DJViews
@@ -147,6 +148,10 @@ struct JournalViewTests {
     let dj = try #require(m.engine)
     let dir = try #require(m.journalDir)
     defer { m.defaults.removeObject(forKey: AppModel.cratesKey) }
+    // deck A plays the demo loop, which can't be starred (no file, no net): a track on B can
+    _ = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    m.poll()
     dj.perform(.crossfader(0.3))
     _ = try await call(m, "notes", #"{"action":"add","deck":"A","text":"before"}"#)
     let seq = try #require(m.journal?.lastSeq)
@@ -155,7 +160,7 @@ struct JournalViewTests {
     // everything moves on
     dj.perform(.crossfader(0.9))
     _ = try await call(m, "notes", #"{"action":"add","deck":"A","text":"after"}"#)
-    _ = try await call(m, "favorites", #"{"action":"add","deck":"A"}"#)
+    _ = try await call(m, "favorites", #"{"action":"add","deck":"B"}"#)
     m.newCrate("later")
     m.setLocked("A.play", true)
     #expect(!m.favorites.isEmpty)
@@ -245,6 +250,55 @@ struct JournalViewTests {
     await #expect(throws: (any Error).self) {
       _ = try await self.call(m, "journal", #"{"action":"rewind"}"#)
     }
+  }
+
+  @Test func thePickerListsRewindPoints() async throws {
+    let m = try await model()
+    let dj = try #require(m.engine)
+    for i in 0..<60 { dj.perform(.crossfader(Double(i) / 60)) }
+    _ = try await call(m, "notes", #"{"action":"add","deck":"A","text":"here"}"#)
+    m.poll()
+    let recent = m.journalEntries
+    let points = AppModel.rewindPoints(recent)
+    #expect(points.map(\.seq) == points.map(\.seq).sorted(by: >), "newest first")
+    #expect(points.first?.kind == .note)
+    #expect(points.contains { $0.kind == .mark && $0.summary.contains("app.start") })
+    #expect(points.last?.kind == .checkpoint && points.last?.seq == 0)
+    // every 25th action, by seq
+    let actions = points.filter { $0.kind == .action }
+    #expect(!actions.isEmpty && actions.allSatisfy { $0.seq % AppModel.rewindEvery == 0 })
+    let actionSeqs = recent.filter { if case .action = $0.event { true } else { false } }
+      .map(\.seq).filter { $0 % AppModel.rewindEvery == 0 }
+    #expect(Set(actions.map(\.seq)) == Set(actionSeqs))
+    #expect(AppModel.rewindPoints(recent, limit: 2).count == 2)
+
+    // past `recent`, the file's checkpoints
+    let file = await m.fileRewindPoints()
+    #expect(file.first?.seq == 0 && file.allSatisfy { $0.fromFile && $0.kind == .checkpoint })
+    let tail = Array(recent.dropFirst(3))
+    let older = AppModel.rewindPoints(tail, older: file)
+    #expect(older.last?.seq == 0 && older.last?.fromFile == true)
+    #expect(!older.dropLast().contains { $0.fromFile }, "only checkpoints before `recent`")
+    #expect(!AppModel.rewindPoints(recent, older: file).contains { $0.fromFile })
+
+    // rewind mode lays out in a deck column, the confirm strip open, ⟲ buttons not clipped
+    let view = HistoryPanel(model: m, rewinding: true, picked: points[1])
+      .padding(8).background(Color.black)
+    savePNG(view, width: 300, height: 360, name: "history-rewind")
+    let px = try #require(renderPixels(view, width: 300, height: 360))
+    let drawn = px.count(inX: 0..<300, y: 0..<360) { r, g, b in r > 60 || g > 60 || b > 60 }
+    #expect(drawn > 2000, "rows drawn (\(drawn) lit pixels)")
+    // the ⟲ column (orange) sits inside the right edge. The rows are drawn on their own at the
+    // panel's inner width: in the panel they sit in a ScrollView, which ImageRenderer can't draw.
+    let rowsView = RewindPointRows(points: points, picked: points[1].seq, busy: false) { _ in }
+      .padding(8).background(Color.black)
+    let rows = try #require(renderPixels(rowsView, width: 300, height: 360))
+    let buttons = rows.count(inX: 240..<292, y: 0..<360) { r, g, b in r > 180 && g > 90 && b < 80 }
+    #expect(buttons > 0, "⟲ buttons drawn at the right")
+    let rowEdge = rows.count(inX: 296..<300, y: 0..<360) { r, g, b in r > 60 || g > 60 || b > 60 }
+    #expect(rowEdge == 0, "no row runs past the padding")
+    let edge = px.count(inX: 296..<300, y: 0..<360) { r, g, b in r > 60 || g > 60 || b > 60 }
+    #expect(edge == 0, "nothing runs past the padding")
   }
 
   @Test func theHistoryFoldsAFaderSweep() {

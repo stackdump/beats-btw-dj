@@ -13,6 +13,10 @@ public enum MinecraftBank {
   /// The kit preset: fixed-pitch zones on the GM drum keys (melodic bank 0).
   public static let kitProgram = 127
   public static var kitID: String { "\(fileName)#0:\(kitProgram)" }
+  /// The bank's layout, recorded in the sidecar and in the palette version a track records
+  /// (`minecraft@32+b2`): 1 = one zone per tone program; 2 = each tone program in three
+  /// octave zones (`MinecraftImport.octaveZones`). A sidecar without one is format 1.
+  public static let formatVersion = 2
 
   public enum Kind: String, Sendable {
     /// Pitched, played across the keyboard from its root; `loop`: a crossfade loop holds it.
@@ -126,11 +130,18 @@ public enum MinecraftBank {
     public var sha1: [String: String]
     /// The programs built (some are missing from older indexes).
     public var programs: [String]
+    /// The bank layout (`MinecraftBank.formatVersion` when it was built).
+    public var format: Int
+
+    /// What a track records as the palette's version: the asset index, plus the bank format
+    /// when it is not 1 (`32+b2`), so a recording names the sounds and how they were cut.
+    public var version: String { format > 1 ? "\(assetIndex)+b\(format)" : assetIndex }
 
     public var json: JSONValue {
       var o = JSONObject()
       o["schema"] = .string(Self.schema)
       o["assetIndex"] = .string(assetIndex)
+      o["format"] = .number(Double(format))
       o["programs"] = .array(programs.map { .string($0) })
       var h = JSONObject()
       for k in sha1.keys.sorted() { h[k] = .string(sha1[k]!) }
@@ -138,10 +149,14 @@ public enum MinecraftBank {
       return .object(o)
     }
 
-    public init(assetIndex: String, sha1: [String: String], programs: [String]) {
+    public init(
+      assetIndex: String, sha1: [String: String], programs: [String],
+      format: Int = MinecraftBank.formatVersion
+    ) {
       self.assetIndex = assetIndex
       self.sha1 = sha1
       self.programs = programs
+      self.format = format
     }
 
     init?(json v: JSONValue) {
@@ -151,6 +166,7 @@ public enum MinecraftBank {
       for (k, x) in v["sha1"]?.object?.entries ?? [] { h[k] = x.string }
       sha1 = h
       programs = (v["programs"]?.array ?? []).compactMap(\.string)
+      format = v["format"]?.double.map { Int($0) } ?? 1
     }
 
     public static func load(dir: String = SamplerSource.soundFontDir) -> Sidecar? {
@@ -180,7 +196,9 @@ public enum MinecraftBank {
 /// (AVAudioFile reads the Ogg Vorbis objects), mixed to mono, resampled to 44.1 kHz, peak
 /// normalised and stored 16-bit; pitched sounds measured and tuned in the sample header,
 /// steady tones (flute, didgeridoo, bit, trumpets) given a crossfade loop so a pad or a held
-/// note can sustain; plucked ones stay one-shots.
+/// note can sustain; plucked ones stay one-shots. Each tone is also stored an octave down and an
+/// octave up (`octaveShift`, band-limited, loop points scaled) and played from the nearest of
+/// the three (`octaveZones`), so no key stretches the recording more than half an octave.
 public enum MinecraftImport {
   public static let sampleRate = 44_100.0
 
@@ -221,12 +239,29 @@ public enum MinecraftImport {
         (root, cents) = measureRoot(pcm, near: p.root)
         if p.loop { loop = crossfadeLoop(&pcm, root: root, cents: cents) }
       }
-      let sample = writer.addSample(
-        p.name, pcm: pcm, root: root, correction: Int(-cents.rounded()), loop: loop)
-      let zone = SF2Writer.Zone(
-        keys: 0...127, sample: sample, fixedPitch: p.kind == .fx, rootKey: root,
-        loop: loop != nil, releaseSeconds: p.kind == .fx ? 8 : (p.loop ? 0.15 : 1.2))
-      writer.addPreset("mc \(p.name)", program: p.program, zones: [zone])
+      let release = p.kind == .fx ? 8 : (p.loop ? 0.15 : 1.2)
+      var zones: [SF2Writer.Zone] = []
+      if p.kind == .tone {
+        for z in octaveZones(root: root) {
+          let shifted = octaveShift(pcm, loop: loop, octaves: z.shift)
+          let suffix = z.shift == 0 ? "" : (z.shift < 0 ? "-1" : "+1")
+          let zoneRoot = root + 12 * z.shift
+          let sample = writer.addSample(
+            p.name + suffix, pcm: shifted.pcm, root: zoneRoot,
+            correction: Int(-cents.rounded()), loop: shifted.loop)
+          zones.append(
+            SF2Writer.Zone(
+              keys: z.keys, sample: sample, fixedPitch: false, rootKey: zoneRoot,
+              loop: shifted.loop != nil, releaseSeconds: release))
+        }
+      } else {
+        let sample = writer.addSample(p.name, pcm: pcm, root: root, correction: 0, loop: nil)
+        zones.append(
+          SF2Writer.Zone(
+            keys: 0...127, sample: sample, fixedPitch: true, rootKey: root, loop: false,
+            releaseSeconds: release))
+      }
+      writer.addPreset("mc \(p.name)", program: p.program, zones: zones)
       sha1[p.name] = file.sha1
       built.append((p.name, p.program, cents, loop != nil))
     }
@@ -268,7 +303,8 @@ public enum MinecraftImport {
     let out = MinecraftBank.path(dir: dir)
     try data.write(to: URL(fileURLWithPath: out), options: .atomic)
     let sidecar = MinecraftBank.Sidecar(
-      assetIndex: assets.indexID, sha1: sha1, programs: built.map(\.0))
+      assetIndex: assets.indexID, sha1: sha1, programs: built.map(\.0),
+      format: MinecraftBank.formatVersion)
     try (sidecar.json.canonicalJS + "\n").write(
       toFile: (dir as NSString).appendingPathComponent(MinecraftBank.sidecarName),
       atomically: true, encoding: .utf8)
@@ -277,6 +313,100 @@ public enum MinecraftImport {
       assetIndex: assets.indexID, path: out,
       programs: built.map { (name: $0.0, program: $0.1, cents: $0.2, loop: $0.3) },
       skipped: skipped, bytes: data.count)
+  }
+
+  /// A tone program's key zones: the recording an octave down below `root - 6`, as recorded
+  /// from `root - 6` to `root + 6`, an octave up above — no key within 18 semitones of the root
+  /// plays a sample more than six semitones from that sample's root. Together they cover 0…127 without overlap.
+  public static func octaveZones(root: Int) -> [(keys: ClosedRange<Int>, shift: Int)] {
+    let low = min(127, max(0, root - 6))
+    let high = min(127, max(low, root + 6))
+    var out: [(keys: ClosedRange<Int>, shift: Int)] = []
+    if low > 0 { out.append((0...(low - 1), -1)) }
+    out.append((low...high, 0))
+    if high < 127 { out.append(((high + 1)...127, 1)) }
+    return out
+  }
+
+  /// The lowpass both octave shifts run through: a Kaiser-windowed sinc (255 taps, β 6.5,
+  /// cut at 0.24 fs) that is down more than 60 dB from 0.25 fs (11.025 kHz), the octave-up
+  /// sample's new Nyquist — nothing above it folds back — and that also removes the images
+  /// zero-stuffing leaves in the octave-down one. Unity gain at DC.
+  static let octaveFilter: [Double] = {
+    let taps = 255
+    let beta = 6.5
+    let fc = 0.24
+    func i0(_ x: Double) -> Double {
+      var sum = 1.0
+      var term = 1.0
+      var k = 1.0
+      while term > 1e-12 * sum {
+        term *= (x / (2 * k)) * (x / (2 * k))
+        sum += term
+        k += 1
+      }
+      return sum
+    }
+    let m = Double(taps - 1) / 2
+    var h = (0..<taps).map { i -> Double in
+      let t = Double(i) - m
+      let sinc = t == 0 ? 2 * fc : sin(2 * Double.pi * fc * t) / (Double.pi * t)
+      let r = t / m
+      return sinc * i0(beta * (1 - r * r).squareRoot()) / i0(beta)
+    }
+    let dc = h.reduce(0, +)
+    for i in h.indices { h[i] /= dc }
+    return h
+  }()
+
+  /// `pcm` (and its loop) moved by `octaves` (−1, 0, +1) at the same sample rate: an octave
+  /// up keeps every other sample of the lowpassed sound (half as long), an octave down
+  /// zero-stuffs and lowpasses it (twice as long). Loop points scale with it (an octave up
+  /// needs an even loop start, which `crossfadeLoop` gives). Pure: the same input gives the
+  /// same bytes.
+  static func octaveShift(_ pcm: [Float], loop: Range<Int>?, octaves: Int) -> (
+    pcm: [Float], loop: Range<Int>?
+  ) {
+    let h = octaveFilter
+    let c = (h.count - 1) / 2
+    let n = pcm.count
+    switch octaves {
+    case 1:
+      let count = (n + 1) / 2
+      var out = [Float](repeating: 0, count: count)
+      for j in 0..<count {
+        let mid = 2 * j
+        let lo = max(0, mid - c)
+        let hi = min(n - 1, mid + c)
+        var acc = 0.0
+        if lo <= hi {
+          for i in lo...hi { acc += h[mid - i + c] * Double(pcm[i]) }
+        }
+        out[j] = Float(acc)
+      }
+      let l = loop.flatMap { r -> Range<Int>? in
+        let s = r.lowerBound / 2
+        let e = s + Int((Double(r.count) / 2).rounded())
+        return e + 8 < count && e > s ? s..<e : nil
+      }
+      return (out, l)
+    case -1:
+      let count = 2 * n
+      var out = [Float](repeating: 0, count: count)
+      for m in 0..<count {
+        // taps k = m + c − 2i in 0..<h.count
+        let iLo = max(0, (m + c - (h.count - 1) + 1) / 2)
+        let iHi = min(n - 1, (m + c) / 2)
+        var acc = 0.0
+        if iLo <= iHi {
+          for i in iLo...iHi { acc += h[m + c - 2 * i] * Double(pcm[i]) }
+        }
+        out[m] = Float(2 * acc)
+      }
+      return (out, loop.map { (2 * $0.lowerBound)..<(2 * $0.upperBound) })
+    default:
+      return (pcm, loop)
+    }
   }
 
   /// A hit's energy, dB (its whole length).
@@ -351,7 +481,7 @@ public enum MinecraftImport {
     let f0 = 440 * pow(2, (Double(root) - 69) / 12) * pow(2, cents / 1200)
     let period = sampleRate / f0
     let n = pcm.count
-    let start = Int(Double(n) * 0.3)
+    let start = Int(Double(n) * 0.3) & ~1  // even: the octave-up copy halves it exactly
     let periods = max(1, (0.12 * sampleRate / period).rounded())
     let length = Int((periods * period).rounded())
     let end = start + length

@@ -218,6 +218,9 @@ final class FxAutomation {
 
   func slider(_ k: MasterFxKey) -> Int { sliders[k.rawValue] }
 
+  /// Is slider `k` (`MasterFxKey.rawValue`) under a sweep or hold right now?
+  func animatingKey(_ k: Int) -> Bool { animActive[k] }
+
   // MARK: the user's steps (at `now`; flushed by the next `advance`)
 
   /// Move the clock to `t` without running anything (the start of a block). Events before `t`

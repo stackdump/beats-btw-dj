@@ -122,14 +122,16 @@ struct SectionTransposeTests {
     let blocks = Int(Double(h.start[k] - from - 1) * framesPerTick / 128)
     let on = render(runner(played, [.sectionHarmony], startTick: from).0, blocks: blocks)
     let off = render(runner(played, [], startTick: from).0, blocks: blocks)
-    #expect(on == off)
+    #expect(sameSamples(on, off) == .identical)
     #expect(on.contains { $0 != 0 })
 
     let loop = TrackSpec(genre: song.spec.genre, seed: song.spec.seed, structure: nil)
     let lp = DJMusicality.apply(loop.project(), spec: loop)
     #expect(SectionHarmony(project: lp) == nil)
     #expect(
-      render(runner(lp, [.sectionHarmony]).0, blocks: 400) == render(runner(lp, []).0, blocks: 400))
+      sameSamples(
+        render(runner(lp, [.sectionHarmony]).0, blocks: 400), render(runner(lp, []).0, blocks: 400))
+        == .identical)
   }
 
   /// Live keys play what is pressed, whatever the section.

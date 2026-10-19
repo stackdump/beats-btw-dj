@@ -120,7 +120,8 @@ struct PaletteDataTests {
     let spec = TrackSpec(genre: "house", seed: 11, structure: "standard")
     let synth = renderSpec(spec.withPalette("synth"), seconds: 6)
     let plain = renderSpec(spec, seconds: 6, sampled: false)
-    #expect(synth.left == plain.left && synth.right == plain.right)
+    #expect(sameSamples(synth.left, plain.left) == .identical)
+    #expect(sameSamples(synth.right, plain.right) == .identical)
     #expect(synth.left.contains { $0 != 0 })
   }
 
@@ -392,7 +393,8 @@ struct PalettePublishTests {
     let fine = session(
       .net(spec),
       events: [
-        SessionEvent(frame: 1, kind: .action(.setRoleVoice(deck: "A", role: "melody", voice: "gm:0")))
+        SessionEvent(
+          frame: 1, kind: .action(.setRoleVoice(deck: "A", role: "melody", voice: "gm:0")))
       ])
     #expect(fine.localOnlySounds.isEmpty)
   }

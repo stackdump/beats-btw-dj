@@ -169,7 +169,7 @@ struct SlotWindowsTests {
       let part = NoteLog.captureAll(DJMusicality.partOnly(p, ids), ticks: NoteLog.length(p))
         .controls.filter { ids.contains($0.target) }
       #expect(!full.isEmpty || ids.count <= 1, "\(genre) \(role)")
-      #expect(part.map(\.tick) == full.map(\.tick), "\(genre) \(role)")
+      #expect(sameSamples(part.map(\.tick), full.map(\.tick)) == .identical, "\(genre) \(role)")
       #expect(part.map(\.target) == full.map(\.target), "\(genre) \(role)")
       #expect(part.map(\.action) == full.map(\.action), "\(genre) \(role)")
       #expect(part.map(\.net) == full.map(\.net), "\(genre) \(role)")
@@ -192,5 +192,110 @@ struct SlotWindowsTests {
     let took = clock.measure { w = DJMusicality.slotWindows(p, role: "melody") }
     print("slotWindows: \(Int(seconds)) s song, \(NoteLog.length(p)) steps, took \(took)")
     #expect(!w.isEmpty)
+  }
+}
+
+// MARK: - Part changes on a section boundary (raw nets)
+
+/// A 16-step ring of `group` with a note on every beat.
+private func beatRing(_ group: String, channel: Int, note: Int) -> NetBundle {
+  var n = NetBundle.ring(16)
+  for s in [0, 4, 8, 12] {
+    n.bind(s, note: note, channel: channel, velocity: 100, duration: 200)
+  }
+  n.track.channel = channel
+  n.track.group = group
+  n.riffGroup = group
+  return n
+}
+
+/// A control net firing `action` on `target` at song step `step` (its transition `t<step>`
+/// fires on the graph's tick `step + 1`).
+private func controlAt(_ step: Int, _ action: String, _ target: String, steps: Int) -> NetBundle {
+  buildControlBundle(
+    steps: steps, ctrlAt: [step: controlBinding(action, target: target)], sink: true)
+}
+
+/// A drop then a breakdown, 2 bars each, bass + melody + harmony; on the breakdown's first
+/// step the bass and melody are muted and the harmony unmuted (muted through the drop). With
+/// `controlsFirst` the control nets come before the parts in the graph, so each change acts on
+/// the tick it fires (its own step); after them, on the next step.
+private func boundaryProject(controlsFirst: Bool) -> Project {
+  var p = Project()
+  p.tempo = 120
+  p.structure = [Section(name: "drop", steps: 32), Section(name: "breakdown", steps: 32)]
+  let controls = [
+    ("ctl-bass", controlAt(32, "mute-track", "bass", steps: 64)),
+    ("ctl-melody", controlAt(32, "mute-track", "melody", steps: 64)),
+    ("ctl-harmony", controlAt(32, "unmute-track", "harmony", steps: 64)),
+  ]
+  if controlsFirst { for (id, nb) in controls { p.nets[id] = nb } }
+  p.nets["bass"] = beatRing("bass", channel: 6, note: 33)
+  p.nets["melody"] = beatRing("melody", channel: 1, note: 72)
+  p.nets["harmony"] = beatRing("harmony", channel: 2, note: 60)
+  if !controlsFirst { for (id, nb) in controls { p.nets[id] = nb } }
+  p.initialMutes = ["harmony"]
+  return p
+}
+
+/// The steps (from 0) each part's notes actually play on.
+private func playedSteps(_ p: Project) -> [String: Set<Int>] {
+  var out: [String: Set<Int>] = [:]
+  for n in NoteLog.capture(p) { out[n.net, default: []].insert(n.tick - 1) }
+  return out
+}
+
+struct SlotWindowsBoundaryTests {
+  /// A part muted / unmuted on a section's first step is attributed to the sections it really
+  /// plays in, step for step, whichever side of the parts its control net sits.
+  @Test(arguments: [true, false])
+  func boundaryChangesLandInTheRightSection(controlsFirst: Bool) {
+    let p = boundaryProject(controlsFirst: controlsFirst)
+    let truth = playedSteps(p)
+    for role in ["bass", "melody", "harmony"] {
+      let ws = DJMusicality.slotWindows(p, role: role)[role] ?? []
+      let covered = Set(ws.flatMap { $0.start..<$0.end })
+      for s in truth[role] ?? [] {
+        #expect(
+          covered.contains(s),
+          "\(role) (controls first: \(controlsFirst)): plays step \(s) outside its windows \(ws.map { ($0.start, $0.end) })"
+        )
+      }
+      // Every window holds a note of the part (it plays one on every beat).
+      for w in ws {
+        #expect(
+          (w.start..<w.end).contains { truth[role]?.contains($0) ?? false },
+          "\(role) (controls first: \(controlsFirst)): window \(w.start)..<\(w.end) plays no note")
+      }
+    }
+    if controlsFirst {
+      // The change acts on step 32 itself: nothing of the bass / melody reaches the
+      // breakdown, and the harmony plays only there.
+      #expect(!(truth["bass"] ?? []).contains(32))
+      #expect((truth["harmony"] ?? []).min() == 32)
+      #expect(DJMusicality.slotWindows(p, role: "bass")["bass"]?.map(\.section) == [0])
+      #expect(DJMusicality.slotWindows(p, role: "melody")["melody"]?.map(\.section) == [0])
+      #expect(DJMusicality.slotWindows(p, role: "harmony")["harmony"]?.map(\.section) == [1])
+    }
+  }
+
+  /// beats puts every control net after the parts, so in a composed (and a played) track every
+  /// change acts from the step its tick names: the fix moves nothing there.
+  @Test(arguments: ["techno", "lofi", "edm"])
+  func composedChangesActOnTheirTick(genre: String) {
+    let p = played(genre)
+    let controls = NoteLog.captureAll(p).controls
+    #expect(!controls.isEmpty)
+    #expect(controls.allSatisfy { $0.step == $0.tick }, "\(genre)")
+  }
+
+  /// `.layerBudget` on that breakdown (budget 1) keeps the one part that actually plays there.
+  @Test func layerBudgetKeepsThePartThatPlays() {
+    let p = boundaryProject(controlsFirst: true)
+    let b = DJMusicality.layerBudgets(p)
+    #expect(b.count == 2)
+    #expect(
+      b[1].playing == [RestSchedule.Class.of(kind: "tonal", group: "harmony", net: "harmony")])
+    #expect(b[1].rested.isEmpty)
   }
 }

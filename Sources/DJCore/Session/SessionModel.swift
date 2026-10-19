@@ -87,6 +87,8 @@ public struct DeckParams: Equatable, Sendable {
   /// The deck's walk as the session starts (`Deck.wander`: on, pace, step, locks and what they
   /// hold), so a replay draws the same moves; no log.
   public var wander = WanderState()
+  /// The FX unit on the deck's chain (`Deck.fxUnit`); written only when it is not neutral.
+  public var fxUnit = FxUnitSettings()
   public init() {}
 }
 
@@ -132,6 +134,10 @@ public enum DeckAction: Equatable, Sendable {
   case clipGain(id: String, value: Double)
   /// Crop a clip to its beats `from..<to` (`DJEngine.cropClip`).
   case clipCrop(id: String, from: Int, to: Int)
+  /// Render a net clip's bars again with `voices` (MIDI channel → beats instrument) over the
+  /// instruments it was taken with; the result takes its place, as a crop does
+  /// (`DJEngine.retuneClip`, `ClipRetune`).
+  case clipRetune(id: String, voices: [Int: String])
   /// Join clips into a sequence (`DJEngine.makeSequence`), or rewrite the one `replacing` names.
   case clipSequence(steps: [SequenceStep], replacing: String?)
   /// Take a clip off the row; it can be put back (`DJEngine.removeClip`).
@@ -230,6 +236,26 @@ public enum DeckAction: Equatable, Sendable {
   /// Bring a net deck in drums-forward (`Deck.mixIn`): its melodic lanes rest from the next bar
   /// for `bars` bars, then come back on a bar line.
   case mixIn(deck: String, bars: Int)
+  /// Back to the start: the sample's first frame, or tick 0 of the net (`Deck.rewind`).
+  case rewind(deck: String)
+  /// Aim the deck-less controls (keys, joystick, seed, wander) at A, B or the loop channel "L"
+  /// (`DJEngine.focus`), as a controller's deck-select button does.
+  case focus(deck: String)
+  /// A net deck's STEMS group muted (`on`) or back (`Deck.toggleStem`, only when it changes):
+  /// "music" (all but the drums) or "mic" (the lead).
+  case stemMute(deck: String, stem: String, on: Bool)
+  /// A master FX slider moved by hand, `value` 0…1 of its travel (`MasterFxKey.sliderValue`,
+  /// what a controller's fader sends), on the deck's chain: a net's, a sample deck's bus or the
+  /// loops' ("L").
+  case masterFx(deck: String, key: String, value: Double)
+  /// One control of the FX unit on the deck's chain ("A", "B" or the loops' "L"): `param` an
+  /// `FxParam` id, `value` in its travel (`FxParam.range`). Live: smoothed over ~30 ms on the
+  /// audio thread, not quantised (FxUnit.swift).
+  case fx(deck: String, param: String, value: Double)
+  /// Every FX unit control back to neutral and its kill off; `onBeat`: on the deck's next beat.
+  case fxReset(deck: String, onBeat: Bool)
+  /// The FX unit bypassed (`on`), its knobs kept, or back; `onBeat`: on the next beat.
+  case fxKill(deck: String, on: Bool, onBeat: Bool)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -410,6 +436,7 @@ extension DeckParams {
     if !disabledRoles.isEmpty { o["disabledRoles"] = .array(disabledRoles.map { .string($0) }) }
     if wander != WanderState() { o["wander"] = wander.json }
     if autoGain { o["autoGain"] = .bool(true) }
+    if fxUnit != FxUnitSettings() { o["fxUnit"] = fxUnit.json }
     if reverbWet != 0 || reverbSize != 0.5 || reverbTone != 0.5 {
       o["reverbWet"] = .number(reverbWet)
       o["reverbSize"] = .number(reverbSize)
@@ -435,6 +462,7 @@ extension DeckParams {
     autoGain = v["autoGain"]?.bool ?? autoGain
     disabledRoles = v["disabledRoles"]?.array?.compactMap(\.string) ?? []
     if let w = v["wander"] { wander = WanderState(json: w) }
+    if let f = v["fxUnit"] { fxUnit = FxUnitSettings(json: f) }
   }
 }
 
@@ -486,6 +514,8 @@ extension DeckAction {
       return o("clipGain", [("id", .string(id)), ("value", .number(v))])
     case .clipCrop(let id, let from, let to):
       return o("clipCrop", [("id", .string(id)), ("from", .int(from)), ("to", .int(to))])
+    case .clipRetune(let id, let voices):
+      return o("clipRetune", [("id", .string(id)), ("voices", Self.voicesJSON(voices))])
     case .clipSequence(let steps, let replacing):
       return o(
         "clipSequence",
@@ -552,6 +582,18 @@ extension DeckAction {
         ])
     case .mixOut(let deck, let bars): return o("mixOut", [d(deck), ("bars", .int(bars))])
     case .mixIn(let deck, let bars): return o("mixIn", [d(deck), ("bars", .int(bars))])
+    case .rewind(let deck): return o("rewind", [d(deck)])
+    case .focus(let deck): return o("focus", [d(deck)])
+    case .stemMute(let deck, let stem, let on):
+      return o("stemMute", [d(deck), ("stem", .string(stem)), ("on", .bool(on))])
+    case .masterFx(let deck, let key, let value):
+      return o("masterFx", [d(deck), ("key", .string(key)), ("value", .number(value))])
+    case .fx(let deck, let param, let value):
+      return o("fx", [d(deck), ("param", .string(param)), ("value", .number(value))])
+    case .fxReset(let deck, let onBeat):
+      return o("fxReset", [d(deck)] + (onBeat ? [("onBeat", .bool(true))] : []))
+    case .fxKill(let deck, let on, let onBeat):
+      return o("fxKill", [d(deck), ("on", .bool(on))] + (onBeat ? [("onBeat", .bool(true))] : []))
     }
   }
 
@@ -570,8 +612,24 @@ extension DeckAction {
     "loopFade", "clipQuantize", "clipFade", "clipFollow", "tapBars", "voiceTweak", "voiceSynth",
     "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
-    "setRoleVoice", "clipImport", "mixOut", "mixIn",
+    "setRoleVoice", "clipImport", "mixOut", "mixIn", "rewind", "focus", "stemMute", "masterFx",
+    "clipRetune", "fx", "fxReset", "fxKill",
   ]
+
+  /// Instruments by MIDI channel as JSON: `{"3": "saw"}`, channels in order.
+  public static func voicesJSON(_ voices: [Int: String]) -> JSONValue {
+    .object(
+      JSONObject(voices.sorted { $0.key < $1.key }.map { ("\($0.key)", .string($0.value)) }))
+  }
+
+  /// `voicesJSON` read back; entries that aren't a channel and an instrument are left out.
+  public static func voices(json v: JSONValue?) -> [Int: String] {
+    var out: [Int: String] = [:]
+    for (k, i) in v?.object?.entries ?? [] {
+      if let ch = Int(k), let name = i.string, !name.isEmpty { out[ch] = name }
+    }
+    return out
+  }
 
   public init?(json v: JSONValue) {
     guard let op = v["op"]?.string else { return nil }
@@ -617,6 +675,8 @@ extension DeckAction {
         steps: [SequenceStep](json: v["steps"]), replacing: v["replacing"]?.string)
     case "clipCrop":
       self = .clipCrop(id: v["id"]?.string ?? "", from: v["from"]?.int ?? 0, to: v["to"]?.int ?? 0)
+    case "clipRetune":
+      self = .clipRetune(id: v["id"]?.string ?? "", voices: Self.voices(json: v["voices"]))
     case "clipRemove": self = .clipRemove(id: v["id"]?.string ?? "")
     case "clipRestore": self = .clipRestore(id: v["id"]?.string ?? "", at: v["at"]?.int)
     case "clipForget": self = .clipForget(id: v["id"]?.string ?? "")
@@ -678,6 +738,19 @@ extension DeckAction {
         beats: v["beats"]?.int ?? 0, provenance: provenance)
     case "mixOut": self = .mixOut(deck: deck, bars: v["bars"]?.int ?? MixOutTail.defaultBars)
     case "mixIn": self = .mixIn(deck: deck, bars: v["bars"]?.int ?? Self.defaultMixInBars)
+    case "rewind": self = .rewind(deck: deck)
+    case "focus": self = .focus(deck: deck)
+    case "stemMute":
+      self = .stemMute(deck: deck, stem: v["stem"]?.string ?? "music", on: v["on"]?.bool ?? true)
+    case "masterFx":
+      guard let key = v["key"]?.string else { return nil }
+      self = .masterFx(deck: deck, key: key, value: v["value"]?.double ?? 0)
+    case "fx":
+      guard let param = v["param"]?.string, let value = v["value"]?.double else { return nil }
+      self = .fx(deck: deck, param: param, value: value)
+    case "fxReset": self = .fxReset(deck: deck, onBeat: v["onBeat"]?.bool ?? false)
+    case "fxKill":
+      self = .fxKill(deck: deck, on: v["on"]?.bool ?? true, onBeat: v["onBeat"]?.bool ?? false)
     default: return nil
     }
   }

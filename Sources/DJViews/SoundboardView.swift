@@ -32,7 +32,7 @@ struct SoundboardView: View {
       switch model.soundboardPage {
       case .row: rowPage(pads)
       case .stock: StockBoardView(model: model)
-      case .crate: CrateBoardPlaceholder()
+      case .crate: CrateBoardView(model: model)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,7 +74,8 @@ struct SoundboardView: View {
               .onHover { if $0 { focus = pad.id } }
               .contextMenu {
                 SoundPadMenu(
-                  pad: pad, fade: model.loopChannel.fade,
+                  pad: pad, rowQuantum: model.loopQuantum, rowFade: model.loopChannel.fade,
+                  rowFollow: model.loopFollow,
                   run: { model.soundboard($0, pad.id) },
                   rename: {
                     newName = pad.title
@@ -309,12 +310,112 @@ struct StockPadView: View {
   }
 }
 
-/// The Crate page, until a crate's favorites are pads.
-struct CrateBoardPlaceholder: View {
+/// The Crate page: a crate's favorites as pads, with a strip choosing the crate (remembered). A
+/// click loads the favorite on the focus deck, ⌥-click on the other one (`loadFavorite`, so it is
+/// performed and recorded as the Favorites panel's load); a pad is lit while a deck plays it.
+/// Arrows move the focus, Return / Space press the focused pad.
+struct CrateBoardView: View {
+  let model: AppModel
+  @State private var focus: String?
+  @State private var gridWidth: CGFloat = 0
+
   var body: some View {
-    Text("A crate's favorites as pads: not here yet. Use a deck's Favorites panel meanwhile.")
-      .font(.callout).foregroundStyle(.secondary)
-      .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+    let crates = model.crates
+    let crate = model.crateBoardCrate
+    let pads = model.cratePads
+    VStack(alignment: .leading, spacing: DJStyle.s) {
+      if !crates.isEmpty {
+        FlowRow(spacing: DJStyle.xs) {
+          ForEach(crates, id: \.self) { c in
+            ChoiceButton(label: c, selected: crate == c, tint: tint) {
+              model.setSoundboardCrate(c)
+            }
+          }
+        }
+        .arrowKeys(crates, current: crate) { model.setSoundboardCrate($0) }
+      }
+      if pads.isEmpty {
+        Text(
+          crates.isEmpty
+            ? "No crates yet: make one in a deck's Load panel and drag loops onto it."
+            : "Empty: drag stock loops onto the crate's chip in a deck's Load panel."
+        )
+        .font(.callout).foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+      } else {
+        SoundboardGrid {
+          ForEach(pads) { pad in
+            CratePadView(pad: pad, focused: focus == pad.id)
+              .onTapGesture {
+                focus = pad.id
+                model.cratePadPress(pad.id, other: NSEvent.modifierFlags.contains(.option))
+              }
+              .onHover { if $0 { focus = pad.id } }
+              .help(
+                "\(pad.title): click to load it on deck \(model.crateBoardDeck()) · ⌥-click "
+                  + "on deck \(model.crateBoardDeck(other: true))")
+          }
+        }
+        .onGeometryChange(for: CGFloat.self) {
+          $0.size.width
+        } action: {
+          gridWidth = $0
+        }
+        .arrowKeys(
+          pads.map(\.id), columns: SoundboardLayout.columns(count: pads.count, width: gridWidth),
+          current: focus, select: { focus = $0 },
+          activate: { if let f = focus { model.cratePadPress(f) } })
+      }
+    }
+  }
+
+  private var tint: Color { .yellow }
+}
+
+/// A Crate page pad: the favorite's title, what it is, and the decks holding it; lit while one
+/// plays it.
+struct CratePadView: View {
+  let pad: CratePad
+  var focused = false
+
+  var body: some View {
+    let tint = pad.playingOn.first.map { deckTint($0) } ?? Color.yellow
+    ZStack(alignment: .topLeading) {
+      RoundedRectangle(cornerRadius: 10).fill(tint.opacity(pad.sounding ? 0.62 : 0.1))
+        .overlay(
+          RoundedRectangle(cornerRadius: 10).strokeBorder(
+            focused ? Color.white : tint.opacity(pad.onDecks.isEmpty ? 0.35 : 0.9),
+            lineWidth: focused ? 2 : 1))
+      VStack(alignment: .leading, spacing: DJStyle.xs) {
+        HStack(alignment: .top, spacing: DJStyle.xs) {
+          Text(pad.title).font(.headline).lineLimit(2)
+            .foregroundStyle(pad.sounding ? Color.white : Color.primary)
+          Spacer(minLength: 0)
+          Image(systemName: pad.isSample ? "waveform" : "point.3.connected.trianglepath.dotted")
+            .font(.caption)
+        }
+        Spacer(minLength: 0)
+        Text(pad.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+        HStack(spacing: DJStyle.xs) {
+          Spacer(minLength: 0)
+          ForEach(pad.onDecks, id: \.self) { d in
+            Text("on \(d)").font(.caption2.bold()).padding(.horizontal, 3)
+              .foregroundStyle(Color.black)
+              .background(RoundedRectangle(cornerRadius: 3).fill(deckTint(d)))
+          }
+          Text(stateLabel).font(.caption2.bold())
+        }
+      }
+      .padding(DJStyle.s)
+    }
+    .contentShape(RoundedRectangle(cornerRadius: 10))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(pad.title), \(pad.detail), \(stateLabel)")
+    .accessibilityAddTraits(.isButton)
+  }
+
+  private var stateLabel: String {
+    pad.sounding ? "PLAYING" : pad.onDecks.isEmpty ? "LOAD" : "LOADED"
   }
 }
 
@@ -371,11 +472,15 @@ struct SoundPadView: View {
         HStack(spacing: DJStyle.xs) {
           Text(pad.lengthLabel).font(.caption.bold()).monospacedDigit()
           if pad.isSequence { Image(systemName: "list.bullet").font(.caption2) }
+          if pad.retuning {
+            Text("retuning…").font(.caption2).foregroundStyle(.secondary)
+          }
           Spacer(minLength: 0)
           if pad.muted { badge("M", .orange) }
           if pad.soloed { badge("S", .yellow) }
           if pad.keyLock { Image(systemName: "lock.fill").font(.caption2) }
           if pad.fx.isActive { ClipFxBadge(fx: pad.fx) }
+          if let b = pad.launchBadge { SoundPadLaunchBadge(text: b) }
           if let d = pad.onDeck { badge("on \(d)", deckTint(d)) }
           if let s = pad.slot { Text(s).font(.caption2.monospaced()).foregroundStyle(.secondary) }
           Text(pad.stateLabel.uppercased()).font(.caption2.bold()).monospacedDigit()
@@ -429,11 +534,31 @@ struct SoundPadRing: View {
   }
 }
 
+/// A pad's badge for a loop with launch rules of its own (`SoundPad.launchBadge`): a metronome
+/// and the rules, short, so a pad that comes in on its own boundary says so.
+struct SoundPadLaunchBadge: View {
+  let text: String
+
+  var body: some View {
+    HStack(spacing: 2) {
+      Image(systemName: "metronome")
+      Text(text).lineLimit(1).minimumScaleFactor(0.7)
+    }
+    .font(.caption2.bold()).padding(.horizontal, 3)
+    .foregroundStyle(Color.black)
+    .background(RoundedRectangle(cornerRadius: 3).fill(LoopRowView.tint))
+    .help("Its own launch rules: \(text) (the row's for the rest)")
+  }
+}
+
 /// A pad's right-click: the quick settings, then the clip's full editor.
 struct SoundPadMenu: View {
   let pad: SoundPad
-  /// How loops come in and go out now (the loop channel's).
-  let fade: LoopFade
+  /// The row's launch boundary, fade and tempo follow (the loop channel's), which a pad without
+  /// its own follows.
+  let rowQuantum: Int
+  let rowFade: LoopFade
+  let rowFollow: LoopFollow
   let run: (SoundPadCommand) -> Void
   let rename: () -> Void
   let openSettings: () -> Void
@@ -452,9 +577,37 @@ struct SoundPadMenu: View {
     Toggle("Solo", isOn: Binding(get: { pad.soloed }, set: { run(.solo($0)) }))
     Toggle("Key lock", isOn: Binding(get: { pad.keyLock }, set: { run(.keyLock($0)) }))
     ClipFxMenu(fx: pad.fx) { run(.fx($0)) }
-    Menu("Fade (every loop)") {
+    Menu("Launch on (this loop)") {
+      Toggle(
+        "Row's (\(DJEngine.quantumLabel(rowQuantum)))",
+        isOn: Binding(get: { pad.quantum == nil }, set: { _ in run(.quantize(nil)) }))
+      ForEach(DJEngine.launchQuanta, id: \.self) { q in
+        Toggle(
+          DJEngine.quantumLabel(q),
+          isOn: Binding(get: { pad.quantum == q }, set: { _ in run(.quantize(q)) }))
+      }
+    }
+    Menu("Fade (this loop)") {
+      Toggle(
+        "Row's (\(rowFade.label))",
+        isOn: Binding(get: { pad.fade == nil }, set: { _ in run(.fade(nil)) }))
       ForEach(LoopFade.allCases, id: \.self) { f in
-        Toggle(f.label, isOn: Binding(get: { fade == f }, set: { _ in run(.fade(f)) }))
+        Toggle(f.label, isOn: Binding(get: { pad.fade == f }, set: { _ in run(.fade(f)) }))
+      }
+    }
+    Menu("Tempo (this loop)") {
+      Toggle(
+        "Row's (\(ClipState.followLabel(rowFollow)))",
+        isOn: Binding(get: { pad.follow == nil }, set: { _ in run(.follow(nil)) }))
+      ForEach(LoopFollow.allCases, id: \.self) { f in
+        Toggle(
+          ClipState.followLabel(f),
+          isOn: Binding(get: { pad.follow == f }, set: { _ in run(.follow(f)) }))
+      }
+    }
+    Menu("Fade (all loops)") {
+      ForEach(LoopFade.allCases, id: \.self) { f in
+        Toggle(f.label, isOn: Binding(get: { rowFade == f }, set: { _ in run(.loopFade(f)) }))
       }
     }
     Divider()
@@ -480,7 +633,7 @@ struct SceneStrip: View {
     HStack(alignment: .top, spacing: DJStyle.m) {
       Button("Save scene") { model.saveScene() }
         .controlSize(.small).disabled(model.loopChannel.looping == 0)
-        .help("Keep the loops playing now (and their levels) as a scene")
+        .help("Keep the loops playing now (and their levels and FX) as a scene")
       FlowRow(spacing: 4) {
         ForEach(model.scenes) { scene in SceneChip(scene: scene, model: model, rename: rename) }
       }

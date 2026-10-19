@@ -145,7 +145,7 @@ struct MasterChainTests {
       copy.append(Float(Int64(bitPattern: seed2 >> 11) % 2_000_000) / 1_000_000)
     }
     #expect(chain.isIdle())
-    #expect(run(chain, seconds: 0.5, sig) == copy)
+    #expect(sameSamples(run(chain, seconds: 0.5, sig), copy) == .identical)
   }
 
   @Test func filtersMatchTheWebAudioResponseCubed() {
@@ -292,7 +292,8 @@ struct MasterChainTests {
     _ = run(chain, seconds: 0.2) { sine(1000)($0 + Int(0.3 * sr)) }
     #expect(chain.isIdle())
     let x = (0..<4800).map { sine(1000)($0 + Int(0.5 * sr)) }
-    #expect(run(chain, seconds: 0.1) { sine(1000)($0 + Int(0.5 * sr)) } == x)
+    #expect(
+      sameSamples(run(chain, seconds: 0.1) { sine(1000)($0 + Int(0.5 * sr)) }, x) == .identical)
   }
 
   @Test func silenceDecaysToExactZero() {

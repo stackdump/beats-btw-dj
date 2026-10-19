@@ -112,10 +112,16 @@ struct RiserTests {
     #expect((rise?.riseDB ?? 0) >= 9, "rise \(rise?.riseDB ?? 0) dB")
     #expect((rise?.spearman ?? 0) >= 0.9, "ρ \(rise?.spearman ?? 0)")
     print("riserRiseDB \(rise?.riseDB ?? 0) spearman \(rise?.spearman ?? 0)")
-    // without it the band is flat (the same kick and bass every beat)
+    // without it there is nothing in the band to rise: the kick and bass leave only numeric
+    // dust above 4 kHz, −82…−94 dB and ±6 dB beat to beat, so its "rise" is noise (7.3 dB
+    // measured). Every beat sits 50 dB under where the riser ends (about −18 dB).
     let off = render(p, [])
     let flat = RiserRise.measure(left: off.l, right: off.r, sampleRate: sr, project: p)
-    #expect(abs(flat.first?.riseDB ?? 99) < 3)
+    let floor = (rise?.beatsDB.last ?? 0) - 50
+    #expect(flat.count == 1)
+    #expect(
+      (flat.first?.beatsDB ?? [0]).allSatisfy { $0 < floor },
+      "without the riser: \(flat.first?.beatsDB ?? []) dB, the riser ends at \(floor + 50) dB")
   }
 
   /// Before the first window the render is the bytes it was without the riser; two renders
@@ -125,13 +131,13 @@ struct RiserTests {
     let on = render(p, [.riser])
     let off = render(p, [])
     let before = 32 * step
-    #expect(Array(on.l[0..<before]) == Array(off.l[0..<before]))
-    #expect(Array(on.r[0..<before]) == Array(off.r[0..<before]))
+    #expect(sameSamples(Array(on.l[0..<before]), Array(off.l[0..<before])) == .identical)
+    #expect(sameSamples(Array(on.r[0..<before]), Array(off.r[0..<before])) == .identical)
     let again = render(p, [.riser])
     // (compared as Bools: a failing #expect on two renders would print a million floats)
     let same = again.l == on.l && again.r == on.r
     #expect(same)
-    #expect(on.l != off.l)
+    #expect(sameSamples(on.l, off.l) != .identical)
   }
 
   /// It climbs to −12 dB and cuts at the drop: nothing of it a few ms into the drop.
@@ -168,7 +174,7 @@ struct RiserTests {
   @Test func widensUnderStereo() {
     let p = riserProject()
     let mono = render(p, [.riser])
-    #expect(mono.l == mono.r)
+    #expect(sameSamples(mono.l, mono.r) == .identical)
     let wide = render(p, [.riser, .stereo])
     let plain = render(p, [.stereo])
     let side = zip(minus(wide.l, plain.l), minus(wide.r, plain.r)).map { ($0 - $1) / 2 }

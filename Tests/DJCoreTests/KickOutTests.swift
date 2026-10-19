@@ -72,7 +72,7 @@ struct KickOutTests {
     }
     #expect(
       rests([("intro", 64), ("buildup", 64), ("drop", 128), ("buildup", 32), ("drop", 64)])
-        == [Entry(from: 112, to: 128, mask: .kick), Entry(from: 240, to: 256, mask: .kick)])
+        == [Entry(from: 112, to: 128, mask: .kick), Entry(from: 272, to: 288, mask: .kick)])
     #expect(rests([("buildup", 64), ("chorus", 64)]).isEmpty)
     #expect(rests([("buildup", 16), ("drop", 64)]).isEmpty)
     #expect(rests([("intro", 64), ("buildup", 64)]).isEmpty)
@@ -109,7 +109,7 @@ struct KickOutTests {
     let kickOnly = buildupProject(snare: false, bass: false)
     let out = render(kickOnly, .kickOut)
     let plain = render(kickOnly, [])
-    #expect(Array(out[0..<(48 * step)]) == Array(plain[0..<(48 * step)]))
+    #expect(sameSamples(Array(out[0..<(48 * step)]), Array(plain[0..<(48 * step)])) == .identical)
     let last = rmsDB(out, 48 * step + step / 2, 64 * step)
     #expect(last < -60, "kick in the last buildup bar: \(last) dB")
     #expect(rmsDB(plain, 48 * step + step / 2, 64 * step) > -40)

@@ -25,6 +25,8 @@ public final class SessionRecorder {
     for a in engine.loopSettings where !DJEngine.defaultLoopSettings.contains(a) { r.record(a) }
     // Locked actions too: a locked controller binding does nothing, so recorded MIDI needs them.
     for key in engine.lockedActions.sorted() { r.record(.lock(key: key, on: true)) }
+    // The loops' FX unit (the decks' is in their params): as the actions that set it.
+    for a in engine.loopChannel.fxUnit.actions(deck: engine.loopChannel.name) { r.record(a) }
     return r
   }
 
@@ -109,6 +111,7 @@ extension Deck {
     p.autoGain = autoGain
     p.disabledRoles = disabledRoles.sorted()
     p.wander = wander.settings
+    p.fxUnit = fxUnit
     return p
   }
 
@@ -131,6 +134,7 @@ extension Deck {
     applyAutoGain(now: true)
     for r in p.disabledRoles { setRoleDisabled(r, true) }
     wander = p.wander
+    applyFxUnit(p.fxUnit)
   }
 }
 
@@ -269,6 +273,7 @@ extension DJEngine {
     case .clipLoop(let id, let on): setLooping(id, on)
     case .clipGain(let id, let v): setClipGain(id, v)
     case .clipCrop(let id, let from, let to): cropClip(id, from: from, to: to)
+    case .clipRetune(let id, let voices): retuneClip(id, voices: voices, buffer: buffer)
     case .clipSequence(let steps, let replacing): makeSequence(steps, replacing: replacing)
     case .clipRemove(let id): removeClip(id)
     case .clipRestore(let id, let at): restoreClip(id, at: at)
@@ -317,6 +322,18 @@ extension DJEngine {
     case .setRoleVoice(let n, let role, let voice): deck(n)?.setRoleVoice(role, voice)
     case .mixOut(let n, let bars): deck(n)?.mixOut(bars: bars)
     case .mixIn(let n, let bars): deck(n)?.mixIn(bars: bars)
+    case .rewind(let n): deck(n)?.rewind()
+    case .focus(let n): if deck(n) != nil { focus = n }
+    case .stemMute(let n, let stem, let on):
+      if let d = deck(n), d.isStemMuted(stem) != on { d.toggleStem(stem) }
+    case .masterFx(let n, let key, let value):
+      if let d = deck(n), let k = MasterFxKey(id: key) { d.setMasterFx(k, k.sliderValue(value)) }
+    case .fx(let n, let param, let value):
+      if let d = deck(n), let p = FxParam(id: param) { d.setFx(p, value) }
+    case .fxReset(let n, let onBeat):
+      if let d = deck(n) { d.resetFx(atFrame: onBeat ? fxBeatFrame(d) : 0) }
+    case .fxKill(let n, let on, let onBeat):
+      if let d = deck(n) { d.killFx(on, atFrame: onBeat ? fxBeatFrame(d) : 0) }
     case .clipImport(let id, let title, let bpm, let beats, let provenance):
       if let b = buffer ?? sampleLibrary[id] ?? sampleResolver?(id) {
         importClip(

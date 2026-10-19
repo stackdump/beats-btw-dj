@@ -348,7 +348,7 @@ struct WaveDeckSourceTests {
     src.setTempo(300)
     src.play()
     let got = renderBlocks(src, blocks: 400)
-    #expect(got == want)
+    #expect(sameSamples(got, want) == .identical)
     #expect(got.contains { $0 != 0 })
     #expect(src.isPlaying && src.hasProject)
     #expect(src.tick == runner.graph!.tick)

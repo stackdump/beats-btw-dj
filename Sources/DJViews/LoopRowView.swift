@@ -47,9 +47,34 @@ struct ClipState: Equatable, Identifiable {
   var canLoadOrigin = false
   /// Its after effects (`LoopClip.fx`).
   var fx = LoopFX()
+  /// Its own launch boundary in beats, fade and tempo follow (`DJEngine.clipQuantum`,
+  /// `clipFade`, `clipFollow`); nil: it follows the row's.
+  var quantum: Int?
+  var fade: LoopFade?
+  var follow: LoopFollow?
 }
 
 extension ClipState {
+  /// Whether it has a launch, fade or tempo rule of its own.
+  var hasLaunchOverride: Bool { quantum != nil || fade != nil || follow != nil }
+
+  /// Its own rules, short, for its pad's badge ("bar · fade 1 beat · louder"); nil without any.
+  var launchBadge: String? {
+    let parts = [
+      quantum.map { DJEngine.quantumLabel($0) }, fade.map { "fade \($0.label)" },
+      follow.map { Self.followLabel($0) },
+    ].compactMap { $0 }
+    return parts.isEmpty ? nil : parts.joined(separator: " · ")
+  }
+
+  /// "louder deck" / "own deck": a tempo follow, as the Tempo choices name it.
+  static func followLabel(_ f: LoopFollow) -> String {
+    switch f {
+    case .louder: "louder deck"
+    case .source: "own deck"
+    }
+  }
+
   /// Where a clip came from, in a few lines: the track, the bars, the tempo and what was set.
   static func describe(_ p: JSONValue?) -> [String] {
     guard let p else { return [] }
@@ -58,6 +83,11 @@ extension ClipState {
       let b = p["beats"]?.array?.compactMap(\.int) ?? []
       let range = b.count == 2 ? "beats \(b[0] + 1)–\(b[1])" : "a crop"
       return ["Cropped to \(range) of:"] + describe(p["parent"]).map { "  " + $0 }
+    case "retune":
+      let v = DeckAction.voices(json: p["voices"]).sorted { $0.key < $1.key }
+        .map { "ch \($0.key) → \($0.value)" }.joined(separator: ", ")
+      return ["Retuned (\(v.isEmpty ? "as taken" : v)) from:"]
+        + describe(p["parent"]).map { "  " + $0 }
     case "sequence":
       let steps = p["steps"]?.array ?? []
       return ["Sequence of \(steps.count) step\(steps.count == 1 ? "" : "s"):"]

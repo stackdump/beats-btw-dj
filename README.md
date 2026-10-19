@@ -7,14 +7,16 @@ lab (`public/jog/`, commit `b7704ba`) because the goals diverged: beats is a
 deterministic, shareable web studio; this is live performance with real
 hardware (first target: Hercules DJControl Inpulse 200 MK3).
 
+**Playing the app:** [docs/MANUAL.md](docs/MANUAL.md) is the manual — decks, sections, loops, FX, controllers, sessions.
+
 **The app is Swift** (SwiftUI + CoreMIDI + AVAudioEngine), built with
 SwiftPM — no Xcode project. The Go CLI and the browser lab stay as hardware
 and capture tools.
 
-## Where we are (2026-10-11)
+## Where we are (2026-10-18, integrate/roadmap at `28d0b47`)
 
-Phases 1–5 of [ROADMAP.md](ROADMAP.md) are done on `main`; what is still open is listed
-there. In short:
+Phases 1–5 of [ROADMAP.md](ROADMAP.md) are done on `main`; Phase 6 (musicality) is built on
+`integrate/roadmap` (below). What is still open is listed in the roadmap. In short:
 
 - **Decks and mixer** — two decks, each a scratchable turntable (an audio file; ported from
   the lab's scrub worklet) or a **live Petri net** composed natively from genre + seed
@@ -57,6 +59,68 @@ there. In short:
 - **Remote control** — the running app listens on a local socket; `djctl mcp` is the
   `dj-vevr-se` MCP server over it.
 
+### The product path: `WaveOptions.extended` and `Fixes.all`
+
+Two ways to play a net, and only one is the product:
+
+- **`WaveOptions()` is the parity path** — beats' wave engine exactly: no instrument table, no
+  musicality, no limiter, beats' `tanh` master curve, no loudness gain. It is what the beats
+  fixtures run (`compose()`, shares, CIDs and the wave engine held to the real JS's bytes), and
+  it stays beats-exact; nothing below changes it.
+- **`WaveOptions.extended` is what the app plays** (`Deck.waveOptions`, `djctl render`): the
+  instrument table (`Resources/voices/instruments.json`), the deck's sampler bank voiced by the
+  track's seed, every `DJMusicality.Fixes` flag (`Fixes.all`), the vinyl brake, and
+  `master = "limit"`. `compose()` still runs beats' composer byte for byte; the deck plays
+  `PreparedTrack.played` = `DJMusicality.apply(project, spec:)` (bindings and initial markings
+  only), and the rest is the runner. Per-genre settings (room, echo, voice design, groove
+  template, HF tilt, duck depth) come from `forGenre`.
+
+`Fixes.all`, by the part that added each flag (`djctl render --fixes none|all|name,…` takes
+these names; [docs/musicality-notes.md](docs/musicality-notes.md) has the numbers):
+
+| part | flags |
+|---|---|
+| A — key, time, register | `key`, `timing`, `register`, `dynamics`, `loudness`, `groove`, `offbeatBass`, `phrases` |
+| C — form, harmony, mix | `fills`, `voicing`, `energy`, `duck`, `contour`, `color` |
+| D — parts that do their job, gestures, stereo | `arpeggio`, `buildup`, `crash`, `bassLine`, `openHats`, `stereo` |
+| E — phrasing, the drop, a room | `legato`, `cadence`, `approach`, `dropGap`, `choke`, `space` |
+| F — sound design, a motif, a balanced mix | `subtractive`, `unison`, `echo`, `kickTune`, `motif`, `balance` |
+| G — a song of its own per seed | `variety` |
+| 6.2 — arrangement | `layerBudget`, `bandStop`, `kickOut`, `riser` |
+| 6.3 — harmony that goes somewhere | `harmonicCadence`, `sectionHarmony`, `harmonicRhythm` |
+| 6.4 — a hook, and an answer | `answer`, `hook`, `shape`, `bassMotif`, `arpStyle`, `arpDensity` |
+| 6.5 — a beat in every genre | `backbeat`, `feel`, `drift`, `sweep` |
+| 6.6 — sound and mix | `subOctave`, `hfTilt`, `shimmer` |
+
+(Part B was visual polish: no flag.)
+
+- **Runner-only subset** — a raw-`nets` share was never composed, so the pass has nothing to
+  rewrite: its deck plays `Fixes.runnerOnly` (`loudness`, `groove`, `energy`, `duck`, `stereo`,
+  `dropGap`, `choke`, `space`, `subtractive`, `unison`, `echo`, `kickTune`, `balance`, `feel`,
+  `drift`, `sweep`, `layerBudget`, `bandStop`, `kickOut`, `riser`, `subOctave`, `hfTilt`,
+  `shimmer`). Not the pass's flags, nor the runner halves of pass flags (`fills` / `buildup` /
+  `crash` / `openHats` voicing, `backbeat`'s brushes, `sectionHarmony` / `harmonicRhythm`),
+  which would re-voice or re-pitch nets the composer did not build. `dj_state` reports the
+  deck's set by name.
+- **Level match and limiter** — `.loudness` gains a net deck to `LevelMatch.referenceLUFS`
+  (−12 LUFS integrated; `Loudness.targetDB`, per family), and the deck's `PeakLimiter`
+  (stereo-linked, lookahead, true-peak) holds it under −1 dBTP after the master chain, before
+  the deck's EQ. Measured, not listened to: whole songs sit at −12.0 ± 0.5 LUFS synth, −12.3 ±
+  0.5 sampled (notes §10). The loop channel is trimmed −3 dB to sit level with A / B at the
+  centred crossfader.
+- **The sampled path** — installed Logic / GarageBand EXS instruments and SoundFonts stand in
+  for the synth voices (`VoiceCatalog`, a sound palette per track, Studio by default); each
+  slot is level-normalised on load and measured per part, the loudness probe plays it at that
+  level, and `balance`, `stereo` (per-category width) and `echo` reach sampled parts. Sampled
+  renders depend on what this Mac has installed, and some instruments vary between renders on
+  purpose; GM programs and synth voices are byte-identical on replay.
+
+Where to look: [docs/musicality-notes.md](docs/musicality-notes.md) (what each part changed,
+measured, before / after matrices), [docs/listening-log.md](docs/listening-log.md) (what a
+person heard: rows only a listener writes; the 6.7 first set waits there), and
+[GO-DIVERGENCE.md](GO-DIVERGENCE.md) §5 (the generator bugs these fixes work around, to
+backport to beats).
+
 Open: the Inpulse hardware pass (controls captured but unnamed, or never captured; which
 centre knob is headphones); reverb / delay / pan / shape macros are not ported; the scopes
 need a look on a real display.
@@ -67,9 +131,9 @@ All at once, hot-pluggable:
 
 | Device | Profile | Bound | Parked |
 |---|---|---|---|
-| Hercules DJControl Inpulse 200 MK3 | `inpulse-200-mk3.json` (jogs) + `inpulse-200-mk3-surface.json` | Jogs (scratch / bend / shift-seek), PLAY, CUE, SYNC (beat; SHIFT+SYNC bar), SHIFT+CUE rewind, PFL, LOAD (next track), hot-cue pads + SHIFT clear, FX-mode pads 0x10–0x13 (macros cut / beat-repeat / drop / breakdown), pads 0x20+ (6 role mutes, section prev/next), pads 0x30+ (stingers 1–4), volume, filter, EQ low/mid/high, SHIFT+HIGH gain, pitch, crossfader, master, headphone level, LOOP (hold: record the deck's bars as a clip on the loop row), STEMS music / mic (net decks: mute everything but the drums / the lead; again brings back what they silenced), LOOP pad mode pads (SHIFT + HOT CUE: loops 1–4 on deck A, 5–8 on deck B, in/out on the downbeat, lit while playing), browser wheel (the playing loop's seed ± one per click, recomposed at the next bar); LEDs. `[MIXXX]`/`[UNVERIFIED]` (not yet seen on this unit): every SHIFT+control but the jog (SYNC, CUE, gain, hot-cue clear), hot-cue pads 2/4 on deck A and all on deck B, deck B PFL/LOAD, pads 0x20+/0x30+, the browser wheel, which centre knob is master vs headphones | the three centre buttons (captured, not yet named); SHIFT+LOOP (VINYL, captured, no action yet); browser push and SHIFT+browser (not captured); SHIFT+PLAY, SHIFT+LOOP/STEMS, pad bend (not captured). SHIFT and the HOT CUE/FX mode buttons are hardware layers |
-| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | An FX surface beside the Inpulse, laid out as beats.bitwrap.io maps it (lib/backend/apc-mini-mk2.js), acting on the **aimed deck** (scene 4 / 5 aim at A / B; else whichever deck a controller touched last). Grid = beats' macro catalog in beats' rows from the bottom: mutes (drop, breakdown, solo drums, cut, beat-repeat, double drop), FX (sweep LP / HP, reverb wash, riser; bit crush, phaser drone, res ping), pan (not in dj: dark), pitch + tempo (octave up / down, pitch bend, vinyl brake, half time, tape stop, tempo anchor), feel (chill … reset), —, hits 1–4; lit in beats' group colours, bright while a macro runs. Track buttons: mute kick / snare / hihat / clap / bass / melody / harmony / arp. Scenes: play, regenerate (next seed), auto-next, aim A, aim B, FX reset, next track, panic. Faders: phaser wet, distortion, reverb wet, reverb size, LP, HP, master pitch, crush; master. SHIFT (software) + grid = the loop page: loops 1–64 read like text from the top-left, in/out on the downbeat, violet while playing; LEDs (`[UNVERIFIED]`: the blink status 0x9E) | DRUM mode pads (notes 64–79, ch 10) — instrument mode, pad positions not mapped yet |
-| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | Keys → the focus deck's net, snapped to its scale; joystick X = tempo nudge (focus deck); knobs 2–8 (A / B vol, crossfader, A / B filter, A / B pitch); pads in PROG CHANGE = hot cues (A 1–4, B 1–4); pads in NOTE mode, bank A = stingers 1–4 on A / B, bank B = loops 1–8 (pad n = loop n) `[UNVERIFIED]` | knob 1 (CC 1 is also the joystick's Y axis in this preset) |
+| Hercules DJControl Inpulse 200 MK3 | `inpulse-200-mk3.json` (jogs) + `inpulse-200-mk3-surface.json` | Jogs (scratch / bend / shift-seek), PLAY, CUE, SYNC (beat; SHIFT+SYNC bar), SHIFT+CUE rewind, PFL, LOAD (next track), volume, filter, EQ low/mid/high, SHIFT+HIGH gain, pitch, crossfader, master, headphone level, LOOP (hold: record the deck's bars as a clip on the loop row), STEMS music / mic (net decks: mute everything but the drums / the lead; again brings back what they silenced). Pad modes (pad numbers in panel order 1 2 / 3 4): HOT CUE = hot cues 1–4, SHIFT + pad clears; FX (0x10–0x13) = macros cut / beat-repeat / drop / breakdown; LOOP (SHIFT + HOT CUE, 0x28–0x2B) = loops 1–4 on deck A, 5–8 on deck B, in/out on the downbeat, lit while playing; 0x20–0x23 = part mutes kick / snare / hihat / bass; 0x30–0x33 = stingers 1–4. Browser wheel: the playing net's seed ± one per click (a loop or a song, swapped at the next bar); browser push: Wander on/off (focus deck); SHIFT + wheel: Wander pace (4 / 8 / 16 / 32 bars); LEDs. `[MIXXX]`/`[UNVERIFIED]` (not yet seen on this unit): every SHIFT+control but the jog (SYNC, CUE, gain, hot-cue clear), hot-cue pads 2/4 on deck A and all on deck B, deck B PFL/LOAD, the 0x20 and 0x30 pad ranges (the MK3's FX button sends 0x10–0x13; which notes SAMPLER = SHIFT + FX sends is unknown), the browser wheel, push and SHIFT + wheel, which centre knob is master vs headphones | the three centre buttons 0x01–0x03 (captured: ASSIST/PREP, MASTER, BEATMATCH GUIDE in some order, not yet told apart); SHIFT+LOOP (VINYL, captured, no action yet); SHIFT + browser push (not captured); SHIFT+PLAY, SHIFT + LOOP IN/OUT, pad bend (original-200 numbers, never captured on the MK3). SHIFT and the HOT CUE / FX / LOOP pad-mode buttons are hardware layers |
+| Akai APC mini mk2 (Control port) | `apc-mini-mk2.json` | An FX surface beside the Inpulse, laid out as beats.bitwrap.io maps it (lib/backend/apc-mini-mk2.js), acting on the **aimed deck** (scene 4 / 5 aim at A / B; SHIFT + either aims at the loop channel L `[UNVERIFIED]`, the A/B aim LEDs blinking; else whichever deck a controller touched last). Grid = beats' macro catalog in beats' rows from the bottom: mutes (drop, breakdown, solo drums, cut, beat-repeat, double drop), FX (sweep LP / HP, reverb wash, riser), (build crush, phaser drone, filter res), pan (not in dj: dark), pitch + tempo (octave up / down, pitch bend, vinyl brake, half time, tape stop, tempo anchor), feel (chill, drive, ambient, euphoric, build, wind-down, reset), — (dark), top row: Hit 1–4 stingers; lit in beats' group colours, bright while a macro runs. Track buttons: mute kick / snare / hihat / clap / bass / melody / harmony / arp. Scenes: play, regenerate (next seed), auto-next, aim A, aim B, feel reset, next track, panic. Faders: phaser wet, distortion, reverb wet, reverb size, LP, HP, master pitch, crush; master (an FX-unit fader layout is planned, not built). SHIFT (software) + grid = the loop page: loops 1–64 read like text from the top-left, in/out on the downbeat, violet while playing; LEDs (`[UNVERIFIED]`: the blink status 0x9E) | DRUM mode pads (notes 64–79, ch 10) — instrument mode, pad positions not mapped yet |
+| Akai MPK Mini Mk II | `mpk-mini-mk2.json` | Keys → the focus deck's net, snapped to its scale; joystick X = tempo nudge (focus deck); knobs 2–8 (A / B vol, crossfader, A / B filter, A / B pitch); pads in PROG CHANGE = hot cues (A 1–4, B 1–4); pads in NOTE mode `[UNVERIFIED]`: bank A = the aimed deck's parts on/off, as the APC track buttons (kick, snare, hihat, clap, bass, melody, harmony, arp: pads 1–8), bank B = loops 1–8 (pad n = loop n; pads 1–4 the bottom row, 5–8 the top) | knob 1 (CC 1 is also the joystick's Y axis in this preset) |
 
 Every control is either bound or explicitly parked with a reason (`"action": "unbound"`), and
 tests replay every distinct message captured from the real hardware on 2026-10-07. Two devices

@@ -131,9 +131,13 @@ struct MixOutActionTests {
     #expect(deck.wave.latest?.tail == MixOutTail(fromTick: 80, bars: 2))
   }
 
-  /// Mix in for 2 bars in the verse's second bar: the melody rests from the next bar line (32)
-  /// and its first note after the action lands exactly 2 bars after it (step 64); the drums
+  /// Mix in for 1 bar in the verse's second bar: the melody rests from the next bar line (32)
+  /// and its first note after the action lands exactly 1 bar after it (step 48); the drums
   /// play throughout. Without the action the melody plays on those bar lines.
+  ///
+  /// (Was 2 bars, landing on 64. Since `.layerBudget` is in `Fixes.all` the song's rest
+  /// schedule rests the melody through `tailProject()`'s outro (64…127: the outro's layer
+  /// budget), so a return on 64 has no melody to hear; one bar keeps the check in the verse.)
   @Test func theFirstMelodicNoteLandsNBarsAfterTheActionBar() throws {
     let (dj, deck) = try playingDeck()
     var take = Take()
@@ -141,15 +145,16 @@ struct MixOutActionTests {
     render(deck, into: &take, cursor: &cursor, maxBlocks: 2_000) { d, _ in d.wave.tick >= 20 }
     let before = deck.wave.activeGeneration
     let actionBar = 32
-    dj.perform(.mixIn(deck: "A", bars: 2))
+    let bars = 1
+    dj.perform(.mixIn(deck: "A", bars: bars))
     #expect(deck.isMixingIn)
     #expect(deck.wave.latest?.rests.mask(at: actionBar) == MixOutTail.restMask)
-    render(deck, into: &take, cursor: &cursor, maxBlocks: 9_000) { d, _ in d.wave.tick >= 90 }
+    render(deck, into: &take, cursor: &cursor, maxBlocks: 9_000) { d, _ in d.wave.tick >= 60 }
     let after = take.fires.filter { $0.generation != before }
     let melody = after.filter { $0.channel == 1 }.map(playedStep).sorted()
     let firstMelodic = try #require(melody.first { $0 >= actionBar })
-    #expect(firstMelodic == actionBar + 2 * 16, "the first melodic note is 2 bars after the bar")
-    #expect(!melody.contains { $0 >= actionBar && $0 < actionBar + 32 })
+    #expect(firstMelodic == actionBar + bars * 16, "the first melodic note is 1 bar after the bar")
+    #expect(!melody.contains { $0 >= actionBar && $0 < actionBar + bars * 16 })
     let drums = after.filter { $0.channel == 10 }.map(playedStep)
     #expect(drums.contains(actionBar) && drums.contains(actionBar + 16), "drums play through")
     #expect(!deck.isMixingIn, "over")
@@ -157,7 +162,7 @@ struct MixOutActionTests {
     let (_, ref) = try playingDeck()
     var refTake = Take()
     var refCursor = ref.wave.eventCursorNow()
-    render(ref, into: &refTake, cursor: &refCursor, maxBlocks: 9_000) { d, _ in d.wave.tick >= 90 }
+    render(ref, into: &refTake, cursor: &refCursor, maxBlocks: 9_000) { d, _ in d.wave.tick >= 60 }
     let refMelody = refTake.fires.filter { $0.channel == 1 }.map(playedStep)
     #expect(refMelody.contains(actionBar) && refMelody.contains(actionBar + 16))
   }
@@ -219,8 +224,10 @@ struct MixOutSessionTests {
       ], "one recorded action each, nothing for the relocations")
     let a = try SessionPlayer(session: session).render()
     let b = try SessionPlayer(session: session).render()
-    #expect(a.left == live.left && a.right == live.right, "the replay is the live set")
-    #expect(a.left == b.left && a.right == b.right, "two renders, same bytes")
+    #expect(sameSamples(a.left, live.left) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, live.right) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.left, b.left) == .identical, "two renders, same bytes")
+    #expect(sameSamples(a.right, b.right) == .identical, "two renders, same bytes")
     // the JSON round-trips with the actions in it
     #expect(try Session.decode(session.canonical, cid: session.cid) == session)
   }

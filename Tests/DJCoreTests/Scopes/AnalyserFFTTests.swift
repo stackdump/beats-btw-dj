@@ -111,7 +111,9 @@ struct AnalyserFFTTests {
     let before = a.linearMagnitudes()
     for bad in [0, 16, 100, 65536, -256] { #expect(!a.setFFTSize(bad)) }
     #expect(a.fftSize == 256)
-    #expect(a.linearMagnitudes() == before, "a refused size must not reset the smoothed state")
+    #expect(
+      sameSamples(a.linearMagnitudes(), before) == .identical,
+      "a refused size must not reset the smoothed state")
   }
 
   /// Scaling and bin addressing at every legal size: a sine on bin N/8 has |X|/N = 0.21 there
@@ -370,7 +372,7 @@ struct AnalyserFFTTests {
     a.analyse(sine(64, bin: 8))
     let before = a.linearMagnitudes()
     a.smoothingTimeConstant = 0.9
-    #expect(a.linearMagnitudes() == before, "changing tau keeps the state")
+    #expect(sameSamples(a.linearMagnitudes(), before) == .identical, "changing tau keeps the state")
     // tau 1 freezes the state at 0 forever.
     let frozen = AnalyserFFT(fftSize: 64, smoothingTimeConstant: 1)
     frozen.analyse(sine(64, bin: 8))
@@ -389,7 +391,7 @@ struct AnalyserFFTTests {
     // Same size: no reset.
     let held = a.linearMagnitudes()
     #expect(a.setFFTSize(256))
-    #expect(a.linearMagnitudes() == held)
+    #expect(sameSamples(a.linearMagnitudes(), held) == .identical)
 
     // Different size: state starts again from zero, like a fresh analyser.
     #expect(a.setFFTSize(512))
@@ -398,7 +400,9 @@ struct AnalyserFFTTests {
     a.analyse(x512)
     let fresh = AnalyserFFT(fftSize: 512, smoothingTimeConstant: tau)
     fresh.analyse(x512)
-    #expect(a.linearMagnitudes() == fresh.linearMagnitudes(), "first frame after a size change")
+    #expect(
+      sameSamples(a.linearMagnitudes(), fresh.linearMagnitudes()) == .identical,
+      "first frame after a size change")
     #expect(abs(Double(a.linearMagnitudes()[40]) - 0.21 * (1 - 0.9)) < 1e-5)
 
     // And back: it does not remember the earlier 256-point state either.
@@ -422,7 +426,9 @@ struct AnalyserFFTTests {
     a.analyse(x)
     let b = AnalyserFFT(fftSize: 256, smoothingTimeConstant: 0)
     b.analyse(padded)
-    #expect(a.linearMagnitudes() == b.linearMagnitudes(), "identical to padding by hand")
+    #expect(
+      sameSamples(a.linearMagnitudes(), b.linearMagnitudes()) == .identical,
+      "identical to padding by hand")
     // The spec reference for the same signal (front padded): bins 0...7.
     let want: [Double] = [
       0.00533301576711, 0.00536678176637, 0.00548737201824, 0.0056803748886, 0.00599650598004,
@@ -433,7 +439,7 @@ struct AnalyserFFTTests {
     // Padding at the back would give another answer (the phase differs), so this is not vacuous.
     let back = AnalyserFFT(fftSize: 256, smoothingTimeConstant: 0)
     back.analyse(x + [Float](repeating: 0, count: 156))
-    #expect(back.linearMagnitudes() != m)
+    #expect(sameSamples(back.linearMagnitudes(), m) != .identical)
   }
 
   /// The analyser reuses its scratch frame, which after a loud full-size analysis holds that
@@ -449,7 +455,7 @@ struct AnalyserFFTTests {
     let reused = AnalyserFFT(fftSize: 256, smoothingTimeConstant: 0)
     reused.analyse(loud)
     reused.analyse(x)
-    #expect(reused.linearMagnitudes() == fresh.linearMagnitudes())
+    #expect(sameSamples(reused.linearMagnitudes(), fresh.linearMagnitudes()) == .identical)
     // Several shapes of short input after loud frames, each against a fresh analyser.
     for count in [1, 7, 128, 200, 255] {
       let short = (0..<count).map { Float(sin(Double($0) * 0.3) * 0.5) }
@@ -457,7 +463,9 @@ struct AnalyserFFTTests {
       want.analyse(short)
       reused.analyse(loud)
       reused.analyse(short)
-      #expect(reused.linearMagnitudes() == want.linearMagnitudes(), "count \(count)")
+      #expect(
+        sameSamples(reused.linearMagnitudes(), want.linearMagnitudes()) == .identical,
+        "count \(count)")
     }
     // No input at all after a loud frame is silence, not the previous frame again.
     reused.analyse(loud)
@@ -473,23 +481,26 @@ struct AnalyserFFTTests {
     a.analyse(long)
     let b = AnalyserFFT(fftSize: n, smoothingTimeConstant: 0)
     b.analyse(Array(long.suffix(n)))
-    #expect(a.linearMagnitudes() == b.linearMagnitudes())
+    #expect(sameSamples(a.linearMagnitudes(), b.linearMagnitudes()) == .identical)
     let c = AnalyserFFT(fftSize: n, smoothingTimeConstant: 0)
     c.analyse(long[600..<1000])  // ArraySlice overload
-    #expect(c.linearMagnitudes() == b.linearMagnitudes())
+    #expect(sameSamples(c.linearMagnitudes(), b.linearMagnitudes()) == .identical)
   }
 
   @Test func timeDomainIsTheNewestFFTSizeSamples() {
     let a = AnalyserFFT(fftSize: 32)
     let ramp = (0..<100).map { Float($0) }
-    #expect(a.timeDomain(window: ramp) == (68..<100).map { Float($0) }, "newest 32")
+    #expect(
+      sameSamples(a.timeDomain(window: ramp), (68..<100).map { Float($0) }) == .identical,
+      "newest 32")
     #expect(
       a.timeDomain(window: Array(ramp[0..<20])) == [Float](repeating: 0, count: 12) + ramp[0..<20])
     #expect(a.timeDomain(window: []) == [Float](repeating: 0, count: 32))
     #expect(a.timeDomain(window: ramp).count == a.fftSize)
     // The ArraySlice overload (startIndex != 0): the newest 32 of ramp[40..<100], and a slice
     // shorter than fftSize padded at the front.
-    #expect(a.timeDomain(window: ramp[40..<100]) == (68..<100).map { Float($0) })
+    #expect(
+      sameSamples(a.timeDomain(window: ramp[40..<100]), (68..<100).map { Float($0) }) == .identical)
     #expect(
       a.timeDomain(window: ramp[40..<60]) == [Float](repeating: 0, count: 12) + ramp[40..<60])
     #expect(a.timeDomain(window: ramp[10..<10]) == [Float](repeating: 0, count: 32))
@@ -504,14 +515,14 @@ struct AnalyserFFTTests {
     ramp.withUnsafeBufferPointer { w in
       long.withUnsafeMutableBufferPointer { a.floatTimeDomainData(window: w, into: $0) }
     }
-    #expect(Array(long[0..<32]) == (68..<100).map { Float($0) })
+    #expect(sameSamples(Array(long[0..<32]), (68..<100).map { Float($0) }) == .identical)
     #expect(Array(long[32...]) == [Float](repeating: -1, count: 8))
     // Reading the time domain does not touch the analysis state.
     let b = AnalyserFFT(fftSize: 32, smoothingTimeConstant: 0.5)
     b.analyse(ramp)
     let before = b.linearMagnitudes()
     _ = b.timeDomain(window: ramp)
-    #expect(b.linearMagnitudes() == before)
+    #expect(sameSamples(b.linearMagnitudes(), before) == .identical)
   }
 
   @Test func destinationsShorterOrLongerThanTheBinCountAreSafe() {
@@ -520,10 +531,10 @@ struct AnalyserFFTTests {
     let all = a.decibels()
     var short = [Float](repeating: 99, count: 10)
     short.withUnsafeMutableBufferPointer { a.floatFrequencyData(into: $0) }
-    #expect(short == Array(all[0..<10]))
+    #expect(sameSamples(short, Array(all[0..<10])) == .identical)
     var long = [Float](repeating: 99, count: 40)
     long.withUnsafeMutableBufferPointer { a.floatFrequencyData(into: $0) }
-    #expect(Array(long[0..<32]) == all)
+    #expect(sameSamples(Array(long[0..<32]), all) == .identical)
     #expect(long[32...].allSatisfy { $0 == 99 })
     var none = [Float]()
     none.withUnsafeMutableBufferPointer { a.floatFrequencyData(into: $0) }

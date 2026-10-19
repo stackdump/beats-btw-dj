@@ -146,3 +146,126 @@ public struct SessionMix {
     "\(tracks.first!.title) into \(tracks.last!.title)"
   }
 }
+
+// What a set measures like once rendered (`djctl mix --report`): each track's integrated
+// loudness and true peak over the stretch where it plays alone, the level step at each
+// crossfade (the incoming track alone just after against the outgoing one alone just before),
+// and the whole set's. The numbers say where to listen; they never say it sounds right.
+extension SessionMix {
+  public struct Report: Equatable, Sendable {
+    public struct TrackLevel: Equatable, Sendable {
+      public var title: String
+      public var deck: String
+      /// Integrated loudness, LUFS (−200 for silence), and true peak, dBTP, over the frames
+      /// this track plays alone.
+      public var lufs: Double
+      public var truePeak: Double
+    }
+
+    public struct Transition: Equatable, Sendable {
+      /// Into track `index` (0-based; never 0).
+      public var index: Int
+      /// `window` seconds of the outgoing track alone before the incoming one starts, and of
+      /// the incoming one alone after the outgoing one stops, LUFS.
+      public var before: Double
+      public var after: Double
+      /// after − before, LU.
+      public var step: Double { after - before }
+    }
+
+    public var tracks: [TrackLevel]
+    public var transitions: [Transition]
+    public var lufs: Double
+    public var truePeak: Double
+    public var seconds: Double
+
+    /// What keeps it from being a set to publish: shorter than `minSeconds`, a transition
+    /// stepping more than `maxStep` LU either way, a true peak over `ceiling` dBTP. Empty
+    /// passes (ROADMAP 6.7: ≥ 600 s, ≤ 2 LU, ≤ −1 dBTP).
+    public func problems(
+      minSeconds: Double = 600, maxStep: Double = 2, ceiling: Double = -1
+    ) -> [String] {
+      var out: [String] = []
+      if seconds < minSeconds {
+        out.append(String(format: "%.1f s is under %.0f s", seconds, minSeconds))
+      }
+      for t in transitions where abs(t.step) > maxStep {
+        out.append(
+          String(
+            format: "transition into %d steps %+.2f LU (over %.1f)", t.index + 1, t.step, maxStep))
+      }
+      if truePeak > ceiling {
+        out.append(String(format: "true peak %.2f dBTP is over %.1f", truePeak, ceiling))
+      }
+      return out
+    }
+
+    /// The report as `djctl mix --report` prints it.
+    public var lines: [String] {
+      var out = tracks.enumerated().map { i, t in
+        String(
+          format: "  %d. %@  %-28@ %7.2f LUFS  %6.2f dBTP", i + 1, t.deck as NSString,
+          t.title as NSString, t.lufs, t.truePeak)
+      }
+      for t in transitions {
+        out.append(
+          String(
+            format: "  %d → %d  %7.2f → %7.2f LUFS  step %+.2f LU", t.index, t.index + 1,
+            t.before, t.after, t.step))
+      }
+      out.append(
+        String(format: "  set  %.1f s  %.2f LUFS  %.2f dBTP", seconds, lufs, truePeak))
+      let p = problems()
+      out.append(p.isEmpty ? "  ok" : p.map { "  ✗ \($0)" }.joined(separator: "\n"))
+      return out
+    }
+  }
+
+  /// Measure `audio`, a render of this set (`SessionPlayer`).
+  public func report(_ audio: RenderedAudio, window: Double = 8) -> Report {
+    Self.report(tracks: tracks, audio: audio, window: window)
+  }
+
+  /// The same for any plan: `tracks` in order, each `inFrame` after the one before's, each
+  /// `outFrame` the end of the crossfade out (the last one's, the song's end).
+  public static func report(tracks: [Track], audio: RenderedAudio, window: Double = 8) -> Report {
+    let sr = audio.sampleRate
+    let n = audio.frames
+    func clamp(_ f: Int) -> Int { min(max(0, f), n) }
+    func slice(_ a: Int, _ b: Int) -> (l: [Float], r: [Float]) {
+      let lo = clamp(a)
+      let hi = max(lo, clamp(b))
+      return (Array(audio.left[lo..<hi]), Array(audio.right[lo..<hi]))
+    }
+    func lufs(_ a: Int, _ b: Int) -> Double {
+      let s = slice(a, b)
+      return IntegratedLoudness.lufs(left: s.l, right: s.r, sampleRate: sr)
+    }
+    let w = Int(window * sr)
+    var levels: [Report.TrackLevel] = []
+    var steps: [Report.Transition] = []
+    for (i, t) in tracks.enumerated() {
+      // Alone: from the previous track's stop to the next one's start.
+      let from = i > 0 ? tracks[i - 1].outFrame : 0
+      let to = i + 1 < tracks.count ? tracks[i + 1].inFrame : t.outFrame
+      let s = slice(from, to)
+      levels.append(
+        Report.TrackLevel(
+          title: t.title, deck: t.deck,
+          lufs: IntegratedLoudness.lufs(left: s.l, right: s.r, sampleRate: sr),
+          truePeak: TruePeak.dbtp(left: s.l, right: s.r)))
+      if i > 0 {
+        let start = t.inFrame
+        let stop = tracks[i - 1].outFrame
+        steps.append(
+          Report.Transition(
+            index: i, before: lufs(start - w, start), after: lufs(stop, stop + w)))
+      }
+    }
+    return Report(
+      tracks: levels, transitions: steps,
+      lufs: IntegratedLoudness.lufs(left: audio.left, right: audio.right, sampleRate: sr),
+      truePeak: TruePeak.dbtp(left: audio.left, right: audio.right),
+      seconds: Double(n) / sr)
+  }
+}

@@ -18,9 +18,18 @@ extension DJMusicality {
   /// windows reach takes the first (song order). Runs after `.cadence` and before `.motif`, so
   /// bar 2 restates the hook. Off when compose's own `hook` technique is on (the slots are
   /// already the hook), and on loops (no sections).
-  static func placeHook(_ p: inout Project, genre: GenreDef, spec: TrackSpec) {
+  ///
+  /// `chords`: the pad's chords to land on, as `padChords` gives them, taken before `.color`
+  /// (`apply` passes them). A hook note on a colour seventh is a major seventh / minor ninth
+  /// against the chord's root in the pad and bass, and `unrubColor` can only move the pad's
+  /// tone, not the tune: on house / garage / funk the hook made the sevenths rub. nil: the pad
+  /// as it is now.
+  static func placeHook(
+    _ p: inout Project, genre: GenreDef, spec: TrackSpec,
+    chords triads: (chords: [Int: [Int]], bars: Int)? = nil
+  ) {
     guard spec.overrides["hook"]?.bool != true else { return }
-    let (chords, padBars) = padChords(p)
+    let (chords, padBars) = triads ?? padChords(p)
     let key = keyPitchClasses(p)
     guard padBars > 0, !key.isEmpty else { return }
     let scale = (0...127).filter { key.contains(pc($0)) }
@@ -73,7 +82,7 @@ extension DJMusicality {
   /// targets are scale degrees above `base` (a tonic, on `scale`: every MIDI note in the key);
   /// Transposed adds two (a third), Inverted turns them about the tenth (9 − t), Fragment keeps
   /// the first half, Augmented plays the first half at half speed. Each note goes to the tone
-  /// of `chord` (pitch classes; the key's notes when empty) nearest its target that keeps the
+  /// of `chord` in the key (pitch classes; the key's notes when none is) nearest its target that keeps the
   /// hook's move from the note before (up, down or level), else the nearest; ties go down.
   static func hookBar(
     _ hook: HookCell, mode: Int, base: Int, chord: [Int], key: Set<Int>, scale: [Int]
@@ -90,11 +99,16 @@ extension DJMusicality {
       default: cell.append((h, t))
       }
     }
+    // the chord's tones that are in the key: a pad chord can hold a tone outside it (lofi's
+    // and ambient's sus / quartal chords, a borrowed chord), and `.motif` then restates the
+    // hook in bar 2, so an out-of-key hook note is heard twice
+    let inKey = chord.filter { key.contains($0) }
+    let tones = inKey.isEmpty ? Array(key) : inKey
     var out: [(step: Int, note: Int)] = []
     for (k, c) in cell.enumerated() {
       let raw = scale[min(scale.count - 1, max(0, root + c.target))]
       let options = (-6...6).map { raw + $0 }.filter {
-        (0...127).contains($0) && (chord.isEmpty ? key.contains(pc($0)) : chord.contains(pc($0)))
+        (0...127).contains($0) && tones.contains(pc($0))
       }
       let prev = out.last?.note
       let sign = k > 0 ? (c.target - cell[k - 1].target).signum() : 0

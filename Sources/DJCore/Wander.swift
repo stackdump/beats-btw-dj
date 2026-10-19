@@ -29,8 +29,10 @@ public enum WanderLock {
   public static let tempoTolerance = 0.06
 
   /// The lock that keeps `role` ("keep the bass"): its instrument goes with every new seed, and
-  /// no move mutes it or picks it another instrument. (Its notes still change with the seed:
-  /// beats has no per-part seeds yet.)
+  /// no move mutes it or picks it another instrument. A seedable part (`TrackSpec.seedableParts`)
+  /// keeps its line too: every same-genre swap carries its part seed (`TrackSpec.partSeeds`);
+  /// a genre hop drops it (another genre's figures), and freeing the keep drops it at the next
+  /// swap.
   public static func keep(_ role: String) -> String { keepPrefix + role }
 
   /// The role a `keep:` lock names, nil for any other.
@@ -219,6 +221,9 @@ struct WanderContext: Sendable {
   /// The channels the track plays on (where a carried palette is written); empty = compose the
   /// new spec to find them.
   var channels: [Int] = []
+  /// What Hit 1–4 fire (`Deck.stingers`, the curated table): the stinger move fires one of them
+  /// through `Deck.stinger`, and its log line names it. Empty = "hit n".
+  var stingers: [String] = []
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -408,7 +413,8 @@ public enum Wander {
       let ns = (0..<4).filter { !c.locked(.stinger, "\($0)") }
       guard !ns.isEmpty else { return nil }
       let n = rng.pick(ns)
-      return WanderPlan(kind: .stinger, action: .stinger(n), detail: "hit \(n + 1)")
+      let what = c.stingers.indices.contains(n) ? " · \(c.stingers[n])" : ""
+      return WanderPlan(kind: .stinger, action: .stinger(n), detail: "hit \(n + 1)\(what)")
 
     case .seed:
       var s = nearbySeed(c, &rng)
@@ -516,13 +522,22 @@ public enum Wander {
       extra: c.spec.extra)
   }
 
-  /// What the locks carry into a new spec: the pinned key, and the instruments the user keeps
-  /// (all of them under the instruments lock, else the kept roles'), so they arrive with the
-  /// swap. A new genre is composed once to find which channel each kept role plays on there.
+  /// What the locks carry into a new spec: the pinned key, the kept parts' seeds (same genre
+  /// only), and the instruments the user keeps (all of them under the instruments lock, else
+  /// the kept roles'), so they arrive with the swap. A new genre is composed once to find which
+  /// channel each kept role plays on there.
   static func carry(
     _ c: WanderContext, _ s: inout TrackSpec, sameGenre: Bool, keepLayers: Bool = false
   ) {
     if !keepLayers { s.layers = JSONObject() }
+    // a kept part plays its line on through new seeds: its own seed, else the one it played
+    // under (the track's); only kept parts' seeds go on, so a freed keep drops its seed here
+    s.partSeeds = [:]
+    if sameGenre {
+      for r in c.kept where TrackSpec.seedableParts.contains(r) {
+        s.partSeeds[r] = c.spec.seed(forPart: r)
+      }
+    }
     if let key = c.key, c.locked("key") { s.extra["keyOffset"] = .number(Double(key.offset)) }
     // the deck's sound — palette, kit pick, role overrides — goes with every new track (the
     // palette lock only stops palette hops)
@@ -658,7 +673,8 @@ extension Deck {
       disabledRoles: disabledRoles, stemsMuted: Set(stemsMuted.keys),
       lockedActions: lockedActions, locks: wander.locks, voices: wanderVoices,
       anchorBPM: wander.anchorBPM, key: wander.key, palette: palette, kit: kit,
-      channels: netProject?.channels ?? [])
+      channels: netProject?.channels ?? [],
+      stingers: stingers.map { $0.kind == .fallback ? "stinger" : $0.label })
   }
 
   /// Wander on or off (`DeckAction.wander`). On, it waits for the next phrase end; the bar it

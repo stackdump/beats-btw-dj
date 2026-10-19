@@ -41,6 +41,10 @@ public final class ControlServer: @unchecked Sendable {
   public let path: String
   private let fd: Int32
   private let handler: ControlHandler
+  // the listening socket's lifetime: `stop` and the accept thread, under `stopLock`
+  private let stopLock = NSLock()
+  private var stopped = false
+  private var loopDone = false
 
   /// Bind and start accepting. An existing socket file at `path` is replaced.
   public init(path: String = ControlSocket.defaultPath, handler: @escaping ControlHandler) throws {
@@ -69,18 +73,57 @@ public final class ControlServer: @unchecked Sendable {
   }
 
   /// Stop accepting and remove the socket file. Open connections finish their line.
+  ///
+  /// The listening descriptor is closed only once both this and the accept thread are done
+  /// with it, never while the thread may still call `accept`: closed under it, a thread that
+  /// had not reached `accept` yet (a busy machine starts it late) would accept on whatever
+  /// socket the process opened next under the same number, another server's, and answer that
+  /// server's clients with this handler.
   public func stop() {
-    shutdown(fd, SHUT_RDWR)
-    close(fd)
+    let wake: Bool = stopLock.withLock {
+      if stopped { return false }
+      stopped = true
+      if loopDone {
+        close(fd)
+        return false
+      }
+      shutdown(fd, SHUT_RDWR)
+      return true
+    }
+    // wake an `accept` the shutdown did not: it takes this connection, sees `stopped`, and
+    // drops it
+    if wake, var addr = try? unixAddress(path) {
+      let s = socket(AF_UNIX, SOCK_STREAM, 0)
+      if s >= 0 {
+        _ = withUnsafePointer(to: &addr) {
+          $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            connect(s, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+          }
+        }
+        close(s)
+      }
+    }
     unlink(path)
   }
 
+  private var isStopped: Bool { stopLock.withLock { stopped } }
+
   private func acceptLoop() {
-    while true {
+    defer {
+      stopLock.withLock {
+        loopDone = true
+        if stopped { close(fd) }  // else `stop` closes it
+      }
+    }
+    while !isStopped {
       let c = accept(fd, nil, nil)
       if c < 0 {
-        if errno == EINTR { continue }
-        return  // closed by stop()
+        if errno == EINTR || errno == ECONNABORTED { continue }
+        return  // shut down by stop()
+      }
+      if isStopped {
+        close(c)
+        return
       }
       var one: Int32 = 1
       setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))

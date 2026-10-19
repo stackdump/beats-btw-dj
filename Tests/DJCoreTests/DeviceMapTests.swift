@@ -37,7 +37,8 @@ struct DeviceMapTests {
     #expect(row("shift", 0).action == "SHIFT")
     let mpk = SurfaceProfile.mpkMiniMK2.deviceMap()
     #expect(mpk.first { $0.group == "keys" && $0.index == 60 }?.action == "live keys (focus deck)")
-    #expect(mpk.first { $0.group == "padNotes" && $0.index == 0 }?.action == "mute kick · aimed deck")
+    #expect(
+      mpk.first { $0.group == "padNotes" && $0.index == 0 }?.action == "mute kick · aimed deck")
     #expect(mpk.first { $0.group == "joystickX" }?.action == "tempo nudge (focus deck)")
     let ip = SurfaceProfile.inpulse200MK3.deviceMap()
     #expect(ip.first { $0.group == "deckB.buttons" && $0.index == 2 }?.action == "sync · deck B")

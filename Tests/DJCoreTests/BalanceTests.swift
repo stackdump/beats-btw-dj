@@ -52,4 +52,62 @@ struct BalanceTests {
     #expect(
       PreparedTrack(spec: spec, sampleRate: 22_050).prepared.balance == track.prepared.balance)
   }
+
+  /// Per-family targets (ROADMAP 6.6): chill has its own targets.json block, the
+  /// [RULE-OF-THUMB] jazz / lofi entry (bass and keys forward, hats down); jazz has none and
+  /// borrows it; dance and song, and no genre, keep the default.
+  @Test func familiesPickTheirEntry() throws {
+    #expect(MixBalance.family(genre: "lofi") == "chill")
+    #expect(MixBalance.family(genre: "jazz") == "jazz")
+    #expect(MixBalance.family(genre: "techno") == "dance")
+    #expect(MixBalance.family(genre: nil) == nil)
+    #expect(MixBalance.entry(family: "chill") == "chill")
+    #expect(MixBalance.entry(family: "jazz") == "chill")
+    for f in ["dance", "song", nil] as [String?] {
+      #expect(MixBalance.entry(family: f) == "default")
+      #expect(MixBalance.targets(family: f) == MixBalance.targetDB)
+    }
+    let chill: [String: Double] = [
+      "kick": -2, "bass": -1, "lead": -4, "snare": -8, "pad": -4, "arp": -8, "hats": -14,
+    ]
+    #expect(MixBalance.targets(family: "chill") == chill)
+    #expect(MixBalance.targets(family: "jazz") == chill)
+    let block = try #require(MixTargets.shared.balance.families["chill"])
+    for (part, t) in block { #expect(t.source.hasPrefix("[RULE-OF-THUMB]"), "\(part)") }
+    let r = MixBalance.Report(levels: ["kick": -3, "bass": -2, "hats": -15], genre: "bossa")
+    #expect(r.family == "jazz" && r.entry == "chill" && r.targets == chill)
+    #expect(try #require(r.errorDB) < 1e-9)
+  }
+
+  /// A dance track's trims are what they were before families (the default entry) to within
+  /// 0.1 dB, on what a deck prepares.
+  @Test(arguments: ["techno", "house", "trance"])
+  func danceTrimsAreUnchanged(genre: String) throws {
+    let spec = TrackSpec(genre: genre, seed: 42, structure: "minimal")
+    let track = PreparedTrack(spec: spec, sampleRate: 22_050)
+    let trims = try #require(track.prepared.balance)
+    // (the hats untilted on both sides, as the deck's trims measure them: MixBalance.trims(hfTilt:))
+    let old = MixBalance.trims(for: track.played, fixes: track.opts.musicality)
+    #expect(Set(trims.keys) == Set(old.keys))
+    for (k, v) in old { #expect(abs(trims[k]! - v) < 0.1, "\(genre) \(k): \(v) → \(trims[k]!)") }
+  }
+
+  /// jazz and lofi, synth path, balanced to the chill entry: within 2 dB of it, and the bass
+  /// sits further over the hats than the default's trims would put it.
+  @Test(arguments: ["lofi", "jazz"])
+  func chillFamiliesMeetTheirTargets(genre: String) throws {
+    let after = levels(genre, .all)
+    let family = MixBalance.family(genre: genre)
+    let e = try #require(MixBalance.error(after, family: family), "\(genre): \(after)")
+    print(
+      "\(genre) synth balance error \(e) dB against \(MixBalance.entry(family: family)):", after)
+    #expect(e <= 2, "\(genre): balance error \(e) dB, \(after)")
+    let spec = TrackSpec(genre: genre, seed: 42, structure: "standard")
+    let played = DJMusicality.apply(spec.project(), spec: spec, fixes: .all)
+    let own = MixBalance.trims(for: played, fixes: .all, family: family)
+    let plain = MixBalance.trims(for: played, fixes: .all)
+    if let b = own["bass"], let h = own["hats"], let b0 = plain["bass"], let h0 = plain["hats"] {
+      #expect(b - h >= b0 - h0, "\(genre): bass − hats trim \(b0 - h0) → \(b - h) dB")
+    }
+  }
 }

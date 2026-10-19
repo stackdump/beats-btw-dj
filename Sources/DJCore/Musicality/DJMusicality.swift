@@ -261,6 +261,24 @@ public enum DJMusicality {
       .shimmer,
     ]
 
+    /// The fixes that live wholly in the runner (`WaveRunner.prepare` / `hit` / `render`,
+    /// `forGenre`'s settings, the rest schedule): what a deck whose nets the pass never saw — a
+    /// raw-`nets` share — still plays with. Not the pass's flags, nor the runner halves of pass
+    /// flags (`.fills` / `.buildup` / `.crash` / `.openHats` voice what the pass binds,
+    /// `.backbeat`'s brushes, `.sectionHarmony` / `.harmonicRhythm` move the composer's
+    /// sections and slots), which would re-voice or re-pitch nets the composer did not build.
+    public static let runnerOnly: Fixes = [
+      .loudness, .groove, .energy, .duck, .stereo, .dropGap, .choke, .space, .subtractive,
+      .unison, .echo, .kickTune, .balance, .feel, .drift, .sweep, .layerBudget, .bandStop,
+      .kickOut, .riser, .subOctave, .hfTilt, .shimmer,
+    ]
+
+    /// The names (`named`) of the flags in this set, in bit order: what `dj_state` reports.
+    public var names: [String] {
+      Fixes.named.filter { $0.value.rawValue.nonzeroBitCount == 1 && contains($0.value) }
+        .sorted { $0.value.rawValue < $1.value.rawValue }.map(\.key)
+    }
+
     /// Each fix by the name `djctl render --fixes` takes.
     public static let named: [String: Fixes] = [
       "key": .key, "timing": .timing, "register": .register, "dynamics": .dynamics,
@@ -295,7 +313,13 @@ public enum DJMusicality {
     if fixes.contains(.register) { separateRegisters(&p) }
     if fixes.contains(.bassLine) { leadBass(&p) }
     if fixes.contains(.variety) { varyFigures(&p, genre: genre, spec: spec) }
+    // the pad's chords before `.color` adds its sevenths: what `.cadence`, `.hook` and
+    // `.motif` aim the melody's chord tones at, so the tune never lands on a seventh (a major
+    // seventh / minor ninth against the root in the pad and bass) that `unrubColor`, which
+    // moves only the pad's tone, cannot fix (nil when `.color` added nothing: the pad as is)
+    var triads: (chords: [Int: [Int]], bars: Int)? = fixes.contains(.color) ? padChords(p) : nil
     let colored = fixes.contains(.color) ? colorChords(&p, genre: genre) : []
+    if colored.isEmpty { triads = nil }
     if fixes.contains(.voicing) { voiceLeadPads(&p) }
     let arpGenre = fixes.contains(.arpStyle) ? spec.genre : nil
     if fixes.contains(.arpeggio) && !fixes.contains(.arpDensity) {
@@ -304,9 +328,9 @@ public enum DJMusicality {
     if fixes.contains(.offbeatBass) { moveBassOffTheKick(&p, genre: genre) }
     if fixes.contains(.contour) { stepRepeatedNotes(&p) }
     if fixes.contains(.shape) { shapeMelody(&p, genre: genre, spec: spec) }
-    if fixes.contains(.cadence) { resolvePhraseEnds(&p) }
-    if fixes.contains(.hook) { placeHook(&p, genre: genre, spec: spec) }
-    if fixes.contains(.motif) { stateIdeasTwice(&p) }
+    if fixes.contains(.cadence) { resolvePhraseEnds(&p, chords: triads) }
+    if fixes.contains(.hook) { placeHook(&p, genre: genre, spec: spec, chords: triads) }
+    if fixes.contains(.motif) { stateIdeasTwice(&p, chords: triads) }
     if fixes.contains(.answer) { answerPhrases(&p, genre: genre, spec: spec) }
     if fixes.contains(.bassMotif) { restateBassRhythm(&p, genre: genre, spec: spec) }
     if fixes.contains(.approach) { approachChordChanges(&p, genre: genre) }
@@ -991,6 +1015,41 @@ public enum DJMusicality {
     MixTargets.shared.placement(kind: kind, group: group)
   }
 
+  /// How wide a sampled instrument plays (`.stereo`, ROADMAP 6.6): its slot's side signal
+  /// scaled by `width` (0 = mono, 1 = as the samples have it), after a side highpass at
+  /// `sideHz` when it has one. EXS and SoundFont patches come with whatever image their maker
+  /// gave them; this sets it by what the instrument is. Applied per slot in the runner,
+  /// before the sampler bus's own 150 Hz side highpass.
+  public struct SampledWidth: Equatable, Sendable {
+    public var width: Double
+    public var sideHz: Double?
+    public static let asLoaded = SampledWidth(width: 1, sideHz: nil)
+  }
+
+  /// The highpass on a widened slot's side signal (the keys' and pads' low end stays mono).
+  public static let sampledSideHz = 300.0
+
+  /// Where `sampledWidth`'s numbers come from.
+  public static let sampledWidthSource =
+    "rule-of-thumb (6.6): mixing practice for sampled parts — bass mono, keys and pads wider "
+    + "than recorded with the side highpassed at 300 Hz, guitars a little narrower, leads "
+    + "narrower still so the melody holds the centre; not yet measured against references"
+
+  /// A sampled slot's width by its `VoiceCatalog` category (`bass.*` 0, `keys.*` and `pad`
+  /// 1.2 over 300 Hz, `guitar.*` 0.8, `synth.lead` 0.6, the rest as loaded), the bass part mono
+  /// whatever it plays. `category` nil (no catalog name) goes by `group` alone.
+  public static func sampledWidth(category: String?, group: String) -> SampledWidth {
+    if group == "bass" { return SampledWidth(width: 0, sideHz: nil) }
+    guard let c = category else { return .asLoaded }
+    if c.hasPrefix("bass.") { return SampledWidth(width: 0, sideHz: nil) }
+    if c.hasPrefix("keys.") || c == "pad" {
+      return SampledWidth(width: 1.2, sideHz: sampledSideHz)
+    }
+    if c.hasPrefix("guitar.") { return SampledWidth(width: 0.8, sideHz: nil) }
+    if c == "synth.lead" { return SampledWidth(width: 0.6, sideHz: nil) }
+    return .asLoaded
+  }
+
   // MARK: ducking
 
   /// How far bass and pad dip on a kick (`.duck`): half (−6 dB) under a four-on-the-floor kick
@@ -1170,47 +1229,63 @@ public enum DJMusicality {
   /// bass note sounding in its span, or a major seventh voiced a semitone (or a minor ninth)
   /// under one of the chord's roots, moves to the next of its candidates that does neither, at
   /// the octave nearest where it was; with none, the chord stays a triad.
+  ///
+  /// A tone rubs when more than `colorRubShare` of the other parts' notes sounding with it are
+  /// a semitone from it (any part but the pad's own, as `semitoneClashes` counts them): a
+  /// seventh against a passing note is the style, against the tune's held notes it is not.
+  /// Dropping a tone at any rub at all left house, garage, jazz and funk a seventh on only
+  /// 0.33…0.55 of their chords over ten seeds.
   static func unrubColor(_ p: inout Project, _ tones: [ColorTone]) {
     let wanted = Set(tones.map(\.net))
     // every sounding span of each colour tone, and every melody / arp / bass note
     var spans: [String: [(start: Int, end: Int)]] = [:]
-    var others: [(start: Int, end: Int, pc: Int)] = []
+    // every other part's notes, as `MusicalityReport.semitoneClashes` hears them (any group
+    // but the colour tone's own): not only melody / arp / bass, since 6.x put more parts
+    // (hooks, stingers, other tonal roles) against the pad
+    var others: [(start: Int, end: Int, pc: Int, group: String)] = []
     let g = WaveGraph(project: p)
     let tempo = g.tempo > 0 ? g.tempo : 120
     let msPerStep = 60000 / (tempo * 4)
-    var lead: [Bool] = []
+    var group: [String] = []
+    var groupOf: [String: String] = [:]
     for n in g.nets {
-      lead.append(["melody", "arp", "bass"].contains(NoteLog.groupName(n.bundle, id: n.id)))
+      let name = NoteLog.groupName(n.bundle, id: n.id)
+      group.append(name)
+      groupOf[n.id] = name
     }
     for _ in 0..<NoteLog.length(p) {
       g.advance { n, t in
         guard !isDrumChannel(Int(n.channel[t])) else { return }
         let steps = n.durSteps[t] > 0 ? n.durSteps[t] : n.durMs[t] / msPerStep
         let end = g.tick + max(1, Int(steps.rounded(.up)))
-        if lead[n.index] {
-          others.append((g.tick, end, n.note[t] % 12))
-        } else if wanted.contains(n.id) {
+        if wanted.contains(n.id) {
           spans["\(n.id)/\(n.transIds[t])", default: []].append((g.tick, end))
+        } else {
+          others.append((g.tick, end, n.note[t] % 12, group[n.index]))
         }
       }
       if g.stopRequested { break }
     }
     others.sort { $0.start < $1.start }
-    func heard(_ s: (start: Int, end: Int)) -> Set<Int> {
-      var pcs = Set<Int>()
+    func heard(_ s: (start: Int, end: Int), apart from: String) -> [Int] {
+      var pcs: [Int] = []
       for o in others {
         if o.start >= s.end { break }
-        if o.end > s.start { pcs.insert(o.pc) }
+        if o.end > s.start && o.group != from { pcs.append(o.pc) }
       }
       return pcs
     }
     for tone in tones {
       guard var nb = p.nets[tone.net], let b = nb.bindings["t\(tone.step)"] else { continue }
-      var against = Set<Int>()
-      for s in spans["\(tone.net)/t\(tone.step)"] ?? [] { against.formUnion(heard(s)) }
+      var against: [Int] = []
+      let own = groupOf[tone.net] ?? ""
+      for s in spans["\(tone.net)/t\(tone.step)"] ?? [] {
+        against += heard(s, apart: own)
+      }
       let chord = tone.chordSteps.compactMap { nb.bindings["t\($0)"]?.note }
       let rubs = { (pc: Int) in
-        against.contains { d in [1, 11].contains(((pc - d) % 12 + 12) % 12) }
+        let n = against.filter { d in [1, 11].contains(((pc - d) % 12 + 12) % 12) }.count
+        return n > 0 && Double(n) > colorRubShare * Double(against.count)
       }
       // a major seventh just under a voiced root: the root's octave, a semitone up
       let underRoot = { (n: Int) in
@@ -1242,6 +1317,11 @@ public enum DJMusicality {
   }
 
   // MARK: arpeggio
+
+  /// See `unrubColor`: about one rubbing note in twelve is let through. Measured over
+  /// MusicalityTests' ten seeds: 0.07 and 0.085 give the same colour and at most +0.64 rubs
+  /// per 100 pairs over the triads; 0.1 adds up to +1.13 (funk), past the tests' +1.
+  static let colorRubShare = 0.085
 
   /// The pad's chord in each bar of its cycle, as pitch classes in the order it strikes them
   /// (root first), and the cycle's length in bars; empty without a pad.
@@ -1571,8 +1651,10 @@ public enum DJMusicality {
   /// chord moves to the nearest one, at most a fourth away and inside the part's range; the
   /// chord's root wins a tie, then the note below (a falling close), and the note before it is
   /// avoided (no stalled ending).
-  static func resolvePhraseEnds(_ p: inout Project) {
-    let (chords, padBars) = padChords(p)
+  ///
+  /// `chords`: the pad's chords before `.color` (as `placeHook` takes them).
+  static func resolvePhraseEnds(_ p: inout Project, chords triads: (chords: [Int: [Int]], bars: Int)? = nil) {
+    let (chords, padBars) = triads ?? padChords(p)
     guard padBars > 0 else { return }
     for id in p.nets.keys {
       guard var nb = p.nets[id], isBarRing(nb), part(nb) == "melody" else { continue }
@@ -1658,8 +1740,11 @@ public enum DJMusicality {
   /// the chord that is not its root (bar 2 ends open, as beats composes it, so bar 4's close
   /// answers it). Runs after `.contour` and `.cadence`, so bar 2 repeats bar 1 as it will be
   /// played.
-  static func stateIdeasTwice(_ p: inout Project) {
-    let (chords, padBars) = padChords(p)
+  ///
+  /// `chords`: the pad's chords before `.color` (as `placeHook` takes them): bar 2's beat notes
+  /// and its close snap to triad tones, never to a colour seventh against the bass's root.
+  static func stateIdeasTwice(_ p: inout Project, chords triads: (chords: [Int: [Int]], bars: Int)? = nil) {
+    let (chords, padBars) = triads ?? padChords(p)
     let key = keyPitchClasses(p)
     guard padBars > 0, !key.isEmpty else { return }
     let scale = (0...127).filter { key.contains(pc($0)) }

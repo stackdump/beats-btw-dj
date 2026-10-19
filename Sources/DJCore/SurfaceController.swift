@@ -140,8 +140,7 @@ public final class SurfaceController {
     case .masterFx:
       // a slider position on its own range, as beats' FX panel sends it
       if let d = deck, let k = b.macro.flatMap(MasterFxKey.init(id:)) {
-        let v = Int((Double(k.min) + e.value * Double(k.max - k.min)).rounded())
-        d.setMasterFx(k, v)  // the net's chain, a sample deck's bus, or the loops'
+        d.setMasterFx(k, k.sliderValue(e.value))  // the net's chain, a sample deck's bus, or the loops'
       }
     case .reverbWet: deck?.reverb.wet = e.value
     case .reverbSize: deck?.reverb.size = e.value
@@ -422,21 +421,13 @@ public final class SurfaceController {
         return (Self.color(m), bus.isActive(m))
       }
       let id = b.macro ?? ""
-      guard d.mode == .net else {
-        // a sample deck plays the master macros on its own bus (not the brake, yet)
-        guard let m = MasterMacro.allCases.first(where: { $0.id == id }), m != .vinylBrake else {
-          return (Color.off, false)
-        }
-        return (Self.color(m), d.isMasterActive(m))
-      }
-      if let m = NetMacro.allCases.first(where: { $0.id == id }) {
+      if d.mode == .net, let m = NetMacro.allCases.first(where: { $0.id == id }) {
         let tempo = [NetMacro.halfTime, .tapeStop, .tempoAnchor].contains(m)
         return (tempo ? Color.yellow : Color.red, d.wave.activeMacros.contains(m))
       }
-      if let m = MasterMacro.allCases.first(where: { $0.id == id }) {
-        return (Self.color(m), d.wave.activeMasterMacros.contains(m))
-      }
-      return (Color.white, false)  // a hit (stinger)
+      // the master macros, in either mode: a sample deck plays them on its own bus
+      if let m = Self.playableMaster(id, d) { return (Self.color(m), d.isMasterActive(m)) }
+      return (d.mode == .net ? Color.white : Color.off, false)  // a hit (stinger); dark on a sample
     }
     let deckColor = b.deck == "A" ? Color.orange : Color.cyan
     let isSet = d.hotCues[b.slot ?? 0] != nil
@@ -446,6 +437,14 @@ public final class SurfaceController {
       guard secs.indices.contains(b.slot ?? 0) else { return (Color.off, false) }
       return (deckColor, d.currentSectionIndex == b.slot)
     case .macro, .panic, .stinger:
+      if d.mode == .sample, d.bank == nil {
+        // a sample deck's bus: panic and the master macros work there, the rest are dark
+        if b.action == .panic { return (Color.red, false) }
+        if b.action == .macro, let m = Self.playableMaster(b.macro ?? "", d) {
+          return (Self.color(m), d.isMasterActive(m))
+        }
+        return (Color.off, false)
+      }
       guard d.mode == .net || (d.bank != nil && b.action == .panic) else {
         return (Color.off, false)
       }
@@ -457,6 +456,10 @@ public final class SurfaceController {
   }
 
   static func key(_ group: String, _ index: Int) -> String { "\(group)#\(index)" }
+
+  /// The master macro `id` names, if `d` can play it: every one, in either mode (a sample deck
+  /// runs the chain and the vinyl brake on its own bus).
+  static func playableMaster(_ id: String, _ d: Deck) -> MasterMacro? { MasterMacro(id: id) }
 
   /// beats' APC colour for a master macro's group.
   static func color(_ m: MasterMacro) -> UInt8 {
@@ -507,5 +510,14 @@ public final class SurfaceController {
     case .pitch: return d.map { ($0.pitch + 1) / 2 }
     default: return nil
     }
+  }
+}
+
+extension MasterFxKey {
+  /// A slider position, 0…1 of its travel, in the slider's own units (its range, rounded): what a
+  /// controller's master FX fader and `DeckAction.masterFx` both set.
+  public func sliderValue(_ position: Double) -> Int {
+    let p = position.isFinite ? Swift.max(0, Swift.min(1, position)) : 0
+    return Int((Double(min) + p * Double(max - min)).rounded())
   }
 }

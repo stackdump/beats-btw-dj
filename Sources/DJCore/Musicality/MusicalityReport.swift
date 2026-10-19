@@ -159,7 +159,7 @@ public struct MusicalityReport: Sendable {
   ) {
     self.init()
     if !controls.isEmpty {
-      let on = controls.filter { $0.tick % 16 == 0 }.count
+      let on = controls.filter { $0.step % 16 == 0 }.count
       changesOnBars = Double(on) / Double(controls.count)
       var starts: [(start: Int, grid: Int)] = []
       var t = 0
@@ -170,10 +170,11 @@ public struct MusicalityReport: Sendable {
         t += sec.steps
       }
       if !starts.isEmpty {
-        // a change fired on tick T is in effect from step T (the next sixteenth)
+        // a change is in effect from its `step` (tick T: step T behind its target, T − 1
+        // ahead of it; `PartChange`)
         let grid = controls.filter { c in
-          let s = starts.last { $0.start <= c.tick } ?? starts[0]
-          return (c.tick - s.start) % s.grid == 0
+          let s = starts.last { $0.start <= c.step } ?? starts[0]
+          return (c.step - s.start) % s.grid == 0
         }.count
         changesOnPhrases = Double(grid) / Double(controls.count)
       }
@@ -578,15 +579,15 @@ public struct MusicalityReport: Sendable {
     // M1 form: changes on 4-bar lines, how late they land, phrase / intro / outro lengths
     if !controls.isEmpty {
       structureOn4Bars =
-        Double(controls.filter { $0.tick % 64 == 0 }.count) / Double(controls.count)
+        Double(controls.filter { $0.step % 64 == 0 }.count) / Double(controls.count)
       maxLatenessTicks = controls.map { c in
-        let start = sectionStarts.last { $0 <= c.tick } ?? 0
-        return (c.tick - start) % 16
+        let start = sectionStarts.last { $0 <= c.step } ?? 0
+        return (c.step - start) % 16
       }.max()
     }
     if !sections.isEmpty {
       let total = sections.reduce(0) { $0 + $1.steps }
-      let events = Set(sectionStarts + controls.map(\.tick).filter { $0 > 0 && $0 < total })
+      let events = Set(sectionStarts + controls.map(\.step).filter { $0 > 0 && $0 < total })
         .sorted()
       let spans = zip(events, events.dropFirst() + [total]).map { Double($1 - $0) / 16 }
       phraseBars = Set(spans.filter { $0 > 0 }).sorted()

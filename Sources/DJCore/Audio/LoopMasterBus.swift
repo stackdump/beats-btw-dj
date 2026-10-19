@@ -31,8 +31,10 @@ import Synchronization
 //
 // Sample decks A / B run one each too (`DeckRenderer.master`): the source is the turntable and the
 // clip's FX, the clock the deck's frames rendered in sample mode, macros timed on the deck's bar
-// grid at its tempo (`Deck.sampleMasterFire`), and the brake never fired (it renders straight
-// through).
+// grid at its tempo (`Deck.sampleMasterFire`). The brake slows the turntable (and the clip's FX,
+// the record's own) and the release skips its playhead on by the frames it fell behind
+// (`Turntable.catchUp`), so the sample lands on the deck's beat grid again. A hand on the
+// platter or a transport stop cancels it where it is (`cancelBrake`): the jog wins.
 //
 // Threading: `render` is the audio thread's (from `LoopBank.render`, `DeckRenderer.renderBlock`). `fire`, `setSlider`, `panic`
 // and the mirrors are the main thread's. Real-time: everything is allocated in `init`
@@ -47,13 +49,18 @@ enum LoopMasterCommand: BitwiseCopyable {
   case slider(key: UInt8, value: Int16)
   /// Cancel and restore everything (pending fires too); a running brake releases.
   case panic
+  /// The FX unit (FxUnit.swift): a control, a reset, the kill. (No sends: the bus has no room or
+  /// echo of its own.)
+  case fxUnit(FxUnitCommand)
 }
 
 public final class LoopMasterBus: @unchecked Sendable {
   let sampleRate: Double
-  private let commands = SPSCRing<LoopMasterCommand>(capacity: 64)
+  private let commands = SPSCRing<LoopMasterCommand>(capacity: 128)
   private let fx: FxAutomation
   private let chain: MasterChain
+  /// The FX unit's hands on the chain (FxUnit.swift).
+  private let unit: FxUnitLayer
   private let brake: TurntableBrake
 
   /// Frames the bus has run (the loop channel's own clock).
@@ -74,7 +81,8 @@ public final class LoopMasterBus: @unchecked Sendable {
   private let opIndex: UnsafeMutablePointer<Int>
   private let opTime: UnsafeMutablePointer<Double>
   private let opKey: UnsafeMutablePointer<UInt8>
-  private let opValue: UnsafeMutablePointer<Int32>
+  private let opValue: UnsafeMutablePointer<Double>
+  private let opLive: UnsafeMutablePointer<Bool>
   private var opCount = 0
 
   // Audio → main.
@@ -90,10 +98,16 @@ public final class LoopMasterBus: @unchecked Sendable {
   /// thread: the bank runs its limiter while it is.
   private(set) var engaged = false
 
+  /// The first frame of the last block the bus changed (`engaged`; `frames` when it didn't): a
+  /// fire landing mid-block leaves the frames before it as they were, so a sample deck's limiter
+  /// starts there, not at the block's start. Audio thread.
+  private(set) var engagedFrom = 0
+
   init(sampleRate: Double) {
     self.sampleRate = sampleRate
     fx = FxAutomation()
     chain = MasterChain(sampleRate: sampleRate)
+    unit = FxUnitLayer(sampleRate: sampleRate)
     brake = TurntableBrake(sampleRate: sampleRate)
     let p = Self.pendingCapacity
     pendingID = [UInt8](repeating: 0, count: p)
@@ -104,6 +118,7 @@ public final class LoopMasterBus: @unchecked Sendable {
     opTime = .allocate(capacity: Self.opCapacity)
     opKey = .allocate(capacity: Self.opCapacity)
     opValue = .allocate(capacity: Self.opCapacity)
+    opLive = .allocate(capacity: Self.opCapacity)
   }
 
   deinit {
@@ -111,6 +126,7 @@ public final class LoopMasterBus: @unchecked Sendable {
     opTime.deallocate()
     opKey.deallocate()
     opValue.deallocate()
+    opLive.deallocate()
   }
 
   // MARK: main thread
@@ -135,6 +151,9 @@ public final class LoopMasterBus: @unchecked Sendable {
     sliderSet[key] = value
     commands.push(.slider(key: UInt8(key.rawValue), value: Int16(clamping: value)))
   }
+
+  /// The FX unit (FxUnit.swift; the deck sends it, `Deck.setFx`).
+  func sendFxUnit(_ c: FxUnitCommand) { commands.push(.fxUnit(c)) }
 
   /// Release everything: animations cancelled and restored, waiting fires dropped, a brake out.
   public func panic() {
@@ -187,8 +206,12 @@ public final class LoopMasterBus: @unchecked Sendable {
     let braking = brake.isOn
     let idleBefore = chain.isIdle()
     while let c = commands.pop() { apply(c) }
+    unit.beginBlock(frames: n, startFrame: s, automation: fx) { key, value in
+      queue(key, value, at: 0, live: true)
+    }
     // the fires due in this block, in frame order; the source rendered up to each brake
     var done = 0
+    var firstChange = n
     while let i = nextDue(before: s + n) {
       let k = min(n, max(0, pendingFrame[i] - s))
       let t = blockTransport + Double(k) / sampleRate
@@ -207,6 +230,7 @@ public final class LoopMasterBus: @unchecked Sendable {
           done = k
         }
         let b = bars <= 0 ? MasterMacro.vinylBrake.defaultDuration : bars
+        firstChange = min(firstChange, k)
         brake.start(durationFrames: Int((Double(b * 4) * 60 / bpm * sampleRate).rounded()))
       } else {
         fx.tempo = bpm
@@ -228,12 +252,16 @@ public final class LoopMasterBus: @unchecked Sendable {
         chain.process(left, right, from: from, to: k)
         from = k
       }
-      chain.apply(MasterFxKey(rawValue: Int(opKey[i]))!, Int(opValue[i]), at: opTime[i])
+      chain.apply(
+        MasterFxKey(rawValue: Int(opKey[i]))!, opValue[i], at: opTime[i],
+        live: opLive[i] ? Double(n) / sampleRate : nil)
     }
     chain.process(left, right, from: from, to: n)
     chain.finish(frames: n)
     let idle = chain.isIdle()
     engaged = braking || brake.isOn || !idleBefore || !idle || opCount > 0
+    for i in 0..<opCount { firstChange = min(firstChange, opIndex[i]) }
+    engagedFrom = !engaged ? n : (braking || !idleBefore || firstChange >= n ? 0 : firstChange)
     var mask = fx.activeMask | (brake.isOn ? MasterMacro.vinylBrake.bit : 0)
     for i in 0..<pendingCount { mask |= 1 << UInt32(pendingID[i]) }
     maskAtomic.store(mask, ordering: .relaxed)
@@ -243,6 +271,13 @@ public final class LoopMasterBus: @unchecked Sendable {
     lpCornerBits.store(corners.lp.bitPattern, ordering: .relaxed)
     idleAtomic.store(idle && !brake.isOn, ordering: .relaxed)
   }
+
+  /// Audio thread, before `render`: drop a running brake where it is, without the catch-up (a
+  /// sample deck's jog or transport stop). Waiting brake fires stay waiting.
+  func cancelBrake() { brake.cancel() }
+
+  /// Audio thread: is the brake running (spinning down or stopped, not yet released)?
+  var braking: Bool { brake.isOn }
 
   private func apply(_ c: LoopMasterCommand) {
     switch c {
@@ -260,6 +295,7 @@ public final class LoopMasterBus: @unchecked Sendable {
       pendingCount = 0
       brake.panic()
       fx.panic { handle($0) }
+    case .fxUnit(let u): unit.take(u)
     }
   }
 
@@ -285,12 +321,20 @@ public final class LoopMasterBus: @unchecked Sendable {
   /// The automation's events during a block: slider dispatches queued for the chain at their
   /// sample; tempo writes (the Feel puck's tempo axis) dropped — the loops keep the decks' tempo.
   private func handle(_ e: FxAutomationEvent) {
-    guard case .fx(let t, let key, let value) = e, opCount < Self.opCapacity else { return }
-    let offset = max(0, t - blockTransport)
+    guard case .fx(let t, let key, let value) = e else { return }
+    // the macro's slider, on the FX unit's setting (FxUnit.swift: at neutral, the slider)
+    queue(key, unit.automated(key, value, automation: fx), at: t - blockTransport, live: false)
+  }
+
+  /// A chain op for this block, `offset` seconds into it.
+  private func queue(_ key: MasterFxKey, _ value: Double, at offset: Double, live: Bool) {
+    guard opCount < Self.opCapacity else { return }
+    let offset = max(0, offset)
     opIndex[opCount] = min(blockFrames, max(0, Int((offset * sampleRate).rounded(.up))))
     opTime[opCount] = chain.time(at: 0) + offset
     opKey[opCount] = UInt8(key.rawValue)
-    opValue[opCount] = Int32(value)
+    opValue[opCount] = value
+    opLive[opCount] = live
     opCount += 1
   }
 }

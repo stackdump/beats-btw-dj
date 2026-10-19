@@ -117,6 +117,26 @@ struct AppLayoutTests {
     #expect(lower(1100..<1380) > 2_000, "the pad grid sits to its right")
   }
 
+  /// A sample deck runs the master chain on its own bus, so its section strip has Master FX
+  /// (not Wander, which composes nets), and the panel's sweep-lp reaches the deck. Its panel
+  /// offers the vinyl brake too (the bus brakes the turntable).
+  @Test func aSampleDeckShowsMasterFx() async throws {
+    typealias S = DeckSections.Section
+    let sample = S.shown(isNet: false)
+    #expect(sample.contains(.masterfx) && !sample.contains(.wander))
+    #expect(S.shown(isNet: true) == S.allCases, "a net deck shows every section")
+    #expect(
+      MasterFxPanel.macros("Pitch", isNet: false) == MasterFxPanel.macros("Pitch", isNet: true))
+    #expect(MasterFxPanel.macros("FX", isNet: false).contains(.sweepLp))
+    let m = try await model()
+    let b = try #require(m.engine?["B"])
+    #expect(m.decks["B"]?.isNet == false)
+    m.fire("B", .sweepLp)  // what the panel's button does
+    #expect(b.isMasterActive(.sweepLp))
+    m.poll()
+    #expect(m.decks["B"]?.masterRunning.contains(.sweepLp) == true, "the section's ● lights")
+  }
+
   @Test func theDefaultWindowSize() async throws {
     let m = try await model()
     savePNG(ContentView(model: m), width: 900, height: 760, name: "app-default")

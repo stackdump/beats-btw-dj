@@ -108,7 +108,7 @@ struct SynthVoiceTests {
   /// Pads (the soft table), strings (Karplus-Strong) and drums play exactly as before.
   @Test func otherVoicesAreUntouched() {
     let pad = oneNote("harmony", note: 60, steps: 8, channel: 7)
-    #expect(render(pad, []) == render(pad, .subtractive))
+    #expect(sameSamples(render(pad, []), render(pad, .subtractive)) == .identical)
     let guitar = oneNote("melody", note: 64, steps: 4, instrument: "acoustic-guitar")
     var o = WaveOptions()
     o.instruments = .shared
@@ -117,9 +117,11 @@ struct SynthVoiceTests {
         o.instruments!.voice(instrument: "acoustic-guitar", group: "melody"), group: "melody")
         == nil)
     #expect(
-      render(guitar, [], instruments: true) == render(guitar, .subtractive, instruments: true))
+      sameSamples(
+        render(guitar, [], instruments: true), render(guitar, .subtractive, instruments: true))
+        == .identical)
     let kick = oneNote("drums", note: 36, steps: 1, channel: 10)
-    #expect(render(kick, []) == render(kick, .subtractive))
+    #expect(sameSamples(render(kick, []), render(kick, .subtractive)) == .identical)
     #expect(
       FilterEnvelope.forVoice(tonalVoice(instrument: "", group: "bass"), group: "bass") == .bass)
     #expect(
@@ -129,7 +131,7 @@ struct SynthVoiceTests {
 
   /// Trance's arp takes the pluck envelope (`VoiceDesign.forGenre`, through `forGenre`); a
   /// house arp, and beats' options for trance (parity), keep the lead's.
-  @Test func trancesArpIsPlucked() {
+  @Test func trancesArpIsPlucked() throws {
     let arp = tonalVoice(instrument: "", group: "arp")
     for genre in ["trance", "edm", "synthwave"] {
       let design = WaveOptions.extended.forGenre(genre).voiceDesign
@@ -141,9 +143,23 @@ struct SynthVoiceTests {
     #expect(WaveOptions.extended.forGenre("house").voiceDesign == VoiceDesign())
     #expect(WaveOptions().forGenre("trance").voiceDesign == VoiceDesign())
     #expect(FilterEnvelope.forVoice(arp, group: "melody", plucked: ["arp"]) != .pluck)
-    // a whole trance track: every shaped arp lane closes at the pluck's rate
-    let track = PreparedTrack(
-      spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: sr)
+    // a whole trance track: every shaped arp lane closes at the pluck's rate. Trance's own arp
+    // instruments (pluck, edm-pluck, bright-pluck, muted-pluck) all have voices of their own in
+    // the instrument table (Karplus-Strong or a set lowpass), which no filter envelope shapes:
+    // no seed has a shaped arp lane. So the arp plays a plain saw the table doesn't know (a
+    // user's instrument pick), which `.subtractive` shapes as a lead unless the arp is plucked.
+    let base = TrackSpec(genre: "trance", seed: 42, structure: "minimal")
+    let arpChannel = try #require(
+      base.project().nets.pairs.first { $0.value.track.group == "arp" }?.value.track.channel)
+    guard
+      case .net(let spec)? = DeckSourceDescriptor.net(base).withInstrument(
+        "supersaw", channel: arpChannel)
+    else {
+      Issue.record("no spec with the arp's instrument picked")
+      return
+    }
+    #expect(InstrumentTable.shared.entries["supersaw"] == nil)
+    let track = PreparedTrack(spec: spec, sampleRate: sr)
     let arpNets = track.played.nets.keys.filter { track.played.nets[$0]?.track.group == "arp" }
     var shaped = 0
     for id in arpNets {
@@ -240,14 +256,14 @@ struct UnisonTests {
   /// Basses and plucks keep one oscillator; saw leads get the pair (mono: they are filtered).
   @Test func whoGetsAPair() {
     let bass = oneNote("bass", note: 33, steps: 8)
-    #expect(render(bass, []) == render(bass, .unison))
+    #expect(sameSamples(render(bass, []), render(bass, .unison)) == .identical)
     #expect(Unison.cents(tonalVoice(instrument: "", group: "melody"), group: "melody") == 6)
     #expect(Unison.cents(tonalVoice(instrument: "piano", group: "melody"), group: "melody") == nil)
     #expect(Unison.cents(tonalVoice(instrument: "", group: "harmony"), group: "harmony") == 7)
     #expect(Unison.cents(tonalVoice(instrument: "", group: "bass"), group: "bass") == nil)
     let lead = oneNote("melody", note: 69, steps: 8)
     let s = renderStereo(lead, [.stereo, .unison, .subtractive])
-    #expect(s.l == s.r)
+    #expect(sameSamples(s.l, s.r) == .identical)
   }
 }
 
@@ -277,7 +293,7 @@ struct KickTuneTests {
   @Test func noKeyNoChange() {
     let p = oneNote("drums", note: 36, steps: 1, channel: 10)
     #expect(p.rootNote == nil)
-    #expect(render(p, []) == render(p, .kickTune))
+    #expect(sameSamples(render(p, []), render(p, .kickTune)) == .identical)
   }
 }
 

@@ -112,6 +112,12 @@ public final class PreparedTrack: @unchecked Sendable {
   /// its genre's and palette's settings applied (`MixBalance.measure` renders the parts with
   /// them), and at.
   public let opts: WaveOptions
+  /// The fixes the deck plays this track with (`opts.musicality`): all the deck asks for on a
+  /// composed track, `Fixes.runnerOnly` of them on a raw-`nets` share.
+  public var fixes: DJMusicality.Fixes { opts.musicality }
+  /// Whether dj's pass (`DJMusicality.apply`) rewrote `played`: false for a raw-`nets` share
+  /// (its nets are the sharer's, played as sent) and for a deck without fixes.
+  public let passApplied: Bool
   let sampleRate: Double
 
   /// The composed track's spec; nil for a raw-`nets` share.
@@ -168,19 +174,40 @@ public final class PreparedTrack: @unchecked Sendable {
   ) {
     self.source = source
     self.project = project
-    if case .net(let spec) = source, !opts.musicality.isEmpty {
-      played = DJMusicality.apply(project, spec: spec, fixes: opts.musicality)
-    } else {
-      played = project
-    }
     var o = opts
     o.voicingSeed = seed
-    if case .net(let spec) = source {
+    switch source {
+    case .net(let spec):
+      var p =
+        opts.musicality.isEmpty
+        ? project : DJMusicality.apply(project, spec: spec, fixes: opts.musicality)
+      // Hit 1–4 curated for the genre and palette: on what plays, never on the composition
+      if let content = opts.stingers {
+        p.curateStingers(
+          p.resolvedStingers(genre: spec.genre, seed: seed, installed: content), seed: seed)
+      }
+      played = p
+      passApplied = !opts.musicality.isEmpty
       o = o.forGenre(spec.genre).forPalette(project.palette, genre: spec.genre)
+    default:
+      // a raw-`nets` share: no pass, the runner's own fixes, the payload's genre's settings
+      // (neutral ones without a genre this app knows)
+      played = project
+      passApplied = false
+      o.musicality.formIntersection(DJMusicality.Fixes.runnerOnly)
+      if case .rawNets(let payload) = source, let genre = Self.genre(rawNets: payload) {
+        o = o.forGenre(genre).forPalette(project.palette, genre: genre)
+      }
     }
     self.opts = o
     self.sampleRate = sampleRate
     prepared = WaveRunner.prepare(played, sampleRate: sampleRate, opts: o, startTick: startTick)
+  }
+
+  /// A raw-`nets` payload's `genre`, when it is one of beats' genres (`forGenre`'s settings).
+  static func genre(rawNets payload: JSONValue) -> String? {
+    guard let g = payload["genre"]?.string, BeatsTables.shared.genres[g] != nil else { return nil }
+    return g
   }
 
   private init(restarting track: PreparedTrack, prepared: WaveProject) {
@@ -188,6 +215,7 @@ public final class PreparedTrack: @unchecked Sendable {
     project = track.project
     played = track.played
     opts = track.opts
+    passApplied = track.passApplied
     sampleRate = track.sampleRate
     self.prepared = prepared
   }
@@ -215,8 +243,9 @@ public final class PreparedTrack: @unchecked Sendable {
 
 extension WaveOptions {
   /// These options with the settings a track of `genre` plays with, for the fixes they hold:
-  /// the duck depth, the room, the echo, the groove template, the voice design
-  /// (`VoiceDesign.forGenre`), the brushes; and the genre itself (`genre`: the rests it gates).
+  /// the duck depth, the room (with the pad shimmer, `.shimmer`), the echo, the groove template,
+  /// the voice design (`VoiceDesign.forGenre`), the brushes, the sub-octave (`SubOctave.forGenre`),
+  /// the HF tilt (`HFTilt.forGenre`); and the genre itself (`genre`: the rests it gates).
   public func forGenre(_ genre: String) -> WaveOptions {
     var o = self
     o.genre = genre
@@ -225,9 +254,13 @@ extension WaveOptions {
       o.voiceDesign = VoiceDesign.forGenre(genre)
     }
     if musicality.contains(.duck) { o.duckDepth = DJMusicality.duckDepth(genre: genre) }
-    if musicality.contains(.space) { o.space = SpaceSpec.forGenre(genre) }
+    if musicality.contains(.space) {
+      o.space = SpaceSpec.forGenre(genre, shimmer: musicality.contains(.shimmer))
+    }
     if musicality.contains(.echo) { o.echo = EchoSpec.forGenre(genre) }
     o.brushes = musicality.contains(.backbeat) && Brush.forGenre(genre)
+    o.subOctave = musicality.contains(.subOctave) && SubOctave.forGenre(genre)
+    if musicality.contains(.hfTilt) { o.hfTilt = HFTilt.forGenre(genre) }
     return o
   }
 }
@@ -435,6 +468,8 @@ extension Deck {
       keepVoices: keepsVoiceSettings(loading: track.source))
     currentSpec = track.spec
     if case .rawNets(let payload) = track.source { currentRawNets = payload }
+    fixes = track.fixes
+    passApplied = track.passApplied
   }
 
   /// A composed net loop (a spec with no structure: it plays until stopped).

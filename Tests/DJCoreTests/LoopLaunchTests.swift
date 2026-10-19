@@ -315,6 +315,77 @@ struct LoopLaunchTests {
       ], "the starting boundary first (a replay starts at a bar), then the scene, spelled out")
   }
 
+  @Test func aSceneSetsItsClipsFxOnItsBoundaryFrame() throws {
+    let rig = try Rig()
+    defer { rig.dj.stop() }
+    let c = testClip(1)
+    let d = testClip(2)
+    rig.dj.restoreClips([c, d])
+    try rig.dj.start()
+    rig.dj.perform(.clipLoop(id: c.id, on: true))
+    rig.dj.perform(.clipLoop(id: d.id, on: true))
+    try rig.settle()
+    let crunch = LoopFX(drive: 9, mode: .hard, amount: 0.55, tone: 0.75)
+    let fuzz = LoopFX(drive: 18, mode: .soft, amount: 0.9, tone: 0.6)
+    rig.dj.perform(.clipFx(id: c.id, fx: crunch))
+    rig.dj.perform(.sceneSave(name: "S"))
+    #expect(
+      rig.dj.scenes[0].clips == [SceneClip(clipID: c.id, fx: crunch), SceneClip(clipID: d.id)],
+      "FX kept only where they were on")
+    rig.dj.perform(.clipFx(id: c.id, fx: LoopFX()))
+    rig.dj.perform(.clipFx(id: d.id, fx: fuzz))
+    try rig.run(to: rig.dj.frame + 4096)
+    let bank = try #require(rig.dj.loopChannel.bank)
+    let v = try #require(rig.dj.loopVoices.firstIndex { $0.clipID == c.id })
+    #expect(!bank.fx[v].running, "dry before the launch")
+
+    rig.dj.perform(.loopQuantize(beats: 4))
+    let at = try #require(rig.dj.launchScene("S"))
+    #expect(rig.dj.clipFx(c.id) == crunch, "the clip's FX are the scene's at once")
+    #expect(rig.dj.clipFx(d.id) == fuzz, "a clip saved dry keeps the FX it has")
+    try rig.run(to: at)
+    #expect(!bank.fx[v].running, "the voice waits for the boundary")
+    try rig.run(to: at + 1)
+    #expect(bank.fx[v].running, "and takes them on its frame")
+    #expect(rig.dj.loopState(c.id) == .on && rig.dj.loopState(d.id) == .on)
+  }
+
+  @Test func sceneFxAreRecordedAndEncodedOnlyWhenSet() throws {
+    let crunch = LoopFX(drive: 9, mode: .hard, amount: 0.55, tone: 0.75)
+    // without FX a scene encodes as it did before scenes kept them
+    #expect(
+      [SceneClip(clipID: "abc", gain: 0.5)].json.canonicalJS == #"[{"clip":"abc","gain":0.5}]"#)
+    let withFx = [SceneClip(clipID: "abc", gain: 0.5, fx: crunch), SceneClip(clipID: "def")]
+    #expect([SceneClip](json: withFx.json) == withFx)
+    #expect([SceneClip](json: [SceneClip(clipID: "abc")].json)[0].fx == nil, "nil stays nil")
+    let scene = LoopScene(name: "drop", clips: withFx)
+    #expect(LoopScene(json: scene.json) == scene)
+    let a = DeckAction.sceneLaunch(name: "drop", clips: withFx)
+    #expect(DeckAction(json: a.json) == a, "\(a.json.canonicalJS)")
+
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let c = testClip(1)
+    dj.restoreClips([c])
+    dj.setLooping(c.id, true)
+    dj.setClipFx(c.id, crunch)
+    dj.saveScene("S")
+    let rec = try SessionRecorder.start(on: dj)
+    dj.perform(.sceneLaunch(name: "S", clips: nil))
+    let launches = rec.finish().events.compactMap { e -> [SceneClip]? in
+      if case .action(.sceneLaunch(_, let clips)) = e.kind { return clips }
+      return nil
+    }
+    #expect(launches == [[SceneClip(clipID: c.id, fx: crunch)]], "the recorded launch carries them")
+
+    // an old scene (no FX) leaves the clip's alone; one with FX off turns them off
+    let fuzz = LoopFX(drive: 18, mode: .soft, amount: 0.9, tone: 0.6)
+    dj.setClipFx(c.id, fuzz)
+    dj.launchScene(clips: [SceneClip(clipID: c.id)])
+    #expect(dj.clipFx(c.id) == fuzz)
+    dj.launchScene(clips: [SceneClip(clipID: c.id, fx: LoopFX())])
+    #expect(dj.clipFx(c.id) == LoopFX())
+  }
+
   @Test func theLaunchActionsRoundTrip() {
     for a in [
       DeckAction.loopQuantize(beats: 16), .sceneSave(name: "Scene 1"),

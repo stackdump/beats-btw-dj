@@ -55,8 +55,9 @@ under structural rules, rather than editing audio freely.
   family), instruments (no instrument moves; every new spec carries the deck's instruments in
   its `tracks` override), arrangement (no mutes / STEMS), fx (no macros / stingers), palette
   (no palette hops; the instruments lock stops them too), and
-  `keep:<role>` (its instrument rides along, never muted or re-picked; its notes still change
-  with the seed until beats has per-part seeds). Everything locked: wander says so and stands
+  `keep:<role>` (its instrument rides along, never muted or re-picked; a seedable part keeps
+  its line too: same-genre swaps carry `partSeeds[role]` = its part seed or the seed it played
+  under, a genre hop or a freed keep drops it — `Wander.carry`). Everything locked: wander says so and stands
   still. **Steering**: the browser wheel steps the seed (loops and now songs, swapped at the
   next bar) and pauses a wandering deck until a whole phrase passes with no turn; SHIFT + wheel
   sets the pace, the browser push toggles it (both `[MIXXX]`, uncaptured). Sample decks don't
@@ -114,6 +115,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `Tests/DJCoreTests/Fixtures/captured-messages.json`, and keep the replay test
   green. Mark values not yet seen on a unit `[MIXXX]`/`[UNVERIFIED]`.
 - Tests use `DJEngine(offline: true)` (manual rendering) — never the speakers.
+- Never `#expect` / `#require` `==` or `!=` on sample arrays, renders, pixel buffers or WAV bytes:
+  on failure swift-testing diffs them (GBs per failure; a full run was jetsam-killed at 143 GB).
+  Write `#expect(sameSamples(a, b) == .identical)` (or `!= .identical`; `SampleCompare.swift`).
 
 ## Live net decks (Phase 3)
 
@@ -189,8 +193,12 @@ its copy; the two are now independent. Rules inherited from that split:
   bit-transparent. `Deck.fire(MasterMacro)` / `panic` / `setMasterFx` route by mode (net: the
   wave source; sample: the bus, landing on the deck's next downbeat at `effectiveBPM`,
   `sampleMasterFire`); read state through `Deck.activeMasterMacros` / `isMasterActive`, not
-  `wave.*`. The vinyl brake is still a no-op on sample decks. Sessions that fired a master macro
-  on a sample deck before this (then a no-op) now render differently.
+  `wave.*`. `vinyl-brake` there is the bus's `TurntableBrake` with the `Turntable` as source
+  (lag in output frames; release `Turntable.skip`s them, so the sample lands on its grid); a
+  jog (freeze) or transport stop cancels it — the jog wins. A sample deck shows the Master FX
+  section and lights the master-macro pads (`SurfaceController.playableMaster`), brake included.
+  Sessions that fired a master macro (or the brake) on a sample deck before this (then a no-op)
+  now render differently.
 - **Loops master FX** (`Audio/LoopMasterBus.swift`, `LoopMasterFx.swift`; not a clip's "Loop
   FX"): the same chain + `FxAutomation` on the loop channel "L", after the 16 voices are summed:
   voices → Σ → [vinyl brake] → MasterChain → limiter (the limiter stays last; it also runs while
@@ -207,6 +215,21 @@ its copy; the two are now independent. Rules inherited from that split:
   bit-transparent. UI: the Loops row's "Master FX" fold (`LoopMasterFxStrip`).
 - A neutral chain is bypassed and bit-transparent (decks without FX render the runner's exact
   bytes). `restBypass = false` / `solo` exist only for `MasterChainChromeTests`.
+- **The FX unit** (`Audio/FxUnit.swift`, `FxUnitDeck.swift`, `DJViews/FxUnitViews.swift`): live
+  knobs on a target's chain — A, B or L, each its own `Deck.fxUnit` (in `DeckParams`, so sessions
+  and checkpoints start from it): bipolar filter (left LP, right HP), HP, LP, phaser mix / depth /
+  rate, crush, drive, pitch; on a net deck also its genre's room / echo / feedback sends (sample
+  decks and L have none: greyed, `fxUnitMissing`). Theme: the poke is `DeckAction.fx(deck:param:
+  value:)` / `.fxReset` / `.fxKill` (a value is configuration, deterministic on replay); the
+  boundary is **immediate**, glided ~30 ms on the audio thread — a deliberate exception to bar
+  quantise for continuous controls (reset / kill take `onBeat`: the next beat). A drag is
+  recorded ≤ 30 Hz (`FxUnitCoalescer`). With macros, per key the more processed wins (HP max, LP
+  min, mix / crush / drive max, pitch adds, depth / rate the macro's while it moves them): macros
+  ride on top and release back to the unit; a neutral unit asks for the chain's rest (bypass,
+  bit-transparent), an untouched one sends nothing. Unit ops ramp over one block with no cancel
+  (`MasterParams.apply(_:_:at:live:)`); a `.set` while a quantised move waits lands it at once.
+  Measured allocation-free (`FxUnitRealTimeTests`). UI: one full-width card under the deck row
+  (bottom bar "FX unit"), aimed A / B / L, following the focus until one is picked.
 - Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs
   scripts/beats-macro-fx.mjs, which fetches Tone 15.1.22 into `.build/tone`, SRI-checked) and
   `master-chain-chrome.json` (Chrome rendering Tone's nodes; `make fixtures-chrome`,
@@ -260,7 +283,10 @@ its copy; the two are now independent. Rules inherited from that split:
   Synth Bass 1 dies within 0.1 s, Choir Aahs is +32 cents). Tests skip without the bank.
 - Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
   `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
-  uninitialises). Old EXS files with 31-char truncated sample names are patched into
+  uninitialises). Past about 106 live loaded AUSamplers in one process AudioToolbox loads the
+  next silent (−200 dB, no error); a parallel test run can get there. A blocking per-process
+  cap (`SamplerCensus`, reverted) deadlocked the tests: each held places while waiting for more.
+  Old EXS files with 31-char truncated sample names are patched into
   `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Samples load whole into memory
   (StreamFromDisk off): a streaming thread that falls behind changed renders under load; the
   cost is RAM (tonal content is ~3 GB in all; a full bank of pianos is a few GB).
@@ -314,7 +340,9 @@ its copy; the two are now independent. Rules inherited from that split:
   `minecraft-local.sf2` + `minecraft-local.json` (asset index, per-sample SHA-1) in the SoundFont
   folder from the user's own PrismLauncher assets (`MinecraftAssets`: newest index,
   `$DJ_MINECRAFT_ASSETS` overrides; `MinecraftBank` fixed programs, kit at 0:127; decoded,
-  44.1 kHz/16-bit, tuned, steady tones crossfade-looped). Personal use only: the .ogg files and
+  44.1 kHz/16-bit, tuned, steady tones crossfade-looped; each tone also stored ±1 octave,
+  band-limited (`octaveShift`, −60 dB from 11.025 kHz), in three key zones `octaveZones`; bank
+  `formatVersion` 2 is in the sidecar and the recorded palette, `minecraft@32+b2`). Personal use only: the .ogg files and
   the .sf2 never enter the repo, a release or the CDN (`*.sf2`, `minecraft-local.*` ignored), it
   never joins the GM pools (`localOnlyBanks`), and `music/*` / `records/*` are never read.
   Publishing refuses any set that plays it (`Session.localOnlySounds`; `djctl publish
@@ -383,7 +411,9 @@ its copy; the two are now independent. Rules inherited from that split:
   which span the song from tick 0 to their boundary, so any bar before it can carry a drum
   hit; the runner voices note 49 there as a crash), `.bassLine`, `.openHats` (note 46 → open
   hat in the runner) and `.stereo` (mid/side pan per lane in the runner, `stereoPlacement`; the
-  sampler bus's side highpassed at 150 Hz). Stereo only renders with a right channel: mono
+  sampler bus's side highpassed at 150 Hz; each sampled slot's side scaled by its category,
+  `sampledWidth`: bass 0, keys/pads 1.2 over a 300 Hz side highpass, guitars 0.8, leads 0.6,
+  on the per-slot path with `WaveProject.slotWidth`). Stereo only renders with a right channel: mono
   callers get the old mix.
 - Part E adds `.legato` (melody notes held to the next, ≤ a beat), `.cadence` (phrase ends —
   half a bar of rest, or the last note before a 2-bar line — on a chord tone), `.approach`
@@ -400,14 +430,19 @@ its copy; the two are now independent. Rules inherited from that split:
   band-limited per octave with beats' fundamental level, and `FilterEnvelope`, a per-voice SVF
   lowpass opened by velocity²), `.unison` (detuned pairs; a pad's pair spreads under `.stereo`,
   its side highpassed at 300 Hz), `.echo` (`Echo.swift`: `PingPong`, tempo-synced, set by genre
-  like the room, synth lanes only), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
+  like the room; sampled leads' slots — `WaveProject.echoSlots` — render one at a time and reach
+  it a block late through `echoFifo`, as the room's `sendFifo`), `.kickTune` (`KickTuning`: root or fifth nearest 50 Hz) — the
   pass's `.motif` (bar 2 of each 4-bar melody phrase restates bar 1 as a diatonic sequence; runs
   after `.cadence`) and `.balance` (`MixBalance`: each part soloed at prepare, trimmed ± 6 dB
-  toward `targetDB`; `WaveOptions.trackBalance` reused on section jumps; `djctl render
-  --balance` prints the levels). `Loudness.voiceFixes` are the fixes its probe must hear.
+  toward the genre family's targets, `MixBalance.targets(family:)`: targets.json's
+  `balance.families` block, jazz borrowing chill's, else the default; `WaveOptions.trackBalance`
+  reused on section jumps; `djctl render --balance` prints the levels and the entry used). `Loudness.voiceFixes` are the fixes its probe must hear.
   Per-genre settings come from `WaveOptions.forGenre` (`VoiceDesign`: trance / edm / synthwave
   arps take the pluck envelope, ambient pads are narrower; kept on section jumps through
-  `WaveProject.voiceDesign`).
+  `WaveProject.voiceDesign`). `.subOctave` (`SubOctave`, `WaveOptions.subOctave` set by
+  `forGenre` for dnb / dubstep / trap): a sine an octave under synth bass voices at −6 dB, only
+  where it is ≥ 30 Hz; sampled basses don't get it. The loudness probe hears it (`Loudness.gain(
+  subOctave:)`); `.balance` measures the bass without it.
 - Part G adds `.variety` (`TrackVariety.swift`): beats draws only the melody from the seed, so
   every seed of a genre had the same key, chords, bass and drums. Seeded from the track's seed
   (`varietyRandom(name, genre, seed)`, one stream per decision): a key offset −5…+6 (notes and
@@ -425,7 +460,8 @@ its copy; the two are now independent. Rules inherited from that split:
 - **One loudness** (`Audio/LevelMatch.swift`, GO-DIVERGENCE.md §5.7): everything the user can
   play lands at `LevelMatch.referenceLUFS` (−12 LUFS integrated) at unity knobs, before the EQ
   and fader. Net decks: `.loudness` (`Loudness.targetDB` = reference − 0.4, calibrated on whole
-  songs; the probe plays sampled parts at `Loudness.sampledPartDB` under their synth voice) and,
+  songs; the probe plays a sampled part's synth voice at its slot's measured `partLevelDB` plus its
+  slot gain, `Loudness.sampledPartDB` only when unmeasured) and,
   with `WaveOptions.master == "limit"` (`.extended`), a linear runner sum and `PeakLimiter` at the
   end of `WaveDeckSource.render` (after the chain, before the EQ; −1 dBTP from BS.1770's 4× FIR,
   `lookahead` 1.5 ms + 12 samples, uncompensated; preallocated, `PeakLimiterRealTimeTests`). Sample decks: `SampleLevel` (BS.1770 integrated, peak, band
@@ -474,6 +510,11 @@ its copy; the two are now independent. Rules inherited from that split:
   `djctl measure --sections` + ffmpeg cross-check, cached in `.build/references`): median, p10–p90,
   source `ref:<family>/<sha8> (n=K, djctl <build>)` — hashes, never a path or name.
   `musicality-matrix.py --targets PATH` prints each track's distance from its family's band.
+- Room from the table (6.6): `space.sends` are `SpaceSpec.send` / `samplerSend` (read at prepare /
+  runner init); a family's `space.families.<f>.returnDB` band rescales `wet` of genres whose room has
+  a measured `returnDB` (return is linear in wet), empty band = unchanged bytes. `.shimmer`
+  (`Shimmer`, in Space.swift): synth pad lanes' send, octave-up with feedback, into the room at
+  the family's `shimmer` level; allocated at runner init, level 0 = bit-identical.
 - `.sectionHarmony` (6.3) is two halves that ship together: the pass (`SectionMelody.swift`) moves
   the melody / arp nets beats shifted for a bridge / solo back home, and `WaveRunner.prepare`
   builds a `SectionHarmony` (`SectionHarmony.playing`, on `WaveProject.harmony`) that every
@@ -506,10 +547,20 @@ its copy; the two are now independent. Rules inherited from that split:
   session writes them beside the share, never in `extra` / `layers` / the payload, so the share
   CID and `compose()` ignore them. A seeded melody is transplanted (bindings, same net ids and
   transitions) from its seed's compose (`PartSeedDonors`, cached) first in `apply`.
+- `.backbeat` (6.5, `Backbeat.swift`, after `.timing`, before `.variety`): lofi / jazz / bossa
+  get a kick and snare wherever `beatStyle` expects a beat, as mute / unmute bindings and rebound
+  figures on existing transitions (never topology; slotted parts skipped). Jazz's synth snare plays
+  `Brush` (`WaveOptions.brushes`, via `forGenre`; never in WaveSynth's Kit table). 6.5's exit is
+  `BeatEveryGenreTests`: `hasBeat` = 1 for every genre with a style, and M6 on the played hits
+  (hat velocities > 1 a position, consistency 0.9…0.99, tonal swing within 2 % of the family's).
 - `.sweep` (`BuildupSweep`, in the runner): a subtractive voice struck in a ramp section
   (`EnergyCurve.rampProgress`) gets filter base 0.6× → 2× and Q towards 2.5 per note (`fBaseV`,
   `fKV`); every other note the lane's own values, so renders outside buildups are bit-identical.
   It builds the `EnergyCurve` without `.energy`. Synth lanes only; samplers keep `.energy`'s bus LP.
+- A raw-`nets` share deck gets no pass: `PreparedTrack` plays it with `opts.musicality ∩
+  Fixes.runnerOnly` and `forGenre` of the payload's genre (none known: neutral), and records
+  `fixes` / `passApplied` on the `Deck` (`dj_state.decks.X.fixes`); `sameSongOptions` keeps that
+  set on jumps. A new runner-only flag goes in `runnerOnly` too; a flag with any pass half doesn't.
 - Beats generator bugs found this way go on GO-DIVERGENCE.md §5.
 
 ## Visuals (Phase 5)
@@ -577,8 +628,9 @@ its copy; the two are now independent. Rules inherited from that split:
   crossfade through dry over 10 ms. Measured allocation-free (`LoopFxRealTimeTests`).
 - Persistence: library.json entries (`fx`, only when set), removed/, the journal checkpoint's
   clips (the run's FX win over the library's on restore). A crop keeps its clip's FX; a new
-  sequence starts off (its steps' audio is dry), an edited one keeps its own; scenes don't recall
-  FX. A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
+  sequence starts off (its steps' audio is dry), an edited one keeps its own. Scenes recall a
+  clip's FX when it had any on at the save (`SceneClip.fx`, JSON `fx` only when set; nil leaves
+  them alone), on the boundary frame (`LoopBankCommand.fxAt`, like `gainAt`). A clip moved onto deck A/B keeps them: each sample deck's `DeckRenderer` has its own
   `LoopFxVoice` + limiter (made at init, fed by `DeckFxCommand` through an SPSC ring, run in sample
   mode only while the chain is in the path, so a dry deck is the turntable's bytes); `loadClip`
   sends the clip's FX, `setClipFx` forwards to a deck playing it, any other load drops them. UI: the pad's right-click ▸ FX presets (Off, Warm drive,
@@ -594,6 +646,11 @@ its copy; the two are now independent. Rules inherited from that split:
   app can restart under a live MCP session. `make mcp-install` copies it to `build/mcp/` and
   registers `dj-vevr-se` at user scope. `djctl ctl <method> [json]` sends one raw request.
 - Publishing is deliberately not a tool (it's public and asks in a modal).
+- Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
+  on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
+  through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a
+  cursor over `at` so overlapping polls fire each event once, and one stinger a bar per deck. The
+  polling loop is ops work, outside the repo.
 - Outside audio joins the loop row only through `DJEngine.importClip` (recorded as `clipImport`
   by content id, provenance `LoopProvenance.stock`; `dj_stock_loops addToRow`). A set with one is
   refused by `SessionBundle` with no override (`Session.importedClips`): stock loops never reach
@@ -671,14 +728,18 @@ its copy; the two are now independent. Rules inherited from that split:
   purpose), `djtest_journal_list`, `djtest_measure` (`djctl measure` + full sha256),
   `djtest_compare` (sha256 identity + b − a deltas with pass flags, `measure.DEFAULTS`: ±0.5 LU,
   peaks < 0 dBFS…), `djtest_level_check` (genres × seeds rendered → per-track LUFS, spread).
-  Never the speakers, the app or its socket.
+  Never the speakers, the app or its socket. `djtest_build` / `djtest_render` / `djtest_swift_test` /
+  `djtest_shots` take an optional `worktree` (another checkout, e.g. a fix agent's git worktree):
+  they run there, write under its `build/testmcp`, and share the one lock.
 - `lufs` in every tool is Swift's (`IntegratedLoudness`, BS.1770) and pass flags judge it;
   `ffmpegLufs` is ffmpeg ebur128 — the matrix's `lufs` column — for cross-checks only.
 - `djtest_swift_test {filter, release}` (`make swift-test-filter` / `swift-rt-test-filter`;
   never unfiltered: a filter needs a name in every `|` alternative) and `djtest_shots {filter,
-  limit}` (`make swift-shots`, PNGs back as images) run one at a time across every worktree
-  under an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`; dies with its
-  holder, so never stale; MCP runs only — a terminal `make` ignores it); `djtest_lock` says who
+  limit}` (`make swift-shots`, PNGs back as images) run filtered debug tests in parallel; what
+  must run alone holds an flock on `~/Library/Caches/dj-vevr-se/swift-test.lock` (`$DJTEST_LOCK`;
+  dies with its holder, so never stale): release `djtest_swift_test` runs (`lock=true` forces it on
+  others) and `make swift-test` / `swift-rt-test` / `swift-rt-test-filter` from any worktree or
+  terminal (`TEST_LOCK`, `djtest_mcp/locked.py`; a lock an ancestor holds doesn't block); `djtest_lock` says who
   holds it. Failures are tagged known_failing / flaky_under_load / new from
   `djtest_mcp/known_tests.json`, a copy of ROADMAP's Release checks lists — edit both.
 - Every command goes through `runner.get_runner()`; tests swap in `tests/fakes.py`'s

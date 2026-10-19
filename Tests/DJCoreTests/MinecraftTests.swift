@@ -76,6 +76,8 @@ struct MinecraftTests {
     #expect(report.programs.count >= 13, "skipped: \(report.skipped)")
     let side = try #require(MinecraftBank.Sidecar.load(dir: dir))
     #expect(side.assetIndex == a.indexID)
+    #expect(side.format == MinecraftBank.formatVersion)
+    #expect(side.version == "\(a.indexID)+b\(MinecraftBank.formatVersion)")
     #expect(side.programs.contains("harp2") && side.programs.contains("bassattack"))
     #expect(side.sha1["harp2"] == (try a.file(sound: "note/harp2")).sha1)
     #expect(side.sha1["kit:bd"] != nil)
@@ -122,6 +124,51 @@ struct MinecraftTests {
     let k = bank.slot(for: [kit])
     #expect(k != nil, "the kit: \(bank.loadFailure(for: kit) ?? "")")
     if let k { bank.release(k) }
+  }
+
+  /// The octave zones: across ±2 octaves of each tone's root every key plays in tune (each zone
+  /// is an exact octave of the measured recording), and crossing a split moves the level by no
+  /// more than a semitone step inside a zone could (≤ 3 dB).
+  @Test(.enabled(if: minecraftAssets != nil, "no Minecraft assets (PrismLauncher)"))
+  func octaveZonesPlayInTuneAndLevel() throws {
+    let (dir, report) = try #require(scratchMinecraftBank)
+    let path = MinecraftBank.path(dir: dir)
+    let bank = SamplerBank(sampleRate: sr)
+    let built = Set(report.programs.map(\.name))
+    for name in ["harp2", "flute", "bell", "bassattack", "bit"] where built.contains(name) {
+      let prog = try #require(MinecraftBank.programs.first { $0.name == name })
+      let slot = try #require(bank.slot(for: [.sf2(path, program: prog.program)]))
+      defer { bank.release(slot) }
+      func play(_ note: Int) -> [Float] {
+        WaveRunner.audition(
+          tonalVoice(instrument: "", group: "melody"), notes: [(note, 0, 0.5)], sampleRate: sr,
+          seconds: 0.5, sampler: (bank, slot))
+      }
+      let downZoneEnd =
+        MinecraftImport.octaveZones(root: prog.root).first { $0.shift == 0 }?.keys
+        .lowerBound ?? 0
+      for note in stride(from: prog.root - 24, through: prog.root + 24, by: 3)
+      where (24...108).contains(note) {
+        let x = play(note)
+        // The octave-down zone plays the recording at half speed, so a held tone's attack (the
+        // flute bends ~10 cents into pitch over its first ~0.12 s, at the root too) lasts twice
+        // as long: measure those keys after it, on the steady loop. Everything else from as it
+        // speaks over 0.44 s: a bass key at 40 Hz needs the length to read to a few cents.
+        let window =
+          prog.loop && note < downZoneEnd
+          ? Int(0.25 * sr)..<Int(0.47 * sr) : Int(0.03 * sr)..<Int(0.47 * sr)
+        let e = pitchClassError(x[window], note: note, sampleRate: sr)
+        #expect(e.level > 0, "\(name) @\(note): silent")
+        // within 5 cents, read on `pitchClassError`'s 1-cent grid
+        #expect(abs(e.cents) <= 5, "\(name) @\(note): \(e.cents) cents")
+      }
+      for z in MinecraftImport.octaveZones(root: prog.root).dropLast() {
+        let below = z.keys.upperBound
+        let a = rmsDB(play(below)[Int(0.03 * sr)..<Int(0.25 * sr)])
+        let b = rmsDB(play(below + 1)[Int(0.03 * sr)..<Int(0.25 * sr)])
+        #expect(abs(a - b) <= 3, "\(name) split \(below)|\(below + 1): \(a) → \(b) dB")
+      }
+    }
   }
 
   /// A held flute note sustains on its loop (a pad can hold it); a harp pluck dies away.
@@ -193,7 +240,7 @@ struct MinecraftTests {
     defer { dj.stop() }
     let buf = makeEngineRenderBuffer(dj, frames: 512)
     pullEngine(dj, buf, cycles: 40, frames: 512)
-    let index = try #require(MinecraftBank.Sidecar.load()?.assetIndex)
+    let index = try #require(MinecraftBank.Sidecar.load()?.version)
     dj.perform(.setPalette(deck: "A", palette: "minecraft"))
     #expect(deck.palette == "minecraft@\(index)")
     pullEngine(dj, buf, cycles: 200, frames: 512)
@@ -213,6 +260,81 @@ struct MinecraftTests {
     pullEngine(dj, buf, cycles: 200, frames: 512)
     #expect(deck.palette == nil)
     #expect(!deck.wave.sampledNets.values.contains { $0.contains(MinecraftBank.fileName) })
+  }
+
+  /// The zones cover the keyboard once. Three zones (−1, 0, +1 octave) keep every key within
+  /// 18 semitones of the root at most six semitones from the sample it plays; out to two
+  /// octaves the stretch is at most an octave (one zone each way can't do better, and the
+  /// in-tune check covers ±2 octaves).
+  @Test func octaveZonesCoverTheKeyboard() {
+    for p in MinecraftBank.programs where p.kind == .tone {
+      for root in (p.root - 1)...(p.root + 1) {
+        let zones = MinecraftImport.octaveZones(root: root)
+        #expect(zones.map(\.shift) == [-1, 0, 1], "\(p.name)")
+        var next = 0
+        for z in zones {
+          #expect(z.keys.lowerBound == next, "\(p.name): contiguous")
+          next = z.keys.upperBound + 1
+          for k in z.keys where abs(k - root) <= 24 {
+            let stretch = abs(k - (root + 12 * z.shift))
+            #expect(stretch <= (abs(k - root) <= 18 ? 6 : 12), "\(p.name) key \(k)")
+          }
+        }
+        #expect(next == 128)
+      }
+    }
+  }
+
+  /// The octave shifts: an exact octave, the level kept in the passband, nothing folding back
+  /// (−60 dB) or imaged, loop points scaled, the same bytes twice.
+  @Test func octaveShiftsAreBandLimitedOctaves() throws {
+    let rate = MinecraftImport.sampleRate
+    let a4 = sineWave(440, sampleRate: rate, seconds: 0.5)
+    let body = { (x: [Float]) in x[(x.count / 4)..<(3 * x.count / 4)] }
+    let up = MinecraftImport.octaveShift(a4, loop: 1000..<3000, octaves: 1)
+    let down = MinecraftImport.octaveShift(a4, loop: 1000..<3000, octaves: -1)
+    #expect(up.pcm.count == a4.count / 2)
+    #expect(down.pcm.count == a4.count * 2)
+    #expect(up.loop == 500..<1500)
+    #expect(down.loop == 2000..<6000)
+    #expect(
+      sameSamples(MinecraftImport.octaveShift(a4, loop: nil, octaves: 0).pcm, a4) == .identical)
+    for (x, note) in [(up.pcm, 81), (down.pcm, 57)] {
+      let e = pitchClassError(body(x), note: note, sampleRate: rate)
+      #expect(e.octave == 0 && abs(e.cents) < 1, "\(note): \(e)")
+      #expect(abs(rmsDB(body(x)) - rmsDB(body(a4))) < 0.1, "\(note): level")
+    }
+    // 15 kHz an octave up would fold to 14.1 kHz; an octave down it leaves an image at
+    // 14.55 kHz beside the 7.5 kHz it becomes
+    let high = sineWave(15_000, sampleRate: rate, seconds: 0.5)
+    let ref = toneLevelDB(body(high), freq: 15_000, sampleRate: rate)
+    let folded = MinecraftImport.octaveShift(high, loop: nil, octaves: 1).pcm
+    #expect(rmsDB(body(folded)) - rmsDB(body(high)) < -60, "nothing folds back")
+    #expect(toneLevelDB(body(folded), freq: 14_100, sampleRate: rate) - ref < -60)
+    let stretched = MinecraftImport.octaveShift(high, loop: nil, octaves: -1).pcm
+    #expect(abs(toneLevelDB(body(stretched), freq: 7_500, sampleRate: rate) - ref) < 0.5)
+    #expect(toneLevelDB(body(stretched), freq: 14_550, sampleRate: rate) - ref < -60, "no image")
+    #expect(
+      sameSamples(MinecraftImport.octaveShift(high, loop: nil, octaves: 1).pcm, folded)
+        == .identical)
+  }
+
+  /// The sidecar records the bank format and the palette records it in its version; a bank
+  /// built before formats (no `format` key) still records just its asset index.
+  @Test func theBankFormatIsInThePaletteVersion() throws {
+    let p = try #require(SoundPalette.named("minecraft"))
+    let now = emptyScratchDir()
+    try writeMinecraftSidecar(dir: now, assetIndex: "32", format: MinecraftBank.formatVersion)
+    let side = try #require(MinecraftBank.Sidecar.load(dir: now))
+    #expect(side.format == MinecraftBank.formatVersion)
+    #expect(MinecraftBank.formatVersion == 2)
+    #expect(p.recorded(dir: now) == "minecraft@32+b2")
+    #expect(SoundPalette.named("minecraft@32+b2")?.id == "minecraft")
+    #expect(SoundPalette.version("minecraft@32+b2") == "32+b2")
+    let old = emptyScratchDir()
+    try writeMinecraftSidecar(dir: old, assetIndex: "32", format: nil)
+    #expect(MinecraftBank.Sidecar.load(dir: old)?.format == 1)
+    #expect(p.recorded(dir: old) == "minecraft@32")
   }
 
   @Test func setPaletteRoundTrips() {
@@ -239,8 +361,9 @@ struct MinecraftTests {
     var o = WaveOptions()
     o.master = "linear"
     #expect(
-      renderRunner(project, opts: o, sampleRate: sr, seconds: 1)
-        == renderRunner(p2, opts: o, sampleRate: sr, seconds: 1))
+      sameSamples(
+        renderRunner(project, opts: o, sampleRate: sr, seconds: 1),
+        renderRunner(p2, opts: o, sampleRate: sr, seconds: 1)) == .identical)
     #expect(try #require(d.withPalette(nil, channels: project.channels)) == .net(spec))
   }
 
@@ -273,5 +396,127 @@ struct MinecraftTests {
       }
       _ = try SessionBundle(session: s, renderedAt: "x", allowLocalOnly: true)
     }
+  }
+}
+
+/// Gameplay → stingers (MinecraftEvents.swift): mc_recent_events mapped through
+/// voices/minecraft-events.json, each event once, at most one stinger a bar per deck.
+extension MinecraftTests {
+  @Test func recentEventsParseFromTheToolAndItsResult() throws {
+    let text = try mcRecentEventsFixture()
+    let events = try MinecraftEvent.parse(text)
+    #expect(
+      events.map(\.event) == [
+        "log:chat", "minecraft:notification/players/joined", "log:advancement", "log:death",
+        "log:death",
+      ])
+    #expect(events.allSatisfy { $0.player == "stackdump" })
+    #expect(events[1].source == "rpc")
+    // the same array inside an MCP result (val_call's strings, or text parts)
+    let wrapped = JSONValue.object(JSONObject([("content", .array([.string(text)]))]))
+    #expect(try MinecraftEvent.parse(json: wrapped) == events)
+    let parts = JSONValue.object(
+      JSONObject([
+        (
+          "content",
+          .array([.object(JSONObject([("type", .string("text")), ("text", .string(text))]))])
+        )
+      ]))
+    #expect(try MinecraftEvent.parse(json: parts) == events)
+    #expect(try MinecraftEvent.parse("[]").isEmpty)
+    #expect(throws: MinecraftEventError.self) { try MinecraftEvent.parse(#"{"x":1}"#) }
+  }
+
+  @Test func eventsMapToStingers() throws {
+    let map = try MinecraftEventMap.load()
+    func at(_ s: String, _ e: String) -> MinecraftEvent { MinecraftEvent(at: s, event: e) }
+    #expect(map.action(for: at("t", "log:death"), deck: "A") == .stinger(deck: "A", n: 0))
+    #expect(map.action(for: at("t", "log:advancement"), deck: "B") == .stinger(deck: "B", n: 1))
+    #expect(
+      map.action(for: at("t", "minecraft:notification/players/joined"), deck: "A")
+        == .stinger(deck: "A", n: 2))
+    #expect(map.action(for: at("t", "log:chat"), deck: "A") == nil)
+    #expect(MinecraftEventMap.shared.actions.count == map.actions.count)
+  }
+
+  /// The app's Contents/Resources copy wins over SwiftPM's (Bundle.main first).
+  @Test func theMapLoadsFromTheFirstBundleThatHasIt() throws {
+    let over = try eventMapWithOverride(
+      #"{"events":{"log:chat":{"op":"stinger","n":3}}}"#)
+    #expect(
+      over.action(for: MinecraftEvent(at: "t", event: "log:chat"), deck: "A")
+        == .stinger(deck: "A", n: 3))
+    #expect(over.action(for: MinecraftEvent(at: "t", event: "log:death"), deck: "A") == nil)
+    // the test runner's main bundle has none: SwiftPM's is next
+    #expect(try MinecraftEventMap.load().actions["log:death"] != nil)
+  }
+
+  /// A re-read window fires nothing twice (events sharing a millisecond included), and a
+  /// deck takes one stinger a bar.
+  @Test func aRepeatedWindowFiresEachEventOnce() throws {
+    let events = try MinecraftEvent.parse(try mcRecentEventsFixture())
+    var feed = MinecraftEventFeed(map: try MinecraftEventMap.load())
+    var bar = 0
+    let first = feed.take(Array(events.prefix(3)), deck: "A", bar: bar)
+    #expect(first.fired.map(\.action) == [.stinger(deck: "A", n: 2)])
+    #expect(first.skipped.map(\.reason) == ["unmapped", "a stinger already fired in bar 0"])
+    #expect(feed.cursor == "2026-10-18T16:16:22.845Z")
+    // the next poll overlaps: only the new death at the cursor's millisecond and the one after
+    bar = 1
+    let second = feed.take(events, deck: "A", bar: bar)
+    #expect(second.fired.map(\.action) == [.stinger(deck: "A", n: 0)])
+    #expect(second.fired.first?.event.at == "2026-10-18T16:16:22.845Z")
+    #expect(second.skipped.map(\.reason) == ["a stinger already fired in bar 1"])
+    // the same window again: nothing new
+    bar = 2
+    let third = feed.take(events, deck: "A", bar: bar)
+    #expect(third.fired.isEmpty && third.skipped.isEmpty)
+    // the bar limit is per deck
+    var feedB = MinecraftEventFeed(map: try MinecraftEventMap.load())
+    let deaths = events.filter { $0.event == "log:death" }
+    let b = feedB.take(deaths, deck: "B", bar: 7)
+    #expect(b.fired.count == 1)
+    _ = feedB.take([], deck: "A", bar: 7)
+    let later = MinecraftEvent(at: "2026-10-18T16:17:00.000Z", event: "log:death")
+    #expect(feedB.take([later], deck: "A", bar: 7).fired.count == 1, "deck A's bar 7 is free")
+  }
+
+  @Test func primingTakesTheBacklogWithoutPlayingIt() throws {
+    let events = try MinecraftEvent.parse(try mcRecentEventsFixture())
+    var feed = MinecraftEventFeed(map: try MinecraftEventMap.load())
+    let primed = feed.take(events, deck: "A", bar: 0, prime: true)
+    #expect(primed.fired.isEmpty && primed.skipped.count == events.count)
+    #expect(feed.take(events, deck: "A", bar: 1).fired.isEmpty)
+    // a sample deck can't take stingers: the event is consumed with the reason
+    let next = MinecraftEvent(at: "2026-10-18T16:20:00.000Z", event: "log:advancement")
+    let s = feed.take([next], deck: "A", bar: 2, net: false)
+    #expect(s.fired.isEmpty && s.skipped.first?.reason.contains("net") == true)
+    // without a beat grid: one stinger per poll
+    let two = [
+      MinecraftEvent(at: "2026-10-18T16:21:00.000Z", event: "log:death"),
+      MinecraftEvent(at: "2026-10-18T16:21:01.000Z", event: "log:death"),
+    ]
+    #expect(feed.take(two, deck: "A", bar: nil).fired.count == 1)
+  }
+
+  /// `djctl minecraft events`: stdin → the request's params, the reply → lines.
+  @Test func theCommandBuildsTheRequest() throws {
+    let p = try MinecraftEventsCommand.params(
+      stdin: try mcRecentEventsFixture(), deck: "B", prime: false)
+    #expect(p["deck"]?.string == "B")
+    #expect(p["events"]?.array?.count == 5)
+    #expect(p["prime"] == nil)
+    let back = try MinecraftEvent.parse(json: p["events"]!)
+    #expect(back == (try MinecraftEvent.parse(try mcRecentEventsFixture())))
+    let q = try MinecraftEventsCommand.params(stdin: "[]", deck: nil, prime: true)
+    #expect(q["deck"] == nil && q["prime"]?.bool == true)
+    let ev = MinecraftEvent(
+      at: "t", event: "log:death", params: .object(JSONObject([("player", .string("x"))])))
+    let reply = MinecraftEventFeed.report(
+      deck: "A", fired: [.init(event: ev, action: .stinger(deck: "A", n: 0))], skipped: [],
+      cursor: "t")
+    let text = MinecraftEventsCommand.describe(reply)
+    #expect(text.contains("log:death (x) → A"))
+    #expect(text.hasSuffix("fired 1, skipped 0"))
   }
 }

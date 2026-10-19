@@ -28,6 +28,30 @@ scripts/listening-log.py selftest         # the script's own checks
 → 6.3, melody → 6.4, groove → 6.5, sound and mix → 6.6. A `broken` counts twice. A stage the log
 never names is a candidate to drop (ROADMAP 6.1).
 
+## Translation check
+
+ROADMAP 6.6. `djctl render <genre> <seed> --translate` plays each part soloed through
+approximate phone, headphones and monitors curves (each names its source) and folded to mono,
+and flags a part more than 12 dB under its full-range level (`Translation`). The numbers say
+where to listen; the rows say what was heard. Listen to the same build on each device and add
+one row per device, from this template:
+
+```
+| <genre> | 42 | <build> | <track/loop/broken> | <first wrong> | phone | flagged by --translate: <parts or none>; <what was heard> |
+```
+
+## Pending
+
+Waiting for a listener; an agent never fills these in. Each says what to play and what the
+numbers were; the row goes in the log below once someone has heard it.
+
+- **6.7 first set** (not published; publishing waits for the user). Built with
+  `djctl mix techno:42 house:42 trance:42 edm:42 … --xfade 24 --report --export
+  .build/listen/first-set.wav --publish --dry-run` (add tracks until it runs ≥ 600 s). The bar
+  `--report` holds it to: ≥ 600 s, every crossfade step ≤ 2 LU (8 s alone before against
+  after), true peak ≤ −1 dBTP. Listen through each crossfade on monitors and headphones; one row
+  per (genre, seed) heard, notes naming the transition (`into N`) and its reported step.
+
 ## Log
 
 | genre | seed | build | verdict | first wrong | device | notes |

@@ -10,7 +10,8 @@ import Foundation
 /// 2. Features, one vector per bar (bar-synchronous, so a section change lands on a bar line):
 ///    `bandCount` log-spaced band energies (dB, `minHz`…`maxHz`), a 12-bin chroma (magnitudes
 ///    folded by pitch class, `chromaMinHz`…`chromaMaxHz`, summing to 1) and the bar's RMS (dB),
-///    from Hann frames of ~93 ms, half overlapped, averaged over the frames centred in the bar.
+///    from Hann frames of ~93 ms, half overlapped, averaged over the frames that start on the
+///    bar's first sample and fit inside it (each bar framed alike).
 ///    Each dimension is z-scored across the bars (its deviation floored at `sdFloorDB` /
 ///    `sdFloorChroma`) and each group scaled by 1/√dims, so bands, chroma and level weigh alike.
 /// 3. A cosine self-similarity matrix of those vectors (norms floored at `normFloor`, so a
@@ -20,7 +21,7 @@ import Foundation
 ///    the kernel is cut and renormalised by the weight it keeps, and needs `minSide` bars on
 ///    each side.
 /// 5. Peaks: a bar whose novelty is the largest within ±`peakRadius` bars (`kernelBars` / 2),
-///    above `threshold` standard deviations over the mean novelty and at least `minNovelty`.
+///    at least `threshold` × the median novelty and at least `minNovelty`.
 ///
 /// Ground truth so far is our own synth renders, whose structure we know
 /// (SectionSegmenterTests); today's structures hold 4-bar sections, so the kernel stays short.
@@ -33,8 +34,13 @@ public struct SectionSegmenter: Sendable {
   public static let chromaMaxHz = 4_000.0
   /// Bars the kernel needs on each side of a boundary.
   public static let minSide = 2
-  /// Standard deviations over the mean novelty a peak must reach.
-  public static let threshold = 0.5
+  /// A peak must reach this many times the median novelty. The median, not mean + k·sd: in
+  /// our renders the breakdown → drop edges stand at 3-5× the rest and lift any mean / sd
+  /// floor over the quieter verse → buildup → drop edges (SectionSegmenterTests found half
+  /// the starts). Over techno / house / trance / dnb × seeds 4242, 7, 42, 1234, factors
+  /// 1.25-1.5 find ≥ 80 % of the starts in every render, within the spurious allowance; 1.75
+  /// misses some. A steady loop's novelty is 0 everywhere and gives none.
+  public static let threshold = 1.25
   /// The least novelty a peak must reach (cosine units, -2…2).
   public static let minNovelty = 0.05
   /// The least standard deviation a feature is scaled by: 1 dB for bands and RMS, 0.01 of a
@@ -159,17 +165,6 @@ public struct SectionSegmenter: Sendable {
     var bandSum = [[Double]](repeating: [Double](repeating: 0, count: bandCount), count: bars)
     var chroma = [[Double]](repeating: [Double](repeating: 0, count: 12), count: bars)
     var frames = [Int](repeating: 0, count: bars)
-    func bar(at t: Double) -> Int? {
-      guard let first = barStarts.first, t >= first, t < barStarts[bars - 1] + barSeconds
-      else { return nil }
-      var lo = 0
-      var hi = bars - 1
-      while lo < hi {
-        let mid = (lo + hi + 1) / 2
-        if barStarts[mid] <= t { lo = mid } else { hi = mid - 1 }
-      }
-      return lo
-    }
     if x.count >= size {
       let log2n = vDSP_Length(log2(Double(size)))
       if let setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) {
@@ -180,30 +175,41 @@ public struct SectionSegmenter: Sendable {
         var re = [Float](repeating: 0, count: half)
         var im = re
         var mag = re
-        let count = (x.count - size) / hop + 1
         x.withUnsafeBufferPointer { xp in
-          for f in 0..<count {
-            guard let b = bar(at: (Double(f * hop) + Double(half)) / sr) else { continue }
-            vDSP_vmul(xp.baseAddress! + f * hop, 1, window, 1, &buf, 1, vDSP_Length(size))
-            re.withUnsafeMutableBufferPointer { rp in
-              im.withUnsafeMutableBufferPointer { ip in
-                var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
-                buf.withUnsafeBufferPointer { bp in
-                  bp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) {
-                    vDSP_ctoz($0, 2, &split, 1, vDSP_Length(half))
+          for b in 0..<bars {
+            // Frames start on the bar's own first sample, so every bar is cut alike: a frame
+            // grid running through the song drifts against the bar (44 100 samples a bar is
+            // 43.07 hops) and makes a steady loop's bars differ in a slow cycle.
+            let a = max(0, Int((barStarts[b] * sr).rounded()))
+            let barEnd =
+              b + 1 < bars
+              ? Int((barStarts[b + 1] * sr).rounded())
+              : Int(((barStarts[b] + barSeconds) * sr).rounded())
+            let z = min(x.count, barEnd)
+            var start = a
+            while start + size <= z || (start == a && start + size <= x.count) {
+              vDSP_vmul(xp.baseAddress! + start, 1, window, 1, &buf, 1, vDSP_Length(size))
+              re.withUnsafeMutableBufferPointer { rp in
+                im.withUnsafeMutableBufferPointer { ip in
+                  var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                  buf.withUnsafeBufferPointer { bp in
+                    bp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) {
+                      vDSP_ctoz($0, 2, &split, 1, vDSP_Length(half))
+                    }
                   }
+                  vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
+                  ip[0] = 0  // Nyquist, packed
+                  vDSP_zvabs(&split, 1, &mag, 1, vDSP_Length(half))
                 }
-                vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
-                ip[0] = 0  // Nyquist, packed
-                vDSP_zvabs(&split, 1, &mag, 1, vDSP_Length(half))
               }
+              for k in 1..<half {
+                let m = Double(mag[k])
+                if bandOf[k] >= 0 { bandSum[b][bandOf[k]] += m * m }
+                if classOf[k] >= 0 { chroma[b][classOf[k]] += m }
+              }
+              frames[b] += 1
+              start += hop
             }
-            for k in 1..<half {
-              let m = Double(mag[k])
-              if bandOf[k] >= 0 { bandSum[b][bandOf[k]] += m * m }
-              if classOf[k] >= 0 { chroma[b][classOf[k]] += m }
-            }
-            frames[b] += 1
           }
         }
       }
@@ -305,15 +311,14 @@ public struct SectionSegmenter: Sendable {
     return out
   }
 
-  /// Bars whose novelty is the largest within ±`radius`, over mean + `threshold`·sd of the
-  /// bars where the kernel fits, and at least `minNovelty`.
+  /// Bars whose novelty is the largest within ±`radius`, at least `threshold` × the median
+  /// of the bars where the kernel fits, and at least `minNovelty`.
   static func peaks(_ nov: [Double], radius: Int) -> [Int] {
-    let valid = nov.filter { $0 != 0 }
+    let valid = nov.filter { $0 != 0 }.sorted()
     guard !valid.isEmpty else { return [] }
-    let mean = valid.reduce(0, +) / Double(valid.count)
-    let sd = (valid.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(valid.count))
-      .squareRoot()
-    let floor = max(minNovelty, mean + threshold * sd)
+    let mid = valid.count / 2
+    let median = valid.count % 2 == 1 ? valid[mid] : (valid[mid - 1] + valid[mid]) / 2
+    let floor = max(minNovelty, threshold * median)
     var out: [Int] = []
     for b in nov.indices where b > 0 && nov[b] >= floor {
       let lo = max(0, b - radius)

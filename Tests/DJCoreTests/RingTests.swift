@@ -251,7 +251,9 @@ struct LatestRingTests {
     src.withUnsafeBufferPointer { r.write(contentsOf: $0) }
     var out = [Float](repeating: 0, count: 20)
     let res = out.withUnsafeMutableBufferPointer { r.read(from: 0, into: $0) }
-    #expect(res.count == 20 && res.lost == 0 && out == src)
+    #expect(res.count == 20)
+    #expect(res.lost == 0)
+    #expect(sameSamples(out, src) == .identical)
   }
 
   @Test func aFastProducerNeverCorruptsASlowReader() {

@@ -145,7 +145,7 @@ struct RestScheduleTests {
     let both = render(restProject(), options([.dropGap], rests: s), seconds: 6)
     let plain = render(restProject(), options([], rests: .empty), seconds: 6)
     let bassOnly = render(restProject(kick: false), options([]), seconds: 6)
-    #expect(Array(both[0..<(16 * step)]) == Array(plain[0..<(16 * step)]))
+    #expect(sameSamples(Array(both[0..<(16 * step)]), Array(plain[0..<(16 * step)])) == .identical)
     // in the bar the kick is out (past the last kick's tail) only the bass plays
     let a = 16 * step + step / 2
     let b = 32 * step

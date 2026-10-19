@@ -221,10 +221,13 @@ public enum JournalEvent: Equatable, Sendable {
   public var foldKey: String? {
     switch self {
     case .action(.param(let deck, let name, _)): "\(deck).\(name)"
+    case .action(.masterFx(let deck, let key, _)): "\(deck).fx.\(key)"
+    case .action(.fx(let deck, let param, _)): "\(deck).fxunit.\(param)"
     case .action(.crossfader): "crossfader"
     case .action(.master): "master"
     case .action(.clipGain(let id, _)): "gain.\(id)"
     case .action(.clipFx(let id, _)): "fx.\(id)"
+    case .action(.clipRetune(let id, _)): "retune.\(id)"
     case .action(.clipImport(let id, _, _, _, _)): "import.\(id)"
     case .action(.clipQuantize(let id, _)): "quantize.\(id)"
     case .action(.clipFade(let id, _)): "fade.\(id)"
@@ -265,6 +268,20 @@ extension DeckAction {
     case .queueNext(let deck, let spec):
       return "\(deck) next up \(DeckSourceDescriptor.net(spec).summary)"
     case .lock(let key, let on): return "\(on ? "lock" : "unlock") \(key)"
+    case .masterFx(let deck, let key, let value):
+      return "\(deck) fx \(key) \(String(format: "%.2f", value))"
+    case .focus(let deck): return "focus \(deck)"
+    case .fx(let deck, let param, let value):
+      return "\(deck) fx unit \(param) \(String(format: "%.2f", value))"
+    case .fxReset(let deck, let onBeat):
+      return "\(deck) fx unit reset" + (onBeat ? " on the beat" : "")
+    case .fxKill(let deck, let on, let onBeat):
+      return "\(deck) fx unit \(on ? "killed" : "back")" + (onBeat ? " on the beat" : "")
+    case .stemMute(let deck, let stem, let on):
+      return "\(deck) stem \(stem) \(on ? "muted" : "back")"
+    case .clipRetune(let id, let voices):
+      return "clipRetune \(id.prefix(12))…"
+        + voices.sorted { $0.key < $1.key }.map { " ch\($0.key)=\($0.value)" }.joined()
     default:
       // the rest: the op, the deck, then the other fields
       var parts: [String] = []

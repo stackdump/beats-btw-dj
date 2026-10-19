@@ -516,16 +516,29 @@ public final class SamplerBank: @unchecked Sendable {
       guard let target = freeSlot() else { return nil }
       // Load first, so a source that fails to load costs nothing already playing.
       var loadError: Error?
-      let loaded = SamplerInstrument.lifecycle.withLock { () -> SamplerInstrument? in
-        do { return try SamplerInstrument(source: s, sampleRate: sampleRate) } catch {
-          loadError = error
-          return nil
+      func load() -> SamplerInstrument? {
+        SamplerInstrument.lifecycle.withLock { () -> SamplerInstrument? in
+          do { return try SamplerInstrument(source: s, sampleRate: sampleRate) } catch {
+            loadError = error
+            return nil
+          }
         }
       }
-      guard let inst = loaded else {
+      guard var inst = load() else {
         unloadable.insert(s)
         failures[s] = "load failed: \(loadError.map { Self.describe($0) } ?? "unknown")"
         continue
+      }
+      // A tonal sound that came up silent is loaded once more before it is turned away: in a
+      // long, busy test process SoundFont programs that always pass alone (MuseScore #73 flute
+      // silent at −200 dB, #53 silent 0.1 s into its held note, #81 not loading) were turned
+      // away once each; a second, fresh unit is what any later load would have tried.
+      var fits = s.isKit || inst.normalize(sampleRate: sampleRate, tuning: !s.isLocalOnly)
+      if !fits, let c = inst.lastCheck, c.rmsDB <= SamplerInstrument.silentRMSdB || !c.held,
+        let again = load()
+      {
+        inst = again
+        fits = inst.normalize(sampleRate: sampleRate, tuning: !s.isLocalOnly)
       }
       if s.isKit {
         guard inst.normalizeKit(sampleRate: sampleRate) else {
@@ -535,7 +548,7 @@ public final class SamplerBank: @unchecked Sendable {
             inst.lastCheck?.rmsDB ?? -200)
           continue
         }
-      } else if !inst.normalize(sampleRate: sampleRate, tuning: !s.isLocalOnly) {
+      } else if !fits {
         unloadable.insert(s)  // silent or out of tune: never published
         let c = inst.lastCheck
         let rms = c.map { String(format: "%.1f", $0.rmsDB) } ?? "?"
@@ -700,8 +713,9 @@ public enum SamplerPartLevels {
   public static let groups = ["bass", "harmony", "melody", "arp"]
   /// Passes per probe, averaged: round-robin guitars and modulated patches vary between plays.
   static let passes = 3
-  /// Bumped when a probe changes, so cached levels are measured again.
-  static let version = 1
+  /// Bumped when a probe changes, so cached levels are measured again. (2: the pad chord
+  /// held a bar, not two held half a bar each.)
+  static let version = 2
 
   /// The probe group for a part's group: a pad plays like harmony, anything else without a
   /// probe of its own like melody (as `Loudness.sampledPartLevel` falls back).
@@ -710,18 +724,21 @@ public enum SamplerPartLevels {
     return groups.contains(group) ? group : "melody"
   }
 
-  /// The probe for `group` (one of `groups`): pad chords held half a bar each, bass eighths,
-  /// a lead line of mixed lengths, a sixteenth-note arpeggio.
+  /// The probe for `group` (one of `groups`): a pad chord held a bar at 120 BPM, bass
+  /// eighths, a lead line of mixed lengths, a sixteenth-note arpeggio.
+  ///
+  /// (The probe was two chords held half a bar (0.75 s) each until 6.6's acceptance measured
+  /// sampled pads in tracks: beats' pads hold 15 of a bar's 16 steps, and over a held bar a sampled pad
+  /// fades where the synth pad sustains — Broadway Big Dreamer Pad sat level with `dark-pad`
+  /// on the half-bar probe and 4–5 dB under it over a bar, and its slot gain left it 10 dB
+  /// under its target in house / techno / funk.)
   static func probe(_ group: String) -> (
     notes: [(note: Int, at: Double, seconds: Double)], seconds: Double
   ) {
     switch group {
     case "harmony":
       return (
-        [
-          (48, 0, 0.75), (52, 0, 0.75), (55, 0, 0.75), (45, 0.75, 0.75), (48, 0.75, 0.75),
-          (52, 0.75, 0.75),
-        ], 1.5
+        [(48, 0, 1.9), (52, 0, 1.9), (55, 0, 1.9)], 2
       )
     case "bass":
       return ([36, 36, 43, 41].enumerated().map { ($0.element, Double($0.offset) * 0.25, 0.2) }, 1)

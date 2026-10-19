@@ -155,6 +155,7 @@ struct MCPBridgeTests {
       "clipMove": #""id":"x""#, "clipFx": #""id":"x""#, "lock": #""key":"A.play""#,
       "wanderPace": #""bars":8"#, "wanderLock": #""dimension":"tempo""#,
       "setRoleVoice": #""role":"bass""#, "clipImport": #""id":"x""#,
+      "masterFx": #""key":"lp-freq""#, "fx": #""param":"filter","value":0.5"#,
     ]
     #expect(Set(DeckAction.jsonOps).count == DeckAction.jsonOps.count)
     for op in DeckAction.jsonOps where op != "load" {
@@ -171,6 +172,19 @@ struct MCPBridgeTests {
     #expect(text.contains("dimension: \(dims)|keep:<role>"), "wanderLock's dimensions are listed")
   }
 
+  /// clipRetune takes its instruments by MIDI channel (`{"3": "saw"}`), and dj_perform says so.
+  @Test func clipRetuneTakesVoicesByChannel() throws {
+    let v = try JSONValue.parse(
+      #"{"op":"clipRetune","id":"x","voices":{"3":"saw","bass":"piano","1":"organ"}}"#)
+    #expect(DeckAction(json: v) == .clipRetune(id: "x", voices: [3: "saw", 1: "organ"]))
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":9,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains(#"clipRetune {id, voices: {"<MIDI channel>": instrument}}"#))
+  }
+
   /// The mix-out / mix-in ops say their bars and defaults, and that they need a net deck.
   @Test func mixOutAndMixInAreDocumented() throws {
     let tools = try #require(
@@ -180,8 +194,28 @@ struct MCPBridgeTests {
       tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
     #expect(text.contains("mixOut {deck, bars? 1-64, default \(MixOutTail.defaultBars)}"))
     #expect(text.contains("mixIn {deck, bars? 1-64, default \(DeckAction.defaultMixInBars)}"))
-    #expect(text.contains("stinger, panic, mixOut, mixIn) need a deck in net mode"))
-    #expect(DeckAction.jsonOps.suffix(2) == ["mixOut", "mixIn"])
+    // Master FX run on sample decks too (the user's call), so panic left the net-only list.
+    #expect(text.contains("stinger, mixOut, mixIn) need a deck in net mode"))
+    #expect(text.contains("master-chain macros and panic also work on a sample deck"))
+    let mix = try #require(DeckAction.jsonOps.firstIndex(of: "mixOut"))
+    #expect(DeckAction.jsonOps[mix + 1] == "mixIn")
+  }
+
+  /// The controller-only ops say what they take: the focus targets, the STEMS groups, and every
+  /// master FX slider key with the 0…1 travel.
+  @Test func theControllerOnlyOpsAreDocumented() throws {
+    let tools = try #require(
+      try reply(bridge(Box()), #"{"jsonrpc":"2.0","id":12,"method":"tools/list"}"#)["result"]?[
+        "tools"]?.array)
+    let text = try #require(
+      tools.first { $0["name"]?.string == "dj_perform" }?["description"]?.string)
+    #expect(text.contains("rewind {deck}"))
+    #expect(text.contains("focus {deck: A|B|L}"))
+    #expect(
+      text.contains(
+        "stemMute {deck, stem: \(Deck.stemNames.reversed().joined(separator: "|")), on}"))
+    let keys = MasterFxKey.allCases.map(\.id).joined(separator: "|")
+    #expect(text.contains("masterFx {deck, key: \(keys), value 0…1}"))
   }
 
   @Test func importingAStockLoopOntoTheRowIsDocumented() throws {

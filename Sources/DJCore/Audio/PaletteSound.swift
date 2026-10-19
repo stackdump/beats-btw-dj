@@ -23,6 +23,9 @@ public struct TrackSound: Sendable, Equatable {
   public var kit: String?
   /// The composer's instrument, kept when a pick or a palette's synth voice replaced it.
   public var composed: String?
+  /// A stinger net's curated one-shot (`StingerAssignment.option`, `Project.curateStingers`):
+  /// played instead of the palette's pick, under the user's override. nil = none.
+  public var curated: String?
 
   public init() {}
 }
@@ -60,7 +63,9 @@ extension Project {
         t.sound.kit = nil
       } else {
         if let c = t.sound.composed, !t.picked { t.instrument = c }
-        let opt = t.sound.override ?? palette?.pick(role: pool, key: key, seed: seed, dir: dir)
+        let opt =
+          t.sound.override ?? (pool == "stinger" ? t.sound.curated : nil)
+          ?? palette?.pick(role: pool, key: key, seed: seed, dir: dir)
         t.sound.option = opt
         t.sound.kit = nil
         if let opt, let name = SoundPalette.synthName(opt), !t.picked {
@@ -106,11 +111,14 @@ extension Project {
 
 extension WaveOptions {
   /// These options with the room and echo the palette plays in (`SoundPalette.room` / `.echo`,
-  /// another genre's), else `genre`'s, for the fixes they hold.
+  /// another genre's), else `genre`'s, for the fixes they hold. The room keeps its pad shimmer
+  /// under `.shimmer`, as `forGenre` sets it (the room's genre's family level).
   public func forPalette(_ palette: String?, genre: String) -> WaveOptions {
     var o = self
     let p = SoundPalette.named(palette)
-    if musicality.contains(.space) { o.space = SpaceSpec.forGenre(p?.room ?? genre) }
+    if musicality.contains(.space) {
+      o.space = SpaceSpec.forGenre(p?.room ?? genre, shimmer: musicality.contains(.shimmer))
+    }
     if musicality.contains(.echo) {
       let e = p?.echo ?? genre
       o.echo = e == "none" ? nil : EchoSpec.forGenre(e)
@@ -157,8 +165,9 @@ extension TrackSpec {
   /// (beats' channels: the same in every genre).
   public func withPalette(_ palette: String?) -> TrackSpec {
     let id = SoundPalette.normalized(palette)
-    guard case .net(let s)? = DeckSourceDescriptor.net(self).withPalette(
-      id, channels: Self.soundChannels(genre: genre))
+    guard
+      case .net(let s)? = DeckSourceDescriptor.net(self).withPalette(
+        id, channels: Self.soundChannels(genre: genre))
     else { return self }
     return s
   }

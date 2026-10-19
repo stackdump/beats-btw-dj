@@ -1,0 +1,8 @@
+{
+  "comment": "Minecraft gameplay → deck actions (MinecraftEventMap, MinecraftEvents.swift): the valoper server's mc_recent_events, handed to the app's minecraftEvents method (dj_minecraft_events, `djctl minecraft events` on stdin). Keys are event names exactly as the tool gives them (the management protocol's RPC method, or the log bridge's log:chat / log:death / log:advancement); values are a dj_perform action without its deck (the request's deck, else the focus deck). Each event fires once (a cursor over `at`), and a deck takes at most one stinger a bar.",
+  "events": {
+    "log:death": { "op": "stinger", "n": 0 },
+    "log:advancement": { "op": "stinger", "n": 1 },
+    "minecraft:notification/players/joined": { "op": "stinger", "n": 2 }
+  }
+}

@@ -272,7 +272,8 @@ extension DeckAction {
   var clipIDs: [String] {
     switch self {
     case .clip(_, let id), .clipLoop(let id, _), .clipGain(let id, _), .clipCrop(let id, _, _),
-      .clipRemove(let id), .clipRename(let id, _), .clipColor(let id, _), .clipMute(let id, _),
+      .clipRetune(let id, _), .clipRemove(let id), .clipRename(let id, _), .clipColor(let id, _),
+      .clipMute(let id, _),
       .clipSolo(let id, _), .clipKeyLock(let id, _), .clipFx(let id, _),
       .clipQuantize(let id, _), .clipFade(let id, _), .clipFollow(let id, _):
       return [id]

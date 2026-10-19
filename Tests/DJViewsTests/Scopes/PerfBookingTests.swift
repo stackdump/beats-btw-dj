@@ -85,19 +85,22 @@ struct PerfBookingTests {
     perf.start()
     _ = try #require(renderPixels(scene, width: 600, height: 400))
     let v = perf.currentViz(.stage)
-    // background, flame, bolts, meta, pulse, panels, empty message, solo: eight canvases, each
-    // one span of one 4 ms tick (the model's frame is booked by the host, not by the scene)
-    #expect(v.calls == 8, "\(v.calls) booked draws")
-    #expect(abs(v.ms - 32) < 1e-6, "\(v.ms) ms")
+    // background, flame, bolts, meta, pulse, panels, empty message, wander walk, solo, Blocks:
+    // ten canvases, each one span of one 4 ms tick (the model's frame is booked by the host, not
+    // by the scene). Was eight before the roadmap added the wander walk (`StageWanderLayer`, on
+    // by default with the ∿ button) and the Blocks visualizer (`StageMinecraftLayer`, a canvas
+    // that draws nothing unless it is the solo showing, like `StageSoloLayer`).
+    #expect(v.calls == 10, "\(v.calls) booked draws")
+    #expect(abs(v.ms - 40) < 1e-6, "\(v.ms) ms")
     #expect(perf.currentViz(.scope).calls == 0 && perf.currentViz(.ring).calls == 0)
   }
 
   @Test func aStageWhoseLayersDrawSlowlyIsStepDownByTheMonitor() throws {
     let rig = try StageViewRig(play: false)
     defer { rig.stop() }
-    // Each reading of the clock takes 10 ms: a scene's eight draws book 80 ms and the monitor's
-    // own readings stretch every frame to ~170 ms. Only a booked draw can make that "the
-    // visuals" (47 % of the window) rather than "something else".
+    // Each reading of the clock takes 10 ms: a scene's ten draws book 100 ms and the monitor's
+    // own readings stretch every frame further. Only a booked draw can make that "the visuals"
+    // (about half the window) rather than "something else".
     let (perf, model, scene) = tickingStage(stepMs: 10, rig: rig)
     perf.start()
     var frames = 0

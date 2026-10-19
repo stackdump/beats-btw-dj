@@ -120,7 +120,8 @@ struct DeckBlockEntryTests {
     for n in sizes {
       let got = renderThroughBufferList(viaList, frames: n)
       let want = render(direct, [n])[0]
-      #expect(got.left == want.left && got.right == want.right)
+      #expect(sameSamples(got.left, want.left) == .identical)
+      #expect(sameSamples(got.right, want.right) == .identical)
     }
     #expect(viaList.renderedFrames == direct.renderedFrames)
   }
@@ -161,7 +162,7 @@ struct DeckTapTests {
     let want = blocks.flatMap { b in zip(b.left, b.right).map { ($0 + $1) * 0.5 } }
     let got = readAll(deck.tap)
     #expect(got.lost == 0)
-    #expect(got.samples == want)
+    #expect(sameSamples(got.samples, want) == .identical)
     #expect(want.contains { abs($0) > 0.01 }, "the deck must actually be making sound")
     // the common time base: the tap's right edge is exactly what the deck has rendered
     #expect(deck.tap.endFrame == deck.renderedFrames)
@@ -178,7 +179,7 @@ struct DeckTapTests {
     #expect(deck.tap.frame(ofSequence: 128) == 2128)
     #expect(deck.tap.endFrame == deck.renderedFrames && deck.renderedFrames == 2256)
     let want = blocks.flatMap { b in zip(b.left, b.right).map { ($0 + $1) * 0.5 } }
-    #expect(readAll(deck.tap).samples == want)
+    #expect(sameSamples(readAll(deck.tap).samples, want) == .identical)
   }
 
   @Test func unsubscribingAndComingBackLeavesSilenceForTheGap() throws {
@@ -231,7 +232,8 @@ struct DeckTapTests {
     let b = render(watched, sizes + sizes)
     #expect(watched.tap.frames == sizes.reduce(0, +) * 2)
     for (x, y) in zip(a, b) {
-      #expect(x.left == y.left && x.right == y.right)
+      #expect(sameSamples(x.left, y.left) == .identical)
+      #expect(sameSamples(x.right, y.right) == .identical)
     }
     #expect(a.contains { $0.left.contains { abs($0) > 0.01 } })
   }
@@ -247,7 +249,8 @@ struct DeckTapTests {
     }
     let off = try run(tapped: false)
     let on = try run(tapped: true)
-    #expect(off.count == 44_100 && off == on)
+    #expect(off.count == 44_100)
+    #expect(sameSamples(off, on) == .identical)
     #expect(off.contains { abs($0) > 0.01 })
   }
 }

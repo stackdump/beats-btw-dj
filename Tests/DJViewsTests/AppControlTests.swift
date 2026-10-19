@@ -55,6 +55,64 @@ struct AppControlTests {
     #expect(after["favorites"]?.array?.isEmpty == true)
   }
 
+  /// dj_loops: the row's Undo, "Load source", Export (no panel) and "Stop all".
+  @Test func loopsUndoExportAndStopAll() async throws {
+    let lib = tempLoopLibrary()
+    defer { removeLoopLibrary(lib) }
+    let (m, dj) = try LoopLibraryViewTests().model(takes: 2, library: lib)
+    defer { dj.stop() }
+    let ids = m.clips.map(\.id)
+    func clipIDs(_ loops: JSONValue) -> [String]? {
+      loops["clips"]?.array?.compactMap { $0["id"]?.string }
+    }
+    #expect(clipIDs(try await call(m, "loops")) == ids, "list is dj_state.loops")
+    // undo: only right after a removal
+    await #expect { try await call(m, "loops", #"{"action":"undo"}"#) } throws: {
+      "\($0)".contains("nothing to undo")
+    }
+    _ = try await call(m, "perform", "{\"action\":{\"op\":\"clipRemove\",\"id\":\"\(ids[0])\"}}")
+    #expect(m.clips.map(\.id) == [ids[1]])
+    #expect(clipIDs(try await call(m, "loops", #"{"action":"undo"}"#)) == ids, "back where it was")
+    #expect(m.lastRemoval == nil)
+    // load source: the demo loop the takes came from, onto deck B
+    let b = try await call(
+      m, "loops", "{\"action\":\"loadSource\",\"id\":\"\(ids[0])\",\"deck\":\"B\"}")
+    #expect(b["title"]?.string == "demo loop")
+    await #expect {
+      try await call(m, "loops", #"{"action":"loadSource","id":"nope","deck":"B"}"#)
+    } throws: { "\($0)".contains("a clip on the row") }
+    // export: written without a panel, and it decodes to the clip's frames
+    let path = tempWAVPath()
+    defer { removeFile(path) }
+    let out = try await call(
+      m, "loops", "{\"action\":\"export\",\"id\":\"\(ids[0])\",\"path\":\"\(path)\"}")
+    let clip = try #require(dj.clip(ids[0]))
+    #expect(out["path"]?.string == path)
+    #expect(out["frames"]?.double == Double(clip.buffer.length))
+    #expect(try decodedWAVFrames(path, sampleRate: clip.buffer.sampleRate) == clip.buffer.length)
+    await #expect {
+      try await call(m, "loops", "{\"action\":\"export\",\"id\":\"\(ids[0])\",\"path\":\"x.wav\"}")
+    } throws: { "\($0)".contains("absolute") }
+    // stop all: a clipLoop off for each looping clip, recorded
+    for id in ids {
+      _ = try await call(
+        m, "perform", "{\"action\":{\"op\":\"clipLoop\",\"id\":\"\(id)\",\"on\":true}}")
+    }
+    #expect(Set(dj.loopingClips) == Set(ids))
+    // a recording starts with the decks at rest: deck A still plays the demo the takes came
+    // from (the row's clips are not on a deck and keep looping)
+    dj["A"]!.eject()
+    let rec = try SessionRecorder.start(on: dj)
+    let stopped = try await call(m, "loops", #"{"action":"stopAll"}"#)
+    #expect(Set(stopped["stopped"]?.array?.compactMap(\.string) ?? []) == Set(ids))
+    #expect(rec.finish().events.count == ids.count, "one clipLoop off per clip")
+    #expect(dj.loopingClips.isEmpty)
+    #expect(clipIDs(stopped["loops"] ?? .null) == ids)
+    await #expect { try await call(m, "loops", #"{"action":"shuffle"}"#) } throws: {
+      "\($0)".contains("stopAll")
+    }
+  }
+
   @Test func copyADeckThenChangeAnInstrumentOnTheCopy() async throws {
     let m = try favoritesModel()
     _ = try await call(
@@ -319,6 +377,33 @@ struct AppControlTests {
     #expect(s["build"]?["id"]?.string == BuildInfo.current.id)
   }
 
+  /// ROADMAP 6.7: a raw-`nets` share deck says it plays the runner's fixes and not the pass.
+  @Test func stateReportsTheFixesADeckPlaysWith() async throws {
+    let rows = try beatsFixture("share-urls")["rawNets"]!.array!
+    let row = try #require(rows.first { $0["payload"]?["name"]?.string == "Hand Made" })
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    let a = try #require(dj["A"])
+    a.loadNet(
+      try #require(
+        PreparedTrack(rawNets: row["payload"]!, sampleRate: dj.sampleRate, opts: a.waveOptions)))
+    let b = try #require(dj["B"])
+    b.loadNet(
+      PreparedTrack(
+        spec: TrackSpec(genre: "house", seed: 3, structure: "minimal"),
+        sampleRate: dj.sampleRate, opts: b.waveOptions))
+    try dj.start()
+    let m = AppModel(engine: dj)
+    m.start()
+    let s = try await call(m, "state")
+    let raw = s["decks"]?["A"]?["fixes"]
+    #expect(raw?["pass"]?.bool == false)
+    #expect(raw?["names"]?.array?.compactMap(\.string) == DJMusicality.Fixes.runnerOnly.names)
+    let net = s["decks"]?["B"]?["fixes"]
+    #expect(net?["pass"]?.bool == true)
+    #expect(net?["names"]?.array?.compactMap(\.string) == DJMusicality.Fixes.all.names)
+    #expect(s["decks"]?["A"]?["mode"]?.string == "net")
+  }
+
   @Test func stateReportsLocksFollowHeadphonesAndView() async throws {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
     dj["A"]!.loadDemo()
@@ -352,11 +437,77 @@ struct AppControlTests {
     #expect(s["scope"]?["source"]?.string == "A")
     #expect(s["scope"]?["measured"]?.bool == false)
     #expect(s["stage"]?["open"]?.bool == false)
-    #expect(s["stage"]?["visualizer"]?.string == "constellation")
+    #expect(
+      s["stage"]?["visualizer"]?.string == "mandala",
+      "the raw value; constellation is its display name")
     #expect(m.stageModel?.isAttached == false, "reading the stage does not attach its feed")
     #expect(s["crates"]?.array?.compactMap(\.string) == ["warmup"])
     #expect(s["variations"]?["bass"]?.array?.first?["name"]?.string == "deep")
     #expect(s["variations"]?["bass"]?.array?.first?["useSynth"]?.bool == true)
+  }
+
+  @Test func viewFoldsSectionsScopeAndStage() async throws {
+    let m = try model()
+    m.defaults = scratchDefaults()
+    // nothing saved: the decks open on Perform, as DeckSections does
+    let before = try await call(m, "view")
+    #expect(before["sections"]?["A"]?.array?.compactMap(\.string) == ["perform"])
+
+    let v = try await call(
+      m, "view",
+      #"""
+      {"sections":{"A":["history","perform"],"B":[]},"loopMasterFx":true,
+       "scope":{"open":true,"kind":"bands","source":"B","measured":true}}
+      """#)
+    // saved exactly as a click in DeckSections saves it: Section order, comma-separated
+    #expect(m.defaults.string(forKey: "fold.A") == "perform,history")
+    #expect(m.defaults.string(forKey: "fold.B") == "")
+    #expect(v["sections"]?["A"]?.array?.compactMap(\.string) == ["perform", "history"])
+    #expect(v["sections"]?["B"]?.array?.isEmpty == true)
+    #expect(v["loopMasterFx"]?.bool == true && m.showLoopMasterFx)
+    #expect(m.showScopes && m.scopeKind == .bands && m.scopeSource == .deck("B") && m.scopeMeasured)
+    #expect(v["scope"]?["kind"]?.string == "bands")
+    #expect(v["scope"]?["source"]?.string == "B")
+    #expect(v["scope"]?["measured"]?.bool == true)
+
+    // bad values change nothing
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"loopMasterFx":false,"sections":{"A":["mixer"]}}"#)
+    }
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"scope":{"kind":"oscilloscope"}}"#)
+    }
+    #expect(m.showLoopMasterFx && m.defaults.string(forKey: "fold.A") == "perform,history")
+    // without a window (tests) the Stage cannot open
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"stage":{"open":true}}"#)
+    }
+
+    var opened = 0
+    var closed = 0
+    m.openStageWindow = { opened += 1 }
+    m.closeStageWindow = { closed += 1 }
+    let s = try await call(
+      m, "view",
+      #"""
+      {"stage":{"open":true,"source":"A","visualizer":"sonar","overlays":["tilt","bolts"],
+       "background":"stars"}}
+      """#)
+    #expect(opened == 1 && closed == 0)
+    let settings = try #require(m.stageModel?.settings)
+    #expect(settings.source == .deck("A") && settings.visualizer == .sonar)
+    #expect(settings.overlays == [.tilt, .bolts] && settings.bgMode == .stars)
+    #expect(s["stage"]?["visualizer"]?.string == "sonar")
+    #expect(s["stage"]?["overlays"]?.array?.compactMap(\.string) == ["bolts", "tilt"])
+    #expect(s["stage"]?["background"]?.string == "stars")
+    #expect(s["stage"]?["source"]?.string == "A")
+    // the case's name is taken too
+    _ = try await call(m, "view", #"{"stage":{"open":false,"visualizer":"constellation"}}"#)
+    #expect(closed == 1 && settings.visualizer == .constellation)
+    await #expect(throws: (any Error).self) {
+      try await call(m, "view", #"{"stage":{"background":"plaid"}}"#)
+    }
+    #expect(settings.bgMode == .stars)
   }
 
   @Test func performGoesThroughTheEngine() async throws {
@@ -419,6 +570,98 @@ struct AppControlTests {
     }
     #expect(dj.loopFollow == .source)
     #expect(dj["A"]?.beatGrid?.bpm == 96)
+  }
+
+  /// The controls only a controller had (rewind, deck focus, STEMS, a master FX slider) are
+  /// dj_perform ops, recorded as actions, checked like the rest.
+  @Test func controllerOnlyControlsGoThroughPerform() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    _ = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    let rec = try SessionRecorder.start(on: dj)
+    _ = try await call(m, "perform", #"{"action":{"op":"focus","deck":"L"}}"#)
+    #expect(dj.focus == "L")
+    _ = try await call(m, "perform", #"{"action":{"op":"focus","deck":"B"}}"#)
+    #expect(dj.focus == "B")
+    #expect(try await call(m, "state")["focus"]?.string == "B")
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"masterFx","deck":"B","key":"lp-freq","value":0.25}}"#)
+    #expect(dj["B"]?.wave.masterFxSet[.lpFreq] == 25)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"masterFx","deck":"B","key":"master-pitch","value":1}}"#)
+    #expect(dj["B"]?.wave.masterFxSet[.masterPitch] == 12)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"stemMute","deck":"B","stem":"music","on":true}}"#)
+    #expect(dj["B"]?.isStemMuted("music") == true)
+    // asking for the state it is already in changes nothing
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"stemMute","deck":"B","stem":"music","on":true}}"#)
+    #expect(dj["B"]?.isStemMuted("music") == true)
+    _ = try await call(
+      m, "perform", #"{"action":{"op":"stemMute","deck":"B","stem":"music","on":false}}"#)
+    #expect(dj["B"]?.isStemMuted("music") == false)
+    _ = try await call(m, "perform", #"{"action":{"op":"rewind","deck":"A"}}"#)
+    let kinds = rec.finish().events.map(\.kind)
+    #expect(kinds.contains(.action(.focus(deck: "L"))))
+    #expect(kinds.contains(.action(.masterFx(deck: "B", key: "lp-freq", value: 0.25))))
+    #expect(kinds.contains(.action(.stemMute(deck: "B", stem: "music", on: true))))
+    #expect(kinds.contains(.action(.rewind(deck: "A"))))
+    for (params, words) in [
+      (#"{"action":{"op":"focus","deck":"C"}}"#, "no deck"),
+      (#"{"action":{"op":"stemMute","deck":"A","stem":"music","on":true}}"#, "needs a net deck"),
+      (#"{"action":{"op":"stemMute","deck":"B","stem":"drums","on":true}}"#, "stem must be"),
+      (#"{"action":{"op":"masterFx","deck":"B","key":"wobble","value":0.5}}"#, "master FX key"),
+      (#"{"action":{"op":"masterFx","deck":"B","key":"lp-freq","value":1.5}}"#, "0…1"),
+      (#"{"action":{"op":"masterFx","deck":"B","value":0.5}}"#, "known `op`"),
+    ] {
+      await #expect {
+        try await call(m, "perform", params)
+      } throws: { "\($0)".contains(words) }
+    }
+  }
+
+  /// `minecraftEvents` (dj_minecraft_events): gameplay fires the focus deck's stinger through
+  /// the engine (recorded), once per event however often the window is re-sent.
+  @Test func minecraftEventsFireTheFocusDecksStingerOnce() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    _ = try await call(
+      m, "generate", #"{"deck":"B","genre":"techno","seed":42,"structure":"minimal"}"#)
+    _ = try await call(m, "perform", #"{"action":{"op":"focus","deck":"B"}}"#)
+    let rec = try SessionRecorder.start(on: dj)
+    let window = """
+      {"events":[
+        {"at":"2026-10-18T16:16:22.349Z","source":"log","event":"log:chat",
+         "params":{"player":"stackdump","message":"hello world","time":"20:15:08"}},
+        {"at":"2026-10-18T16:16:22.845Z","source":"log","event":"log:death",
+         "params":{"player":"stackdump","message":"stackdump was slain by Zombie","time":"20:15:08"}}
+      ]}
+      """
+    let r = try await call(m, "minecraftEvents", window)
+    #expect(r["deck"]?.string == "B")
+    #expect(r["fired"]?.array?.count == 1)
+    #expect(r["fired"]?[0]?["player"]?.string == "stackdump")
+    #expect(r["skipped"]?[0]?["reason"]?.string == "unmapped")
+    #expect(r["cursor"]?.string == "2026-10-18T16:16:22.845Z")
+    let again = try await call(m, "minecraftEvents", window)
+    #expect(again["fired"]?.array?.isEmpty == true)
+    #expect(rec.finish().events.map(\.kind) == [.action(.stinger(deck: "B", n: 0))])
+    // a sample deck consumes the event and says why; bad requests say what is wrong
+    let a = try await call(
+      m, "minecraftEvents",
+      #"{"deck":"A","events":[{"at":"2026-10-18T16:30:00.000Z","source":"log","event":"log:advancement","params":{"player":"x"}}]}"#
+    )
+    #expect(a["fired"]?.array?.isEmpty == true)
+    #expect(a["skipped"]?[0]?["reason"]?.string?.contains("net") == true)
+    for (params, words) in [
+      (#"{}"#, "`events`"), (#"{"events":{"x":1}}"#, "mc_recent_events"),
+      (#"{"events":[],"deck":"C"}"#, "no deck"),
+    ] {
+      await #expect {
+        try await call(m, "minecraftEvents", params)
+      } throws: { "\($0)".contains(words) }
+    }
   }
 
   @Test func generateLoadsALiveNetAndMacrosThenWork() async throws {
@@ -542,6 +785,54 @@ struct AppControlTests {
     #expect(c["genres"]?.array?.contains(.string("techno")) == true)
     #expect(c["macros"]?.array?.contains { $0["id"]?.string == "drop" } == true)
     #expect((c["apcPads"]?.array?.count ?? 0) > 0)
+  }
+
+  @Test func settingsSetPflHeadphonesAndAwake() async throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj)
+    m.defaults = scratchDefaults()
+    m.findInpulse = { nil }  // never route (and restart) a real Inpulse
+    m.start()
+    defer { m.setKeepScreenAwake(false) }
+    let r = try await call(
+      m, "settings",
+      #"{"pfl":{"A":true},"headphoneMix":0.25,"headphoneLevel":0.5,"awake":true}"#)
+    #expect(r["headphones"]?["mix"]?.double == 0.25)
+    #expect(r["headphones"]?["level"]?.double == 0.5)
+    #expect(r["headphones"]?["pfl"]?["A"]?.bool == true)
+    #expect(r["headphones"]?["pfl"]?["B"]?.bool == false)
+    #expect(r["awake"]?.bool == true)
+    #expect(r["inpulseOutput"] == .null)
+    #expect(dj["A"]!.pfl && !dj["B"]!.pfl)
+    #expect(dj.headphoneMix == 0.25 && dj.headphoneLevel == 0.5)
+    #expect(dj.owners["headphoneMix"] == "ui" && dj.owners["headphoneLevel"] == "ui")
+    #expect(m.defaults.bool(forKey: AppModel.keepScreenAwakeKey))
+    let state = try await call(m, "state")
+    #expect(state["headphones"]?["mix"]?.double == 0.25)
+    #expect(state["awake"]?.bool == true)
+    // only the keys given change
+    let b = try await call(m, "settings", #"{"pfl":{"B":true}}"#)
+    #expect(b["headphones"]?["pfl"]?["A"]?.bool == true)
+    #expect(b["headphones"]?["pfl"]?["B"]?.bool == true)
+    #expect(b["headphones"]?["mix"]?.double == 0.25)
+    // a bad key changes nothing
+    await #expect {
+      try await call(m, "settings", #"{"headphoneMix":0.9,"headphoneLevel":2}"#)
+    } throws: { "\($0)".contains("headphoneLevel") }
+    #expect(dj.headphoneMix == 0.25)
+    await #expect { try await call(m, "settings", #"{"pfl":{"Z":true}}"#) } throws: {
+      "\($0)".contains("no deck")
+    }
+    // no Inpulse: an error naming the cause, nothing restarted
+    await #expect {
+      try await call(m, "settings", #"{"inpulseOutput":true,"headphoneMix":1}"#)
+    } throws: { "\($0)".contains("no DJControl Inpulse") }
+    #expect(!m.inpulseRouted && dj.headphoneMix == 0.25)
+    let off = try await call(m, "settings", #"{"awake":false}"#)
+    #expect(off["awake"]?.bool == false)
   }
 
   @Test func padsPressTheOnScreenAPC() async throws {

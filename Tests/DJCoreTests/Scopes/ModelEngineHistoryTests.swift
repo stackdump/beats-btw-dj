@@ -42,7 +42,8 @@ struct ModelEngineHistoryTests {
     let warm = ModelEngine(engine: rig.dj, cache: warmedCache([("techno", 42, "loop", 300)]))
     warm.consume(feed)
     #expect(warm.fires == held)
-    #expect(warm.modelBars == cold.modelBars && warm.maxBar == cold.maxBar)
+    #expect(sameSamples(warm.modelBars, cold.modelBars) == .identical)
+    #expect(warm.maxBar == cold.maxBar)
   }
 
   @Test func fallingMoreThanTheLogBehindStartsOverFromWhatTheLogHolds() throws {
@@ -83,7 +84,8 @@ struct ModelEngineHistoryTests {
     // it is what a model that only ever saw the held log builds
     let fresh = ModelEngine(engine: rig.dj, cache: cache)
     fresh.consume(feed)
-    #expect(fresh.modelBars == model.modelBars && fresh.modelFrom == model.modelFrom)
+    #expect(sameSamples(fresh.modelBars, model.modelBars) == .identical)
+    #expect(fresh.modelFrom == model.modelFrom)
     #expect(fresh.missedFires == log.firstNumber - feed.generationFireStart)
 
     // and it carries on from there

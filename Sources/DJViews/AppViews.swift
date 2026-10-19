@@ -62,6 +62,8 @@ struct DeckState: Equatable {
   var macroPulse = MacroPulseState()
   /// The master-chain macros (FX, pitch, feel) in effect.
   var masterRunning: Set<MasterMacro> = []
+  /// What Hit 1–4 fire (`Deck.stingers`), as their buttons' help says it.
+  var stingers: [String] = []
   /// The LOOP-record clip the deck is playing, if it is playing one.
   var clipID: String?
   /// Roles disabled on the deck (they stay off through new tracks).
@@ -139,6 +141,8 @@ public final class AppModel {
   var headphoneLevel = 0.7
   var inpulseOutput: AudioOutputDevice?
   var inpulseRouted = false
+  /// Finds the Inpulse's audio device; tests swap it so they never route (or restart) the real one.
+  @ObservationIgnored var findInpulse: () -> AudioOutputDevice? = { AudioDevices.inpulse() }
   var padLights: [String: [PadLight]] = [:]
   /// Every attached controller's LEDs by profile name, for the device map (SPEC 25).
   var deviceLights: [String: DeviceLights] = [:]
@@ -160,8 +164,31 @@ public final class AppModel {
   var stockPadQuery = ""
   /// Stock loops being decoded for the row from their pads (shown as loading).
   var stockPadsLoading: Set<String> = []
+  /// Clips being rendered again with other instruments (`retuneClip`; their pads say
+  /// "retuning…").
+  var retuningClips: Set<String> = []
+  /// The crate the Crate page shows (`setSoundboardCrate`), saved in the app's defaults as
+  /// `soundboardCrate`; nil (or a crate since deleted) shows the first crate.
+  var soundboardCrate: String?
+  static let soundboardCrateKey = "soundboardCrate"
   /// The Loops row's "Loops master FX" strip (LoopMasterFxStrip): folded open or not.
   var showLoopMasterFx = false
+  /// The FX unit panel (FxUnitViews.swift), under the decks. Saved in the app's defaults as
+  /// `showFxUnit`; closed until opened.
+  var showFxUnit = false
+  static let showFxUnitKey = "showFxUnit"
+  /// Each target's FX unit as of the last poll (A, B, L).
+  var fxUnits: [String: FxUnitState] = [:]
+  /// The target the FX unit panel aims at; nil follows the focus (`DJEngine.focus`).
+  var fxTarget: String?
+  /// `DJEngine.focus` as of the last poll.
+  var fxFocus = "A"
+  /// What the XY pad's vertical axis moves (its horizontal is the filter).
+  var fxY = FxParam.crush
+  /// Reset and kill wait for the next beat.
+  var fxOnBeat = false
+  /// Dragged knobs, recorded at most 30 times a second (`FxUnitCoalescer`).
+  @ObservationIgnored var fxCoalescer = FxUnitCoalescer()
   /// Keep the display from idling to sleep while the app is open (bottom bar "Awake"). Saved
   /// in the app's defaults as `keepScreenAwake`; off until turned on.
   private(set) var keepScreenAwake = false
@@ -191,6 +218,10 @@ public final class AppModel {
   private(set) var scopeHub: ScopeHub?
   /// The Stage window's model (SPEC modes 7…21); made with the hub.
   public private(set) var stageModel: StageModel?
+  /// Open / close the Stage window from the control socket (`view`'s `stage.open`): set by the
+  /// main window from its `openWindow` / `dismissWindow`; nil without a window (tests).
+  @ObservationIgnored var openStageWindow: (() -> Void)?
+  @ObservationIgnored var closeStageWindow: (() -> Void)?
   var walk: ControlWalk?
   /// Starred tracks and samples, newest first (`FavoritesStore`).
   var favorites: [Favorite] = []
@@ -242,6 +273,9 @@ public final class AppModel {
   private var refresh: Timer?
   private var injectedRouter: ControllerRouter?
   @ObservationIgnored var controlServer: ControlServer?
+  /// Minecraft gameplay events already taken, and each deck's last stinger bar
+  /// (`minecraftEvents`, MinecraftEvents.swift).
+  @ObservationIgnored var minecraftFeed = MinecraftEventFeed()
   /// The audition playing now (held so it isn't freed mid-sound).
   @ObservationIgnored var auditionSound: NSSound?
   /// Samplers for auditions, apart from the decks' (a sampler renders on one thread only).
@@ -297,7 +331,9 @@ public final class AppModel {
     if let p = defaults.string(forKey: Self.soundboardPageKey).flatMap(SoundboardPage.init) {
       soundboardPage = p
     }
+    soundboardCrate = defaults.string(forKey: Self.soundboardCrateKey)
     showSoundboard = defaults.bool(forKey: Self.showSoundboardKey)
+    showFxUnit = defaults.bool(forKey: Self.showFxUnitKey)
     if let injected {
       dj = injected
       scopeHub = ScopeHub(engine: injected, perf: injectedPerf ?? PerfMonitor())
@@ -425,7 +461,7 @@ public final class AppModel {
     master = dj.master
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
-    inpulseOutput = AudioDevices.inpulse()
+    inpulseOutput = findInpulse()
     // with Shift down the mirror shows the loop page a shift-click reaches
     let shiftLayer: Bool? = showPads && shiftKeyHeld() ? true : nil
     if let apc = router?.lights(profileName: SurfaceProfile.apcMiniMK2.name, shift: shiftLayer) {
@@ -487,6 +523,7 @@ public final class AppModel {
         chaseBoards[name] = board
         chaseClock[name] = now
         state.macroPulse = board.state
+        state.stingers = d.stingers.map(\.help)
         state.duration = Double(d.sections.map(\.steps).reduce(0, +)) * 15 / max(d.netBaseBPM, 1)
         state.positionSeconds = Double(d.wave.tick) * 15 / max(d.effectiveBPM ?? 120, 1)
         state.platterSeconds = state.positionSeconds
@@ -505,6 +542,7 @@ public final class AppModel {
     }
     let tempo = decksPlayingTempo
     if tempo != playingTempo { playingTempo = tempo }
+    pollFxUnit(dj, now: now)
     pollLoops(dj)
     pollJournal(dj)
   }
@@ -584,7 +622,8 @@ public final class AppModel {
               ?? "missing", repeats: s.repeats)
         }, provenance: described(c).lines, provenanceJSON: described(c).json,
         color: c.color, genre: c.originGenre, originTitle: c.originTitle,
-        canLoadOrigin: canLoadOrigin(c.id, dj), fx: c.fx)
+        canLoadOrigin: canLoadOrigin(c.id, dj), fx: c.fx, quantum: dj.clipQuantum(c.id),
+        fade: dj.clipFade(c.id), follow: dj.clipFollow(c.id))
     }
     let present = Set(row.map(\.id))
     if !selectedClips.isSubset(of: present) { selectedClips.formIntersection(present) }
@@ -687,6 +726,16 @@ public final class AppModel {
   func setClipFx(_ id: String, _ fx: LoopFX) { soundAction(.clipFx(id: id, fx: fx)) }
   func setLoopKeyLock(_ on: Bool) { soundAction(.loopKeyLock(on: on)) }
   func setLoopFade(_ f: LoopFade) { soundAction(.loopFade(mode: f.rawValue)) }
+  /// Clip `id`'s own launch boundary, fade and tempo follow; nil: it follows the row's again.
+  func setClipQuantum(_ id: String, _ beats: Int?) {
+    soundAction(.clipQuantize(id: id, beats: beats))
+  }
+  func setClipFade(_ id: String, _ f: LoopFade?) {
+    soundAction(.clipFade(id: id, mode: f?.rawValue))
+  }
+  func setClipFollow(_ id: String, _ mode: LoopFollow?) {
+    soundAction(.clipFollow(id: id, mode: mode?.rawValue))
+  }
   func setLoopFxLink(_ on: Bool) { soundAction(.loopFxLink(on: on)) }
   private func soundAction(_ a: DeckAction) {
     guard let dj else { return }
@@ -795,14 +844,21 @@ public final class AppModel {
   /// Master → the Inpulse's outputs 1/2, headphone cue → 3/4. Restarts the engine; if the
   /// device refuses, the stereo path comes back.
   func toggleInpulseOutput() {
-    guard let dj else { return }
-    Task { @MainActor in
+    Task { @MainActor in await routeInpulseOutput(!inpulseRouted) }
+  }
+
+  /// Route to the Inpulse (on) or back to stereo (off); a no-op when already there.
+  func routeInpulseOutput(_ on: Bool) async {
+    guard let dj, on != inpulseRouted else { return }
+    // In a main-actor Task (as the toggle always did): `dj` crosses into the nonisolated
+    // `enableCueOutput` from the Task's region, which strict concurrency accepts.
+    await Task { @MainActor in
       dj.stop()
       do {
         if inpulseRouted {
           try dj.disableCueRouting()
           inpulseRouted = false
-        } else if let dev = AudioDevices.inpulse() {
+        } else if let dev = findInpulse() {
           try await dj.enableCueOutput(device: dev)
           inpulseRouted = true
         }
@@ -814,7 +870,7 @@ public final class AppModel {
         inpulseRouted = false
         try? dj.start()
       }
-    }
+    }.value
   }
 
   func loadDemo(_ deck: String) {
@@ -917,9 +973,11 @@ public final class AppModel {
   }
   /// Load a favorite onto a deck, through `perform` like any other load: a net is prepared off
   /// the main thread, a sample decoded from its file (with the grid it was starred with).
-  func loadFavorite(_ deck: String, _ f: Favorite) {
+  /// Returns the load's task (its value: did it load), for callers that wait on it.
+  @discardableResult
+  func loadFavorite(_ deck: String, _ f: Favorite) -> Task<Bool, Never> {
     status = "loading \(f.title)…"
-    Task { @MainActor in await loadFavoriteNow(deck, f) }
+    return Task { @MainActor in await loadFavoriteNow(deck, f) }
   }
 
   @discardableResult
@@ -1039,6 +1097,7 @@ public final class AppModel {
     stockLoopsLoading = true
     let library = loopLibrary
     stockLoops = await Task.detached(priority: .userInitiated) { library.load() }.value
+    StingerContent.setStock(stockLoops)  // a Hit may launch one (local-only)
     stockLoopsLoading = false
   }
 
@@ -1525,6 +1584,7 @@ public final class AppModel {
 public struct ContentView: View {
   let model: AppModel
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.dismissWindow) private var dismissWindow
 
   public init(model: AppModel) { self.model = model }
 
@@ -1558,7 +1618,11 @@ public struct ContentView: View {
     // the rings and the small animations pace themselves by the hub's visual level
     .environment(\.scopeHub, model.scopeHub)
     // arrow keys step through whatever list of choices the mouse is over
-    .onAppear { HoverKeys.shared.install() }
+    .onAppear {
+      HoverKeys.shared.install()
+      model.openStageWindow = { [openWindow] in openWindow(id: StageWindow.id) }
+      model.closeStageWindow = { [dismissWindow] in dismissWindow(id: StageWindow.id) }
+    }
     // what auto mode did to the visuals (SPEC mode 27): a toast over the window's foot for its
     // 8 s, as monitor.js' is (bottom centre), so it takes no room from the header or the bottom
     // bar, which are full at the window's minimum width
@@ -1622,6 +1686,8 @@ public struct ContentView: View {
     VStack(spacing: 16) {
       // a wide window gives each deck a second column for its sections; a narrow one stacks them
       deckRow(wide: wide, mixer: mixer)
+      // the FX unit: one panel for A, B and the loops, under the deck row in both layouts
+      if model.showFxUnit { FxUnitPanel(model: model).djCard(tint: model.fxTint) }
       if model.showSoundboard { SoundboardView(model: model).djCard(tint: LoopRowView.tint) }
       // the row appears with the first take (and stays while there are clips)
       if !model.clips.isEmpty || !model.recording.isEmpty {
@@ -1703,6 +1769,11 @@ public struct ContentView: View {
           isOn: Binding(get: { model.showSoundboard }, set: { model.setShowSoundboard($0) })
         )
         .toggleStyle(.button).help(SoundboardView.help)
+        Toggle(
+          model.fxUnits.values.contains { $0.settings.isActive } ? "FX unit ●" : "FX unit",
+          isOn: Binding(get: { model.showFxUnit }, set: { model.setShowFxUnit($0) })
+        )
+        .toggleStyle(.button).help(FxUnitPanel.help)
         // one button per attached controller: walk through its controls
         ForEach(model.devices, id: \.port) { d in
           Button("Check \(d.profile)") { model.startWalk(device: d.profile) }
@@ -2147,6 +2218,7 @@ struct NetPanel: View {
       FlowRow(spacing: 6) {
         ForEach(0..<4, id: \.self) { n in
           Button("Hit \(n + 1)") { model.stinger(name, n) }.liveButton()
+            .help(state.stingers.indices.contains(n) ? state.stingers[n] : "Hit \(n + 1)")
             .lockable(DJActionKind.lockKey(deck: name, .stinger, param: "\(n)"), model)
         }
         WanderButton(name: name, on: state.wander.on, model: model, tint: tint)

@@ -130,7 +130,7 @@ struct GrooveReportTests {
     let hooked = render(spec, opts: .extended, bars: 8, log: log)
     let plain = render(spec, opts: .extended, bars: 8)
     #expect(log.records.count > 100)
-    #expect(hooked == plain)
+    #expect(sameSamples(hooked, plain) == .identical)
     #expect(Set(log.records.map(\.kind)).contains("tonal"))
   }
 

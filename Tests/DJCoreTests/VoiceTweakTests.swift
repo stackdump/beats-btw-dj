@@ -52,13 +52,15 @@ struct VoiceTweakEngineTests {
     let b = source(p)
     a.play()
     b.play()
-    #expect(render(a, blocks: 150) == render(b, blocks: 150), "the same song, the same audio")
+    #expect(
+      sameSamples(render(a, blocks: 150), render(b, blocks: 150)) == .identical,
+      "the same song, the same audio")
     let gen = b.activeGeneration
     let tick = b.tick
     #expect(b.setVoice(channel: ch, tweak: shaped, useSynth: false))
     let ra = render(a, blocks: 400)
     let rb = render(b, blocks: 400)
-    #expect(ra != rb, "the tweak is heard")
+    #expect(sameSamples(ra, rb) != .identical, "the tweak is heard")
     #expect(b.tick > tick && b.tick == a.tick, "the song kept going: no restart")
     #expect(b.activeGeneration == gen, "the same project: no reload")
     // the lanes on that channel changed, every other lane is as it was
@@ -85,7 +87,8 @@ struct VoiceTweakEngineTests {
       for lane in s.latest!.lanes where lane.channel == ch {
         lane.baseLevel = 0
         lane.setVoice(
-          VoiceLaneParams(channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
+          VoiceLaneParams(
+            channel: ch, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr))
       }
       s.play()
     }
@@ -93,7 +96,7 @@ struct VoiceTweakEngineTests {
     _ = render(b, blocks: 50)
     b.setVoice(channel: ch, tweak: shaped, useSynth: false)
     let ra = render(a, blocks: 300)
-    #expect(ra == render(b, blocks: 300))
+    #expect(sameSamples(ra, render(b, blocks: 300)) == .identical)
     #expect(ra.contains { $0 != 0 }, "the rest of the song plays")
   }
 
@@ -124,15 +127,19 @@ struct VoiceTweakEngineTests {
     d.setVoice(channel: ch, tweak: VoiceTweak(), useSynth: false)
     c.play()
     d.play()
-    #expect(render(c, blocks: 300) == render(d, blocks: 300))
+    #expect(sameSamples(render(c, blocks: 300), render(d, blocks: 300)) == .identical)
   }
 
   @Test func useSynthVoicePlaysASampledChannelsSynthVoiceAndBack() throws {
     let p = song("country", 7)
     let a = source(p, opts: .extended(samplers: SamplerBank(sampleRate: sr)))
     let b = source(p, opts: .extended(samplers: SamplerBank(sampleRate: sr)))
+    // the melody's channel: the first sampled lane is the harmony pad, which this song (with
+    // every fix on) does not play in the ~9 bars rendered here, so its synth could never sound
     let sampled = try #require(
-      b.latest?.lanes.first { $0.sampledSlot >= 0 && $0.channel >= 0 }, "a sampled channel")
+      b.latest?.lanes.first {
+        $0.sampledSlot >= 0 && $0.channel >= 0 && $0.netId.hasPrefix("melody")
+      }, "a sampled melody channel")
     let ch = sampled.channel
     #expect(b.latest?.channelVoice(ch)?.sampled == true)
     a.play()
@@ -280,7 +287,9 @@ struct VoiceTweakCodecTests {
       voice: InstrumentTable.shared.voice(instrument: "laser", group: "melody"), sampleRate: sr)
     #expect(p.has(VoiceLaneParams.pitch) && !p.has(VoiceLaneParams.level))
     #expect(p.pmOn && p.pitchFrom > p.pitchTo, "a partial sweep fills in from the instrument")
-    #expect(VoiceLaneParams(channel: 2, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr).mask == 0)
+    #expect(
+      VoiceLaneParams(channel: 2, tweak: VoiceTweak(), useSynth: false, voice: nil, sampleRate: sr)
+        .mask == 0)
   }
 }
 
@@ -296,7 +305,8 @@ struct VoiceVariationStoreTests {
     #expect(store.list("laser").map(\.name) == ["short zap", "dark"], "in the order saved")
     #expect(store.list("laser")[1].useSynth && store.list("laser")[1].params.lowpass == 600)
     // the same name again replaces it in place
-    try store.save(VoiceVariation(name: "short zap", params: VoiceTweak(pitchTime: 0.05)), for: "laser")
+    try store.save(
+      VoiceVariation(name: "short zap", params: VoiceTweak(pitchTime: 0.05)), for: "laser")
     #expect(store.list("laser").map(\.name) == ["short zap", "dark"])
     #expect(store.list("laser")[0].params.pitchTime == 0.05)
     // a fresh store over the same file reads it back

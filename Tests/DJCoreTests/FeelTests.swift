@@ -72,7 +72,10 @@ private func pearson(_ x: [Double], _ y: [Double]) -> Double {
 struct FeelTests {
   /// A tonal lane gets the swing only: the measured ratio is the table's at three tempi
   /// (within 2 %), the off-beat sixteenths (2r − 1) sixteenths late, the rest on the grid.
-  @Test(arguments: [80.0, 105.0, 130.0])
+  /// The tempi are where the chill line swings: fitted from the Groove MIDI Dataset's hip-hop
+  /// files (grooves.json: 0.363 + 0.00175 × bpm), it is all but straight at 80 bpm (0.503), so
+  /// 80 could not tell the swing from none; 95 is the slowest tempo here it clearly swings.
+  @Test(arguments: [95.0, 105.0, 130.0])
   func swingFollowsTheTable(bpm: Double) throws {
     let hits = render(sixteenths(drum: false, tempo: bpm), fixes: [.feel], feel: lofi).hits
     try #require(hits.count >= 60, "\(hits.count) hits")
@@ -141,13 +144,18 @@ struct FeelTests {
       let p = sixteenths(drum: true, tempo: 110, swing: swing, humanize: swing / 2)
       let a = render(p, fixes: fixes, feel: lofi).audio
       let b = render(p, fixes: fixes, feel: nil).audio
-      #expect(a == b, "\(fixes) swing \(swing)")
+      #expect(sameSamples(a, b) == .identical, "\(fixes) swing \(swing)")
     }
     // with it, the hats move
     let p = sixteenths(drum: true, tempo: 110)
-    #expect(render(p, fixes: [.feel], feel: lofi).audio != render(p, fixes: [], feel: nil).audio)
+    #expect(
+      sameSamples(
+        render(p, fixes: [.feel], feel: lofi).audio, render(p, fixes: [], feel: nil).audio)
+        != .identical)
     // and the flag on without a template plays as without the flag
-    #expect(render(p, fixes: [.feel], feel: nil).audio == render(p, fixes: [], feel: nil).audio)
+    #expect(
+      sameSamples(render(p, fixes: [.feel], feel: nil).audio, render(p, fixes: [], feel: nil).audio)
+        == .identical)
   }
 
   /// `forGenre` sets the family's template only when the flag is on; a prepared track keeps

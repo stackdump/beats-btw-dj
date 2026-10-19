@@ -12,11 +12,15 @@ public struct SpaceSpec: Sendable, Equatable {
   public var wet: Double
   /// Lowpass in the reverb's loop, Hz: a darker room for lofi and jazz, a brighter hall for trance.
   public var damping: Double
+  /// The pad shimmer (`DJMusicality.Fixes.shimmer`, `Shimmer`): the level of the pads' octave-up
+  /// path into the room; 0 = none.
+  public var shimmer: Double
 
-  public init(seconds: Double, wet: Double, damping: Double) {
+  public init(seconds: Double, wet: Double, damping: Double, shimmer: Double = 0) {
     self.seconds = seconds
     self.wet = wet
     self.damping = damping
+    self.shimmer = shimmer
   }
 
   /// A neutral medium room, for a deck whose genre has none of its own (`targets.json`'s
@@ -28,15 +32,24 @@ public struct SpaceSpec: Sendable, Equatable {
   /// rooms for lofi, jazz and bossa. Returns measured against the dry mix (`djctl render <g> 42
   /// --synth --room`): ambient −8 dB; trance, synthwave −14 … −15; edm, dnb −17; lofi, jazz,
   /// bossa −13 … −16 (pad-heavy mixes send most of themselves, so their wet is lower); techno,
-  /// house, dubstep, funk −19 … −22.
-  public static func forGenre(_ name: String) -> SpaceSpec {
-    MixTargets.shared.room(genre: name)
+  /// house, dubstep, funk −19 … −22. A family's return band (`space.families`, 6.1's
+  /// references) rescales `wet` into it (`MixTargets.room`); `shimmer`: with the pad shimmer at
+  /// the family's level (`.shimmer`).
+  public static func forGenre(_ name: String, shimmer: Bool = false) -> SpaceSpec {
+    var s = MixTargets.shared.room(genre: name)
+    if shimmer { s.shimmer = MixTargets.shared.shimmer(genre: name) }
+    return s
   }
 
   /// How much of itself a lane sends to the room (`kind`: its drum kind or "tonal"; `group`:
-  /// its part): pads most, arp and leads next, snare / clap / crash some, hats a touch; kick and
-  /// bass none.
+  /// its part), from `targets.json`'s `space.sends` (`MixTargets.send`): pads most, arp and
+  /// leads next, snare / clap / crash some, hats a touch; kick and bass none.
   public static func send(kind: String, group: String) -> Double {
+    MixTargets.shared.send(kind: kind, group: group) ?? ruleOfThumbSend(kind: kind, group: group)
+  }
+
+  /// The sends before `targets.json` held them: what a key missing from the table gets.
+  static func ruleOfThumbSend(kind: String, group: String) -> Double {
     switch kind {
     case "tonal":
       switch group {
@@ -54,8 +67,79 @@ public struct SpaceSpec: Sendable, Equatable {
     }
   }
 
-  /// What the sampled instruments that send (pads, leads, arps: they render as one bus) send.
-  public static let samplerSend = 0.35
+  /// What the sampled instruments that send (pads, leads, arps: they render as one bus) send
+  /// (`space.sends.sampler`). Read at prepare / runner init, never first on the audio thread.
+  public static var samplerSend: Double {
+    MixTargets.shared.space.sends?["sampler"]?.value ?? 0.35
+  }
+
+  /// Which lanes the shimmer takes: synth pads (the sampled instruments share one bus).
+  public static func shimmers(kind: String, group: String) -> Bool {
+    kind == "tonal" && (group == "harmony" || group == "pad")
+  }
+}
+
+/// The pad shimmer (`DJMusicality.Fixes.shimmer`): the pads' room send, an octave up, at a low
+/// level, into the room. An octave-up pitch shifter — two taps reading a delay line at twice
+/// the write speed, half a window apart, crossfaded by sin² / cos² (their gains sum to 1) — with
+/// feedback around it (each pass another octave, `feedback` quieter) and a lowpass on its output
+/// (`lowpassHz`: the shifted top is aliasing-prone and harsh). Buffers are allocated at init (off
+/// the audio thread); `tune` and `process` allocate nothing.
+final class Shimmer {
+  static let windowMs = 60.0
+  static let feedback = 0.35
+  static let lowpassHz = 6000.0
+
+  private var buf: [Float]
+  private let window: Int
+  private var w = 0
+  /// The first tap's delay, `window` … 1; the second's is half a window on.
+  private var d = 0
+  private var last = 0.0
+  private var lp = 0.0
+  private let lpA: Double
+  private(set) var level = 0.0
+  var isOn: Bool { level > 0 }
+
+  init(sampleRate sr: Double) {
+    window = max(4, Int(Self.windowMs / 1000 * sr))
+    buf = [Float](repeating: 0, count: window + 1)
+    d = window
+    lpA = 1 - exp(-2 * Double.pi * min(Self.lowpassHz, sr * 0.45) / sr)
+  }
+
+  /// Set its level (the room's `shimmer`; nil / 0 = off). Allocation-free.
+  func tune(_ spec: SpaceSpec?) {
+    level = max(0, spec?.shimmer ?? 0)
+  }
+
+  /// Clear the delay line. Allocation-free.
+  func reset() {
+    for i in 0..<buf.count { buf[i] = 0 }
+    last = 0
+    lp = 0
+  }
+
+  /// One sample of the pads' send in, one sample out for the room's input.
+  @inline(__always)
+  func process(_ x: Double) -> Double {
+    let n = buf.count
+    buf[w] = Float(x + Self.feedback * last)
+    let half = window / 2
+    let d2 = d > half ? d - half : d + half
+    var r1 = w - d
+    if r1 < 0 { r1 += n }
+    var r2 = w - d2
+    if r2 < 0 { r2 += n }
+    let s = sin(Double.pi * Double(d) / Double(window))
+    let g1 = s * s
+    let y = g1 * Double(buf[r1]) + (1 - g1) * Double(buf[r2])
+    last = y
+    lp += lpA * (y - lp)
+    w = w + 1 == n ? 0 : w + 1
+    d = d == 1 ? window : d - 1
+    return lp * level
+  }
 }
 
 /// A stereo feedback-delay-network reverb: eight delay lines of mutually prime lengths, mixed
@@ -93,6 +177,12 @@ final class FDNReverb {
   private var sideHP: SideHighpass
   /// Output gain: the spec's `wet`, normalised so a longer room is not simply louder.
   private(set) var outGain = 0.0
+  /// The FX unit's send gain on the input (1 = the genre's sends), ramped linearly over the block
+  /// it was set for (`setSend`). Exactly 1 leaves the input untouched.
+  private var send = 1.0
+  private var sendTarget = 1.0
+  private var sendStep = 0.0
+  private var sendLeft = 0
 
   init(sampleRate sr: Double) {
     sampleRate = sr
@@ -120,6 +210,14 @@ final class FDNReverb {
     outGain = Self.makeup * spec.wet * (1 - mean * mean).squareRoot()
   }
 
+  /// The FX unit's room send (`FxUnitLayer.roomGain`), reached linearly over the next `frames`
+  /// samples. Allocation-free (audio thread).
+  func setSend(_ g: Double, frames: Int) {
+    sendTarget = g
+    sendLeft = max(1, frames)
+    sendStep = (g - send) / Double(sendLeft)
+  }
+
   /// Clear the room (the tail stops). Allocation-free.
   func reset() {
     for i in 0..<buf.count { buf[i] = 0 }
@@ -133,6 +231,12 @@ final class FDNReverb {
   /// One sample in (the send bus), one stereo sample out (the return).
   @inline(__always)
   func process(_ x: Double) -> (Double, Double) {
+    var x = x
+    if sendLeft > 0 {
+      sendLeft -= 1
+      send = sendLeft == 0 ? sendTarget : send + sendStep
+    }
+    if send != 1 { x *= send }
     let h1 = hpA * (hpY.0 + x - hpX.0)
     hpX.0 = x
     hpY.0 = h1

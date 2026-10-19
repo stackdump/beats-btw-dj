@@ -176,7 +176,7 @@ class SwiftTestToolTests(LockEnv):
                 raise RuntimeError("boom")
         rn.set_runner(Boom())
         with self.assertRaises(RuntimeError):
-            st.swift_test("BuildInfoTests")
+            st.swift_test("BuildInfoTests", lock=True)
         self.assertFalse(st.lock_status()["held"])
 
     def test_two_calls_run_one_after_the_other(self):
@@ -191,7 +191,8 @@ class SwiftTestToolTests(LockEnv):
                 return rn.Result(list(argv), 0, PASSING, "", cwd)
         rn.set_runner(Slow())
         results = []
-        threads = [threading.Thread(target=lambda: results.append(st.swift_test("BuildInfoTests")))
+        threads = [threading.Thread(target=lambda: results.append(
+            st.swift_test("BuildInfoTests", release=True)))
                    for _ in range(2)]
         for t in threads:
             t.start()
@@ -207,6 +208,21 @@ class SwiftTestToolTests(LockEnv):
 
 
 class LockProcessTests(LockEnv):
+    def test_debug_runs_and_shots_do_not_wait_for_the_lock(self):
+        self.holder_process()
+        self.fake.answers["swift-test-filter"] = PASSING
+        r = st.swift_test("BuildInfoTests", lock_wait=0.3)
+        self.assertEqual(r["status"], "passed")
+        self.assertFalse(r["lock"]["locked"])
+        s = sh.shots("WindowShot", lock_wait=0.3)
+        self.assertFalse(s["summary"]["lock"]["locked"])
+        self.assertTrue(st.lock_status()["held"])  # still the other process's
+
+    def test_release_runs_wait_for_it(self):
+        self.holder_process()
+        with self.assertRaises(rn.ToolError):
+            st.swift_test("AllocationCounterTests", release=True, lock_wait=0.3)
+
     def test_another_process_holding_it_shows_in_lock_status(self):
         p = self.holder_process()
         s = st.lock_status()
@@ -218,7 +234,7 @@ class LockProcessTests(LockEnv):
     def test_a_call_waits_for_the_other_process(self):
         p = self.holder_process(seconds=1.0)
         self.fake.answers["swift-test-filter"] = PASSING
-        r = st.swift_test("BuildInfoTests")
+        r = st.swift_test("BuildInfoTests", lock=True)
         self.assertEqual(r["status"], "passed")
         self.assertGreater(r["lock"]["waited_seconds"], 0.3)
         self.assertEqual(r["lock"]["waited_for"]["pid"], p.pid)
@@ -227,7 +243,7 @@ class LockProcessTests(LockEnv):
     def test_waiting_gives_up_after_lock_wait(self):
         self.holder_process()
         with self.assertRaises(rn.ToolError):
-            st.swift_test("BuildInfoTests", lock_wait=0.3)
+            st.swift_test("BuildInfoTests", release=True, lock_wait=0.3)
         self.assertEqual(self.fake.calls, [])
 
     def test_a_killed_holder_leaves_no_stale_lock(self):

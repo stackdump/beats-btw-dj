@@ -3,9 +3,9 @@ import Testing
 @testable import DJCore
 
 // The audio-thread contract for master macros on sample decks (`DeckRenderer.master`): every
-// master macro fired on a playing sample deck (sweeps, holds, feel, pitch; the vinyl brake is a
-// no-op there), stacked fires, sliders and panics mid-way allocate and free nothing on the render
-// thread. Release builds only (`make swift-rt-test`).
+// master macro fired on a playing sample deck (sweeps, holds, feel, pitch, the vinyl brake and
+// its release), stacked fires, sliders, panics and a jog mid-brake allocate and free nothing on
+// the render thread. Release builds only (`make swift-rt-test`).
 //
 // NAME COUPLING: the Makefile's real-time run selects suites by 'RealTime': keep it in the name.
 
@@ -60,6 +60,44 @@ struct SampleDeckMasterRealTimeTests {
       dj.perform(.panic(deck: "B"))
       measure(40)
     }
+    #expect(allocs == 0, "the render path allocated \(allocs) times")
+    #expect(frees == 0, "and freed \(frees) times")
+  }
+
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  @MainActor
+  func aBrakeDoesNotAllocate() throws {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 48_000)
+    let a = try #require(dj["A"])
+    let b = try #require(dj["B"])
+    a.loadDemo()
+    b.loadDemo()
+    a.setPlaying(true)
+    b.setPlaying(true)
+    try dj.start()
+    defer { dj.stop() }
+    let buffer = makeEngineRenderBuffer(dj, frames: 4096)
+    pullEngine(dj, buffer, cycles: 200, frames: 512)  // spun up, and warm
+    var allocs = 0
+    var frees = 0
+    func measure(_ cycles: Int) {
+      let r = countAllocations { pullEngine(dj, buffer, cycles: cycles, frames: 512) }
+      allocs += r.allocations
+      frees += r.frees
+    }
+    // a whole brake and its release on A (a bar at 120 bpm is 188 blocks of 512, plus the wait
+    // for the downbeat), one panicked mid-way on B, then one cancelled by a jog on A
+    a.fire(.vinylBrake, duration: 1)
+    b.fire(.vinylBrake, duration: 2)
+    measure(300)
+    dj.perform(.panic(deck: "B"))
+    measure(200)
+    a.fire(.vinylBrake, duration: 1)
+    measure(250)
+    a.freeze()
+    measure(20)
+    a.release()
+    measure(40)
     #expect(allocs == 0, "the render path allocated \(allocs) times")
     #expect(frees == 0, "and freed \(frees) times")
   }

@@ -116,7 +116,8 @@ struct SpaceTests {
   @Test func kickAndBassStayDry() {
     let a = render(kickAndBass(), .stereo)
     let b = render(kickAndBass(), [.stereo, .space], space: .forGenre("techno"))
-    #expect(a.l == b.l && a.r == b.r)
+    #expect(sameSamples(a.l, b.l) == .identical)
+    #expect(sameSamples(a.r, b.r) == .identical)
   }
 
   /// Rooms by genre: longer for trance and ambient than for techno and funk; a deck's track
@@ -133,7 +134,7 @@ struct SpaceTests {
         > SpaceSpec.send(kind: "snare", group: "drums"))
     let track = PreparedTrack(
       spec: TrackSpec(genre: "trance", seed: 42, structure: "minimal"), sampleRate: 22_050)
-    #expect(track.prepared.space == SpaceSpec.forGenre("trance"))
+    #expect(track.prepared.space == SpaceSpec.forGenre("trance", shimmer: true))
     #expect(
       WaveRunner.prepare(padOnce(), sampleRate: 22_050, opts: WaveOptions()).space == nil)
   }

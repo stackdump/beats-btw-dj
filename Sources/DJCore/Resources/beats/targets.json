@@ -3,7 +3,8 @@
     "about": "Mix targets the musicality fixes aim at (ROADMAP 6.1), as data that names where each number came from. Loaded once by MixTargets (Bundle.main first, then Bundle.module), at prepare, never on the audio thread.",
     "editing": "Hand-edited, not generated: make beats-tables writes only tables.json. A value replaced by a measurement says so in its source (corpus, tool, date).",
     "families": "beats' structure.js family order (BeatsTables.family(of:)): dance, song, jazz, chill",
-    "bands": "scripts/references.py --write fills them from $DJ_REFERENCES/<family>/ (local files, never committed): value = median, band = [p10, p90], source 'ref:<family>/<sha8> (n=K, djctl <build>)', sha8 hashing the files' sha256s. Never a path or a file name."
+    "bands": "scripts/references.py --write fills them from $DJ_REFERENCES/<family>/ (local files, never committed): value = median, band = [p10, p90], source 'ref:<family>/<sha8> (n=K, djctl <build>)', sha8 hashing the files' sha256s. Never a path or a file name.",
+    "hfTilt": "Lowpass cutoff (Hz) on the synth hat, open hat and crash under .hfTilt (HFTilt.forGenre), by family; default for a family without one."
   },
   "loudness": {
     "probeOffsetDB": {
@@ -47,7 +48,34 @@
         "source": "rule-of-thumb (pre-6.1): the hat level, about 10 dB under the kick"
       }
     },
-    "families": {},
+    "families": {
+      "chill": {
+        "kick": {
+          "value": -2,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "bass": {
+          "value": -1,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "lead": {
+          "value": -4,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "snare": {
+          "value": -8,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "pad": {
+          "value": -4,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        },
+        "hats": {
+          "value": -14,
+          "source": "[RULE-OF-THUMB] (ROADMAP 6.6, 2026-10-18): jazz / lofi mixes carry the bass and keys forward, the kick under them and the hats down; unmeasured, the jazz family uses this entry until it has one"
+        }
+      }
+    },
     "maxTrimDB": {
       "value": 6.0,
       "source": "rule-of-thumb (pre-6.1)"
@@ -65,37 +93,61 @@
         "seconds": 4.0,
         "wet": 0.27,
         "damping": 5000,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -8,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -8); re-measure before trusting a band to move it"
+        }
       },
       "trance": {
         "seconds": 2.4,
         "wet": 0.45,
         "damping": 7500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -14.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -14 ... -15, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "synthwave": {
         "seconds": 2.4,
         "wet": 0.45,
         "damping": 7500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -14.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -14 ... -15, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "edm": {
         "seconds": 2.0,
         "wet": 0.38,
         "damping": 7000,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -17,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -17); re-measure before trusting a band to move it"
+        }
       },
       "techno": {
         "seconds": 1.3,
         "wet": 0.33,
         "damping": 6000,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -20.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -19 ... -22, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "house": {
         "seconds": 1.3,
         "wet": 0.33,
         "damping": 6000,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -20.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -19 ... -22, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "garage": {
         "seconds": 1.3,
@@ -107,7 +159,11 @@
         "seconds": 1.0,
         "wet": 0.22,
         "damping": 5500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -20.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -19 ... -22, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "disco": {
         "seconds": 1.0,
@@ -119,37 +175,141 @@
         "seconds": 1.8,
         "wet": 0.16,
         "damping": 3500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -14.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -13 ... -16, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "jazz": {
         "seconds": 1.6,
         "wet": 0.19,
         "damping": 4500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -14.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -13 ... -16, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "bossa": {
         "seconds": 1.6,
         "wet": 0.19,
         "damping": 4500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -14.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -13 ... -16, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "dnb": {
         "seconds": 1.6,
         "wet": 0.33,
         "damping": 6500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -17,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -17); re-measure before trusting a band to move it"
+        }
       },
       "dubstep": {
         "seconds": 1.6,
         "wet": 0.33,
         "damping": 6500,
-        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+        "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)",
+        "returnDB": {
+          "value": -20.5,
+          "source": "measured pre-6.1 (djctl render <g> 42 --synth --room, as Space.swift's doc gives it: -19 ... -22, midpoint); re-measure before trusting a band to move it"
+        }
       },
       "trap": {
         "seconds": 1.6,
         "wet": 0.33,
         "damping": 6500,
         "source": "rule-of-thumb (pre-6.1); wet set by ear against the dry mix (djctl render <g> 42 --synth --room)"
+      }
+    },
+    "sends": {
+      "harmony": {
+        "value": 0.5,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "pad": {
+        "value": 0.5,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "arp": {
+        "value": 0.4,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "bass": {
+        "value": 0,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "tonal": {
+        "value": 0.3,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "snare": {
+        "value": 0.22,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "clap": {
+        "value": 0.3,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "crash": {
+        "value": 0.25,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "openhat": {
+        "value": 0.1,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "hat": {
+        "value": 0.05,
+        "source": "rule-of-thumb (pre-6.1)"
+      },
+      "sampler": {
+        "value": 0.35,
+        "source": "rule-of-thumb (pre-6.1): the sampled instruments that send (pads, leads, arps) render as one bus"
+      }
+    },
+    "families": {
+      "dance": {
+        "returnDB": {
+          "source": "unmeasured (6.1): a [low, high] band of the room return against the dry mix, dB"
+        },
+        "shimmer": {
+          "value": 0.12,
+          "source": "rule-of-thumb (pre-6.1) (6.6): the pads' octave-up path into the room, as a gain on their send"
+        }
+      },
+      "song": {
+        "returnDB": {
+          "source": "unmeasured (6.1): a [low, high] band of the room return against the dry mix, dB"
+        },
+        "shimmer": {
+          "value": 0.1,
+          "source": "rule-of-thumb (pre-6.1) (6.6): the pads' octave-up path into the room, as a gain on their send"
+        }
+      },
+      "jazz": {
+        "returnDB": {
+          "source": "unmeasured (6.1): a [low, high] band of the room return against the dry mix, dB"
+        },
+        "shimmer": {
+          "value": 0,
+          "source": "rule-of-thumb (pre-6.1) (6.6): the pads' octave-up path into the room, as a gain on their send"
+        }
+      },
+      "chill": {
+        "returnDB": {
+          "source": "unmeasured (6.1): a [low, high] band of the room return against the dry mix, dB"
+        },
+        "shimmer": {
+          "value": 0.2,
+          "source": "rule-of-thumb (pre-6.1) (6.6): the pads' octave-up path into the room, as a gain on their send"
+        }
       }
     }
   },
@@ -250,6 +410,28 @@
       "chill": {
         "source": "unmeasured (6.1)"
       }
+    }
+  },
+  "hfTilt": {
+    "default": {
+      "value": 9500,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "dance": {
+      "value": 10000,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "song": {
+      "value": 9500,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "jazz": {
+      "value": 9000,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
+    },
+    "chill": {
+      "value": 8000,
+      "source": "rule-of-thumb (M7, p66-hf-tilt, 2026-10-18): hats / crash lowpassed here, so 12.5 / 16 kHz fall under the 63 Hz-8 kHz fit; darker for the quieter families. Unmeasured: SpectralSlopeTests reads slope and hfBump per genre"
     }
   }
 }

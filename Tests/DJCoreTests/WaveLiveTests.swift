@@ -452,7 +452,7 @@ struct WaveScratchTests {
       return out + run(r, blocks: 20)
     }
     let a = gesture()
-    #expect(a == gesture())
+    #expect(sameSamples(a, gesture()) == .identical)
     #expect(a.contains { $0 != 0 })
   }
 }

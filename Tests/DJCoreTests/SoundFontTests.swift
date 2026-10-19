@@ -107,7 +107,8 @@ struct SoundFontTests {
     for p in [0, 25, 29, 30, 33, 48, 81] {
       let s = SamplerSource.sf2(bank, program: p)
       let a = try #require(render(s, InstrumentTableTests.phrase, 1), "\(s) loads")
-      #expect(a == render(s, InstrumentTableTests.phrase, 1), "\(s) renders the same twice")
+      let b = try #require(render(s, InstrumentTableTests.phrase, 1), "\(s) loads again")
+      #expect(sameSamples(a, b) == .identical, "\(s) renders the same twice")
       let held = try #require(render(s, [(57, 0, 1)], 0.5))
       let e = pitchClassError(held[4800...], note: 57, sampleRate: sr)
       #expect(abs(e.cents) <= SamplerInstrument.maxDetuneCents + 2, "\(s): \(e.cents) cents")

@@ -80,21 +80,45 @@ private func nullDB(_ a: SampleBuffer, _ b: SampleBuffer) -> Double {
 
 @MainActor
 struct LoopRetuneTests {
-  /// A two-bar take from bar 1 of the synth-voiced deck.
-  func netTake() async throws -> (LoopClip, [RoleVoice]) {
+  /// A two-bar take from bar 1 of the synth-voiced deck, on the row of a rig still running
+  /// (the caller stops it).
+  fileprivate func netRig() async throws -> (RetuneRig, LoopClip, [RoleVoice]) {
     let rig = try RetuneRig()
     let a = try #require(rig.dj["A"])
     await a.generate(synthSpec())
     a.setPlaying(true)
     try rig.dj.start()
-    defer { rig.dj.stop() }
     try rig.run(to: bar + bar / 3)
     #expect(rig.dj.loopRecord("A", on: true))
     try rig.run(to: 2 * bar + bar / 2)
     #expect(rig.dj.loopRecord("A", on: false))
     let clip = try #require(try rig.runUntilClip())
     #expect(clip.startBeat == 4 && clip.beats == 8)
-    return (clip, a.roleVoices)
+    return (rig, clip, a.roleVoices)
+  }
+
+  /// A two-bar take from bar 1 of the synth-voiced deck.
+  func netTake() async throws -> (LoopClip, [RoleVoice]) {
+    let (rig, clip, roles) = try await netRig()
+    rig.dj.stop()
+    return (clip, roles)
+  }
+
+  /// A tonal part on a synth voice, and another instrument for it. Only a part whose wave the
+  /// instrument decides: beats' wave engine voices every bass-group lane as a saw and every
+  /// harmony lane as its soft pad wave whatever the instrument (`tonalVoice`), so "square" on
+  /// the bass or the pad renders the same bytes and there would be nothing to retune.
+  static func retunablePart(_ roles: [RoleVoice]) -> RoleVoice? {
+    roles.first {
+      !$0.role.contains(" · ") && $0.instrument == "saw"
+        && tonalVoice(instrument: "square", group: $0.role).wave
+          != tonalVoice(instrument: "saw", group: $0.role).wave
+    }
+  }
+
+  func retunable(_ roles: [RoleVoice]) throws -> (RoleVoice, [Int: String]) {
+    let part = try #require(Self.retunablePart(roles))
+    return (part, [part.channel: "square"])
   }
 
   @Test func theSameVoicesNullAgainstTheTake() async throws {
@@ -127,9 +151,7 @@ struct LoopRetuneTests {
 
   @Test func anotherInstrumentChangesOnlyItsPart() async throws {
     let (clip, roles) = try await netTake()
-    let part = try #require(
-      roles.first { !$0.role.contains(" · ") && $0.instrument == "saw" })
-    let voices = [part.channel: "square"]
+    let (part, voices) = try retunable(roles)
     let changed = try ClipRetune.render(clip: clip, voices: voices, sampleRate: 48_000)
     let db = nullDB(changed.buffer, clip.buffer)
     print("retune null, \(part.role) on square: \(db) dB")
@@ -198,5 +220,121 @@ struct LoopRetuneTests {
     #expect(throws: ClipRetune.Refusal.noProvenance) {
       try ClipRetune.render(clip: bare, voices: [:], sampleRate: 48_000)
     }
+  }
+
+  // MARK: the action (DJEngine.retuneClip)
+
+  /// The retuned clip takes the take's place and keeps its settings: level, colour, FX, mute,
+  /// its scenes, and it carries on looping. Its provenance says what changed.
+  @Test func aRetunedClipTakesItsPlaceAndKeepsItsSettings() async throws {
+    let (rig, clip, roles) = try await netRig()
+    defer { rig.dj.stop() }
+    let dj = rig.dj
+    let (part, voices) = try retunable(roles)
+    // something before it on the row, so its place is not just "first"
+    dj.perform(.clipSequence(steps: [SequenceStep(clipID: clip.id, repeats: 2)], replacing: nil))
+    dj.perform(.clipMove(id: clip.id, before: nil))
+    let index = try #require(dj.clips.firstIndex { $0.id == clip.id })
+    #expect(index == dj.clips.count - 1)
+    var fx = LoopFX()
+    fx.drive = 6
+    fx.mode = .tube
+    dj.perform(.clipGain(id: clip.id, value: 0.4))
+    dj.perform(.clipColor(id: clip.id, color: "teal"))
+    dj.perform(.clipFx(id: clip.id, fx: fx))
+    dj.perform(.clipKeyLock(id: clip.id, on: true))
+    dj.perform(.sceneSave(name: "one"))
+    let state = dj.loopState(clip.id)
+    #expect(state == .on || state == .starting, "the take loops under the mixer")
+    try rig.run(to: dj.frame + bar / 2)
+
+    let rendered = try ClipRetune.render(clip: clip, voices: voices, sampleRate: 48_000)
+    dj.perform(.clipRetune(id: clip.id, voices: voices), buffer: rendered.buffer)
+    let id = dj.clips[index].id
+    #expect(id != clip.id && id == rendered.buffer.contentID, "in the take's place")
+    #expect(dj.clip(clip.id) == nil)
+    let new = try #require(dj.clip(id))
+    #expect(new.beats == clip.beats && new.bpm == clip.bpm && new.startBeat == clip.startBeat)
+    #expect(new.title == clip.title && new.color == "teal" && new.fx == fx)
+    #expect(dj.clipGain(id) == 0.4 && dj.isKeyLocked(id))
+    #expect(dj.loopState(id) == .on || dj.loopState(id) == .starting, "it carries on")
+    #expect(dj.scene("one")?.clips.map(\.clipID).contains(id) == true, "its scene has it")
+    #expect(dj.clips.first?.steps?.map(\.clipID) == [id], "the sequence uses it from now on")
+    // provenance: what it was made from, and the instruments
+    #expect(new.provenance?["op"]?.string == "retune")
+    #expect(new.provenance?["from"]?.string == clip.id)
+    #expect(new.retunedVoices == voices)
+    #expect(new.originSource == clip.originSource?.withInstrument("square", channel: part.channel))
+    #expect(new.originSection == clip.originSection && new.originBPM == clip.originBPM)
+    // the instruments a retune offers now show the new one
+    #expect(
+      ClipRetune.voices(for: new).first { $0.channel == part.channel }?.instrument == "square")
+    try rig.run(to: dj.frame + bar)
+  }
+
+  /// A replay has no render handed over: `applyAction` renders the same bars, and with synth
+  /// voices it is the same audio, so the retuned clip has the live one's id.
+  @Test func aReplayRendersTheSameRetune() async throws {
+    let (rig, clip, roles) = try await netRig()
+    rig.dj.stop()
+    let (_, voices) = try retunable(roles)
+    let live = try ClipRetune.render(clip: clip, voices: voices, sampleRate: 48_000)
+    rig.dj.applyAction(.clipRetune(id: clip.id, voices: voices))
+    #expect(rig.dj.clips.last?.id == live.buffer.contentID)
+    // a clip that isn't on the row, or one ClipRetune refuses, changes nothing
+    let row = rig.dj.clips.map(\.id)
+    #expect(rig.dj.retuneClip("nope", voices: voices) == nil)
+    rig.dj.perform(
+      .clipSequence(steps: [SequenceStep(clipID: row[0], repeats: 2)], replacing: nil))
+    let seq = try #require(rig.dj.clips.last?.id)
+    #expect(rig.dj.retuneClip(seq, voices: voices) == nil)
+    #expect(rig.dj.clips.map(\.id) == row + [seq])
+  }
+
+  /// Retunes stack: a retune of a retuned clip keeps the first one's instruments under its own,
+  /// and so does a crop of it.
+  @Test func retunesStackThroughCrops() async throws {
+    let (rig, clip, roles) = try await netRig()
+    rig.dj.stop()
+    let dj = rig.dj
+    let (part, voices) = try retunable(roles)
+    let other = try #require(
+      roles.first { !$0.role.contains(" · ") && $0.channel != part.channel })
+    let swap = try #require(other.options.first { $0 != other.instrument })
+    let first = try #require(dj.retuneClip(clip.id, voices: voices))
+    let second = try #require(dj.retuneClip(first, voices: [other.channel: swap]))
+    let c = try #require(dj.clip(second))
+    #expect(c.retunedVoices == [part.channel: "square", other.channel: swap])
+    let cropped = try #require(dj.cropClip(second, from: 0, to: 4))
+    #expect(dj.clip(cropped)?.retunedVoices == c.retunedVoices)
+    // the newest retune of a channel stands
+    let third = try #require(dj.retuneClip(cropped, voices: [part.channel: "saw"]))
+    #expect(dj.clip(third)?.retunedVoices[part.channel] == "saw")
+    #expect(dj.clip(third)?.provenance.map(ClipRetuneTestsProvenanceDepth.depth) == 4)
+  }
+
+  /// The action as the journal and a session keep it.
+  @Test func theRetuneActionRoundTrips() {
+    let a = DeckAction.clipRetune(id: "abc", voices: [3: "saw", 1: "piano"])
+    #expect(DeckAction(json: a.json) == a)
+    #expect(
+      a.json["voices"] == .object(JSONObject([("1", .string("piano")), ("3", .string("saw"))])))
+    #expect(a.clipIDs == ["abc"])
+    #expect(JournalEvent.action(a).foldKey == "retune.abc")
+    #expect(a.summary == "clipRetune abc… ch1=piano ch3=saw")
+    #expect(DeckAction.jsonOps.contains("clipRetune"))
+  }
+}
+
+/// How many ops deep a provenance goes (retune → crop → retune → retune → take = 4).
+private enum ClipRetuneTestsProvenanceDepth {
+  static func depth(_ p: JSONValue) -> Int {
+    var n = 0
+    var p: JSONValue? = p
+    while p?["op"]?.string != nil {
+      n += 1
+      p = p?["parent"]
+    }
+    return n
   }
 }

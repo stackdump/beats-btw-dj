@@ -64,7 +64,7 @@ struct StereoTests {
   /// sum is the mono mix.
   @Test func partsSitWhereTheyBelong() {
     let kick = render(kitAndPad(hats: false, pad: false), fixes: .stereo)
-    #expect(kick.l == kick.r, "kick in the middle")
+    #expect(sameSamples(kick.l, kick.r) == .identical, "kick in the middle")
     let hats = render(kitAndPad(kick: false, pad: false), fixes: .stereo)
     #expect(energy(hats.l.map(Double.init)) > 2 * energy(hats.r.map(Double.init)), "hats right")
     let pad = render(kitAndPad(kick: false, hats: false), fixes: .stereo)
@@ -108,16 +108,20 @@ struct StereoTests {
   /// Without `.stereo` both channels carry the same signal, exactly as before.
   @Test func offIsMono() {
     let a = render(kitAndPad(), fixes: [])
-    #expect(a.l == a.r)
-    #expect(a.l == render(kitAndPad(), fixes: [], right: false).l)
+    #expect(sameSamples(a.l, a.r) == .identical)
+    #expect(sameSamples(a.l, render(kitAndPad(), fixes: [], right: false).l) == .identical)
   }
 
   /// A whole track through the deck's options: a wide mix (side 5–25 dB under mid) whose low
   /// end is mono (side more than 30 dB under mid below 150 Hz), pads reaching down to C3
   /// included (lofi, jazz).
+  ///
+  /// Without `.layerBudget` (6.2): its rests leave the first 12 s of minimal lofi and jazz to the
+  /// drums and bass (side −30 / −29 dB with it, −17 / −23 without), so with it this would measure
+  /// the arrangement, not where the parts sit. Width under the budget is the same per part.
   @Test(arguments: ["trance", "lofi", "jazz"])
   func aTrackIsWideAboveAndMonoBelow(genre: String) {
-    let m = deckMetrics(genre)
+    let m = deckMetrics(genre, without: .layerBudget)
     #expect(m.sideDB > -25 && m.sideDB < -5, "\(genre): side \(m.sideDB) dB")
     #expect(m.lowSideDB < -30, "\(genre): low side \(m.lowSideDB) dB")
     #expect(m.clipped == 0)
@@ -136,12 +140,95 @@ struct StereoTests {
   }
 }
 
+/// Sampled instruments' width (`DJMusicality.sampledWidth`, ROADMAP 6.6): set per slot by the
+/// instrument's catalog category, the bass part mono whatever it plays.
+struct SampledWidthTests {
+  @Test func theTableByCategory() {
+    typealias W = DJMusicality.SampledWidth
+    let w = DJMusicality.sampledWidth
+    #expect(w("bass.electric", "melody") == W(width: 0, sideHz: nil))
+    #expect(w("synth.pluck", "bass") == W(width: 0, sideHz: nil), "the bass part is mono")
+    #expect(w(nil, "bass").width == 0)
+    #expect(w("keys.piano", "harmony") == W(width: 1.2, sideHz: DJMusicality.sampledSideHz))
+    #expect(w("pad", "harmony") == W(width: 1.2, sideHz: 300))
+    #expect(w("guitar.acoustic", "harmony") == W(width: 0.8, sideHz: nil))
+    #expect(w("synth.lead", "melody") == W(width: 0.6, sideHz: nil))
+    #expect(w("strings", "harmony") == .asLoaded)
+    #expect(w(nil, "melody") == .asLoaded)
+    #expect(!DJMusicality.sampledWidthSource.isEmpty, "the table names its source")
+  }
+
+  /// A prepared track's sampled slots carry their instrument's width; none without `.stereo`.
+  @Test func slotsCarryTheirWidth() throws {
+    let src = WaveDeckSource(sampleRate: sr)
+    let spec = TrackSpec(genre: "country", seed: 7, structure: "minimal")
+    let p = PreparedTrack(
+      spec: spec, sampleRate: sr, opts: .extended(samplers: src.samplers, seed: spec.seed)
+    ).prepared
+    try #require(p.widthSlots != 0, "a sampled slot with a width (needs installed sounds)")
+    var seen = Set<Int>()
+    for lane in p.lanes where lane.isTonal && lane.samplerSlot >= 0 && lane.netId != "<live>" {
+      guard let group = p.sampledGroups[lane.netId], seen.insert(lane.samplerSlot).inserted
+      else { continue }
+      let want = DJMusicality.sampledWidth(
+        category: VoiceCatalog.shared.categoryOf[lane.instrument], group: group)
+      #expect(p.slotWidth[lane.samplerSlot] == Float(want.width), "\(lane.netId)")
+      #expect((p.sideSlots >> UInt64(lane.samplerSlot)) & 1 == (want.sideHz != nil ? 1 : 0))
+    }
+    var o = WaveOptions.extended(samplers: src.samplers, seed: spec.seed)
+    o.musicality.remove(.stereo)
+    let flat = PreparedTrack(spec: spec, sampleRate: sr, opts: o).prepared
+    #expect(flat.widthSlots == 0 && flat.sideSlots == 0)
+  }
+
+  /// A sampled track through the deck: wide above (side no more than 20 dB under mid), mono
+  /// below 150 Hz (side 30 dB or more under mid), and it folds to mono losing at most 1 dB.
+  @Test(arguments: ["country", "lofi", "trance"])
+  func sampledTracksAreWideAboveAndMonoBelow(genre: String) throws {
+    // the deck's own source (`DJEngine`): `.extended` ends in the peak limiter, which the
+    // calibrated -12 LUFS levels lean on (one loudness); a bare source would clip
+    let src = WaveDeckSource(sampleRate: sr, opts: .extended(samplers: nil))
+    let spec = TrackSpec(genre: genre, seed: 42, structure: "minimal")
+    let track = PreparedTrack(
+      spec: spec, sampleRate: sr, opts: .extended(samplers: src.samplers, seed: spec.seed))
+    try #require(track.prepared.widthSlots != 0, "\(genre): no sampled slot with a width")
+    let m = sampledDeckMetrics(src, track)
+    print(
+      "\(genre): side \(m.sideDB) dB, low side \(m.lowSideDB) dB, fold \(m.spectrum.monoFoldDB) dB")
+    #expect(m.lowSideDB <= -30, "\(genre): low side \(m.lowSideDB) dB")
+    #expect(m.sideDB >= -20, "\(genre): side \(m.sideDB) dB")
+    #expect(m.spectrum.monoFoldDB >= -1, "\(genre): mono fold \(m.spectrum.monoFoldDB) dB")
+    #expect(m.clipped == 0)
+  }
+}
+
+/// Twelve seconds of a sampled track through its deck.
+private func sampledDeckMetrics(_ source: WaveDeckSource, _ track: PreparedTrack) -> AudioMetrics {
+  source.load(track.prepared)
+  source.play()
+  var l = [Float](repeating: 0, count: Int(12 * sr))
+  var r = l
+  l.withUnsafeMutableBufferPointer { lb in
+    r.withUnsafeMutableBufferPointer { rb in
+      var off = 0
+      while off < lb.count {
+        let n = min(512, lb.count - off)
+        source.render(frames: n, left: lb.baseAddress! + off, right: rb.baseAddress! + off)
+        off += n
+      }
+    }
+  }
+  return AudioMetrics(left: l, right: r, sampleRate: sr)
+}
+
 /// Twelve seconds of `genre` seed 42 through the deck's options and the deck (its limiter holds
 /// the peaks the track's loudness gain brings).
-private func deckMetrics(_ genre: String) -> AudioMetrics {
+private func deckMetrics(_ genre: String, without: DJMusicality.Fixes = []) -> AudioMetrics {
+  var opts = WaveOptions.extended
+  opts.musicality.subtract(without)
   let track = PreparedTrack(
-    spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr)
-  let source = WaveDeckSource(sampleRate: sr, opts: .extended)
+    spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr, opts: opts)
+  let source = WaveDeckSource(sampleRate: sr, opts: opts)
   source.load(track.prepared)
   source.play()
   var l = [Float](repeating: 0, count: Int(12 * sr))

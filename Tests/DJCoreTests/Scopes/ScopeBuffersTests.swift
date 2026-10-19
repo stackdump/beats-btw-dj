@@ -256,7 +256,9 @@ struct ScopeSampleHistoryTests {
   @Test func aBatchBiggerThanTheRingKeepsItsTail() {
     var h = ScopeSampleHistory(capacity: 8)
     h.append((0..<20).map(Float.init))
-    #expect(h.endFrame == 20 && h.count == 8 && h.window(count: 8) == (12..<20).map(Float.init))
+    #expect(h.endFrame == 20)
+    #expect(h.count == 8)
+    #expect(sameSamples(h.window(count: 8), (12..<20).map(Float.init)) == .identical)
   }
 
   @Test func resetStartsOverAtAFrame() {

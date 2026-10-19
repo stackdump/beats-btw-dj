@@ -20,10 +20,11 @@ private func leadOnce(tempo: Double = 120, group: String = "melody") -> Project 
   return p
 }
 
-private func render(_ p: Project, _ fixes: DJMusicality.Fixes, echo: EchoSpec?, seconds: Double = 2)
-  -> (l: [Float], r: [Float])
-{
-  var o = WaveOptions()
+private func render(
+  _ p: Project, _ fixes: DJMusicality.Fixes, echo: EchoSpec?, seconds: Double = 2,
+  samplers: SamplerBank? = nil
+) -> (l: [Float], r: [Float]) {
+  var o = samplers.map { WaveOptions.extended(samplers: $0, seed: 7) } ?? WaveOptions()
   o.master = "linear"
   o.musicality = fixes
   o.echo = echo
@@ -91,7 +92,8 @@ struct EchoTests {
     for group in ["bass", "harmony"] {
       let a = render(leadOnce(group: group), [.stereo], echo: spec)
       let b = render(leadOnce(group: group), [.stereo, .echo], echo: spec)
-      #expect(a.l == b.l && a.r == b.r, "\(group)")
+      #expect(sameSamples(a.l, b.l) == .identical, "\(group)")
+      #expect(sameSamples(a.r, b.r) == .identical, "\(group)")
     }
     #expect(EchoSpec.forGenre("jazz") == nil && EchoSpec.forGenre("techno") == nil)
     #expect(EchoSpec.forGenre("ambient")!.steps > EchoSpec.forGenre("trance")!.steps)
@@ -101,6 +103,43 @@ struct EchoTests {
     let jazz = PreparedTrack(
       spec: TrackSpec(genre: "jazz", seed: 42, structure: "minimal"), sampleRate: 22_050)
     #expect(jazz.prepared.echo == nil)
+  }
+
+  /// A sampled lead echoes too: its slot renders on its own, its send reaches the echo a block
+  /// late. Apple's GM square lead (`dls:80`, on every Mac), one short note: by the first repeat
+  /// the dry render has died away and the echo stands at least 15 dB over it.
+  @Test func sampledLeadsEcho() throws {
+    let spec = EchoSpec.forGenre("trance")!
+    var p = leadOnce()
+    p.nets["melody"]?.track.sound.option = "dls:80"
+    let bank = SamplerBank(sampleRate: sr)
+    var o = WaveOptions.extended(samplers: bank, seed: 7)
+    o.musicality = [.stereo, .echo]
+    o.echo = spec
+    let prepared = WaveRunner.prepare(p, sampleRate: sr, opts: o)
+    let lane = try #require(prepared.lanes.first { $0.netId == "melody" })
+    try #require(lane.samplerSlot >= 0, "the lead plays Apple's GM bank")
+    #expect(prepared.echoSlots == 1 << UInt64(lane.samplerSlot))
+    #expect(
+      prepared.slotEcho[lane.samplerSlot] == Float(EchoSpec.send(kind: "tonal", group: "melody")))
+    let dry = render(p, [.stereo], echo: spec, samplers: bank)
+    let full = render(p, [.stereo, .echo], echo: spec, samplers: bank)
+    #expect(at(dry.l, 0.02) > -40, "the sampled note plays")
+    let wet = (l: zip(full.l, dry.l).map { $0 - $1 }, r: zip(full.r, dry.r).map { $0 - $1 })
+    let first = at(wet.l, 0.375)
+    let second = at(wet.r, 0.75)
+    #expect(first > at(dry.l, 0.375) + 15, "first repeat \(first) dB, dry \(at(dry.l, 0.375)) dB")
+    #expect(first > at(wet.r, 0.375) + 10, "the first repeat comes back on the left")
+    #expect(second > at(wet.l, 0.75) + 10, "the second on the right")
+    // without the echo, a sampled lead is not taken off its group path for nothing
+    let plain = WaveRunner.prepare(
+      p, sampleRate: sr,
+      opts: {
+        var q = o
+        q.musicality = [.stereo]
+        return q
+      }())
+    #expect(plain.echoSlots == 0)
   }
 
   /// A delay a hair over a whole sample (120 bpm one ulp down: 18000.000000000004 samples) put
@@ -149,5 +188,42 @@ struct EchoRealTimeTests {
     }
     #expect(track.prepared.echo != nil)
     #expect(report.allocations == 0, "process allocated \(report.allocations) times")
+  }
+
+  /// Sampled leads' echo sends (a slot at a time, through the fifo) allocate nothing: a trance
+  /// deck with its sampler bank, other block sizes and a live note.
+  @Test(.enabled(if: optimized, "allocation is only meaningful in optimized builds"))
+  func sampledEchoDoesNotAllocate() throws {
+    let src = WaveDeckSource(sampleRate: sr)
+    let spec = TrackSpec(genre: "trance", seed: 42, structure: "minimal")
+    let track = PreparedTrack(
+      spec: spec, sampleRate: sr, opts: .extended(samplers: src.samplers, seed: spec.seed))
+    let p = track.prepared
+    try #require(p.echoSlots != 0, "a sampled slot that echoes")
+    src.load(p)
+    src.setTempo(480)
+    src.play()
+    var l = [Float](repeating: 0, count: 512)
+    var r = [Float](repeating: 0, count: 512)
+    func run(_ n: Int, frames: Int = 512) {
+      l.withUnsafeMutableBufferPointer { lp in
+        r.withUnsafeMutableBufferPointer { rp in
+          for _ in 0..<n {
+            src.render(frames: frames, left: lp.baseAddress!, right: rp.baseAddress!)
+          }
+        }
+      }
+    }
+    run(100)
+    let report = countAllocations {
+      run(1000)
+      run(200, frames: 128)
+      src.noteOn(72, velocity: 100)
+      run(50)
+      src.allNotesOff()
+      run(50)
+    }
+    #expect(report.allocations == 0, "render allocated \(report.allocations) times")
+    #expect(report.frees == 0, "render freed \(report.frees) times")
   }
 }

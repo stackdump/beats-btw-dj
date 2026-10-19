@@ -89,7 +89,10 @@ struct ArpDensityTests {
   }
 
   /// Buildups get busier: with the flag a buildup's arp plays at least as many notes a bar as
-  /// the rest of the song's arp, and more than it did without the flag somewhere.
+  /// the rest of the song's arp, and more than it did without the flag somewhere. "Buildup" is
+  /// `EnergyCurve.rampSections` (buildup, pre-chorus), as `arpDensityRates` reads it: these
+  /// genres' composer brings the arp in at the drop / chorus, so of the songs here only a
+  /// synthwave pre-chorus (seed 99) has an arp in a ramp section.
   @Test func buildupsGetBusier() {
     var busier = 0
     var checked = 0
@@ -99,7 +102,9 @@ struct ArpDensityTests {
         let off = played(genre, seed, fixes: .all.subtracting(.arpDensity))
         let section = sectionOfBar(on)
         func mean(_ p: Project, buildup: Bool) -> Double? {
-          let bars = onsetsByBar(p, "arp").filter { (section[$0.key] == "buildup") == buildup }
+          let bars = onsetsByBar(p, "arp").filter {
+            EnergyCurve.rampSections.contains(section[$0.key] ?? "") == buildup
+          }
           guard !bars.isEmpty else { return nil }
           return Double(bars.values.reduce(0, +)) / Double(bars.count)
         }
@@ -127,8 +132,12 @@ struct ArpDensityTests {
     }
   }
 
-  /// Every rate is one of the three levels, and the rates vary within a song.
+  /// Every rate is one of the three levels, and the rates vary within a song — unless the
+  /// melody is busy (`arpBusyOnsets`) in every bar the arp plays outside a phrase's fourth bar,
+  /// where the rule itself says sixteenths throughout (edm: the composer's drop melody has five
+  /// or more onsets in each of those bars, for every seed here).
   @Test func ratesAreQuartersEighthsOrSixteenths() {
+    var pooled = Set<Int>()
     for genre in genres {
       let spec = TrackSpec(genre: genre, seed: 42, structure: "standard")
       let p = DJMusicality.apply(
@@ -137,8 +146,28 @@ struct ArpDensityTests {
       let all = rates.values.flatMap(\.values)
       #expect(!all.isEmpty, "\(genre): no arp rates")
       #expect(all.allSatisfy { DJMusicality.arpDensityLevels.contains($0) }, "\(genre)")
-      #expect(Set(all).count > 1, "\(genre): one rate everywhere \(Set(all))")
+      pooled.formUnion(all)
+      if Set(all).count == 1 {
+        let melody = DJMusicality.melodyOnsetsByBar(p)
+        var starts: [Int] = []
+        var at = 0
+        for s in p.structure {
+          starts.append(at)
+          at += s.steps
+        }
+        let calm = DJMusicality.slotWindows(p, role: "arp").values.joined().flatMap { w in
+          stride(from: w.start, to: w.end, by: 16).filter { step in
+            (step - starts[w.section]) / 16 % 4 != 3
+              && !EnergyCurve.rampSections.contains(w.sectionName)
+              && (melody[step / 16] ?? 0) < DJMusicality.arpBusyOnsets
+          }
+        }
+        #expect(
+          all.first == DJMusicality.arpDensityLevels.last && calm.isEmpty,
+          "\(genre): one rate everywhere \(Set(all)), calm bars \(calm.map { $0 / 16 })")
+      }
     }
+    #expect(pooled.count > 1, "one rate in every genre \(pooled)")
   }
 
   /// The direction lives in one constant and follows the melody; levels run sparse to busy.

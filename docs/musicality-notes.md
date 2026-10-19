@@ -692,6 +692,12 @@ seed 4242, ten genres): bass −4.1 ± 1.9 (was −4.3), harmony −5.0 ± 1.3 (
 −1.7 ± 1.5 (was −1.6); house is the outlier (bass −8.9, melody −4.8). No arp played on a sampler.
 The new values move the sampled whole songs −0.1 LU (−12.2 → −12.3): what is left between
 sampled and synth is not in the soloed parts' levels.
+Since p66-sampled-loudness the probe no longer plays the table: each sampled part's synth
+voice stands in at its slot's own `partLevelDB` (measured at load, which prepare waits for) plus
+the slot's `.balance` gain (`SampledBalance.probeLevel`); `sampledPartDB` is only the fallback for
+a slot with no measured levels. `targetDB` was not recalibrated (no measurement taken yet:
+`LevelSurveyTests.sampledSongsSpread` prints the sampled spread over twelve genres;
+`LevelMatchTests.aSampledTrackPlaysAtTheReference` holds lofi / jazz / bossa to ±1 LU).
 
 The loop channel ("L") at its defaults against a deck at the centred crossfader
 (`LevelSurveyTests.theLoopChannelAgainstACentredDeck`: a 2-bar take of a techno net deck looped
@@ -1068,3 +1074,83 @@ verdict and first wrong are his, left blank here): techno 42, house 42, edm 42, 
 dnb 42, dubstep 42, synthwave 42, lofi 42, jazz 42, funk 42, bossa 42, ambient 42 — every matrix
 genre at seed 42, since the exit is *hummable* for at least half of them; 6.4 is done when the log
 says so, not when the table above is green.
+
+## 17. 6.5 exit (2026-10-18): a beat in every genre, M6 across the matrix
+
+6.5's flags together: `.backbeat` (§12; with brushes on jazz's synth snare, `WaveOptions.brushes`),
+`.feel` (the family's `GrooveTemplate` offsets and velocity scale, and its tempo-scaled Linn swing),
+`.drift` (humanize as seeded 1/f noise on top) and `.sweep` (subtractive voices' filter opening
+through a buildup). The exit is `BeatEveryGenreTests`:
+
+- `everyGenreHasItsBeat`: every fix on, seed 42, `standard`: `hasBeat` = 1 for all 18 genres with
+  a beat style, nil for ambient. Before the pass lofi, jazz and bossa read 0
+  (`BeatTests.surveyEveryGenreBeforeThePass`).
+- `grooveReadsAsPlayed` (per drum genre): the hits the runner played (`HitLog`), every fix, synth
+  voices, from the first section the style expects a beat in, at most 8 bars / 16 s (the suite's
+  runtime cap): none early; hats with more than one velocity a bar position (`voices["hat"]`);
+  drum consistency 0.9…0.99 (the template's pattern with the drift on it, neither a grid nor
+  noise); swing measured on the tonal lanes (they take the swing alone, no template offset), on
+  the family's grid (a sixteenth pair; jazz an eighth pair), within 2 % of
+  `GrooveTemplate.Swing.ratio(bpm:)` at the track's tempo. `GrooveReport.swingRatio` itself mixes
+  the drums' template offsets in, so the matrix's `swing` column is not this number.
+
+### Matrix before / after
+
+```sh
+BEFORE=$(every name in Fixes.named but backbeat,feel,drift,sweep, comma-joined)
+scripts/musicality-matrix.py OUT/before --fixes "$BEFORE"
+scripts/musicality-matrix.py OUT/after
+scripts/musicality-matrix.py --compare OUT/before OUT/after
+```
+
+Columns: `beat` (hasBeat), M6's `velPos` / `gCons` / `swing` / `uTime`, plus loudness and
+`balErr` (the chill kick and snare now sound in the level probe and `.balance`'s solos).
+
+| genre | beat before → after | velPos | gCons | swing | uTime ms | LUFS | balErr |
+|---|---|---|---|---|---|---|---|
+| (pending: not rendered in this pass) | | | | | | | |
+
+The table is filled from the renders, never by hand. Gates beyond the targets: clip 0,
+`WaveOptions()` parity bit-identical (the parity filter), `.groove` alone beats-exact.
+
+## 18. 6.6 HF tilt (b) (2026-10-18): `.hfTilt` lowpasses the bright drums at the source
+
+§14's table is still pending, so this follows research M7's finding (drum genres: −2.4 to
+−4 dB/oct with a +6–12 dB 16 kHz bump) and §14's expected carriers rather than a measured list:
+beats' hat, open hat and dj's crash are white noise highpassed at 7 / 4.2 kHz with nothing above,
+flat to Nyquist.
+
+- `.hfTilt` (in `Fixes.all`): those synth lanes (`drumVoice`'s noise carriers, kinds `hat`,
+  `openhat`, `crash`) run a second-order Butterworth lowpass after their own filter
+  (`Lane.tilt`, WaveRunner.swift). Cutoff per family (`HFTilt.forGenre`, targets.json `hfTilt`,
+  [RULE-OF-THUMB]): dance 10 kHz, song 9.5, jazz 9, chill 8. At 10 kHz that is about −4 dB at
+  12.5 kHz and −10 dB at 16 kHz; the 7–10 kHz band stays.
+- Not on the master, not in WaveSynth.swift's `kits` (the synth.js port the parity fixtures run),
+  not on sampled kits (no measurement names them yet). `WaveOptions()` has no tilt; kick, snare,
+  clap and the brush are untouched.
+- Acceptance (`HFTiltTests.everyGenreFallsWithNoBump`): slope < 0 and hfBump ≤ 2 dB
+  (`MixTargets.maxHFBumpDB`) for the 12 genres, synth and sampled; `lowersTheHatsTop` holds the
+  soloed hats' 12.5 / 16 kHz power ≥ 4 dB down. Not yet run (built without renders). Ear check
+  pending: hats may read dull at the chill / jazz cutoffs; if the measure shows sampled kits
+  carry the bump, they need their own EQ.
+
+## 19. 6.7 the fixes under gestures (2026-10-18): mutes, macros, the brake and the hand
+
+Each runner fix held against a DJ's gestures (`FixesUnderGesturesTests`, RT
+`FixesUnderGesturesRealTimeTests`). Built without renders (fast mode): the numbers come from the
+test run that follows.
+
+| Pair | Verdict |
+|---|---|
+| duck × role mute of the kick | intended: a muted net fires no hits, so nothing ducks (`aMutedKickDucksNothing`: the pad plays as with no kick) |
+| duck × `breakdown` / `cut` | intended: the dip recovers within an eighth of the last audible kick (`aBreakdownLetsThePadSwellBack`, ± 0.2 dB) |
+| `.balance` / `.loudness` × role mutes | intended: a mute is a gesture, not a remix; trims, slot gains and the track gain stay (`roleMutesLeaveTheTrims`) |
+| room × role mutes | intended: a muted lane's tail rings on in the room, as an unmuted note's release does |
+| `.energy` lowpass × master `sweep-lp` / FX macros | intended: two lowpasses in series (the curve in the runner, the macro on the mixer insert after it); the sweep ends where the curve has the deck (`theMasterSweepComesBackToTheEnergyCurve`, ± 0.5 dB) |
+| echo × tape stop / half time | intended: the delay glides with the tempo (`PingPong.setTempo`), a tape bend rather than a click |
+| brake × room / echo / duck | intended: braked, they run in source time with the record (TurntableBrake.swift) |
+| stop under the brake × voices, room, `sendFifo` | **fixed**: the cancel faded the stopped record's frozen voices and room back in. `WaveDeckSource` calls `WaveRunner.silence` (voices, sampled notes all-sound-off, riser, duck, room, shimmer, both fifos) on a stop while the brake is on |
+| stop under the brake × echo | **open, "echo reset"**: `PingPong` has no reset (Echo.swift), so its repeats still come back; `aStopUnderTheBrakeSilencesTheEcho` is disabled until it gets one |
+| dry song between echo songs | **fixed**: an echo (and shimmer) tuned off froze its line, so the next echo song began with the last one's repeats; the lines now run empty while off and die away (`anEchoTurnedOffDiesAwayBeforeTheNextEchoSong`) |
+| plain stop × room / echo | intended: tails ring out (no click to silence) and die away (`aStopWithoutTheBrakeLetsTheRoomRingOut`) |
+| hand on the platter × room / voices | intended: a still hand holds the clock and fires nothing; what was playing rings out in real time (`aStillHandLetsTheTailsRingOut`); the riser is silent while scratching |

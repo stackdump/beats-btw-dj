@@ -83,6 +83,27 @@ private func render(
   return (outL, outR)
 }
 
+/// Sixteenths at 120 bpm, 48 kHz.
+private let clickStep = 6000
+
+/// One bar of a click on every sixteenth (a single full-scale sample), silence between.
+private func clickTrack() -> SampleBuffer {
+  var x = [Float](repeating: 0, count: bar120)
+  for k in stride(from: 0, to: bar120, by: clickStep) { x[k] = 1 }
+  return SampleBuffer(left: x, right: x, sampleRate: sampleRate48)
+}
+
+/// The frames in `range` where a click starts: above 0.1 after at least 1000 quiet frames.
+private func onsets(_ x: [Float], in range: Range<Int>) -> [Int] {
+  var out: [Int] = []
+  var last = Int.min / 2
+  for i in range where i < x.count && abs(x[i]) > 0.1 {
+    if i - last > 1000 { out.append(i) }
+    last = i
+  }
+  return out
+}
+
 /// A low (375 Hz) and a bright (6 kHz) sine together, 2 s of whole periods.
 private func twoTones() -> SampleBuffer {
   let lo = fxSineBuffer(hz: 375, amplitude: 0.2, seconds: 2)
@@ -101,13 +122,17 @@ struct MasterFxDeckTests {
       if b == 10 { wetSrc.fire(.sweepLp, bars: 1) }
       if b == 20 { #expect(wetSrc.activeMasterMacros == [.sweepLp]) }
     }
-    #expect(wet.l[..<(10 * 128)] == dry.l[..<(10 * 128)], "nothing before the fire")
-    #expect(wet.l[(40 * 128)..<(100 * 128)] != dry.l[(40 * 128)..<(100 * 128)], "the LP sweep")
+    #expect(
+      sameSamples(wet.l[..<(10 * 128)], dry.l[..<(10 * 128)]) == .identical,
+      "nothing before the fire")
+    #expect(
+      sameSamples(wet.l[(40 * 128)..<(100 * 128)], dry.l[(40 * 128)..<(100 * 128)]) != .identical,
+      "the LP sweep")
     #expect(wetSrc.activeMasterMacros.isEmpty)
     #expect(wetSrc.masterFilterCorners.bypassed)
     // 0.8 s + 0.1 s ramp + 5 ms fade ≈ block 167 at 22.05 kHz; well after that, the same bytes
-    #expect(wet.l[(200 * 128)...] == dry.l[(200 * 128)...])
-    #expect(wet.r[(200 * 128)...] == dry.r[(200 * 128)...])
+    #expect(sameSamples(wet.l[(200 * 128)...], dry.l[(200 * 128)...]) == .identical)
+    #expect(sameSamples(wet.r[(200 * 128)...], dry.r[(200 * 128)...]) == .identical)
   }
 
   @Test func fxMacrosRenderTheSameBytesTwice() {
@@ -131,7 +156,8 @@ struct MasterFxDeckTests {
     }
     let a = once()
     let b = once()
-    #expect(a.l == b.l && a.r == b.r)
+    #expect(sameSamples(a.l, b.l) == .identical)
+    #expect(sameSamples(a.r, b.r) == .identical)
     #expect(a.l.allSatisfy { $0.isFinite })
   }
 
@@ -203,7 +229,8 @@ struct MasterFxDeckTests {
       refL += l
       refR += r
     }
-    #expect(out.l == refL && out.r == refR)
+    #expect(sameSamples(out.l, refL) == .identical)
+    #expect(sameSamples(out.r, refR) == .identical)
     let bus = try #require(deck.renderer.master)
     #expect(bus.filterCorners.bypassed && deck.activeMasterMacros.isEmpty)
   }
@@ -223,7 +250,7 @@ struct MasterFxDeckTests {
       if f == bar120 / 2 { #expect(deck.activeMasterMacros == [.sweepLp], "waiting counts") }
     }
     #expect(abs(fire - bar120) <= 1, "\(fire)")
-    #expect(wet.l[..<fire] == dry.l[..<fire], "nothing before its bar")
+    #expect(sameSamples(wet.l[..<fire], dry.l[..<fire]) == .identical, "nothing before its bar")
     // 0.8 s into the bar, the LP is half way down; 4608 frames = whole periods of both tones
     let w = (fire + 38_000)..<(fire + 38_000 + 4608)
     let hf = dB(toneAmplitude(Array(wet.l[w]), hz: 6000) / toneAmplitude(Array(dry.l[w]), hz: 6000))
@@ -234,8 +261,8 @@ struct MasterFxDeckTests {
     let after = (fire + bar120 + 24_000)..<(fire + bar120 + 24_000 + 4608)
     let back = toneAmplitude(Array(wet.l[after]), hz: 6000)
     #expect(abs(dB(back / toneAmplitude(Array(dry.l[after]), hz: 6000))) < 0.1)
-    #expect(wet.l[(fire + 2 * bar120)...] == dry.l[(fire + 2 * bar120)...])
-    #expect(wet.r[(fire + 2 * bar120)...] == dry.r[(fire + 2 * bar120)...])
+    #expect(sameSamples(wet.l[(fire + 2 * bar120)...], dry.l[(fire + 2 * bar120)...]) == .identical)
+    #expect(sameSamples(wet.r[(fire + 2 * bar120)...], dry.r[(fire + 2 * bar120)...]) == .identical)
     #expect(deck.activeMasterMacros.isEmpty)
     #expect(deck.renderer.master?.filterCorners.bypassed == true)
   }
@@ -243,26 +270,109 @@ struct MasterFxDeckTests {
   @Test func octaveUpShiftsASampleDeck() throws {
     // 220 whole periods a second: a seamless loop
     let (_, deck) = try sampleDeck(fxSineBuffer(hz: 220, amplitude: 0.3, seconds: 1))
+    let w = (bar120 + 24_000)..<(bar120 + 24_000 + 8192)
+    var active = false
     let out = render(deck, frames: 3 * bar120) { f in
       if f == 512 { deck.fire(.octaveUp, duration: 2) }  // lands on bar 2
+      if f == w.lowerBound / 512 * 512 { active = deck.isMasterActive(.octaveUp) }
     }
     let before = fundamental(out.l[20_000..<(20_000 + 8192)], sampleRate: sampleRate48)
     #expect(abs(cents(before, 220)) < 10, "dry: \(before) Hz")
-    let w = (bar120 + 24_000)..<(bar120 + 24_000 + 8192)
+    // The shift is the net decks' chain's: beats' Tone.PitchShift, whose Chrome sawtooths sweep
+    // the delay a little faster than 1 + factor (at 48 kHz an "octave" is ~1277 cents up, not
+    // 1200). Measured against the same chain on the same sine, not against an exact octave.
+    let ref = MasterChain(sampleRate: sampleRate48)
+    ref.apply(.masterPitch, 12, at: 0)
+    let src = fxSineBuffer(hz: 220, amplitude: 0.3, seconds: 2)
+    var sine = (0..<src.length).map { src.left[$0] }
+    sine.withUnsafeMutableBufferPointer { b in
+      var i = 0
+      while i < b.count {
+        let m = min(512, b.count - i)
+        ref.process(b.baseAddress! + i, nil, from: 0, to: m)
+        ref.finish(frames: m)
+        i += m
+      }
+    }
+    let want = fundamental(sine[24_000..<(24_000 + 8192)], sampleRate: sampleRate48)
+    #expect(abs(cents(want, 220) - 1200) < 100, "the chain's octave: \(cents(want, 220)) cents")
     let up = fundamental(out.l[w], sampleRate: sampleRate48)
-    #expect(abs(cents(up, 220) - 1200) < 10, "an octave up: \(cents(up, 220)) cents")
-    #expect(deck.isMasterActive(.octaveUp))
+    #expect(abs(cents(up, want)) < 10, "the chain's octave up: \(cents(up, 220)) vs \(cents(want, 220)) cents")
+    // running while it sounds (read then: its two bars from bar 2 end with the render)
+    #expect(active)
   }
 
-  @Test func theVinylBrakeIsANoOpOnASampleDeck() throws {
-    let (_, dryDeck) = try sampleDeck(twoTones())
-    let dry = render(dryDeck, frames: bar120)
-    let (_, deck) = try sampleDeck(twoTones())
-    let wet = render(deck, frames: bar120) { f in
-      if f == 0 { deck.fire(.vinylBrake, duration: 1) }
+  @Test func aSampleDeckBrakesAndLandsOnTheBeat() throws {
+    let clicks = clickTrack()
+    let (_, dryDeck) = try sampleDeck(clicks)
+    let dry = render(dryDeck, frames: 4 * bar120)
+    let (_, deck) = try sampleDeck(clicks)
+    var fire = -1
+    let wet = render(deck, frames: 4 * bar120) { f in
+      if f == 512 {
+        fire = deck.sampleMasterFire().frame  // bar 2
+        deck.fire(.vinylBrake, duration: 1)
+      }
+      if f == 236 * 512 {  // 24 832 frames into the spin-down
+        #expect(deck.isMasterActive(.vinylBrake))
+      }
     }
-    #expect(wet.l == dry.l && wet.r == dry.r)
+    #expect(abs(fire - bar120) <= 1, "\(fire)")
+    #expect(sameSamples(wet.l[..<fire], dry.l[..<fire]) == .identical, "nothing before its bar")
+    // the spin-down (¾ of the bar): each sixteenth comes later than the last, the rate falling
+    let spin = onsets(wet.l, in: fire..<(fire + 3 * bar120 / 4))
+    #expect(spin.count >= 5, "\(spin)")
+    let gaps = zip(spin.dropFirst(), spin).map { $0 - $1 }
+    for (g0, g1) in zip(gaps, gaps.dropFirst()) { #expect(g1 > g0, "slowing: \(gaps)") }
+    #expect((gaps.last ?? 0) > 3 * clickStep / 2, "well below full speed: \(gaps)")
+    // released a bar after the fire, over 5 ms: the next click is on the unbraked grid
+    let release = fire + bar120
+    let after = onsets(wet.l, in: (release + 240)..<(release + bar120))
+    let grid = onsets(dry.l, in: (release + 240)..<(release + bar120))
+    let first = try #require(after.first)
+    let want = try #require(grid.first)
+    #expect(abs(first - want) <= 48, "within 1 ms of the grid: \(first) vs \(want)")
+    #expect(after.count == grid.count)
     #expect(deck.activeMasterMacros.isEmpty)
+  }
+
+  @Test func panicReleasesABrakingSampleDeck() throws {
+    let clicks = clickTrack()
+    let (_, dryDeck) = try sampleDeck(clicks)
+    let dry = render(dryDeck, frames: 4 * bar120)
+    let (_, deck) = try sampleDeck(clicks)
+    var fire = -1
+    let panicAt = 228 * 512  // under a quarter of a bar into a 2-bar brake (blocks of 512)
+    let wet = render(deck, frames: 4 * bar120) { f in
+      if f == 512 {
+        fire = deck.sampleMasterFire().frame
+        deck.fire(.vinylBrake, duration: 2)
+      }
+      if f == panicAt {
+        #expect(deck.isMasterActive(.vinylBrake))
+        deck.panic()
+      }
+    }
+    #expect(abs(fire - bar120) <= 1, "\(fire)")
+    #expect(deck.activeMasterMacros.isEmpty)
+    // 5 ms out, 5 ms back in: then the clicks are the unbraked deck's, long before the 2 bars
+    let from = panicAt + 2 * 240 + 512
+    let after = onsets(wet.l, in: from..<(from + bar120))
+    let grid = onsets(dry.l, in: from..<(from + bar120))
+    #expect(!after.isEmpty && after.count == grid.count, "\(after) vs \(grid)")
+    for (w, d) in zip(after, grid) { #expect(abs(w - d) <= 48, "\(w) vs \(d)") }
+  }
+
+  @Test func aJogCancelsASampleDecksBrake() throws {
+    let (_, deck) = try sampleDeck(clickTrack())
+    _ = render(deck, frames: bar120 + 20 * 512) { f in
+      if f == 512 { deck.fire(.vinylBrake, duration: 1) }
+    }
+    #expect(deck.isMasterActive(.vinylBrake))
+    deck.freeze()  // a hand on the platter: the jog wins
+    _ = render(deck, frames: 512)
+    #expect(!deck.isMasterActive(.vinylBrake))
+    deck.release()
   }
 
   @Test func aSampleDeckSliderAndPanicReachItsBus() throws {
@@ -318,15 +428,21 @@ struct MasterFxScopeTests {
 }
 
 struct MasterFxSessionTests {
+  // The live decks load with their own options (`Deck.waveOptions`, sampler bank included), as
+  // the app does and as `SessionPlayer` replays a `.load`: prepared with plain `.extended` (no
+  // bank) a track now measures another loudness gain (house/9: 1.499 against 1.520), so the
+  // replay parted from the live set from its first block.
   private static func perform(blocks: Int) throws -> (Session, RenderedAudio) {
     let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: rate)
     dj.deterministic = true
     dj["A"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate))
+        spec: TrackSpec(genre: "techno", seed: 42, structure: "standard"), sampleRate: rate,
+        opts: dj["A"]!.waveOptions))
     dj["B"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate))
+        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate,
+        opts: dj["B"]!.waveOptions))
     try dj.start()
     defer { dj.stop() }
     let router = ControllerRouter(engine: dj)
@@ -364,7 +480,8 @@ struct MasterFxSessionTests {
     dj["A"]!.loadDemo()
     dj["B"]!.loadNet(
       PreparedTrack(
-        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate))
+        spec: TrackSpec(genre: "house", seed: 9, structure: "minimal"), sampleRate: rate,
+        opts: dj["B"]!.waveOptions))
     try dj.start()
     let router = ControllerRouter(engine: dj)
     let recorder = try SessionRecorder.start(on: dj)
@@ -392,7 +509,8 @@ struct MasterFxSessionTests {
     let session = recorder.finish()
     #expect(session.events.contains { $0.kind == .action(.macro(deck: "A", id: "sweep-lp")) })
     let a = try SessionPlayer(session: session).render()
-    #expect(a.left == l && a.right == r, "the replay is the live set")
+    #expect(sameSamples(a.left, l) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, r) == .identical, "the replay is the live set")
   }
 
   @Test func aSetWithFXMacrosReplaysToTheByte() throws {
@@ -400,7 +518,9 @@ struct MasterFxSessionTests {
     #expect(session.events.contains { $0.kind == .action(.macro(deck: "A", id: "sweep-lp")) })
     let a = try SessionPlayer(session: session).render()
     let b = try SessionPlayer(session: session).render()
-    #expect(a.left == live.left && a.right == live.right, "the replay is the live set")
-    #expect(a.left == b.left && a.right == b.right, "two renders, same bytes")
+    #expect(sameSamples(a.left, live.left) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, live.right) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.left, b.left) == .identical, "two renders, same bytes")
+    #expect(sameSamples(a.right, b.right) == .identical, "two renders, same bytes")
   }
 }

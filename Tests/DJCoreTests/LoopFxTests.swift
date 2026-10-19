@@ -22,7 +22,8 @@ struct LoopFxTests {
       #expect(!fx.isActive)
       let rig = FxBankRig(clips, fx: [fx, fx])
       let out = rig.render(48_000)
-      #expect(out.left == plain.left && out.right == plain.right, "\(fx)")
+      #expect(sameSamples(out.left, plain.left) == .identical, "\(fx)")
+      #expect(sameSamples(out.right, plain.right) == .identical, "\(fx)")
     }
   }
 
@@ -36,7 +37,7 @@ struct LoopFxTests {
     rig.set(0, LoopFX())
     rig.skip(4096)  // the 10 ms fade out, and the limiter (never engaged) idle
     let after = rig.render(48_000 - rig.frame)
-    #expect(Array(plain.left[16_384...]) == after.left)
+    #expect(sameSamples(Array(plain.left[16_384...]), after.left) == .identical)
     #expect(!rig.bank.fx[0].running)
   }
 
@@ -330,10 +331,11 @@ struct LoopFxTests {
     }
     #expect(pokes.count == 3, "on, changed, off: \(pokes.count)")
     let a = try SessionPlayer(session: session).render()
-    #expect(a.left == live.left && a.right == live.right, "the replay is the live set")
+    #expect(sameSamples(a.left, live.left) == .identical, "the replay is the live set")
+    #expect(sameSamples(a.right, live.right) == .identical, "the replay is the live set")
     // and the FX were heard: the set differs from the same set with no FX at all
     let (_, dry) = try loopFxSet(first: LoopFX(), second: LoopFX())
-    #expect(dry.left != live.left)
+    #expect(sameSamples(dry.left, live.left) != .identical)
   }
 }
 
@@ -393,7 +395,8 @@ extension LoopFxTests {
       let (_, plain) = try plainDeck(c)
       let a = renderDeck(deck, frames)
       let b = renderDeck(plain, frames)
-      #expect(a.left == b.left && a.right == b.right, "\(fx)")
+      #expect(sameSamples(a.left, b.left) == .identical, "\(fx)")
+      #expect(sameSamples(a.right, b.right) == .identical, "\(fx)")
       #expect(!deck.renderer.fxRunning)
     }
   }

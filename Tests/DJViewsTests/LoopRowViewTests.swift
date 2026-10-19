@@ -139,14 +139,49 @@ struct LoopRowViewTests {
     m.setClipKeyLock("abc", true)
     m.setLoopKeyLock(true)
     m.setLoopFade(.bar)
+    m.setClipQuantum("abc", 8)
+    m.setClipFade("abc", .beat)
+    m.setClipFollow("abc", .source)
+    m.setClipFade("abc", nil)
+    // `m.start()` applies the app's "Auto level" default to each deck as a recorded
+    // `param(autoGain)` (one loudness: the app turns auto-gain on, recorded so a replay plays
+    // the samples at the same level). That follows the defaults, not the loop row, so it is
+    // left out here; the row's own controls are what this test pins.
     let actions = rec.finish().events.compactMap { e -> DeckAction? in
-      if case .action(let a) = e.kind { return a }
+      if case .action(let a) = e.kind {
+        if case .param(_, "autoGain", _) = a { return nil }
+        return a
+      }
       return nil
     }
     #expect(
       actions == [
         .clipMute(id: "abc", on: true), .clipSolo(id: "abc", on: true),
         .clipKeyLock(id: "abc", on: true), .loopKeyLock(on: true), .loopFade(mode: "bar"),
+        .clipQuantize(id: "abc", beats: 8), .clipFade(id: "abc", mode: "beat"),
+        .clipFollow(id: "abc", mode: "source"), .clipFade(id: "abc", mode: nil),
       ])
+  }
+
+  /// A clip's own launch boundary, fade and tempo follow show on its `ClipState` (what its
+  /// settings and its pad read); a row-wide change leaves them, and nil hands it back.
+  @Test func aClipsOwnLaunchRulesShowOnItsState() throws {
+    let (m, dj) = try model()
+    defer { dj.stop() }
+    let clip = try #require(m.clips.first)
+    #expect(clip.quantum == nil && clip.fade == nil && clip.follow == nil)
+    #expect(!clip.hasLaunchOverride && clip.launchBadge == nil)
+    m.setClipQuantum(clip.id, 4)
+    m.setClipFade(clip.id, .off)
+    m.setClipFollow(clip.id, .louder)
+    m.setLoopFade(.bar)
+    let own = try #require(m.clips.first)
+    #expect(own.quantum == 4 && own.fade == .off && own.follow == .louder)
+    #expect(own.launchBadge == "bar · fade off · louder deck")
+    #expect(dj.loopFade(for: clip.id) == .off && m.loopChannel.fade == .bar)
+    m.setClipQuantum(clip.id, 3)
+    #expect(m.clips.first?.quantum == 4, "a boundary that isn't one of launchQuanta is refused")
+    m.setClipFollow(clip.id, nil)
+    #expect(m.clips.first?.follow == nil && m.clips.first?.launchBadge == "bar · fade off")
   }
 }

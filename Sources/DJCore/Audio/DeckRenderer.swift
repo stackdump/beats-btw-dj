@@ -21,7 +21,10 @@ import Synchronization
 /// wavetables): turntable → clip FX → master bus → limiter. The master macros (sweeps, holds, the
 /// Feel puck's filter axis, the pitch shifter) land on the deck's next bar at its tempo
 /// (`Deck.fire(_: MasterMacro)`). At rest the bus is bit-transparent, so a deck without master
-/// FX renders the turntable's bytes. The bus's vinyl brake is not fired on a sample deck (yet).
+/// FX renders the turntable's bytes. Its vinyl brake slows the turntable and the clip FX (the
+/// renderer is its `BrakeSource`) and on release skips the playhead on by the frames it fell
+/// behind, landing on the deck's grid; a hand on the platter or a transport stop cancels it (the
+/// jog wins, from wherever the brake left the record).
 ///
 /// Threading: `renderBlock` is the audio thread's; `sendFx` the main thread's. Everything else
 /// here is read-only or an atomic read, from any thread.
@@ -111,8 +114,13 @@ final class DeckRenderer: @unchecked Sendable {
       wave.render(frames: frames, left: left, right: right, startFrame: start)
     } else if let master {
       blockFx = false
+      // this block's hand / transport first: a jog or a stop takes the record from the brake
+      turntable.takeCommands()
+      if master.braking && (turntable.handOn || !turntable.motorRunning) { master.cancelBrake() }
       master.render(self, frames: frames, left: left, right: right, startFrame: start)
-      limit(frames: frames, left: left, right: right, engaged: master.engaged)
+      limit(
+        frames: frames, left: left, right: right, engaged: master.engaged,
+        from: master.engagedFrom)
     } else {
       turntable.render(frames: frames, left: left, right: right)
     }
@@ -151,32 +159,36 @@ final class DeckRenderer: @unchecked Sendable {
 
   /// Audio thread. The safety limiter, last (after the master chain: distortion, crush and the
   /// pitch shifter can lift peaks), while the clip FX or the master bus changed the block or it
-  /// is still coming back up.
+  /// is still coming back up. Only the clip FX or a releasing limiter take the whole block: the
+  /// bus engaged mid-block (a fire on its bar) is limited from that frame (`from`), so the
+  /// frames before the bar stay the turntable's bytes.
   private func limit(
     frames n: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
-    engaged: Bool
+    engaged: Bool, from: Int
   ) {
     guard let fxLimiter, blockFx || engaged || !fxLimiter.idle else { return }
-    fxLimiter.process(left, right, n)
+    let k = blockFx || !fxLimiter.idle ? 0 : min(max(0, from), n)
+    guard k < n else { return }
+    fxLimiter.process(left + k, right.map { $0 + k }, n - k)
   }
 }
 
-// The master bus renders the turntable and the clip's FX as its source. Its vinyl brake is never
-// started on a sample deck, so it renders straight through and nothing here is ever braked.
+// The master bus renders the turntable and the clip's FX as its source: the vinyl brake slows
+// both together, and its release puts the turntable's playhead where it would have been.
 extension DeckRenderer: BrakeSource {
-  var playing: Bool { true }
+  var playing: Bool { turntable.playing }
 
   func process(
     _ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>?, frames: Int,
-    startFrame _: Int
+    startFrame: Int
   ) {
-    turntable.render(frames: frames, left: left, right: right)
+    turntable.process(left, right, frames: frames, startFrame: startFrame)
     processFx(frames: frames, left: left, right: right)
   }
 
-  func brakeLag(sampleRate _: Double) -> Double { 1 }
-  func brakeChunk(output _: Int, pulled _: Int) {}
-  func catchUp(ticks _: Double) {}
+  func brakeLag(sampleRate: Double) -> Double { turntable.brakeLag(sampleRate: sampleRate) }
+  func brakeChunk(output: Int, pulled: Int) { turntable.brakeChunk(output: output, pulled: pulled) }
+  func catchUp(ticks: Double) { turntable.catchUp(ticks: ticks) }
 }
 
 /// A clip's FX for a sample deck's chain (`DeckRenderer.sendFx`).
