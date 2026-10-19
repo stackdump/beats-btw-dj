@@ -150,8 +150,11 @@ struct LevelMatchTests {
     // the probe's stand-ins are the slots' measured levels (with the slot gain), never the table
     for lane in p.lanes where lane.kind == "tonal" && lane.samplerSlot >= 0 {
       let group = try #require(p.sampledGroups[lane.netId])
-      let level = try #require(
-        bank.slotPartLevelDB(lane.samplerSlot, group: group), "\(genre): \(lane.netId) measured")
+      try #require(
+        bank.slotPartLevelDB(lane.samplerSlot, group: group) != nil,
+        "\(genre): \(lane.netId) measured")
+      // (against the net's own synth voice, which the probe plays: `ownPartLevelDB`)
+      let level = try #require(p.sampledPartDB[lane.netId])
       let gainDB = 20 * log10(Double(p.slotGain[lane.samplerSlot]))
       let trim =
         lane.netId.hasPrefix("fill-")
