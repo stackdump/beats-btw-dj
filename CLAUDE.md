@@ -283,9 +283,10 @@ its copy; the two are now independent. Rules inherited from that split:
   Synth Bass 1 dies within 0.1 s, Choir Aahs is +32 cents). Tests skip without the bank.
 - Sampler rules: loads happen off the audio thread and every AUSampler set-up/tear-down holds
   `SamplerInstrument.lifecycle` (CoreAudio traps when one initialises while another
-  uninitialises). A process holds at most `SamplerCensus.limit` (96) loaded AUSamplers: past
-  about 106 AudioToolbox loads them silent; a load past the limit waits for one to be freed,
-  then fails as `SamplerLimitError`, which a bank does not hold against the sound. Old EXS files with 31-char truncated sample names are patched into
+  uninitialises). Past about 106 live loaded AUSamplers in one process AudioToolbox loads the
+  next silent (−200 dB, no error); a parallel test run can get there. A blocking per-process
+  cap (`SamplerCensus`, reverted) deadlocked the tests: each held places while waiting for more.
+  Old EXS files with 31-char truncated sample names are patched into
   `~/Library/Application Support/DJApp/exs/` (`ExsNames`). Samples load whole into memory
   (StreamFromDisk off): a streaming thread that falls behind changed renders under load; the
   cost is RAM (tonal content is ~3 GB in all; a full bank of pianos is a few GB).
