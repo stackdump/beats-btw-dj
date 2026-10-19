@@ -287,8 +287,12 @@ extension MixBalance {
 }
 
 extension MixBalance {
-  /// Offline: sound off and notes off on every slot `bank` plays (CC 120, 123), so the next
-  /// render starts silent.
+  /// Offline: sound off and notes off on every slot `bank` plays (CC 120, 123), then the
+  /// slots rendered for `flushSeconds` and the output dropped, so the next render starts
+  /// silent. (The controllers only take effect in the next render, and AUSampler fades its
+  /// voices out over a few blocks: without the flush, a solo after the mix began with the
+  /// mix's notes, −31 dB in the first block and a tail ~60 ms later, enough to give a part
+  /// that never plays in the window a level of −50…−68 dB.)
   static func silence(_ bank: SamplerBank) {
     let live = bank.beginBlock()
     var m = live
@@ -298,8 +302,20 @@ extension MixBalance {
       bank.send(i, 0xB0, 120, 0, at: 0)
       bank.send(i, 0xB0, 123, 0, at: 0)
     }
+    var l = [Float](repeating: 0, count: 512)
+    var r = l
+    for _ in 0..<Int((flushSeconds * bank.sampleRate / 512).rounded(.up)) {
+      l.withUnsafeMutableBufferPointer { lb in
+        r.withUnsafeMutableBufferPointer { rb in
+          bank.renderAll(live, frames: 512, lb.baseAddress!, rb.baseAddress!)
+        }
+      }
+    }
     bank.endBlock()
   }
+
+  /// How long `silence` renders the bank to let it go quiet.
+  static let flushSeconds = 0.25
 }
 
 /// `.balance` on sampled parts (ROADMAP 6.6): a sampler slot plays at a gain of its own, the

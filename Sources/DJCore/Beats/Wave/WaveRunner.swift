@@ -607,6 +607,60 @@ private func addSubOctave(_ lane: Lane, _ sr: Double) {
   lane.subMinRate = SubOctave.minHz / sr
 }
 
+/// What a tonal lane's own synth voice measures on its group's part probe
+/// (`SamplerPartLevels.probe`, K-weighted dB), shaped as `buildLanes` shapes it
+/// (`.subtractive`, `.unison`, `.subOctave`), at `sr`. Cached per voice, group and shaping.
+///
+/// A slot's measured part level is the sampler against the group's plain voice
+/// (`SamplerPartLevels.synthLevelDB`), but the part it stands in for plays the instrument's
+/// own voice: `dark-pad` from the instrument table is 7.7 dB over the plain harmony voice,
+/// `sub-bass` 6.2 over the plain bass, and unison / filter envelopes move them further. The
+/// slot's gain and the loudness probe's stand-in take the sampler against this level
+/// (`ownPartLevelDB`), so a sampled part lands where its own trimmed synth voice would.
+private let ownSynthLevels = Mutex<[String: Double]>([:])
+
+func ownSynthPartDB(
+  _ voice: VoiceSpec, group: String, subtractive: Bool, unison: Bool, subOctave: Bool,
+  design: VoiceDesign, _ sr: Double
+) -> Double {
+  let probeGroup = SamplerPartLevels.probeGroup(for: group)
+  let key =
+    "\(voice)|\(group)|\(sr)|\(subtractive)|\(unison)|\(subOctave && group == "bass")|\(design)"
+  if let l = ownSynthLevels.withLock({ $0[key] }) { return l }
+  var tables: [String: [Float]] = [:]
+  let lane = tonalLane(voice, sr, 6, tables: &tables, seed: 1)
+  if subtractive { shapeVoice(lane, group: group, plucked: design.pluckGroups, sr) }
+  if unison { detune(lane, group: group, wide: false, design: design, sr) }
+  if subOctave && group == "bass" { addSubOctave(lane, sr) }
+  let p = SamplerPartLevels.probe(probeGroup)
+  let a = WaveRunner.audition(lane, notes: p.notes, sampleRate: sr, seconds: p.seconds)
+  var k = KWeighting(sampleRate: sr)
+  var sum = 0.0
+  for x in a {
+    let y = k.process(Double(x))
+    sum += y * y
+  }
+  let l = 10 * log10(max(sum / Double(max(1, a.count)), 1e-20))
+  ownSynthLevels.withLock { $0[key] = l }
+  return l
+}
+
+/// A slot's measured part level (`SamplerBank.slotPartLevelDB`: the sampler against the
+/// group's plain synth voice) moved to be against the lane's own synth voice
+/// (`ownSynthPartDB`); nil stays nil.
+func ownPartLevelDB(
+  _ measured: Double?, voice: VoiceSpec, group: String, subtractive: Bool, unison: Bool,
+  subOctave: Bool, design: VoiceDesign, bankRate: Double
+) -> Double? {
+  guard let measured else { return nil }
+  let plain = SamplerPartLevels.synthLevelDB(
+    group: SamplerPartLevels.probeGroup(for: group), sampleRate: bankRate)
+  let own = ownSynthPartDB(
+    voice, group: group, subtractive: subtractive, unison: unison, subOctave: subOctave,
+    design: design, bankRate)
+  return measured + plain - own
+}
+
 /// `.feel` as the runner reads it: a family's `GrooveTemplate` flattened into fixed arrays
 /// (`voice × 16 + step`) when a project is prepared. The swing is not folded in (unlike
 /// `GrooveTemplate.Prepared`): it is worked out per hit at the tempo playing, so a tempo
@@ -745,6 +799,10 @@ public final class WaveProject: @unchecked Sendable {
   /// The level the loudness probe plays each of those nets' synth voice at, against the voice
   /// as trimmed: where its sampler sits after `slotGain` (`SampledBalance.slot`).
   var probeLevels: [String: Double] = [:]
+  /// Each of those nets' sampler level against the net's own synth voice on its part probe
+  /// (`ownPartLevelDB`), dB, where the slot was measured: what its slot gain and probe level
+  /// were worked out from.
+  var sampledPartDB: [String: Double] = [:]
   /// Each sampler slot's gain (64 entries; 1 = as loaded): `.balance`'s trim for the part it
   /// plays, less how far the instrument sits from its synth voice (`SampledBalance`). Set at
   /// prepare, read by the audio thread.
@@ -924,6 +982,7 @@ private func buildLanes(
   var tables: [String: [Float]] = [:]
   var sampledGroups: [String: String] = [:]
   var probeLevels: [String: Double] = [:]
+  var sampledPartDB: [String: Double] = [:]
   // `.balance` on sampled parts: each slot's gain (dB), set by the first lane that plays it
   let balanceSlots = opts.musicality.contains(.balance)
   var slotGainDB = [Double?](repeating: nil, count: 64)
@@ -996,7 +1055,16 @@ private func buildLanes(
             // the slot's own part level, measured at its load (which `bindSampler` has just
             // waited for): the probe plays the synth part where this sampler sits, after its
             // `.balance` gain. Unmeasured (a bank that skips the probes), the table's average.
-            let level = opts.samplers?.slotPartLevelDB(lane.samplerSlot, group: group)
+            // Taken against this lane's own synth voice, not the group's plain one
+            // (`ownPartLevelDB`): that voice is what the trim was measured on and what the
+            // probe plays in the sampler's place.
+            let level = opts.samplers.flatMap { bank in
+              ownPartLevelDB(
+                bank.slotPartLevelDB(lane.samplerSlot, group: group), voice: voice,
+                group: group, subtractive: subtractive, unison: unison, subOctave: subOctave,
+                design: opts.voiceDesign, bankRate: bank.sampleRate)
+            }
+            sampledPartDB[n.id] = level
             if balanceSlots, lane.samplerSlot < 64 {
               let trim =
                 n.id.hasPrefix("fill-")
@@ -1151,6 +1219,7 @@ private func buildLanes(
     drift: opts.musicality.contains(.drift) ? Drift.key(seed: opts.voicingSeed) : nil)
   project.sampledGroups = sampledGroups
   project.probeLevels = probeLevels
+  project.sampledPartDB = sampledPartDB
   project.voiceDesign = opts.voiceDesign
   return project
 }
@@ -2783,12 +2852,22 @@ public final class WaveRunner {
     _ voice: VoiceSpec, notes: [(note: Int, at: Double, seconds: Double)], sampleRate: Double,
     seconds: Double, velocity: Int = 100, sampler: (bank: SamplerBank, slot: Int)? = nil
   ) -> [Float] {
-    var o = WaveOptions()
-    o.samplers = sampler?.bank
-    let r = WaveRunner(sampleRate: sampleRate, opts: o)
     var tables: [String: [Float]] = [:]
     let lane = tonalLane(voice, sampleRate, 6, tables: &tables, seed: 1)
     lane.samplerSlot = sampler?.slot ?? -1
+    return audition(
+      lane, notes: notes, sampleRate: sampleRate, seconds: seconds, velocity: velocity,
+      sampler: sampler)
+  }
+
+  /// `audition` on a lane already built (and shaped, as `buildLanes` shapes it).
+  fileprivate static func audition(
+    _ lane: Lane, notes: [(note: Int, at: Double, seconds: Double)], sampleRate: Double,
+    seconds: Double, velocity: Int = 100, sampler: (bank: SamplerBank, slot: Int)? = nil
+  ) -> [Float] {
+    var o = WaveOptions()
+    o.samplers = sampler?.bank
+    let r = WaveRunner(sampleRate: sampleRate, opts: o)
     let starts = notes.map { Int(($0.at * sampleRate).rounded()) }
     let w = Double(max(1, min(127, velocity))) / 127
     var out = [Float](repeating: 0, count: Int(seconds * sampleRate))
