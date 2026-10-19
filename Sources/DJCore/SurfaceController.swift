@@ -50,6 +50,9 @@ public final class SurfaceController {
   static let flashSeconds = 0.18
   /// Centre detent for pitch faders: ±2 % of travel snaps to zero.
   static let pitchDeadZone = 0.02
+  /// Centre detent for a bipolar FX unit fader (filter, pitch): ±3 % of travel is neutral
+  /// (a 7-bit fader's 62…65), the rest spread over the whole range so the ends still reach it.
+  static let fxDeadZone = 0.03
   /// Soft takeover accepts a value this close to the parameter's.
   static let pickupWindow = 0.03
 
@@ -144,6 +147,19 @@ public final class SurfaceController {
       }
     case .reverbWet: deck?.reverb.wet = e.value
     case .reverbSize: deck?.reverb.size = e.value
+    case .fxUnit:
+      // the value is the poke (a setting, immediate and smoothed on the audio thread); applied
+      // unrecorded, as the MIDI that moved it is what the session and the journal keep
+      if let d = deck, let p = b.param.flatMap(FxParam.init(id:)) {
+        dj.applyAction(.fx(deck: d.name, param: p.id, value: Self.fxValue(p, e.value)))
+      }
+    case .fxKill, .fxReset:
+      guard press, let d = deck else { break }
+      if let i = b.index { flashed[Self.key(b.group, i)] = now }
+      dj.applyAction(
+        b.action == .fxKill
+          ? .fxKill(deck: d.name, on: !d.fxUnit.killed, onBeat: true)
+          : .fxReset(deck: d.name, onBeat: true))
     case .focusDeck:
       if press { dj.focus = Self.aim(b.slot) }
     case .regenerate:
@@ -411,6 +427,10 @@ public final class SurfaceController {
     guard let b, b.action != .unbound, let d = target(b) else {
       return (Color.off, false)
     }
+    // the FX unit's kill (red, bright while killed) and reset (white, bright while it has
+    // something to reset), on whichever target is aimed (A, B or the loops)
+    if b.action == .fxKill { return (Color.red, d.fxUnit.killed) }
+    if b.action == .fxReset { return (Color.white, !d.fxUnit.isNeutral) }
     // the FX surface (aimed at a deck): beats' colour per macro group, lit while it runs
     if b.deck == "*", b.action == .macro || b.action == .stinger {
       if let bus = d.bank?.master {
@@ -456,6 +476,21 @@ public final class SurfaceController {
   }
 
   static func key(_ group: String, _ index: Int) -> String { "\(group)#\(index)" }
+
+  /// A fader position (0…1) on an FX unit control's travel. Unipolar controls are linear
+  /// (0 → the bottom of the range, 1 → the top; the LP's top is open). Bipolar ones (the filter,
+  /// pitch) have a centre detent that lands exactly on neutral, so a fader parked in the middle
+  /// leaves the chain bit-transparent; pitch steps in whole semitones.
+  static func fxValue(_ p: FxParam, _ position: Double) -> Double {
+    let x = position.isFinite ? Swift.max(0, Swift.min(1, position)) : 0.5
+    let r = p.range
+    guard r.lowerBound < 0 else { return r.lowerBound + x * (r.upperBound - r.lowerBound) }
+    let c = x * 2 - 1
+    guard abs(c) > fxDeadZone else { return p.neutral }
+    let u = (abs(c) - fxDeadZone) / (1 - fxDeadZone) * (c < 0 ? -1 : 1)
+    let v = u * r.upperBound
+    return p == .pitch ? v.rounded() : v
+  }
 
   /// The master macro `id` names, if `d` can play it: every one, in either mode (a sample deck
   /// runs the chain and the vinyl brake on its own bus).

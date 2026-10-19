@@ -143,8 +143,8 @@ struct CueControlTests {
     #expect(abs(dj.headphoneLevel - 0.25) < 0.01)
   }
 
-  /// The APC is an FX surface now: fader 5 is the low-pass (SurfaceNetTests), and leaves the
-  /// headphone mix (set in the window) alone.
+  /// The APC is an FX surface now: fader 5 is the FX unit's crush (SurfaceNetTests), and leaves
+  /// the headphone mix (set in the window) alone.
   @Test func apcFaderFiveLeavesTheHeadphoneMix() throws {
     let dj = try DJEngine(offline: true)
     let s = SurfaceController(profile: .apcMiniMK2, engine: dj)

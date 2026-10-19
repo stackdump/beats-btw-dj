@@ -89,9 +89,10 @@ chords (vs ≥ 0.6 elsewhere) — an ear call. `.shape` targets still unmet (lea
 (`make swift-test`, `swift-rt-test`, `swift-rt-test-filter` take it via `djtest_mcp/locked.py`);
 filtered debug runs go in parallel.
 
-**Queued after testing**: the APC mini faders → FX unit layout (`.dj-wt/APC-FXUNIT-HANDOFF.md`),
-auto-mix — a two-deck autopilot on Wander + mix-in / mix-out (`.dj-wt/AUTOMIX-HANDOFF.md`, design
-first). Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
+**Done**: the APC mini faders → FX unit layout (`roadmap/apc-fx-unit`; faders 1–8 = filter,
+HP, LP, phaser mix, crush, drive, pitch, room, SHIFT + 8 = echo `[UNVERIFIED]`; bottom-row pads
+7 / 8 = reset / kill on the beat). **Queued after testing**: auto-mix — a two-deck autopilot
+on Wander + mix-in / mix-out (`.dj-wt/AUTOMIX-HANDOFF.md`, design first). Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
 the repo).
 
 ## Open work (2026-10-17)
@@ -133,9 +134,10 @@ revert any by its merge commit.
 
 **Hardware to verify on the units**
 - MPK mini bank A pads 1–8 = part mutes on the aimed deck (note numbers `[UNVERIFIED]`).
-- APC SHIFT + aim button → loops; the APC FX layout generally.
+- APC SHIFT + aim button → loops; the APC FX layout generally; SHIFT + fader 8 = echo (does the
+  mk2 send fader CCs unchanged with SHIFT held?); FX unit reset / kill pads (bottom row 7 / 8).
 - Inpulse browser wheel / push / SHIFT+wheel for Wander (`[MIXXX]`, uncaptured).
-- Headphone mix is now unbound on every controller (the APC's fader 5 became the LP).
+- Headphone mix is now unbound on every controller (the APC's fader 5 is the FX unit's crush).
 
 **Planned, not started**
 - Python test MCP harvesting the test harnesses (renders, LUFS/levels, pitch, replay

@@ -297,9 +297,9 @@ struct LoopMasterEngineTests {
     let frame = s.ledFrame()
     #expect(frame.contains([0x90, 0x73, 2]) && frame.contains([0x90, 0x74, 2]))
     #expect(s.lights(shift: true)["scene"]?[3].level == .full)
-    // a fader is the loops' slider, not deck A's
-    s.handle(bytes: [0xB0, 0x34, 0])  // fader 5: LP closed
-    #expect(bus.sliderSet[.lpFreq] == 0 && dj["A"]!.wave.masterFxSet[.lpFreq] == nil)
+    // a fader is the loops' FX unit, not deck A's
+    s.handle(bytes: [0xB0, 0x32, 0])  // fader 3: LP closed
+    #expect(dj.loopChannel.fxUnit[.lp] == 0 && dj["A"]!.fxUnit[.lp] == 1)
     // a master macro pad fires on the loops; a net macro pad is dark and does nothing
     s.handle(bytes: [0x90, 8, 0x7F])  // sweep-lp
     #expect(bus.isActive(.sweepLp))

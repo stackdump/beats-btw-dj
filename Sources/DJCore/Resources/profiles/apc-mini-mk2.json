@@ -117,16 +117,18 @@
   {
    "group": "pads",
    "index": 6,
-   "action": "unbound",
+   "action": "fxReset",
+   "deck": "*",
    "shift": false,
-   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+   "comment": "FX unit reset on the aimed target (A, B or L), on its next beat: bottom row, beside the kill and PANIC, over faders 7 / 8. White, bright while the unit has a control off neutral"
   },
   {
    "group": "pads",
    "index": 7,
-   "action": "unbound",
+   "action": "fxKill",
+   "deck": "*",
    "shift": false,
-   "reason": "empty in beats' APC layout (lib/backend/apc-mini-mk2.js PAD_LAYOUT): breathing room between groups"
+   "comment": "FX unit kill on / off on the aimed target, on its next beat: the bottom-right pad, next to PANIC (scene 8). Red, bright while killed"
   },
   {
    "group": "pads",
@@ -669,56 +671,71 @@
   {
    "group": "faders",
    "index": 0,
-   "action": "masterFx",
+   "action": "fxUnit",
    "deck": "*",
-   "macro": "phaser-wet"
+   "param": "filter",
+   "comment": "bipolar: down = low-pass, up = high-pass, a centre detent (62…65) is exactly off"
   },
   {
    "group": "faders",
    "index": 1,
-   "action": "masterFx",
+   "action": "fxUnit",
    "deck": "*",
-   "macro": "distortion"
+   "param": "hp"
   },
   {
    "group": "faders",
    "index": 2,
-   "action": "reverbWet",
-   "deck": "*"
+   "action": "fxUnit",
+   "deck": "*",
+   "param": "lp"
   },
   {
    "group": "faders",
    "index": 3,
-   "action": "reverbSize",
-   "deck": "*"
+   "action": "fxUnit",
+   "deck": "*",
+   "param": "phaser-mix"
   },
   {
    "group": "faders",
    "index": 4,
-   "action": "masterFx",
+   "action": "fxUnit",
    "deck": "*",
-   "macro": "lp-freq"
+   "param": "crush"
   },
   {
    "group": "faders",
    "index": 5,
-   "action": "masterFx",
+   "action": "fxUnit",
    "deck": "*",
-   "macro": "hp-freq"
+   "param": "drive"
   },
   {
    "group": "faders",
    "index": 6,
-   "action": "masterFx",
+   "action": "fxUnit",
    "deck": "*",
-   "macro": "master-pitch"
+   "param": "pitch",
+   "comment": "−12…+12 semitones in whole steps, centre detent = 0"
   },
   {
    "group": "faders",
    "index": 7,
-   "action": "masterFx",
+   "action": "fxUnit",
    "deck": "*",
-   "macro": "crush-bits"
+   "param": "room",
+   "shift": false,
+   "comment": "the room send: net decks whose song has a room; nothing on a sample deck or the loops (as in the FX unit)"
+  },
+  {
+   "group": "faders",
+   "index": 7,
+   "action": "fxUnit",
+   "deck": "*",
+   "param": "echo",
+   "shift": true,
+   "comment": "SHIFT + fader 8: the echo send (net decks whose genre has an echo). Shift is software (the SHIFT note held); [UNVERIFIED] that the mk2 sends fader CCs unchanged with SHIFT held"
   },
   {
    "group": "faders",

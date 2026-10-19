@@ -42,6 +42,9 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   // The aimed deck: a binding with deck "*" acts on `DJEngine.focus` (the APC as an FX surface)
   case masterFx  // continuous: master-chain FX slider `macro` (lp-freq, hp-freq, crush-bits…)
   case reverbWet, reverbSize  // continuous, per deck: the channel's reverb
+  case fxUnit  // continuous: FX unit control `param` (an `FxParam` id) on its own travel
+  case fxKill  // press: the FX unit's kill on / off, on the next beat
+  case fxReset  // press: every FX unit control to neutral and the kill off, on the next beat
   case focusDeck  // press: aim the deck-less ("*") bindings at deck A (`slot` 0) or B (1)
   case regenerate  // press: the deck's next version (new seed, same song settings), at the bar
   case autoNext  // press: toggle the deck's auto-next
@@ -106,6 +109,8 @@ public struct SurfaceProfile: Codable, Sendable {
     public var role: String?
     /// `macro`: the net macro id ("drop", "beat-repeat", …).
     public var macro: String?
+    /// `fxUnit`: the FX unit control (`FxParam` id: "filter", "hp", "room", …).
+    public var param: String?
   }
 
   /// Note-on LED feedback (APC, Inpulse): note-on to the control's own
@@ -270,7 +275,8 @@ extension SurfaceProfile.Binding {
   public var lockKey: String {
     // SYNC's slot is a variant (beat / bar) of the one button, not another button
     DJActionKind.lockKey(
-      deck: deck, action, param: macro ?? role ?? (action == .sync ? nil : slot.map { String($0) }))
+      deck: deck, action,
+      param: macro ?? role ?? param ?? (action == .sync ? nil : slot.map { String($0) }))
   }
 }
 
