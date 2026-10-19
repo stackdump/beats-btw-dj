@@ -134,8 +134,12 @@ struct VoiceTweakEngineTests {
     let p = song("country", 7)
     let a = source(p, opts: .extended(samplers: SamplerBank(sampleRate: sr)))
     let b = source(p, opts: .extended(samplers: SamplerBank(sampleRate: sr)))
+    // the melody's channel: the first sampled lane is the harmony pad, which this song (with
+    // every fix on) does not play in the ~9 bars rendered here, so its synth could never sound
     let sampled = try #require(
-      b.latest?.lanes.first { $0.sampledSlot >= 0 && $0.channel >= 0 }, "a sampled channel")
+      b.latest?.lanes.first {
+        $0.sampledSlot >= 0 && $0.channel >= 0 && $0.netId.hasPrefix("melody")
+      }, "a sampled melody channel")
     let ch = sampled.channel
     #expect(b.latest?.channelVoice(ch)?.sampled == true)
     a.play()

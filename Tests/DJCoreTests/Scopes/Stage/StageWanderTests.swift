@@ -138,6 +138,9 @@ struct StageWanderTests {
     #expect(h.ctx.wander.map(\.deck) == ["A"])
     #expect(!off.on && off.countdown == nil && off.barInPhrase == nil && off.moves.isEmpty)
 
+    // the rig loads a hand-built project (`loadSynthNet`), which has no configuration to walk
+    // from (`wanderContext` is nil without `currentSpec`): name the one it is playing
+    h.deck.currentSpec = TrackSpec(genre: "techno", seed: 42, structure: "standard")
     h.deck.setWanderPace(4)
     h.deck.setWander(true)
     h.step()
