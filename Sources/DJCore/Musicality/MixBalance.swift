@@ -111,8 +111,13 @@ public enum MixBalance {
   /// two bars of the busiest section, the voices `fixes` shape, at `probeRate`), then moved toward its target
   /// around the median of where they all are (so the mix as a whole moves little; `.loudness`
   /// sets its level after). Empty when fewer than two parts play.
-  /// `hfTilt`: the deck's (`WaveOptions.hfTilt`), so the hats are measured as the deck plays
-  /// them under `.hfTilt` (lofi's 5 dB under their untilted level).
+  /// `hfTilt`: measure the hats through a tilt (diagnostics). The deck's own trims leave it nil:
+  /// `.hfTilt` takes the hats' top off and means to leave the rest of them where it was
+  /// (`lowersTheHatsTop`). Trims that heard the tilt (lofi's hats 5 dB under their untilted
+  /// level) lifted the whole hat part back by up to that much and brought the 12.5 / 16 kHz
+  /// bump back: synthwave 3.3 → 3.9 dB, synthwave sampled 1.3 → 2.1, bossa 1.4 → 2.1
+  /// (HFTiltTests.everyGenreFallsWithNoBump, limit 2). The loudness probe does hear the tilt
+  /// (`Loudness.gain(hfTilt:)`): that sets the level, not the hats' share of it.
   public static func trims(
     for project: Project, fixes: DJMusicality.Fixes = [], family: String? = nil,
     hfTilt: HFTilt? = nil
@@ -219,8 +224,7 @@ extension MixBalance {
       o.trackEnergy = EnergyCurve(project: played)
     }
     if o.musicality.contains(.balance) && o.trackBalance == nil {
-      o.trackBalance = trims(
-        for: played, fixes: o.musicality, family: family(genre: o.genre), hfTilt: o.hfTilt)
+      o.trackBalance = trims(for: played, fixes: o.musicality, family: family(genre: o.genre))
     }
     return o
   }

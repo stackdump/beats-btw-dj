@@ -316,9 +316,9 @@ extension OfflineRender {
       o.trackEnergy = EnergyCurve(project: played)
     }
     if o.musicality.contains(.balance) && o.trackBalance == nil {
+      // (the hats untilted, as the deck's: MixBalance.trims(hfTilt:))
       o.trackBalance = MixBalance.trims(
-        for: played, fixes: o.musicality, family: MixBalance.family(genre: o.genre),
-        hfTilt: o.hfTilt)
+        for: played, fixes: o.musicality, family: MixBalance.family(genre: o.genre))
     }
     if o.trackRests == nil { o.trackRests = RestSchedule.build(played, fixes: o.musicality) }
     let tempo = played.tempo > 0 ? played.tempo : 120

@@ -86,9 +86,8 @@ struct BalanceTests {
     let spec = TrackSpec(genre: genre, seed: 42, structure: "minimal")
     let track = PreparedTrack(spec: spec, sampleRate: 22_050)
     let trims = try #require(track.prepared.balance)
-    // (the deck's hats tilt on both sides: the trims hear `.hfTilt` as the deck plays it)
-    let old = MixBalance.trims(
-      for: track.played, fixes: track.opts.musicality, hfTilt: track.opts.hfTilt)
+    // (the hats untilted on both sides, as the deck's trims measure them: MixBalance.trims(hfTilt:))
+    let old = MixBalance.trims(for: track.played, fixes: track.opts.musicality)
     #expect(Set(trims.keys) == Set(old.keys))
     for (k, v) in old { #expect(abs(trims[k]! - v) < 0.1, "\(genre) \(k): \(v) → \(trims[k]!)") }
   }
