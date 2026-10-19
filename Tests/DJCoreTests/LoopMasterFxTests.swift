@@ -304,9 +304,12 @@ struct LoopMasterEngineTests {
     s.handle(bytes: [0x90, 8, 0x7F])  // sweep-lp
     #expect(bus.isActive(.sweepLp))
     s.handle(bytes: [0x90, 0, 0x7F])  // drop
-    let lit = s.ledFrame(now: 1_000_000)
+    // past the presses' flash (`flashSeconds`, on the uptime clock): 1e6 s was before the
+    // presses once the Mac had been up 11.6 days, so every pressed pad still read flashed
+    let later = 1e12
+    let lit = s.ledFrame(now: later)
     #expect(lit.contains([0x96, 8, 37]), "sweep-lp bright cyan while it runs on the loops")
-    let pads = s.lights(now: 1_000_000)["pads"]
+    let pads = s.lights(now: later)["pads"]
     #expect(pads?[0] == PadLight(colorIndex: 0, level: .dim), "drop: dark on the loops")
     #expect(pads?[8] == PadLight(colorIndex: 37, level: .full))
     s.handle(bytes: [0x90, 0x77, 0x7F])  // panic

@@ -111,11 +111,14 @@ extension Project {
 
 extension WaveOptions {
   /// These options with the room and echo the palette plays in (`SoundPalette.room` / `.echo`,
-  /// another genre's), else `genre`'s, for the fixes they hold.
+  /// another genre's), else `genre`'s, for the fixes they hold. The room keeps its pad shimmer
+  /// under `.shimmer`, as `forGenre` sets it (the room's genre's family level).
   public func forPalette(_ palette: String?, genre: String) -> WaveOptions {
     var o = self
     let p = SoundPalette.named(palette)
-    if musicality.contains(.space) { o.space = SpaceSpec.forGenre(p?.room ?? genre) }
+    if musicality.contains(.space) {
+      o.space = SpaceSpec.forGenre(p?.room ?? genre, shimmer: musicality.contains(.shimmer))
+    }
     if musicality.contains(.echo) {
       let e = p?.echo ?? genre
       o.echo = e == "none" ? nil : EchoSpec.forGenre(e)
