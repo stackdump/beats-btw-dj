@@ -147,26 +147,35 @@ struct SectionMelodyTests {
 
   /// The exit numbers: with the flag (pass + the runner's plan, as `djctl render` reports it)
   /// the bridge agrees with its chords ≥ 0.9 and the song has ≥ 2 progressions; without it the
-  /// bridge agrees less. Prints both for the record.
+  /// bridge agrees no better and the song has fewer progressions. Prints both for the record.
   @Test func bridgeAgreesWithItsChords() throws {
     let song = try #require(BridgeSong.first)
     let on = song.played(.all)
-    let off = song.played(.all.subtracting(.sectionHarmony))
+    // "without" is without the plan: `.harmonicRhythm` (in `Fixes.all` since 6.3) builds the
+    // same plan and runs the same pass on its own, so it leaves with `.sectionHarmony`
+    let without: DJMusicality.Fixes = .all.subtracting([.sectionHarmony, .harmonicRhythm])
+    let off = song.played(without)
     let harmony = try #require(SectionHarmony.playing(on, fixes: .all))
-    #expect(SectionHarmony.playing(off, fixes: .all.subtracting(.sectionHarmony)) == nil)
+    #expect(SectionHarmony.playing(off, fixes: without) == nil)
     let (onNotes, onControls) = NoteLog.captureAll(on, harmony: harmony)
     let (offNotes, offControls) = NoteLog.captureAll(off)
     let with = MusicalityReport(project: on, log: onNotes, controls: onControls)
-    let without = MusicalityReport(project: off, log: offNotes, controls: offControls)
+    let plain = MusicalityReport(project: off, log: offNotes, controls: offControls)
     let a = try #require(agreement(with, "bridge"))
-    let b = try #require(agreement(without, "bridge"))
+    let b = try #require(agreement(plain, "bridge"))
     print(
       "\(song.spec.genre) \(song.spec.seed) \(song.spec.structure ?? "loop"): bridge agreement "
         + "\(round3(a)) with, \(round3(b)) without; progressions \(with.progressions ?? 0) "
-        + "with, \(without.progressions ?? 0) without")
+        + "with, \(plain.progressions ?? 0) without")
     #expect(a >= 0.9)
-    #expect(b < a)
+    // Without the plan the bridge used to agree less. With every other fix now in `Fixes.all`
+    // the bridge's melody lands on its chords without the plan too (bossa 1.0 standard: 1.0
+    // either way, and still 1.0 without .cadence / .hook / .answer / .motif; 0.75 with only
+    // .key / .phrases / .timing), so agreement no longer tells the two apart: never worse with
+    // it, and what only the plan does is move the band, so the song has more progressions.
+    #expect(b <= a)
     #expect((with.progressions ?? 0) >= 2)
+    #expect((with.progressions ?? 0) > (plain.progressions ?? 0))
   }
 }
 

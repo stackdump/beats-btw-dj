@@ -297,10 +297,15 @@ struct FixesUnderGesturesTests {
   @Test func aStopWithoutTheBrakeLetsTheRoomRingOut() {
     let src = deck("techno", drop: [.echo])
     let stop = blocks(4)
-    let out = render([src], blocks: stop + blocks(2.5), at: { b in if b == stop { src.stop() } })[0]
+    let out = render([src], blocks: stop + blocks(4.5), at: { b in if b == stop { src.stop() } })[0]
     let s = (stop + 1) * deckBlock
     let early = rmsDB(out[s..<(s + Int(0.2 * rate))])
-    let late = rmsDB(out[(s + Int(2 * rate))..<(s + Int(2.4 * rate))])
+    // Not only the room rings on: a plain stop leaves the synth voices sounding to the end of
+    // their notes (`WaveRunner.stop`; only `silence` cuts them), and the techno pad's last notes
+    // hold up to a bar (~1.9 s) and then release. Measured with and without `.space`, the level
+    // 2 s in is still those notes (-33 dB, 8 dB under the first 0.2 s); 3.5 s in, past the bar
+    // and its release, it has died away.
+    let late = rmsDB(out[(s + Int(3.5 * rate))..<(s + Int(3.9 * rate))])
     #expect(early > -80, "the room rings on: \(early) dB")
     #expect(late < early - 10, "and dies away: \(early) → \(late) dB")
   }

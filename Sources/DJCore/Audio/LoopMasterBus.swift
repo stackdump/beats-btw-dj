@@ -98,6 +98,11 @@ public final class LoopMasterBus: @unchecked Sendable {
   /// thread: the bank runs its limiter while it is.
   private(set) var engaged = false
 
+  /// The first frame of the last block the bus changed (`engaged`; `frames` when it didn't): a
+  /// fire landing mid-block leaves the frames before it as they were, so a sample deck's limiter
+  /// starts there, not at the block's start. Audio thread.
+  private(set) var engagedFrom = 0
+
   init(sampleRate: Double) {
     self.sampleRate = sampleRate
     fx = FxAutomation()
@@ -206,6 +211,7 @@ public final class LoopMasterBus: @unchecked Sendable {
     }
     // the fires due in this block, in frame order; the source rendered up to each brake
     var done = 0
+    var firstChange = n
     while let i = nextDue(before: s + n) {
       let k = min(n, max(0, pendingFrame[i] - s))
       let t = blockTransport + Double(k) / sampleRate
@@ -224,6 +230,7 @@ public final class LoopMasterBus: @unchecked Sendable {
           done = k
         }
         let b = bars <= 0 ? MasterMacro.vinylBrake.defaultDuration : bars
+        firstChange = min(firstChange, k)
         brake.start(durationFrames: Int((Double(b * 4) * 60 / bpm * sampleRate).rounded()))
       } else {
         fx.tempo = bpm
@@ -253,6 +260,8 @@ public final class LoopMasterBus: @unchecked Sendable {
     chain.finish(frames: n)
     let idle = chain.isIdle()
     engaged = braking || brake.isOn || !idleBefore || !idle || opCount > 0
+    for i in 0..<opCount { firstChange = min(firstChange, opIndex[i]) }
+    engagedFrom = !engaged ? n : (braking || !idleBefore || firstChange >= n ? 0 : firstChange)
     var mask = fx.activeMask | (brake.isOn ? MasterMacro.vinylBrake.bit : 0)
     for i in 0..<pendingCount { mask |= 1 << UInt32(pendingID[i]) }
     maskAtomic.store(mask, ordering: .relaxed)

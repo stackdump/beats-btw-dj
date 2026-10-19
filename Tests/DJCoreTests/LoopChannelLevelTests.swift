@@ -108,7 +108,15 @@ struct LoopChannelLevelTests {
   /// A new recording carries L's trim, on the wire and back through a replay.
   @Test func aNewSessionRecordsTheLoopChannelsTrim() throws {
     let dj = try DJEngine(decks: ["A"], offline: true, sampleRate: 22_050)
-    let s = try SessionRecorder.start(on: dj).finish()
+    // a few blocks long: a session's length is the frames the engine rendered while it was
+    // recording, and a zero-frame session replays no block to read L's trim from
+    try dj.start()
+    defer { dj.stop() }
+    let recorder = try SessionRecorder.start(on: dj)
+    let conductor = OfflineConductor(engine: dj, router: ControllerRouter(engine: dj))
+    for _ in 0..<8 { _ = try conductor.step {} }
+    let s = recorder.finish()
+    #expect(s.frames > 0)
     #expect(s.loopGain == DJEngine.loopChannelGain)
     #expect(s.json["mixer"]?["loopGain"]?.double == DJEngine.loopChannelGain)
     let back = try Session.decode(s.canonical, cid: s.cid)
