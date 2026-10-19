@@ -95,6 +95,12 @@ its copy; the two are now independent. Rules inherited from that split:
 - Makefile-driven: `make swift-test`, `make run-app`, `make test` (Swift + Go
   + node), `make fmt lint`. Run tests through make — under Command Line Tools
   only, bare `swift test` cannot find the Testing framework.
+- **Verify with fast spot checks, not full regression** (user's rule, 2026-10-19). For a change:
+  the filtered suites it touches through `djtest_swift_test` (debug; `release: true` only if it
+  touches the render thread), the parity filter only if it touches `compose()` /
+  `WaveOptions()` / shares, and, when it changes sound, a short `djtest_render` (+
+  `djtest_compare` against the previous build or the same render twice). No full
+  `make swift-test` / `swift-rt-test` (≈3 h) unless the user asks for one.
 - Resources in `DJApp.app` go in `Contents/Resources`, not via SwiftPM's
   generated `Bundle.module` (it only checks the .app root, which codesign
   rejects). Load bundled files `Bundle.main` first, `Bundle.module` second.

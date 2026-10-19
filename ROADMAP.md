@@ -48,9 +48,11 @@ product manual ([docs/MANUAL.md](docs/MANUAL.md)) and the test fixes below. `mai
   10400.667 seconds with 259 issues (including 1 known issue)", 56 failing tests, peak helper
   memory ~5 GB. All 56 went to round 3 (fix-debug-r3-0…7), merged; their union rerun on 8784e54:
   "403 tests in 64 suites … 16 issues (including 13 known issues)", parity green on bff663e.
-- **#4: not run yet — the next step.** Then `make swift-rt-test` rounds, the measurements
-  (`djtest_level_check` −12 LUFS ±1.5 LU over every genre × seeds 42 / 7, render-vs-itself
-  `djtest_compare`, the 6.x matrix baseline, `make testmcp-test`), and the rest of this file.
+- **#4: not planned.** From 2026-10-19 the user's rule is fast spot checks with the test MCP
+  instead of full regression (CLAUDE.md): changes are verified by their filtered suites, parity
+  when near compose / shares, and short renders. Full `make swift-test` / `swift-rt-test` only
+  on request. The spot measurements still to take: `djtest_level_check` (−12 LUFS ±1.5 LU,
+  a few genres × seeds), a render compared with itself, `make testmcp-test`.
 
 **Real bugs the rounds fixed** (beyond tests whose premises never held): `.shape` turned melody
 steps into thirds; `.layerBudget` skipped beats' harmony pad; SlotWindows attributed a part change
