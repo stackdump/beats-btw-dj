@@ -114,6 +114,8 @@ its copy; the two are now independent. Rules inherited from that split:
 - Controllers: jog wheels are `JogProfile` + `JogAdapter`; everything with
   pads/faders is a `SurfaceProfile` JSON (`groups` + `layout` + optional
   `leds`). Add a device = add a JSON and list it in `SurfaceProfile.all`.
+  A binding's `shift` works on any group (faders too): `true` / `false` entries are the two
+  layers of one control.
   MIDI routing must go through `DispatchQueue.main.async` (FIFO), not `Task`.
 - Coverage contract: every control in a profile has a layout entry — bound, or
   `"action": "unbound"` with a `reason`. Values come from the real hardware:
@@ -236,6 +238,15 @@ its copy; the two are now independent. Rules inherited from that split:
   (`MasterParams.apply(_:_:at:live:)`); a `.set` while a quantised move waits lands it at once.
   Measured allocation-free (`FxUnitRealTimeTests`). UI: one full-width card under the deck row
   (bottom bar "FX unit"), aimed A / B / L, following the focus until one is picked.
+  **APC faders** (`apc-mini-mk2.json`): binding actions `fxUnit` (`param` = an `FxParam` id),
+  `fxKill`, `fxReset`, deck `"*"` (the aimed target, L included). Faders 1–8 = filter, hp, lp,
+  phaser-mix, crush, drive, pitch, room; SHIFT + fader 8 = echo (a `"shift": true` fader entry;
+  `[UNVERIFIED]` that the mk2 sends fader CCs unchanged with SHIFT held); fader 9 master. Bottom
+  row pads 7 / 8 (indices 6 / 7, beside PANIC) = reset / kill, `onBeat: true`, unshifted only
+  (SHIFT keeps them loops 63 / 64). `SurfaceController.fxValue`: unipolar linear, bipolar
+  (filter, pitch) with a ±3 % centre detent exactly on neutral, pitch in whole semitones. The
+  MIDI is what records (session + journal); the controller applies `DJEngine.applyAction(.fx…)`
+  unrecorded, as other surface pokes. No soft takeover: a fader jumps the new target on aim.
 - Parity: `macro-fx.json` (beats' macro code + Tone's Param timeline; `make fixtures-beats` runs
   scripts/beats-macro-fx.mjs, which fetches Tone 15.1.22 into `.build/tone`, SRI-checked) and
   `master-chain-chrome.json` (Chrome rendering Tone's nodes; `make fixtures-chrome`,

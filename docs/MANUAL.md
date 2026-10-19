@@ -637,8 +637,9 @@ chain hears the more processed of the two (the higher HP, the lower LP, the larg
 The unit's settings are part of the deck's state, so recorded sets and journal replays play them
 back.
 
-An APC fader layout for the FX unit is planned (faders → filter, HP, LP, phaser mix, crush,
-drive, pitch, room; master unchanged) but not built yet.
+On the APC mini mk2 the faders are the aimed target's FX unit (filter, HP, LP, phaser mix,
+crush, drive, pitch, room; SHIFT + fader 8 the echo) and two bottom-row pads reset and kill it
+(Section 9, Akai APC mini mk2).
 
 ---
 
@@ -787,7 +788,7 @@ at A or B; otherwise it follows whichever deck a controller touched last.
 
 | Row | Pads (left to right) |
 |---|---|
-| 1 | Drop, Breakdown, Solo Drums, Cut, Beat Repeat, Double Drop, —, — |
+| 1 | Drop, Breakdown, Solo Drums, Cut, Beat Repeat, Double Drop, FX unit Reset, FX unit Kill |
 | 2 | Sweep LP, Sweep HP, Reverb Wash, —, Riser, —, —, — |
 | 3 | Bit Crush, Phaser Drone, —, —, Res Ping, —, —, — |
 | 4 | — (pan macros, not in this app) |
@@ -795,6 +796,12 @@ at A or B; otherwise it follows whichever deck a controller touched last.
 | 6 | Chill, Drive, Ambient, Euphoric, Build Up, Wind Down, Reset, — |
 | 7 | — |
 | 8 (top) | Hit 1, Hit 2, Hit 3, Hit 4, —, —, —, — |
+
+FX unit **Reset** (white) and **Kill** (red) sit in the bottom-right corner, next to Panic and
+over faders 7 and 8. Both act on the aimed target (A, B or the loops) on its next beat (at once
+on a stopped deck). Reset is bright while some FX unit control is off neutral; Kill toggles and
+is bright while the unit is killed. With SHIFT held these two pads are loops 63 and 64, as the
+rest of the grid.
 
 "—" pads are dark: either a gap in the layout or a macro of the original web app that this app
 doesn't have. On a sample deck only the master macros (the FX, Pitch and Feel pads) work; the net
@@ -816,22 +823,26 @@ arp on the aimed deck (lit while the part plays).
 | 7 | Next track |
 | 8 | Panic |
 
-**SHIFT + scene 4 or 5** aims at the loops (L): the faders and macro pads then act on the loops'
-master FX, and the A / B aim lights blink. Not yet verified on the hardware.
+**SHIFT + scene 4 or 5** aims at the loops (L): the faders, the FX unit pads and the macro pads
+then act on the loops, and the A / B aim lights blink. Not yet verified on the hardware.
 
-**Faders**
+**Faders** — the aimed target's FX unit (Section 6), live: a move is heard at once and the FX
+unit card follows it.
 
 | Fader | Controls |
 |---|---|
-| 1 | Phaser wet |
-| 2 | Distortion |
-| 3 | Reverb wet (the aimed deck's channel reverb) |
-| 4 | Reverb size |
-| 5 | LP |
-| 6 | HP |
-| 7 | Master pitch |
-| 8 | Crush |
+| 1 | Filter: down = low-pass, up = high-pass; the middle (a small detent) is off |
+| 2 | HP |
+| 3 | LP (top = open) |
+| 4 | Phaser mix |
+| 5 | Crush |
+| 6 | Drive |
+| 7 | Pitch, −12…+12 semitones in whole steps; the middle is 0 |
+| 8 | Room send (net decks with a room; nothing on a sample deck or the loops). **SHIFT + fader 8**: echo send (not yet verified on the hardware) |
 | 9 (master) | Master level |
+
+The faders jump to where they are when moved (no pickup): after re-aiming, a fader takes the new
+target to its own position the first time it moves.
 
 **SHIFT + grid = the loop page.** Hold SHIFT and the grid becomes loops 1–64, read like text from
 the top-left (top row 1–8, the next row 9–16, …). Press a pad to bring that loop in or out on the
