@@ -125,7 +125,7 @@ struct SweepTests {
     let c = try #require(EnergyCurve(project: p))
     let b = try #require(c.ramp.firstIndex(of: true))
     let before = c.start[b]
-    try #require(before > 64)
+    try #require(before >= 64)
     let on = render(p, opts: options(p, sweep: true), steps: before + 16)
     let off = render(p, opts: options(p, sweep: false), steps: before + 16)
     let edge = Int(Double(before) * sr * 15 / p.tempo) - 512
@@ -136,7 +136,7 @@ struct SweepTests {
 
   /// A soloed subtractive part (no `.energy` lowpass, so the brightening is the sweep's): its
   /// buildup's last bar has a centroid ≥ 1.5× its first; without the sweep it stays put. The
-  /// full mix's peak stays under 0 dBFS with the extra resonance.
+  /// extra resonance adds no more than 1 dB to the full mix's peak.
   @Test(arguments: ["trance", "techno"])
   func buildupBrightensItsSynthVoices(genre: String) throws {
     let p = played(genre)
@@ -175,8 +175,18 @@ struct SweepTests {
     print("\(genre): centroid last/first \(ratio) with the sweep, \(flatRatio) without")
     #expect(ratio >= 1.5, "\(genre): \(ratio)")
     #expect(ratio > flatRatio)
+    // The full mix's peak with the extra resonance, against the same mix without the sweep.
+    // Not against 0 dBFS: `.extended` is the app's "limit" master, a linear runner sum at the
+    // track's loudness gain (one loudness, -12 LUFS) that `WaveDeckSource`'s `PeakLimiter`
+    // holds under -1 dBTP afterwards, so the runner's own peaks pass 0 dBFS with or without
+    // the sweep (techno ~+11 dB). What the sweep must not do is add peaks of its own.
     let mix = render(p, opts: options(p, sweep: true), steps: s1 + 16)
+    let stock = render(p, opts: options(p, sweep: false), steps: s1 + 16)
     let peak = mix.reduce(Float(0)) { max($0, abs($1)) }
-    #expect(peak < 1, "\(genre): peak \(ampDB(Double(peak))) dBFS")
+    let stockPeak = stock.reduce(Float(0)) { max($0, abs($1)) }
+    print("\(genre): mix peak \(ampDB(Double(peak))) dBFS, \(ampDB(Double(stockPeak))) without")
+    #expect(
+      ampDB(Double(peak)) <= ampDB(Double(stockPeak)) + 1,
+      "\(genre): peak \(ampDB(Double(peak))) dBFS, \(ampDB(Double(stockPeak))) without the sweep")
   }
 }

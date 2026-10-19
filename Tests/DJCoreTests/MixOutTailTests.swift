@@ -115,7 +115,14 @@ struct MixOutTailTests {
     let a = 64 * step + step
     let b = 96 * step
     #expect(abs(rmsDB(withTail, a, b) - rmsDB(noLead, a, b)) < 0.5)
-    #expect(rmsDB(song, a, b) > rmsDB(withTail, a, b) + 1)
+    // The lead is ~18 dB under kick, snare and bass here (it adds 0.07 dB to the song's RMS),
+    // so compare what is left over, not levels: the tail minus the lead-less project is
+    // silence, the song minus it is the lead.
+    func residualDB(_ x: [Float]) -> Double {
+      rmsDB(zip(x[a..<b], noLead[a..<b]).map { $0 - $1 }[...])
+    }
+    #expect(residualDB(withTail) < -80, "the tail plays no lead: \(residualDB(withTail)) dB")
+    #expect(residualDB(song) > -40, "the song does: \(residualDB(song)) dB")
     // past the song's own end the rhythm plays on, as loud as earlier in the tail
     let c = 200 * step
     #expect(abs(rmsDB(withTail, c, c + 32 * step) - rmsDB(withTail, a, b)) < 1)
