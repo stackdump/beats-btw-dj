@@ -58,6 +58,12 @@ private func secs(_ s: Double) -> Int { Int(s * sr) }
 
 private let pre61 = "rule-of-thumb (pre-6.1)"
 
+/// The strongest line within ±20 Hz of `hz` (1 Hz steps), dB.
+private func peakDB(_ x: [Float], around hz: Double) -> Double {
+  stride(from: hz - 20, through: hz + 20, by: 1).map { toneDB(x[...], $0, sampleRate: sr) }
+    .max() ?? -300
+}
+
 @Suite struct RoomShimmerTests {
   /// The sends come from the table, and are what the code held before it.
   @Test func sendsAreTheTablesAndTheRuleOfThumb() {
@@ -167,8 +173,17 @@ private let pre61 = "rule-of-thumb (pre-6.1)"
     #expect(sameSamples(a.r, b.r) == .identical)
   }
 
-  /// It is an octave up: in the tail, a lone A4 (440 Hz) pad has more at 880 Hz against 440
-  /// with the shimmer than without.
+  /// It is an octave up: in the tail, what the shimmer adds to a lone A4 (440 Hz) pad's room
+  /// (the shimmered render less the plain one: everything else is the same and the room is
+  /// linear) is around 880 Hz, with nothing around 440.
+  ///
+  /// Measured as the strongest line within ±20 Hz (`peakDB`): a delay-line shifter's grains
+  /// (60 ms) jump in phase, so its octave is a comb of lines 16.7 Hz apart that need not hold
+  /// 880 itself (a 440 Hz sine through `Shimmer` alone: −64 dB at 880; here the strongest line
+  /// is 872 Hz at −95 dB, 880 itself −117, 440 −184, the plain room's 880 −87). The test used to compare the whole tail's 880 / 440 with and without, at
+  /// those exact frequencies: the plain tail already read 880 at +10 dB over 440 (the pad
+  /// voice's second harmonic, and the room's tail at one exact frequency is mode luck), and
+  /// the shimmer's +0.15 dB on top was lost.
   @Test func theShimmerAddsTheOctaveAbove() {
     let pad = chordOnce(notes: [69])
     let plain = mid(
@@ -178,9 +193,12 @@ private let pre61 = "rule-of-thumb (pre-6.1)"
         pad, [.stereo, .space, .shimmer],
         space: SpaceSpec(seconds: 2.4, wet: 0.45, damping: 7500, shimmer: 0.3)))
     let tail = secs(0.8)..<secs(1.6)
-    let before = toneDB(plain[tail], 880, sampleRate: sr) - toneDB(plain[tail], 440, sampleRate: sr)
-    let after = toneDB(shim[tail], 880, sampleRate: sr) - toneDB(shim[tail], 440, sampleRate: sr)
-    #expect(after > before + 3, "880/440 in the tail: \(before) → \(after) dB")
+    let added = Array(zip(shim, plain).map { $0 - $1 }[tail])
+    let octave = peakDB(added, around: 880)
+    let unison = peakDB(added, around: 440)
+    let room = peakDB(Array(plain[tail]), around: 880)
+    #expect(octave > unison + 20, "what the shimmer adds: 880 \(octave) dB, 440 \(unison) dB")
+    #expect(octave > room - 20, "the shimmer is heard: 880 \(octave) dB, the room's \(room) dB")
   }
 
   /// The shimmer's level per family comes from the table, named by its source.

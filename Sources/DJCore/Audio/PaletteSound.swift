@@ -115,7 +115,10 @@ extension WaveOptions {
   public func forPalette(_ palette: String?, genre: String) -> WaveOptions {
     var o = self
     let p = SoundPalette.named(palette)
-    if musicality.contains(.space) { o.space = SpaceSpec.forGenre(p?.room ?? genre) }
+    // the room keeps the pad shimmer (`.shimmer`) that `forGenre` gave it
+    if musicality.contains(.space) {
+      o.space = SpaceSpec.forGenre(p?.room ?? genre, shimmer: musicality.contains(.shimmer))
+    }
     if musicality.contains(.echo) {
       let e = p?.echo ?? genre
       o.echo = e == "none" ? nil : EchoSpec.forGenre(e)
