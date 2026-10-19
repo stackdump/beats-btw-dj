@@ -74,7 +74,14 @@ extension DJMusicality {
     let rings: [String: (at: Int, count: Int)] = Dictionary(
       uniqueKeysWithValues: nets.compactMap { id, nb in ringShape(nb).map { (id, $0) } })
 
-    // The role's changes, as (step from which they hold, net playing or nil).
+    // The role's changes, as (step from which they hold, net playing or nil). A change's
+    // `tick` counts from 1 and section starts are steps from 0: compare on `PartChange.step`,
+    // from the song's net order (`partOnly` ran without the targets, so its own `step` is the
+    // tick). A control net before its target acts on the tick it fires (its step tick − 1:
+    // a mute on a section's first step leaves the section silent); after it (beats' order),
+    // from the next.
+    let order = Dictionary(
+      uniqueKeysWithValues: project.nets.keys.enumerated().map { ($1, $0) })
     let muted = Set(project.initialMutes)
     let initial = nets.first { !muted.contains($0.key) }?.key
     var playing = initial
@@ -87,7 +94,9 @@ extension DJMusicality {
       case .toggle: playing = playing == c.target ? nil : c.target
       default: continue
       }
-      changes.append((c.tick, playing))
+      let step = PartChange.actingStep(
+        tick: c.tick, control: order[c.net] ?? Int.max, target: order[c.target])
+      changes.append((step, playing))
     }
 
     var out: [String: [SlotWindow]] = [:]

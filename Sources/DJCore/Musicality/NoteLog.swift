@@ -18,6 +18,14 @@ public struct NoteEvent: Sendable, Equatable {
 }
 
 /// A structure change: a control net muting, unmuting or switching a part.
+///
+/// Two clocks: `tick` is the graph's tick the control fired on (1-based, like
+/// `NoteEvent.tick`: the song's first sixteenth is tick 1); `step` is the first song step
+/// (from 0, the clock of `Section`s and `SlotWindow`s) the target plays changed. Nets fire in
+/// graph order within a tick, so a control net *before* its target changes it in time for
+/// that tick's own notes (`step` = tick − 1); one *after* it, only from the next tick (`step` =
+/// tick). beats puts every control net last, so a composed track has `step == tick`; a raw-nets
+/// share can order them either way. Compare part changes with section starts on `step`.
 public struct PartChange: Equatable {
   public var tick: Int
   public var net: String
@@ -26,6 +34,29 @@ public struct PartChange: Equatable {
   /// For a slot switch onto a ring net (`p0`…`pN-1`): where the ring's token sits after the
   /// tick, i.e. the step of its cycle the slot plays first. 0 = it comes in from the top.
   public var phase: Int? = nil
+  /// The first song step the change acts on (`actingStep`). When the target isn't in the graph
+  /// that ran (`DJMusicality.partOnly`), `tick`: recompute it with the song's net order.
+  public var step: Int
+
+  public init(
+    tick: Int, net: String, action: ControlAction, target: String, phase: Int? = nil,
+    step: Int? = nil
+  ) {
+    self.tick = tick
+    self.net = net
+    self.action = action
+    self.target = target
+    self.phase = phase
+    self.step = step ?? tick
+  }
+
+  /// The first song step a control fired on `tick` acts on, from the two nets' places in the
+  /// graph's (the project's `nets`) order: tick − 1 when the control comes first, else `tick`
+  /// (also when the target is unknown).
+  public static func actingStep(tick: Int, control: Int, target: Int?) -> Int {
+    if let target, control < target { return tick - 1 }
+    return tick
+  }
 }
 
 /// The notes a project plays, from simulating its nets tick by tick (no audio): what
@@ -95,7 +126,9 @@ public enum NoteLog {
         if a == .slot, let ti = g.byId[n.actionTarget[t]] { phase = ringPosition(g.nets[ti]) }
         controls.append(
           PartChange(
-            tick: g.tick, net: n.id, action: a, target: n.actionTarget[t], phase: phase))
+            tick: g.tick, net: n.id, action: a, target: n.actionTarget[t], phase: phase,
+            step: PartChange.actingStep(
+              tick: g.tick, control: n.index, target: g.byId[n.actionTarget[t]])))
       }
       if g.stopRequested { break }
     }
