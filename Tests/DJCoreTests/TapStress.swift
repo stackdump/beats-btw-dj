@@ -97,18 +97,3 @@ func hammerUnbalancedReleases(threads: Int, each: Int) -> Int {
   return tap.subscribers
 }
 
-/// Runs `body` on `count` threads of its own and waits for all of them. Real threads, not
-/// `DispatchQueue.global()`: a test body runs on Swift's cooperative pool, and while a full
-/// `swift test` keeps every pool thread busy (higher QoS than the global default queue), GCD
-/// gives the global queue no worker, so a test waiting on it blocked for the rest of the run
-/// (seen in the full debug run: `hammerSubscriptions` in `group.wait()` with no worker alive).
-func onThreads(_ count: Int, _ body: @escaping @Sendable (Int) -> Void) {
-  let finished = DispatchSemaphore(value: 0)
-  for t in 0..<count {
-    Thread.detachNewThread {
-      body(t)
-      finished.signal()
-    }
-  }
-  for _ in 0..<count { finished.wait() }
-}

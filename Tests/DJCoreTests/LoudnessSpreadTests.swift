@@ -36,24 +36,31 @@ private func song(_ genre: String, bank: SamplerBank? = nil) -> (OfflineRender, 
 }
 
 /// Every genre's integrated loudness on one path, printed (the numbers a tuning goes by), and
-/// its spread (max − min, LU).
+/// its spread (max − min, LU). The genres render on threads of their own (`parallelMap`, four at
+/// a time: a sampled song holds its bank), so the matrix is not a full debug run's last hour.
 private func matrix(sampled: Bool) -> (levels: [String: Double], spread: Double) {
   var levels: [String: Double] = [:]
   let path = sampled ? "sampled" : "synth"
-  for genre in spreadGenres {
+  let measured = parallelMap(spreadGenres, width: 4) { genre -> (Double?, String) in
     let cache = tempPartLevelCache()
     defer { removePartLevelCache(cache) }
     let bank = sampled ? SamplerBank(sampleRate: rate, partLevelCache: cache) : nil
     let (r, track) = song(genre, bank: bank)
-    guard let l = lufs(r.left, r.right) else {
+    let l = lufs(r.left, r.right)
+    return (
+      l,
+      "gain \(f1(ampDB(track.prepared.gain))) dB, peak \(f1(r.metrics.peakDB)) dBFS"
+    )
+  }
+  for (genre, (l, detail)) in zip(spreadGenres, measured) {
+    guard let l else {
       Issue.record("\(path) \(genre): silent")
       continue
     }
     levels[genre] = l
     print(
       "LoudnessSpread \(path) \(genre.padding(toLength: 10, withPad: " ", startingAt: 0)) "
-        + "\(f1(l)) LUFS (target \(f1(LevelMatch.targetLUFS(genre: genre)))), gain "
-        + "\(f1(ampDB(track.prepared.gain))) dB, peak \(f1(r.metrics.peakDB)) dBFS")
+        + "\(f1(l)) LUFS (target \(f1(LevelMatch.targetLUFS(genre: genre)))), \(detail)")
   }
   let spread = (levels.values.max() ?? 0) - (levels.values.min() ?? 0)
   print("LoudnessSpread \(path): spread \(f1(spread)) LU over \(levels.count)")
