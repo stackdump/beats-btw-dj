@@ -107,7 +107,10 @@ struct StageToolbar: View {
 
   var body: some View {
     let settings = model.settings
-    HStack(spacing: 4) {
+    // 3 pt between controls (stage.js has 4): with dj's ∿ wander button the row at 4 ended at
+    // x = 748 in the 760 pt minimum window, past the 14 pt margin it keeps on the left
+    // (`PerfBookingTests.theStageToolbarKeepsItsQualityMenuInsideTheWindowsMinimumWidth`).
+    HStack(spacing: 3) {
       // Source.
       ForEach(model.hub.sources, id: \.self) { source in
         StageToolPill(
