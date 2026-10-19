@@ -7,6 +7,8 @@ lab (`public/jog/`, commit `b7704ba`) because the goals diverged: beats is a
 deterministic, shareable web studio; this is live performance with real
 hardware (first target: Hercules DJControl Inpulse 200 MK3).
 
+**Playing the app:** [docs/MANUAL.md](docs/MANUAL.md) is the manual — decks, sections, loops, FX, controllers, sessions.
+
 **The app is Swift** (SwiftUI + CoreMIDI + AVAudioEngine), built with
 SwiftPM — no Xcode project. The Go CLI and the browser lab stay as hardware
 and capture tools.
