@@ -111,8 +111,11 @@ public enum MixBalance {
   /// two bars of the busiest section, the voices `fixes` shape, at `probeRate`), then moved toward its target
   /// around the median of where they all are (so the mix as a whole moves little; `.loudness`
   /// sets its level after). Empty when fewer than two parts play.
+  /// `hfTilt`: the deck's (`WaveOptions.hfTilt`), so the hats are measured as the deck plays
+  /// them under `.hfTilt` (lofi's 5 dB under their untilted level).
   public static func trims(
-    for project: Project, fixes: DJMusicality.Fixes = [], family: String? = nil
+    for project: Project, fixes: DJMusicality.Fixes = [], family: String? = nil,
+    hfTilt: HFTilt? = nil
   ) -> [String: Double] {
     let targetDB = targets(family: family)
     let start = Loudness.busiestStart(project)
@@ -120,7 +123,7 @@ public enum MixBalance {
     for name in parts {
       // (at a rate that hears hats: the loudness probe's 8 kHz does not)
       if let l = Loudness.measure(
-        solo(project, name), start: start, fixes: fixes, sampleRate: probeRate)
+        solo(project, name), start: start, fixes: fixes, hfTilt: hfTilt, sampleRate: probeRate)
       {
         level[name] = l
       }
@@ -216,7 +219,8 @@ extension MixBalance {
       o.trackEnergy = EnergyCurve(project: played)
     }
     if o.musicality.contains(.balance) && o.trackBalance == nil {
-      o.trackBalance = trims(for: played, fixes: o.musicality, family: family(genre: o.genre))
+      o.trackBalance = trims(
+        for: played, fixes: o.musicality, family: family(genre: o.genre), hfTilt: o.hfTilt)
     }
     return o
   }

@@ -58,26 +58,33 @@ public enum Loudness {
 
   /// The fixes that change how the voices themselves sound (and so how loud they are): the
   /// probe plays those of the deck's, so the gain is measured on the voices the deck plays.
-  /// (`.subOctave` plays only where the deck's options turn it on: `subOctave` below.)
-  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison, .subOctave]
+  /// (`.subOctave` plays only where the deck's options turn it on: `subOctave` below; `.hfTilt`
+  /// only with the deck's tilt, `hfTilt`.)
+  public static let voiceFixes: DJMusicality.Fixes = [.subtractive, .unison, .subOctave, .hfTilt]
 
   /// The gain for `project` (1 when it plays nothing), measured with the `voiceFixes` among
   /// `fixes` on.
   /// `sampled`: net id → a level the probe plays that net's part at (the parts the deck plays
   /// on samplers, at each slot's measured part level and gain: `WaveRunner.prepare`).
   /// `subOctave`: the deck's `WaveOptions.subOctave` (the genre's), so the probe hears the
-  /// sub the deck plays.
+  /// sub the deck plays. `hfTilt`: the deck's `WaveOptions.hfTilt`, likewise its hats.
   /// `genre`: the deck's (`WaveOptions.genre`), for its family's target (`targetDB(genre:)`).
+  /// `sectionGain`: the linear gain the deck plays the probed section at (`.energy`'s
+  /// `EnergyCurve` at `busiestStart`; 1 without it or where the busiest section is the curve's
+  /// peak).
   public static func gain(
     for project: Project, fixes: DJMusicality.Fixes = [], balance: [String: Double]? = nil,
-    sampled: [String: Double] = [:], subOctave: Bool = false, genre: String? = nil
+    sampled: [String: Double] = [:], subOctave: Bool = false, hfTilt: HFTilt? = nil,
+    genre: String? = nil, sectionGain: Double = 1
   ) -> Double {
     guard
-      let db = measure(
-        project, fixes: fixes, balance: balance, sampled: sampled, subOctave: subOctave)
+      let measured = measure(
+        project, fixes: fixes, balance: balance, sampled: sampled, subOctave: subOctave,
+        hfTilt: hfTilt)
     else {
       return 1
     }
+    let db = measured + 20 * log10(max(sectionGain, 1e-6))
     let g = pow(10, (targetDB(genre: genre) - db) / 20)
     return min(range.max, max(range.min, g))
   }
@@ -88,7 +95,7 @@ public enum Loudness {
   static func measure(
     _ project: Project, start: Int? = nil, fixes: DJMusicality.Fixes = [],
     balance: [String: Double]? = nil, sampled: [String: Double] = [:],
-    subOctave: Bool = false, sampleRate probeRate: Double = probeRate
+    subOctave: Bool = false, hfTilt: HFTilt? = nil, sampleRate probeRate: Double = probeRate
   ) -> Double? {
     let start = start ?? busiestStart(project)
     var o = WaveOptions()
@@ -97,6 +104,7 @@ public enum Loudness {
     o.musicality = fixes.intersection(voiceFixes)
     o.probeLevels = sampled
     o.subOctave = subOctave
+    o.hfTilt = hfTilt
     if let balance {
       o.musicality.insert(.balance)
       o.trackBalance = balance
