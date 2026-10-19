@@ -166,8 +166,9 @@ struct VarietyTests {
   }
 
   /// Pentatonic genres change their chords, not only their key: the pad plays at least six
-  /// patterns in 30 seeds, every note stays in the key (the moved chords are the key's sus /
-  /// quartal shapes) and the semitone rubs rise by at most one per 100 pairs.
+  /// patterns in 30 seeds, the moved chords add no note outside the key (they are the key's
+  /// sus / quartal shapes; what is out of key is beats' own bass) and the semitone rubs rise by
+  /// at most one per 100 pairs.
   @Test(arguments: ["lofi", "ambient"])
   func pentatonicProgressionsStayInKey(genre: String) throws {
     let n = distinct(genre)
@@ -181,7 +182,17 @@ struct VarietyTests {
       let b = DJMusicality.apply(composed, spec: spec)
       let ra = MusicalityReport(project: a, log: NoteLog.capture(a))
       let rb = MusicalityReport(project: b, log: NoteLog.capture(b))
-      #expect(rb.inKey == 1.0, "\(genre)/\(s): in key \(rb.inKey)")
+      // Not "every note in the key": beats' composed lofi bass is ~9 % out of key before any dj
+      // fix (composed 0.904…0.920 over these seeds, round 3), and the bass stays beats' (pending
+      // user decision: no worse than the composed track). `.variety` adds no out-of-key note
+      // (`rb` == `ra` on every seed measured); the other passes change the note count around
+      // the same bass notes (`.hook` / `.motif` / `.phrases` write fewer melody notes), which
+      // moves the share by up to 0.018, hence the 0.03 margin against the composed track.
+      let rc = MusicalityReport(project: composed, log: NoteLog.capture(composed))
+      #expect(rb.inKey >= ra.inKey - 1e-9, "\(genre)/\(s): .variety \(ra.inKey) → \(rb.inKey)")
+      #expect(
+        rb.inKey >= rc.inKey - 0.03,
+        "\(genre)/\(s): in key \(rb.inKey), composed \(rc.inKey)")
       rubs.with += rb.semitoneClashes
       rubs.without += ra.semitoneClashes
     }

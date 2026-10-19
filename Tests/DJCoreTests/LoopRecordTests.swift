@@ -487,14 +487,18 @@ struct LoopRecordTests {
   @Test func theLoopChannelHasItsOwnMute() throws {
     let rig = try Rig()
     let l = rig.dj.loopChannel
+    // L starts at trim -3 dB (`DJEngine.loopChannelGain`: trim 1/√2, the centred crossfader's
+    // gain, by decision), so the strip plays trim × volume, not the volume alone
+    let trim = Float(l.trim)
+    #expect(abs(trim - Float(0.5.squareRoot())) < 1e-6)
     l.volume = 1
-    #expect(l.strip.outputVolume == 1)
+    #expect(l.strip.outputVolume == trim)
     rig.dj.perform(.param(deck: "L", name: "volume", value: 0.5))
     #expect(l.volume == 0.5)
     l.mute = true
     #expect(l.strip.outputVolume == 0)
     l.mute = false
-    #expect(l.strip.outputVolume == 0.5)
+    #expect(l.strip.outputVolume == Float(l.trim * 0.5))
   }
 
   /// Two bars of a 220 Hz tone at 120 bpm, a few frames short (as AAC decodes an Apple Loop).
@@ -568,7 +572,17 @@ struct LoopRecordTests {
     }
     #expect(id == audio.contentID && abs(bpm - clip.bpm) < 1e-9 && beats == 8 && p == prov)
     let decoded = try Session.decode(session.canonical)
-    #expect(decoded == session, "it round-trips through the session text")
+    // the session's identity is its canonical text (what its CID hashes); `JSONObject` equality
+    // keeps key order, and the canonical text sorts the provenance's keys, so compare that
+    #expect(decoded.canonical == session.canonical, "it round-trips through the session text")
+    #expect(decoded.events.count == session.events.count)
+    if case .action(.clipImport(_, _, _, _, let back?))? = decoded.events.first(where: {
+      if case .action(.clipImport) = $0.kind { return true } else { return false }
+    })?.kind {
+      #expect(back.canonicalJS == prov.canonicalJS, "the provenance comes back whole")
+    } else {
+      Issue.record("no import decoded")
+    }
     #expect(session.importedClips.count == 3 && session.importedClips[0].hasPrefix("stock loop"))
 
     // replayed by content id on a fresh engine

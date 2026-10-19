@@ -115,7 +115,9 @@ struct SurfaceNetTests {
     s.handle(bytes: [0x90, 0, 0x7F])  // drop
     _ = try renderOffline(dj, frames: 4096)
     #expect(a.wave.activeMacros.contains(.drop))
-    #expect(s.ledFrame(now: 1_000_000).contains([0x96, 0, 5]), "bright while it runs")
+    // after the press's flash on the uptime clock (1e6 s is before it once 11.6 days up)
+    let later = 1e12
+    #expect(s.ledFrame(now: later).contains([0x96, 0, 5]), "bright while it runs")
   }
 
   @Test func apcFadersSetTheAimedDecksFX() async throws {
