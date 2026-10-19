@@ -1489,7 +1489,8 @@ public final class WaveRunner {
     var opts = opts
     if opts.musicality.contains(.balance) && opts.trackBalance == nil {
       opts.trackBalance = MixBalance.trims(
-        for: project, fixes: opts.musicality, family: MixBalance.family(genre: opts.genre))
+        for: project, fixes: opts.musicality, family: MixBalance.family(genre: opts.genre),
+        hfTilt: opts.hfTilt)
     }
     // (the compiled graph is built from the project's JSON, which has no coordinates: the
     // layout takes the net positions from the project itself)
@@ -1519,10 +1520,18 @@ public final class WaveRunner {
         stereo: opts.musicality.contains(.stereo), space: opts.musicality.contains(.space))
     }
     if measureGain {
+      // `.energy` plays the probed section at its own gain (the whole mix times it,
+      // `finishEnergy`): the probe hears it too, or a song whose busiest section is not its
+      // most energetic one (lofi's verse, 4 dB under its bridge) lands that much under the
+      // reference
+      let probed = Loudness.busiestStart(project)
+      let sectionGain =
+        opts.musicality.contains(.energy) ? (energy?.at(step: probed).gain ?? 1) : 1
       prepared.gain = Loudness.gain(
         for: project, fixes: opts.musicality,
         balance: opts.musicality.contains(.balance) ? opts.trackBalance : nil,
-        sampled: prepared.probeLevels, subOctave: opts.subOctave, genre: opts.genre)
+        sampled: prepared.probeLevels, subOctave: opts.subOctave, hfTilt: opts.hfTilt,
+        genre: opts.genre, sectionGain: sectionGain)
     }
     return prepared
   }

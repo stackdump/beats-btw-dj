@@ -317,7 +317,8 @@ extension OfflineRender {
     }
     if o.musicality.contains(.balance) && o.trackBalance == nil {
       o.trackBalance = MixBalance.trims(
-        for: played, fixes: o.musicality, family: MixBalance.family(genre: o.genre))
+        for: played, fixes: o.musicality, family: MixBalance.family(genre: o.genre),
+        hfTilt: o.hfTilt)
     }
     if o.trackRests == nil { o.trackRests = RestSchedule.build(played, fixes: o.musicality) }
     let tempo = played.tempo > 0 ? played.tempo : 120

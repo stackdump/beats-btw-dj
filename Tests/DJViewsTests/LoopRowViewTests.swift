@@ -143,8 +143,15 @@ struct LoopRowViewTests {
     m.setClipFade("abc", .beat)
     m.setClipFollow("abc", .source)
     m.setClipFade("abc", nil)
+    // `m.start()` applies the app's "Auto level" default to each deck as a recorded
+    // `param(autoGain)` (one loudness: the app turns auto-gain on, recorded so a replay plays
+    // the samples at the same level). That follows the defaults, not the loop row, so it is
+    // left out here; the row's own controls are what this test pins.
     let actions = rec.finish().events.compactMap { e -> DeckAction? in
-      if case .action(let a) = e.kind { return a }
+      if case .action(let a) = e.kind {
+        if case .param(_, "autoGain", _) = a { return nil }
+        return a
+      }
       return nil
     }
     #expect(

@@ -87,6 +87,66 @@ public enum SamplerSource: Hashable, Sendable, CustomStringConvertible {
   }
 }
 
+/// How many AUSamplers with an instrument loaded one process may hold at once, and the wait for
+/// a free place.
+///
+/// AudioToolbox stops sounding past about 106 live loaded AUSamplers in a process (macOS 15.6,
+/// measured: 106 General MIDI programs load and play, the 107th loads without an error and
+/// renders exact silence, -200 dB, until earlier ones are freed; empty engines and samplers
+/// without an instrument don't count). A bank then turned the sound away as silent and never
+/// tried it again; in a full test run, where parallel suites each hold banks, SoundFont and
+/// Minecraft programs failed that way. So instruments take a place here before they load:
+/// past `limit` a load waits (up to `wait`) for another to be freed, and then fails as
+/// `SamplerLimitError`, which a bank does not count against the sound.
+public final class SamplerCensus: @unchecked Sendable {
+  /// Under the measured 106, with room for what AudioToolbox itself keeps.
+  public static let limit = 96
+  /// Seconds a load waits for a place before it gives up.
+  public static let wait = 60.0
+  public static let shared = SamplerCensus(limit: limit)
+
+  private let condition = NSCondition()
+  public let capacity: Int
+  private var count = 0
+
+  init(limit: Int) { capacity = limit }
+
+  /// Live instruments now.
+  public var live: Int {
+    condition.lock()
+    defer { condition.unlock() }
+    return count
+  }
+
+  /// A place, waiting up to `timeout` seconds for one; false when none freed in time.
+  func acquire(timeout: Double) -> Bool {
+    condition.lock()
+    defer { condition.unlock() }
+    let deadline = Date(timeIntervalSinceNow: timeout)
+    while count >= capacity {
+      if !condition.wait(until: deadline) && count >= capacity { return false }
+    }
+    count += 1
+    return true
+  }
+
+  func release() {
+    condition.lock()
+    count -= 1
+    condition.signal()
+    condition.unlock()
+  }
+}
+
+/// A sampler that could not load because the process already holds `SamplerCensus.limit`
+/// (says nothing about the sound itself: a later load may succeed).
+public struct SamplerLimitError: Error, CustomStringConvertible {
+  public var description: String {
+    "too many samplers in this process (\(SamplerCensus.limit) live; waited "
+      + "\(Int(SamplerCensus.wait)) s for one to be freed)"
+  }
+}
+
 /// One Apple sampler (AUSampler), rendered by hand from inside a deck's own render callback
 /// rather than as a node in the engine graph: it renders exactly once per cycle, its MIDI
 /// lands on the exact sample, and offline (manual) rendering works the same.
@@ -122,6 +182,13 @@ public final class SamplerInstrument: @unchecked Sendable {
   public init(source: SamplerSource, sampleRate: Double, gain: Double = 1) throws {
     self.source = source
     self.gain = gain
+    // a place among the process's live samplers (`SamplerCensus`), given back by `deinit`, or
+    // here if the load fails
+    guard SamplerCensus.shared.acquire(timeout: SamplerCensus.wait) else {
+      throw SamplerLimitError()
+    }
+    var loaded = false
+    defer { if !loaded { SamplerCensus.shared.release() } }
     holder.attach(unit)
     // Load samples whole instead of streaming them from disk: a streaming thread that falls
     // behind (a busy machine) changes what renders — renders stop being deterministic and
@@ -164,6 +231,7 @@ public final class SamplerInstrument: @unchecked Sendable {
     abl = AudioBufferList.allocate(maximumBuffers: 2)
     timestamp.mFlags = .sampleTimeValid
     Self.buildParameterCache(unit.audioUnit)
+    loaded = true
   }
 
   /// AUSampler reports a parameter change on every note-on, from inside its render. Once an
@@ -393,6 +461,10 @@ public final class SamplerInstrument: @unchecked Sendable {
   }
 
   deinit {
+    // the place first, outside `lifecycle`: a load waiting for one holds that lock (a bank
+    // loads under it), so giving it back after would wait on the waiter. The census keeps
+    // room under the measured ceiling for the one sampler still being torn down.
+    SamplerCensus.shared.release()
     Self.lifecycle.withLock { au.deallocateRenderResources() }
     left.deallocate()
     right.deallocate()
@@ -525,6 +597,11 @@ public final class SamplerBank: @unchecked Sendable {
         }
       }
       guard var inst = load() else {
+        if let limit = loadError as? SamplerLimitError {
+          // the process, not the sound: tried again on the next call
+          failures[s] = limit.description
+          return nil
+        }
         unloadable.insert(s)
         failures[s] = "load failed: \(loadError.map { Self.describe($0) } ?? "unknown")"
         continue
