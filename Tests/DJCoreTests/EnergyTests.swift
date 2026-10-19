@@ -15,12 +15,17 @@ private func played(_ genre: String, _ seed: Double = 42, structure: String = "s
 }
 
 /// The whole song, mono, synth voices, with or without the energy arc, in the genre's room.
-private func render(_ p: Project, energy: Bool, genre: String) -> [Float] {
+/// `loudnessGain`: the `.loudness` gain the deck played it at (`WaveProject.gain`).
+private func render(_ p: Project, energy: Bool, genre: String, loudnessGain: inout Double)
+  -> [Float]
+{
   var o = WaveOptions.extended
   o.space = SpaceSpec.forGenre(genre)
   if !energy { o.musicality.remove(.energy) }
   let r = WaveRunner(sampleRate: sr, opts: o)
-  r.load(prepared: WaveRunner.prepare(p, sampleRate: sr, opts: o))
+  let prepared = WaveRunner.prepare(p, sampleRate: sr, opts: o)
+  loudnessGain = prepared.gain
+  r.load(prepared: prepared)
   r.play()
   let steps = p.structure.reduce(0) { $0 + $1.steps }
   var out = [Float](repeating: 0, count: Int(Double(steps) * sr * 15 / p.tempo) + 512)
@@ -83,8 +88,17 @@ struct EnergyTests {
   func sectionsHaveALevelContour(genre: String) throws {
     let p = played(genre)
     let curve = try #require(EnergyCurve(project: p))
-    let flat = sectionDB(render(p, energy: false, genre: genre), p)
-    let arc = sectionDB(render(p, energy: true, genre: genre), p)
+    var flatGain = 1.0
+    var arcGain = 1.0
+    let flat = sectionDB(render(p, energy: false, genre: genre, loudnessGain: &flatGain), p)
+    // `.loudness` now hears the probed section's energy gain (Loudness.gain(sectionGain:)): where
+    // the busiest section is not the curve's peak (lofi's verse, 0.69) the whole arc render is
+    // lifted back to the reference (+3.2 dB in lofi; techno 0). The contour is what `.energy`
+    // does to the sections relative to each other, so that track-wide gain is taken out here.
+    let arc = sectionDB(render(p, energy: true, genre: genre, loudnessGain: &arcGain), p).map {
+      (name: $0.name, db: $0.db - ampDB(arcGain / flatGain))
+    }
+    print("energy \(genre): loudness gain \(arcGain) with the arc, \(flatGain) flat")
     // mean depth of the sections under the loudest one
     let depth = { (s: [(name: String, db: Double)]) in
       let top = s.map(\.db).max()!
