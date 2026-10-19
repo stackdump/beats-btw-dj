@@ -76,11 +76,13 @@ struct EnergyTests {
     }
   }
 
-  /// Rendered: the drop plays as before, the intro comes down by several dB, and sections
-  /// that played at one level (0.2 dB apart in techno) now have a contour.
+  /// Rendered: the section the curve marks loudest plays as before, the others come down, the
+  /// intro by several dB, and sections that played at one level (0.2 dB apart in techno) now
+  /// have a contour.
   @Test(arguments: ["techno", "lofi"])
   func sectionsHaveALevelContour(genre: String) throws {
     let p = played(genre)
+    let curve = try #require(EnergyCurve(project: p))
     let flat = sectionDB(render(p, energy: false, genre: genre), p)
     let arc = sectionDB(render(p, energy: true, genre: genre), p)
     // mean depth of the sections under the loudest one
@@ -88,8 +90,24 @@ struct EnergyTests {
       let top = s.map(\.db).max()!
       return s.map { top - $0.db }.reduce(0, +) / Double(s.count)
     }
-    #expect(depth(flat) < 1.5, "\(genre) was flat: \(flat)")
-    #expect(depth(arc) > depth(flat) + 1.5, "\(genre): \(flat) → \(arc)")
+    // Only techno still renders flat without `.energy`. Lofi no longer does: with every fix
+    // that has joined `Fixes.all` since, its flat render is 3.4 dB deep already (intro −19.4,
+    // verses −13.2, bridge −17.5, outro −23.3; still 2.6 dB without the 6.2 rests
+    // `.layerBudget` / `.bandStop` / `.kickOut`), and its curve puts the peak on the thinner
+    // bridge (gain 1, verses 0.69), so the arc brings the verses down toward it rather than
+    // deepening the mean. What `.energy` does is held per section, below, for both.
+    if genre == "techno" {
+      #expect(depth(flat) < 1.5, "\(genre) was flat: \(flat)")
+      #expect(depth(arc) > depth(flat) + 1.5, "\(genre): \(flat) → \(arc)")
+    }
+    for (i, g) in curve.gain.enumerated() {
+      if g >= 0.999 {
+        #expect(abs(arc[i].db - flat[i].db) < 0.75, "\(genre) \(arc[i].name) keeps its level")
+      } else if g <= 0.8 {
+        // (−1.9 dB or more of gain: it comes down by at least a dB, its lowpass aside)
+        #expect(arc[i].db < flat[i].db - 1, "\(genre) \(arc[i].name) at \(g): \(flat) → \(arc)")
+      }
+    }
     let intro = try #require(arc.firstIndex { $0.name == "intro" })
     let loudest = try #require(flat.indices.max { arc[$0].db < arc[$1].db })
     // the intro comes down, and sits several dB under the peak (how far it comes down from
@@ -97,7 +115,6 @@ struct EnergyTests {
     // notes, `.legato`, lift lofi's melodic sections and so leave its flat intro lower)
     #expect(arc[intro].db < flat[intro].db - 2)
     #expect(arc[intro].db < arc[loudest].db - 3)
-    #expect(abs(arc[loudest].db - flat[loudest].db) < 0.75, "the peak section keeps its level")
   }
 
   /// A loop has no arc; a project without the flag renders exactly as before.

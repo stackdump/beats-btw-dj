@@ -95,29 +95,58 @@ struct HarmonicRhythmTests {
     #expect(checked > 0)
   }
 
-  /// Intro bass: its notes in each odd bar are the even bar's chord's (the bass downbeat on the
-  /// same pitch class, where both bars' bass starts on its pad root), as `NoteLog` captures it.
+  /// Intro bass: its notes in each odd bar are the even bar's chord's. On the plan, the bass's
+  /// own group plays the pad root of each odd bar of a holding section as the even bar's (its
+  /// map is per group: the bass is moved in its own register). And where a bass plays there,
+  /// as `NoteLog` captures it: the bass downbeat on the same pitch class, where both bars'
+  /// bass starts on its pad root.
+  ///
+  /// (The composer brings the bass in after the intro: the `NoteLog` half alone, intros only,
+  /// checked nothing over all of `songs`. Over every holding section it checks 32 bars (the
+  /// breakdowns and outros that keep a bass), the plan half 412.)
   @Test func introBassChangesEveryTwoBars() throws {
     var checked = 0
+    var played = 0
     for (name, p, h) in songs {
-      guard let k = p.structure.firstIndex(where: { $0.name == "intro" }) else { continue }
-      let notes = NoteLog.captureAll(p, harmony: h).notes.filter {
-        $0.group == "bass" && !$0.isDrum && ($0.tick - 1) % 16 == 0
-          && $0.tick - 1 >= h.start[k] && $0.tick - 1 < sectionEnd(h, k)
-      }
-      var downbeat: [Int: Int] = [:]
-      for n in notes where downbeat[(n.tick - 1) / 16] == nil {
-        downbeat[(n.tick - 1) / 16] = n.note % 12
-      }
-      for (bar, pc) in downbeat where bar % 2 == 1 {
-        guard let prev = downbeat[bar - 1], let r0 = bandRoot(p, h, step: (bar - 1) * 16),
-          let r1 = bandRoot(p, h, step: bar * 16), prev == r0
-        else { continue }
-        #expect(r0 == r1, "\(name) intro bar \(bar)")
-        #expect(pc == prev, "\(name) intro bass bar \(bar): \(prev) → \(pc)")
-        checked += 1
+      let (chords, padBars) = DJMusicality.padChords(p)
+      guard padBars >= 2, 4 % padBars == 0, let bass = h.groupIndex("bass") else { continue }
+      let log = NoteLog.captureAll(p, harmony: h).notes
+      for (k, s) in p.structure.enumerated()
+      where SectionHarmony.holdingSections.contains(s.name) {
+        let end = sectionEnd(h, k)
+        let tailed = h.tail[(k * 2)..<(k * 2 + 2)].contains { $0 != SectionHarmony.noTail }
+        // the plan: the pad's root in the bass's octave, as the bass group plays it
+        for bar in stride(from: h.start[k] / 16 + 1, to: end / 16, by: 1) where bar % 2 == 1 {
+          if tailed && bar == end / 16 - 1 { continue }
+          guard bar - 1 >= h.start[k] / 16, let a = chords[(bar - 1) % padBars]?.first,
+            let b = chords[bar % padBars]?.first
+          else { continue }
+          let even = h.note(36 + a, group: bass, step: (bar - 1) * 16) % 12
+          let odd = h.note(36 + b, group: bass, step: bar * 16) % 12
+          #expect(even == odd, "\(name) \(s.name) bass plan bar \(bar): \(even) → \(odd)")
+          #expect(odd == bandRoot(p, h, step: bar * 16), "\(name) \(s.name) bar \(bar)")
+          checked += 1
+        }
+        // what a bass there plays
+        var downbeat: [Int: Int] = [:]
+        for n in log
+        where n.group == "bass" && !n.isDrum && (n.tick - 1) % 16 == 0
+          && n.tick - 1 >= h.start[k] && n.tick - 1 < end && downbeat[(n.tick - 1) / 16] == nil
+        {
+          downbeat[(n.tick - 1) / 16] = n.note % 12
+        }
+        for (bar, pc) in downbeat where bar % 2 == 1 {
+          if tailed && bar == end / 16 - 1 { continue }
+          guard let prev = downbeat[bar - 1], let r0 = bandRoot(p, h, step: (bar - 1) * 16),
+            let r1 = bandRoot(p, h, step: bar * 16), prev == r0
+          else { continue }
+          #expect(r0 == r1, "\(name) \(s.name) bar \(bar)")
+          #expect(pc == prev, "\(name) \(s.name) bass bar \(bar): \(prev) → \(pc)")
+          played += 1
+        }
       }
     }
+    print("intro bass: \(checked) planned bars, \(played) played")
     #expect(checked > 0)
   }
 
