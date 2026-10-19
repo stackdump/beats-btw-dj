@@ -181,7 +181,9 @@ struct SampledWidthTests {
   /// below 150 Hz (side 30 dB or more under mid), and it folds to mono losing at most 1 dB.
   @Test(arguments: ["country", "lofi", "trance"])
   func sampledTracksAreWideAboveAndMonoBelow(genre: String) throws {
-    let src = WaveDeckSource(sampleRate: sr)
+    // the deck's own source (`DJEngine`): `.extended` ends in the peak limiter, which the
+    // calibrated -12 LUFS levels lean on (one loudness); a bare source would clip
+    let src = WaveDeckSource(sampleRate: sr, opts: .extended(samplers: nil))
     let spec = TrackSpec(genre: genre, seed: 42, structure: "minimal")
     let track = PreparedTrack(
       spec: spec, sampleRate: sr, opts: .extended(samplers: src.samplers, seed: spec.seed))

@@ -118,7 +118,9 @@ final class DeckRenderer: @unchecked Sendable {
       turntable.takeCommands()
       if master.braking && (turntable.handOn || !turntable.motorRunning) { master.cancelBrake() }
       master.render(self, frames: frames, left: left, right: right, startFrame: start)
-      limit(frames: frames, left: left, right: right, engaged: master.engaged)
+      limit(
+        frames: frames, left: left, right: right, engaged: master.engaged,
+        from: master.engagedFrom)
     } else {
       turntable.render(frames: frames, left: left, right: right)
     }
@@ -157,13 +159,17 @@ final class DeckRenderer: @unchecked Sendable {
 
   /// Audio thread. The safety limiter, last (after the master chain: distortion, crush and the
   /// pitch shifter can lift peaks), while the clip FX or the master bus changed the block or it
-  /// is still coming back up.
+  /// is still coming back up. Only the clip FX or a releasing limiter take the whole block: the
+  /// bus engaged mid-block (a fire on its bar) is limited from that frame (`from`), so the
+  /// frames before the bar stay the turntable's bytes.
   private func limit(
     frames n: Int, left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?,
-    engaged: Bool
+    engaged: Bool, from: Int
   ) {
     guard let fxLimiter, blockFx || engaged || !fxLimiter.idle else { return }
-    fxLimiter.process(left, right, n)
+    let k = blockFx || !fxLimiter.idle ? 0 : min(max(0, from), n)
+    guard k < n else { return }
+    fxLimiter.process(left + k, right.map { $0 + k }, n - k)
   }
 }
 

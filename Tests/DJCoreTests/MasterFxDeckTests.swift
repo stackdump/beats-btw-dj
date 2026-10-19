@@ -270,15 +270,36 @@ struct MasterFxDeckTests {
   @Test func octaveUpShiftsASampleDeck() throws {
     // 220 whole periods a second: a seamless loop
     let (_, deck) = try sampleDeck(fxSineBuffer(hz: 220, amplitude: 0.3, seconds: 1))
+    let w = (bar120 + 24_000)..<(bar120 + 24_000 + 8192)
+    var active = false
     let out = render(deck, frames: 3 * bar120) { f in
       if f == 512 { deck.fire(.octaveUp, duration: 2) }  // lands on bar 2
+      if f == w.lowerBound / 512 * 512 { active = deck.isMasterActive(.octaveUp) }
     }
     let before = fundamental(out.l[20_000..<(20_000 + 8192)], sampleRate: sampleRate48)
     #expect(abs(cents(before, 220)) < 10, "dry: \(before) Hz")
-    let w = (bar120 + 24_000)..<(bar120 + 24_000 + 8192)
+    // The shift is the net decks' chain's: beats' Tone.PitchShift, whose Chrome sawtooths sweep
+    // the delay a little faster than 1 + factor (at 48 kHz an "octave" is ~1277 cents up, not
+    // 1200). Measured against the same chain on the same sine, not against an exact octave.
+    let ref = MasterChain(sampleRate: sampleRate48)
+    ref.apply(.masterPitch, 12, at: 0)
+    let src = fxSineBuffer(hz: 220, amplitude: 0.3, seconds: 2)
+    var sine = (0..<src.length).map { src.left[$0] }
+    sine.withUnsafeMutableBufferPointer { b in
+      var i = 0
+      while i < b.count {
+        let m = min(512, b.count - i)
+        ref.process(b.baseAddress! + i, nil, from: 0, to: m)
+        ref.finish(frames: m)
+        i += m
+      }
+    }
+    let want = fundamental(sine[24_000..<(24_000 + 8192)], sampleRate: sampleRate48)
+    #expect(abs(cents(want, 220) - 1200) < 100, "the chain's octave: \(cents(want, 220)) cents")
     let up = fundamental(out.l[w], sampleRate: sampleRate48)
-    #expect(abs(cents(up, 220) - 1200) < 10, "an octave up: \(cents(up, 220)) cents")
-    #expect(deck.isMasterActive(.octaveUp))
+    #expect(abs(cents(up, want)) < 10, "the chain's octave up: \(cents(up, 220)) vs \(cents(want, 220)) cents")
+    // running while it sounds (read then: its two bars from bar 2 end with the render)
+    #expect(active)
   }
 
   @Test func aSampleDeckBrakesAndLandsOnTheBeat() throws {
