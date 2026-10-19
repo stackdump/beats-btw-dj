@@ -67,7 +67,9 @@ struct FormReportTests {
     #expect(r.maxLatenessTicks == 2)
     #expect(r.introBars == 4)
     #expect(r.outroBars == 4)
-    #expect(r.songSeconds == 256 * 60 / (120 * 4))
+    // a Double literal: inside #expect the right side is type-checked on its own, so an
+    // all-integer expression is an Int (32) and never equals the report's Double? (32.0)
+    #expect(r.songSeconds == 256.0 * 60 / (120 * 4))
     // events at 0, 64, 130, 192 and the end at 256
     #expect(r.phraseBars == [62.0 / 16, 4, 66.0 / 16])
   }
