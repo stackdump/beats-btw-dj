@@ -392,7 +392,7 @@ struct StageModelTests {
     h.model.settings.expandVariants = true
     h.run(0.05)
     #expect(spy.resets == 2, "a rebuild clears per-panel state")
-    #expect(h.model.layers.all.count == 9 && h.model.layers.clearedOnRebuild.count == 3)
+    #expect(h.model.layers.all.count == 10 && h.model.layers.clearedOnRebuild.count == 3)
   }
 
   @Test func theSoloModelDecidesWhatShows() throws {
@@ -406,12 +406,12 @@ struct StageModelTests {
     h.model.settings.visualizer = .shuffle
     h.run(0.05)
     #expect(h.ctx.selection == .shuffle && h.ctx.visualizer != .shuffle, "never shuffle itself")
-    #expect(StageVisualizer.allCases.count == 6 && StageVisualizer.real.count == 5)
+    #expect(StageVisualizer.allCases.count == 7 && StageVisualizer.real.count == 6)
     #expect(StageVisualizer.constellation.rawValue == "mandala")
     #expect(!StageVisualizer.constellation.isSolo && !StageVisualizer.shuffle.isSolo)
     #expect(
       StageVisualizer.corona.isSolo && StageVisualizer.sonar.isSolo && StageVisualizer.petal.isSolo
-        && StageVisualizer.minecraft.isSolo)
+        && StageVisualizer.minecraft.isSolo && StageVisualizer.dig.isSolo)
   }
 
   @Test func detachingSwitchesTheTapsOff() throws {

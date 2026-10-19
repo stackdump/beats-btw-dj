@@ -8,11 +8,12 @@ private typealias Sw = StageSwatch
 
 // Shuffle (SPEC mode 12) on the whole stage, rendered: `StageSoloRenderTests` has the swap between
 // the corona and the constellation; here it lands on the SONAR and on the PETAL (the two that need
-// the engine's fires to show anything), and the arrow keys walk the five pictures both ways,
+// the engine's fires to show anything), and the arrow keys walk the six pictures both ways,
 // ending the shuffle. The shuffle's random source is replaced: stage.js
 // `pickShuffleNext` takes `choices[floor(random * n)]` over the real visualizers without the one
-// showing, in the order constellation, corona, sonar, petal (then dj's blocks). Shuffle starts
-// from the constellation, so 0.0 picks the corona, 0.4 the sonar, 0.6 the petal, 0.8 the blocks.
+// showing, in the order constellation, corona, sonar, petal (then dj's blocks and dig). Shuffle
+// starts from the constellation, so 0.0 picks the corona, 0.3 the sonar, 0.5 the petal, 0.7 the
+// blocks, 0.9 the dig.
 @MainActor
 struct StageShuffleLandingRenderTests {
   private func shuffling(random value: Double) throws -> StageViewRig {
@@ -26,6 +27,18 @@ struct StageShuffleLandingRenderTests {
   private func picture(_ rig: StageViewRig, name: String) throws -> Pixels {
     savePNG(rig.scene(), width: 1000, height: 800, name: name)
     return try #require(renderPixels(rig.scene(), width: 1000, height: 800))
+  }
+
+  /// Pixels (on a 4-point grid) that are bright yellow.
+  private func yellowSeen(_ px: Pixels) -> Int {
+    var n = 0
+    for y in stride(from: 0, to: px.height, by: 4) {
+      for x in stride(from: 0, to: px.width, by: 4) {
+        let c = px.color(x, y)
+        if c.r > 200 && c.g > 160 && c.b < 80 { n += 1 }
+      }
+    }
+    return n
   }
 
   /// Sonar rings that are on screen where the model says, on the ring centre.
@@ -98,12 +111,15 @@ struct StageShuffleLandingRenderTests {
     case .minecraft:
       // the blocky world's sky fills the top of the window, where the stage is otherwise dark
       SoloSwatch.lift(px.color(500, 20)) > 60 && rig.model.layers.minecraft.scene.voxels.count > 100
+    case .dig:
+      // the miner's helmet and the torches are the only yellow on a dark stage
+      rig.model.layers.dig.scene.voxels.count > 100 && yellowSeen(px) > 8
     case .shuffle: false
     }
   }
 
   @Test func shuffleLandsOnTheSonarAndDrawsItsRingsWhileTheSelectSaysShuffle() throws {
-    let rig = try shuffling(random: 0.4)
+    let rig = try shuffling(random: 0.3)
     defer { rig.stop() }
     try rig.run(seconds: 0.6)
     let ctx = rig.model.context
@@ -117,7 +133,7 @@ struct StageShuffleLandingRenderTests {
   }
 
   @Test func shuffleLandsOnThePetalAndDrawsAFlowerOfTheNets() throws {
-    let rig = try shuffling(random: 0.6)
+    let rig = try shuffling(random: 0.5)
     defer { rig.stop() }
     try rig.run(seconds: 0.6)
     let ctx = rig.model.context
@@ -130,19 +146,20 @@ struct StageShuffleLandingRenderTests {
     #expect(shows(rig, px, .petal))
   }
 
-  @Test func theArrowKeysWalkTheFivePicturesBothWaysAndEndTheShuffle() throws {
-    // lands on the sonar; Right is the petal and the blocks, Left goes back through the petal
-    // and the sonar to the corona, the constellation and round to the blocks (wrapping), and
-    // Right wraps from the blocks to the constellation. (The sonar is checked early: its rings
-    // need the song's fires, and the order keeps it where the original four-step walk had it.)
-    let rig = try shuffling(random: 0.4)
+  @Test func theArrowKeysWalkTheSixPicturesBothWaysAndEndTheShuffle() throws {
+    // lands on the sonar; Right is the petal and the blocks, Left back through the petal to the
+    // sonar, the corona, the constellation and round to the dig (wrapping) and the blocks; Right
+    // is the dig again and wraps to the constellation. (The sonar is checked at the fourth key,
+    // where the original four-picture walk checked it: its rings need the song's fires there.)
+    let rig = try shuffling(random: 0.3)
     defer { rig.stop() }
     try rig.run(seconds: 0.6)
     var px = try picture(rig, name: "shuffle-arrows-0-sonar")
     #expect(rig.model.context.visualizer == .sonar && shows(rig, px, .sonar))
     let walk: [(StageKey, StageVisualizer)] = [
-      (.right, .petal), (.right, .minecraft), (.left, .petal), (.left, .sonar),
-      (.left, .corona), (.left, .constellation), (.left, .minecraft), (.right, .constellation),
+      (.right, .petal), (.right, .minecraft), (.left, .petal), (.left, .sonar), (.left, .corona),
+      (.left, .constellation), (.left, .dig), (.left, .minecraft), (.right, .dig),
+      (.right, .constellation),
     ]
     for (i, (key, want)) in walk.enumerated() {
       #expect(rig.model.handleKey(key))

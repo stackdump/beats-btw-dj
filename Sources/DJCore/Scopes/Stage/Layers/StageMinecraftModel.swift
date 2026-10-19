@@ -1131,9 +1131,9 @@ private struct Palette {
   }
 }
 
-private func rgb(_ r: Int, _ g: Int, _ b: Int) -> ScopeColor { ScopeColor(r8: r, g8: g, b8: b) }
+func rgb(_ r: Int, _ g: Int, _ b: Int) -> ScopeColor { ScopeColor(r8: r, g8: g, b8: b) }
 
-private func smooth(_ x: Double) -> Double {
+func smooth(_ x: Double) -> Double {
   let t = min(1, max(0, x))
   return t * t * (3 - 2 * t)
 }
@@ -1149,13 +1149,13 @@ private func mixd(_ a: Double, _ b: Double, _ f: Double) -> Double { a + (b - a)
 
 extension ScopeColor {
   /// The colour with its RGB multiplied by `f` (clamped), alpha kept.
-  fileprivate func scaled(_ f: Double) -> ScopeColor {
+  func scaled(_ f: Double) -> ScopeColor {
     ScopeColor(r: min(1, r * f), g: min(1, g * f), b: min(1, b * f), a: a)
   }
 }
 
 /// SplitMix64 of (seed, a, b): the world's only source of variety.
-private func stageHash(_ seed: UInt64, _ a: Int, _ b: Int) -> UInt64 {
+func stageHash(_ seed: UInt64, _ a: Int, _ b: Int) -> UInt64 {
   var z = seed &+ UInt64(bitPattern: Int64(a)) &* 0x9E37_79B9_7F4A_7C15
   z = z &+ UInt64(bitPattern: Int64(b)) &* 0xC2B2_AE3D_27D4_EB4F
   z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
@@ -1164,7 +1164,7 @@ private func stageHash(_ seed: UInt64, _ a: Int, _ b: Int) -> UInt64 {
 }
 
 /// 0..<1 from (seed, a, b).
-private func unit(_ seed: UInt64, _ a: Int, _ b: Int) -> Double {
+func unit(_ seed: UInt64, _ a: Int, _ b: Int) -> Double {
   Double(stageHash(seed, a, b) >> 11) / Double(1 << 53)
 }
 
