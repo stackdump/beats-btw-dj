@@ -76,31 +76,24 @@ func stressTapGap(iterations: Int, capacity: Int = 1 << 12) -> TapGapStressRepor
 /// Several threads acquire and release a tap in matched pairs; returns the subscriber count left.
 func hammerSubscriptions(threads: Int, each: Int) -> Int {
   let tap = ScopeTap()
-  let group = DispatchGroup()
-  for _ in 0..<threads {
-    DispatchQueue.global().async(group: group) {
-      for _ in 0..<each {
-        tap.acquire()
-        tap.release()
-      }
+  onThreads(threads) { _ in
+    for _ in 0..<each {
+      tap.acquire()
+      tap.release()
     }
   }
-  group.wait()
   return tap.subscribers
 }
 
 /// Several threads call `release` far more often than `acquire`; the count must stay at zero.
 func hammerUnbalancedReleases(threads: Int, each: Int) -> Int {
   let tap = ScopeTap()
-  let group = DispatchGroup()
-  for _ in 0..<threads {
-    DispatchQueue.global().async(group: group) {
-      for i in 0..<each {
-        if i % 3 == 0 { tap.acquire() }
-        tap.release()
-      }
+  onThreads(threads) { _ in
+    for i in 0..<each {
+      if i % 3 == 0 { tap.acquire() }
+      tap.release()
     }
   }
-  group.wait()
   return tap.subscribers
 }
+
