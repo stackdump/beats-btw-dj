@@ -28,6 +28,70 @@ README's "Where we are" says what the app does; this is what each phase still ha
   (branch `research/realism`) still rank as unmusical.
 
 
+## Testing integrate/roadmap (2026-10-18 → 19)
+
+`integrate/roadmap` = `main` + the 2026-10-18 roadmap run (125 tasks merged compile-checked only),
+curated Hit 1–4 stingers, the Blocks and Dig Stage scenes, the FX unit (`roadmap/fx-unit`), the
+product manual ([docs/MANUAL.md](docs/MANUAL.md)) and the test fixes below. `main` is untouched
+(everything on it is merged in); the user decides when to fast-forward and push.
+
+**Full debug runs** (`make swift-test`, whole suite, one process):
+- **#1 (b368387): killed by jetsam at 31.6 min**, test helper at 142.7 GB. Cause: a failing
+  `#expect(a == b)` on large collections makes swift-testing build a diff for the message (8.4 GB
+  from one failing 200k-sample compare). The same happened to the morning's RestSchedule runs.
+  Fixed in c36dc78: 251 sites in 63 files compare through `sameSamples(a, b) == .identical`
+  (`Tests/*/SampleCompare.swift`); CLAUDE.md has the rule. 27 failures seen before the kill, all
+  fixed in round 1 (fix-debug-r1-0…5).
+- **#2 (c36dc78): no result** — a leftover make from the stopped first workflow took the lock and
+  was killed; the full run then ran in a fix agent's worktree (slow: ~3 h on a loaded machine).
+- **#3 (round 2 merged): finished** — "Test run with 2825 tests in 479 suites failed after
+  10400.667 seconds with 259 issues (including 1 known issue)", 56 failing tests, peak helper
+  memory ~5 GB. All 56 went to round 3 (fix-debug-r3-0…7), merged; their union rerun on 8784e54:
+  "403 tests in 64 suites … 16 issues (including 13 known issues)", parity green on bff663e.
+- **#4: not run yet — the next step.** Then `make swift-rt-test` rounds, the measurements
+  (`djtest_level_check` −12 LUFS ±1.5 LU over every genre × seeds 42 / 7, render-vs-itself
+  `djtest_compare`, the 6.x matrix baseline, `make testmcp-test`), and the rest of this file.
+
+**Real bugs the rounds fixed** (beyond tests whose premises never held): `.shape` turned melody
+steps into thirds; `.layerBudget` skipped beats' harmony pad; SlotWindows attributed a part change
+one step late when a control net comes before its target (raw-`nets` shares; made a breakdown
+silent); cadence / hook / motif aimed at `.color`'s sevenths (rubs); `unrubColor` heard only the pad;
+the hook used out-of-key chord tones; BeatTracker read dnb at half tempo; SectionSegmenter's frames
+slid against the bar; crate pads came out newest first; MasterFx session replays loaded without
+the deck's options; sampled parts are balanced against their own synth voice; the loudness probe
+hears the section's energy gain.
+
+**Open after round 3**
+- `BalanceTests.chillFamiliesMeetTheirTargets(lofi)` vs `HFTiltTests` — **needs a decision**: with the
+  hats trimmed after `.hfTilt`, lofi balances (1.52 ≤ 2) but synthwave / bossa get a 16 kHz bump;
+  with untilted trims (HEAD) the bump passes and lofi is 2.56 > 2. One hat trim can't meet both.
+- `LevelMatchTests.aSampledTrackPlaysAtTheReference` lofi −13.06 LUFS (1.06 off), bossa 1.12 off,
+  bound 1 LU (was 3.2 / 2.05 before round 3).
+- Loudness spreads pass at 1.9 LU against 2.0: thin margin.
+- AUSampler ceiling: a process past ~106 AUSamplers loads them silent. A blocking per-process cap
+  deadlocked the parallel sampler tests and was reverted (8784e54); r3-0's reload-once-if-silent
+  only partly covers it. Needs a design (holders reserve up front, or a test-side gate).
+- Still failing at the end of round 3, unowned: `RoomShimmerTests.theShimmerAddsTheOctaveAbove`,
+  `SectionMelodyTests.bridgeAgreesWithItsChords`,
+  `FixesUnderGesturesTests.aStopWithoutTheBrakeLetsTheRoomRingOut`; run #4 will say.
+- Debug suites are slow: sampled-loudness tests take up to ~31 min each in debug
+  (`sampledSongsSpreadWithinTwoLU`); a full run is ~3 h. Candidates for release-only, like the
+  sampler load-time bounds.
+
+**User decisions recorded**: lofi pentatonic test relaxed to "no worse than the composed track"
+(beats' lofi bass is ~9 % out of key; the bass is not changed). Funk keeps sevenths on 0.45 of
+chords (vs ≥ 0.6 elsewhere) — an ear call. `.shape` targets still unmet (leap recovery 0.21 vs
+0.8, peak 0.44 vs 0.55–0.8). `.arpDensity` / the trance pluck rarely act on composed tracks.
+
+**Test tooling**: the test MCP takes `worktree`; the shared lock is only for full / RT runs
+(`make swift-test`, `swift-rt-test`, `swift-rt-test-filter` take it via `djtest_mcp/locked.py`);
+filtered debug runs go in parallel.
+
+**Queued after testing**: the APC mini faders → FX unit layout (`.dj-wt/APC-FXUNIT-HANDOFF.md`),
+auto-mix — a two-deck autopilot on Wander + mix-in / mix-out (`.dj-wt/AUTOMIX-HANDOFF.md`, design
+first). Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
+the repo).
+
 ## Open work (2026-10-17)
 
 Everything below is what was left when the 2026-10-17 session stopped. `main` (f9aa3a8 and
