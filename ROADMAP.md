@@ -88,11 +88,39 @@ revert any by its merge commit.
   existing Hit / `stinger` binding, the rule is a pure function of the configuration, the
   boundary is the stinger's beat / bar quantise. Wander's stinger move draws from the same
   table. Apple loops stay local-only (never in a share or on the CDN).
+- **Per-role seeds** — so `keep:<role>` keeps a role's *notes*, not just its instrument, and a
+  Wander seed move can re-roll some roles and leave the rest (the Masterpiece Generator model:
+  lock a part, reroll the others, recall by seed). Today one seed drives every role: `compose()`
+  draws each role's sub-seed in a fixed order from one `Mulberry32` stream (chords
+  `Composer.swift:359`, bass `:382`, melody `:417`, arp `:464`, instruments `:472`, stingers
+  `:582` / `:608`), and the techniques derive their own from the same seed (`Techniques.swift:88`
+  bass-follow, `:115` hook).
+  - **The poke:** a `roleSeeds` share override (`extra["roleSeeds"] = {role: seed}`), set by
+    `keep:<role>` (pins the role's current sub-seed when the lock goes on) and by a new Wander
+    move, *reroll one role* (the role's seed ±1…7, everything else held). A `DeckAction` with
+    codec, dispatch and round-trip test, plus a journal event.
+  - **The rule:** at each draw, take the value from the stream as now, then use the override if
+    one is set. Consuming the draw keeps every other role byte-identical, and no override means
+    the same CID as today, so parity and every published share are untouched. A reroll's seed is
+    derived from the spec CID + the deck's step counter, like every other Wander move.
+  - **The boundary:** the next phrase, the same as any Wander swap (`PreparedTrack(startTick:)`).
+  - **Open design call — harmony.** The chord progression comes from the master seed. A kept
+    melody played over a new seed's chords will clash. Either chords stay on the master seed and
+    kept roles re-voice to them (bass and arp already follow the chords; melody would need
+    chord-snapping), or keeping any tonal role also pins the chord draw (that's the key lock
+    plus a new chord pin). Decide by ear on the 6.1 panel.
+  - **Boundary with beats:** `roleSeeds` is a dj-side override around beats' `compose()` and
+    belongs in GO-DIVERGENCE.md §5. Backporting it to beats is a separate decision, since it
+    changes the share format.
+  - Exit: with `keep:bass` on, a Wander seed move changes every role except the bass, whose
+    note events stay byte-identical (a test on the project JSON), and a replay walks the same
+    path (`WanderReplayTests`). No `roleSeeds` = fixtures unchanged.
 
 **Follow-ups noted by the features**
 - Journal: in-app rewind (mid-file checkpoints for seeking, a live-engine reset path, store
   `replaceAll`, a picker).
-- Wander: per-part seeds (a kept role's notes still change with the seed); a swap composed
+- Wander: per-part seeds (a kept role's notes still change with the seed; planned above as
+  **Per-role seeds**); a swap composed
   after its phrase boundary lands a bar late live; the pitch fader isn't compensated on genre
   hops.
 - Variety: lofi / ambient chords only transpose (pentatonic genres); some house sevenths rub
