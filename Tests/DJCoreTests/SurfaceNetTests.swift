@@ -120,20 +120,85 @@ struct SurfaceNetTests {
     #expect(s.ledFrame(now: later).contains([0x96, 0, 5]), "bright while it runs")
   }
 
-  @Test func apcFadersSetTheAimedDecksFX() async throws {
+  @Test func apcFadersSetTheAimedDecksFxUnit() async throws {
     let (dj, s, a) = try await make(.apcMiniMK2, structure: nil)
-    s.handle(bytes: [0xB0, 0x34, 0])  // fader 5: LP fully closed
-    s.handle(bytes: [0xB0, 0x37, 127])  // fader 8: crush all the way
-    s.handle(bytes: [0xB0, 0x36, 127])  // fader 7: master pitch +12
-    s.handle(bytes: [0xB0, 0x32, 127])  // fader 3: reverb wet
-    s.handle(bytes: [0xB0, 0x33, 0])  // fader 4: reverb size
-    #expect(a.wave.masterFxSet[.lpFreq] == 0 && a.wave.masterFxSet[.crushBits] == 100)
-    #expect(a.wave.masterFxSet[.masterPitch] == 12)
-    #expect(a.reverb.wet == 1 && a.reverb.size == 0)
-    // aimed at B: the same faders move B's
+    let b = dj["B"]!
+    s.handle(bytes: [0xB0, 0x30, 0])  // fader 1: filter hard down (LP)
+    s.handle(bytes: [0xB0, 0x31, 127])  // fader 2: HP all the way
+    s.handle(bytes: [0xB0, 0x32, 0])  // fader 3: LP closed
+    s.handle(bytes: [0xB0, 0x33, 127])  // fader 4: phaser mix
+    s.handle(bytes: [0xB0, 0x34, 127])  // fader 5: crush
+    s.handle(bytes: [0xB0, 0x35, 64])  // fader 6: drive
+    s.handle(bytes: [0xB0, 0x36, 127])  // fader 7: pitch +12
+    s.handle(bytes: [0xB0, 0x37, 127])  // fader 8: room
+    let u = a.fxUnit
+    #expect(u[.filter] == -1 && u[.hp] == 1 && u[.lp] == 0 && u[.phaserMix] == 1)
+    #expect(u[.crush] == 1 && abs(u[.drive] - 64.0 / 127) < 1e-12)
+    #expect(u[.pitch] == 12 && u[.room] == 1 && u[.echo] == 0)
+    #expect(b.fxUnit.isNeutral, "B untouched")
+    // SHIFT + fader 8 is the echo send; the room keeps its value
+    s.handle(bytes: [0x90, 0x7A, 0x7F])
+    s.handle(bytes: [0xB0, 0x37, 100])
+    s.handle(bytes: [0x80, 0x7A, 0x00])
+    #expect(abs(a.fxUnit[.echo] - 100.0 / 127) < 1e-12 && a.fxUnit[.room] == 1)
+    // aimed at B: the same faders move B's (a sample deck: the room is kept, a no-op there)
     s.handle(bytes: [0x90, 0x74, 0x7F])
-    s.handle(bytes: [0xB0, 0x32, 64])
-    #expect(abs(dj["B"]!.reverb.wet - 64.0 / 127) < 1e-9 && a.reverb.wet == 1)
+    s.handle(bytes: [0xB0, 0x34, 64])
+    #expect(abs(b.fxUnit[.crush] - 64.0 / 127) < 1e-12 && a.fxUnit[.crush] == 1)
+    // the master fader is still the master
+    s.handle(bytes: [0xB0, 0x38, 64])
+    #expect(abs(dj.master - 64.0 / 127) < 1e-6)
+  }
+
+  /// The bipolar faders' centre detent lands exactly on neutral, the ends reach the range,
+  /// pitch steps in semitones; unipolar faders are linear.
+  @Test func fxUnitFadersMapOntoEachControlsTravel() {
+    func v(_ p: FxParam, _ cc: Int) -> Double { SurfaceController.fxValue(p, Double(cc) / 127) }
+    for cc in 62...65 {
+      #expect(v(.filter, cc) == 0 && v(.pitch, cc) == 0, "detent at \(cc)")
+    }
+    #expect(v(.filter, 0) == -1 && v(.filter, 127) == 1)
+    #expect(v(.filter, 61) < 0 && v(.filter, 66) > 0)
+    #expect(v(.pitch, 0) == -12 && v(.pitch, 127) == 12)
+    #expect((0...127).allSatisfy { v(.pitch, $0) == v(.pitch, $0).rounded() })
+    #expect(v(.lp, 127) == 1 && v(.lp, 0) == 0 && v(.hp, 0) == 0 && v(.room, 127) == 1)
+    // monotonic all the way up
+    for p in [FxParam.filter, .pitch, .hp, .lp, .crush] {
+      #expect((1...127).allSatisfy { v(p, $0) >= v(p, $0 - 1) }, "\(p)")
+    }
+  }
+
+  /// Pad 7 (bottom row, next to PANIC) toggles the kill and pad 6 resets, on the aimed target;
+  /// their LEDs show the state.
+  @Test func apcKillAndResetPadsActOnTheAimedTarget() async throws {
+    let (dj, s, a) = try await make(.apcMiniMK2, structure: nil)
+    let later = 1e12  // past the presses' flash
+    var pads = s.lights(now: later)["pads"]
+    #expect(
+      pads?[6] == PadLight(colorIndex: 3, level: .dim)
+        && pads?[7] == PadLight(colorIndex: 5, level: .dim))
+    s.handle(bytes: [0xB0, 0x34, 127])  // crush
+    s.handle(bytes: [0x90, 7, 0x7F])  // kill
+    s.handle(bytes: [0x80, 7, 0])
+    #expect(a.fxUnit.killed && a.fxUnit[.crush] == 1)
+    pads = s.lights(now: later)["pads"]
+    #expect(pads?[6].level == .full && pads?[7] == PadLight(colorIndex: 5, level: .full))
+    s.handle(bytes: [0x90, 7, 0x7F])  // kill off again
+    #expect(!a.fxUnit.killed)
+    s.handle(bytes: [0x90, 6, 0x7F])  // reset
+    #expect(a.fxUnit.isNeutral && !a.fxUnit.killed)
+    // aimed at the loops: the same pads act there
+    s.handle(bytes: [0x90, 0x7A, 0x7F])
+    s.handle(bytes: [0x90, 0x73, 0x7F])  // SHIFT + aim A = L
+    s.handle(bytes: [0x80, 0x7A, 0x00])
+    #expect(dj.focus == "L")
+    s.handle(bytes: [0x90, 7, 0x7F])
+    #expect(dj.loopChannel.fxUnit.killed && !a.fxUnit.killed)
+    // SHIFT + pad 7 is still the loop page's loop 64, not the kill
+    #expect(
+      s.profile.layout.contains {
+        $0.group == "pads" && $0.index == 7 && $0.shift == true && $0.action == .clipToggle
+      })
   }
 
   @Test func apcMacroPadsFireMacrosAndPanicRestores() async throws {

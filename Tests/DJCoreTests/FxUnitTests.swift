@@ -151,7 +151,11 @@ struct FxUnitBusTests {
         sameSamples(wet.left[24_000..<48_000], dry.left[24_000..<48_000]) != .identical,
         "the unit is heard")
       #expect(!bus.filterCorners.bypassed)
-      if kill { bus.sendFxUnit(.kill(on: true, frame: 0)) } else { bus.sendFxUnit(.reset(frame: 0)) }
+      if kill {
+        bus.sendFxUnit(.kill(on: true, frame: 0))
+      } else {
+        bus.sendFxUnit(.reset(frame: 0))
+      }
       let rest = rig.render(3 * 48_000)
       wet.left += rest.left
       wet.right += rest.right
@@ -237,15 +241,21 @@ struct FxUnitCodecTests {
     }
     #expect(DeckAction(json: try JSONValue.parse(#"{"op":"fx","deck":"A","value":1}"#)) == nil)
     #expect(DeckAction(json: try JSONValue.parse(#"{"op":"fx","deck":"A","param":"hp"}"#)) == nil)
-    #expect(DeckAction.fxReset(deck: "A", onBeat: false).json.jsStringified.contains("onBeat") == false)
+    #expect(
+      DeckAction.fxReset(deck: "A", onBeat: false).json.jsStringified.contains("onBeat") == false)
     let fx = JournalEvent.action(.fx(deck: "A", param: "hp", value: 0.2))
     #expect(fx.foldKey == "A.fxunit.hp")
     #expect(JournalEvent.action(.fx(deck: "A", param: "hp", value: 0.9)).foldKey == fx.foldKey)
     #expect(JournalEvent.action(.fx(deck: "A", param: "lp", value: 0.9)).foldKey != fx.foldKey)
-    #expect(fx.foldKey != JournalEvent.action(.masterFx(deck: "A", key: "hp-freq", value: 0)).foldKey)
+    #expect(
+      fx.foldKey != JournalEvent.action(.masterFx(deck: "A", key: "hp-freq", value: 0)).foldKey)
     #expect(fx.summary == "A fx unit hp 0.20")
-    #expect(JournalEvent.action(.fxReset(deck: "L", onBeat: true)).summary == "L fx unit reset on the beat")
-    #expect(JournalEvent.action(.fxKill(deck: "A", on: true, onBeat: false)).summary == "A fx unit killed")
+    #expect(
+      JournalEvent.action(.fxReset(deck: "L", onBeat: true)).summary
+        == "L fx unit reset on the beat")
+    #expect(
+      JournalEvent.action(.fxKill(deck: "A", on: true, onBeat: false)).summary == "A fx unit killed"
+    )
   }
 
   /// A deck's FX unit is part of its starting params (sessions, checkpoints), and only when set.
@@ -282,7 +292,8 @@ struct FxUnitDeckTests {
     #expect(a.fxUnit.killed && !a.fxUnit.isActive && !a.fxUnit.isNeutral)
     dj.perform(.fxReset(deck: "A", onBeat: true))
     #expect(a.fxUnit.isNeutral && !a.fxUnit.killed)
-    #expect(a.currentParams.fxUnit.isNeutral && dj.loopChannel.currentParams.fxUnit[.filter] == -0.5)
+    #expect(
+      a.currentParams.fxUnit.isNeutral && dj.loopChannel.currentParams.fxUnit[.filter] == -0.5)
     // a starting state restored at once
     var s = FxUnitSettings()
     s[.crush] = 0.3
@@ -343,6 +354,47 @@ struct FxUnitSendTests {
 }
 
 struct FxUnitReplayTests {
+  /// The APC's faders and kill / reset pads, moved through the router, replay to the byte from
+  /// the session's and the journal's MIDI: deck A's filter sweep and pitch, then aimed at the
+  /// loops, crush, a kill on the beat, a reset.
+  @Test @MainActor func apcFadersOnTheFxUnitReplayToTheByte() throws {
+    let port = "APC mini mk2 Control"
+    func midi(_ router: ControllerRouter, _ bar: Int, _ b: Int) {
+      func send(_ bytes: [UInt8]) { router.route(port: port, bytes: bytes) }
+      if b == 0 { router.attach(port: port) }
+      switch b {
+      case (2 * bar)...(2 * bar + 40): send([0xB0, 0x30, UInt8(10 + 2 * (b - 2 * bar))])  // filter
+      case 3 * bar: send([0xB0, 0x36, 100])  // pitch
+      case 4 * bar:  // aim at the loops: SHIFT + aim A
+        send([0x90, 0x7A, 0x7F])
+        send([0x90, 0x73, 0x7F])
+        send([0x80, 0x73, 0])
+        send([0x80, 0x7A, 0])
+      case 4 * bar + 3: send([0xB0, 0x34, 90])  // crush on L
+      case 5 * bar: send([0xB0, 0x31, 50])  // hp on L
+      case 6 * bar: send([0x90, 7, 0x7F])  // kill, on the beat
+      case 6 * bar + 100: send([0x90, 7, 0x7F])  // and back
+      case 7 * bar: send([0x90, 6, 0x7F])  // reset L
+      default: break
+      }
+    }
+    let blocks = 8 * 344
+    let live = try loopMasterSet(blocks: blocks, midi: midi) { _, _, _ in }
+    #expect(live.session.events.contains { if case .midi = $0.kind { true } else { false } })
+    let replay = try SessionPlayer(session: live.session).render()
+    #expect(sameSamples(replay.left, live.audio.left) == .identical, "session replay")
+    #expect(sameSamples(replay.right, live.audio.right) == .identical, "session replay")
+    let j = try Journal.replay(live.journal, endFrame: blocks * 128, render: true)
+    let audio = try #require(j.audio)
+    let n = min(audio.frames, live.audio.frames)
+    #expect(n > blocks * 128 - 1024)
+    #expect(
+      sameSamples(Array(audio.left.prefix(n)), Array(live.audio.left.prefix(n))) == .identical,
+      "journal replay")
+    let dry = try loopMasterSet(blocks: blocks) { _, _, _ in }
+    #expect(sameSamples(dry.audio.left, live.audio.left) != .identical, "the faders were heard")
+  }
+
   /// A set that drags, kills (on the beat), resets and stacks a macro replays to the byte, by its
   /// session and by its journal.
   @Test @MainActor func aSetWithTheFxUnitReplaysToTheByte() throws {
@@ -363,7 +415,10 @@ struct FxUnitReplayTests {
     }
     let blocks = 9 * 344
     let live = try loopMasterSet(blocks: blocks, script)
-    #expect(live.session.events.contains { $0.kind == .action(.fxKill(deck: "L", on: true, onBeat: true)) })
+    #expect(
+      live.session.events.contains {
+        $0.kind == .action(.fxKill(deck: "L", on: true, onBeat: true))
+      })
     let replay = try SessionPlayer(session: live.session).render()
     #expect(sameSamples(replay.left, live.audio.left) == .identical, "session replay")
     #expect(sameSamples(replay.right, live.audio.right) == .identical, "session replay")

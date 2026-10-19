@@ -16,7 +16,8 @@ struct LoopMasterSet {
 /// Recorded by a `SessionRecorder` and a `Journal` side by side.
 @MainActor
 func loopMasterSet(
-  blocks: Int, _ script: (_ dj: DJEngine, _ bar: Int, _ block: Int) -> Void
+  blocks: Int, midi: ((_ router: ControllerRouter, _ bar: Int, _ block: Int) -> Void)? = nil,
+  _ script: (_ dj: DJEngine, _ bar: Int, _ block: Int) -> Void
 ) throws -> LoopMasterSet {
   let rate = 22_050.0
   let dir = fxTempDir()
@@ -47,6 +48,7 @@ func loopMasterSet(
       default: break
       }
       script(dj, bar, b)
+      midi?(router, bar, b)
     }
     l += bl
     r += br
