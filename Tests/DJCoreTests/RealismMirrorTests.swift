@@ -21,8 +21,8 @@ import Testing
 // every beat, `fillsBeforeSections` on drum fills only); the figures here are computed in the
 // helpers below so the report stays as it is.
 //
-// A genre that misses a figure today is listed in `knownIssues` with that figure and recorded
-// with `withKnownIssue`; the test prints every genre's numbers (`realism mirror:` lines).
+// A track (genre, seed) that misses a figure today is listed in `knownIssues` with that figure
+// and recorded with `withKnownIssue`; the test prints every genre's numbers (`realism mirror:` lines).
 
 /// The figures, as `knownIssues` names them.
 private enum RealismFigure: String, Sendable {
@@ -31,18 +31,30 @@ private enum RealismFigure: String, Sendable {
   case fills = "M5 fills"
 }
 
-/// Genres that miss a figure today, with the figure. Seeded from the audit's 2026-10 beats
-/// measurements (the tension genres miss M2 there, §2.2) before this mirror's first run on the
-/// played tracks; `isIntermittent` until that run prunes the list to what fails both seeds.
+/// The tracks that miss a figure today, keyed "genre seed", with the figure: the mirror's first
+/// full run (debug round 3, 2026-10-19) replaced the guess seeded from the audit's beats-side
+/// tension genres (none of which miss now). Keyed per seed, not per genre, so the known issues
+/// are not intermittent: a fix shows up as an unexpected pass.
+///
+/// - Scale: the bass of blues (0.95), jazz 42 (0.935) and lofi (0.892, beats' composed lofi bass, ~9 % out of key before
+///   any dj fix; the same finding as `VarietyTests.pentatonicProgressionsStayInKey`).
+/// - Strong beats: blues 4242 (0.773).
+/// - Fills: buildup → drop in the EDM family. There the deck's fill is a gesture the note log
+///   does not hold: `.dropGap` rests drums and bass on the buildup's last beat and `.riser`
+///   sweeps its last 2 bars, both runner-side; the buildup's notes repeat its loop.
 private let knownIssues: [String: Set<RealismFigure>] = [
-  "jazz": [.scale, .strongBeats],
-  "metal": [.scale, .strongBeats],
-  "dnb": [.scale, .strongBeats],
-  "edm": [.scale, .strongBeats],
-  "ambient": [.scale, .strongBeats],
-  "trance": [.scale, .strongBeats],
-  "synthwave": [.scale, .strongBeats],
-  "trap": [.scale, .strongBeats],
+  "blues 42": [.scale],
+  "blues 4242": [.scale, .strongBeats],
+  "jazz 42": [.scale],
+  "lofi 42": [.scale],
+  "lofi 4242": [.scale],
+  "dnb 4242": [.fills],
+  "dubstep 42": [.fills],
+  "garage 42": [.fills],
+  "garage 4242": [.fills],
+  "techno 4242": [.fills],
+  "trance 42": [.fills],
+  "trap 42": [.fills],
 ]
 
 private let scaleTarget = 0.97
@@ -203,7 +215,7 @@ struct RealismMirrorTests {
   func playedTracksMeetTheAudit(genre: String, seed: Double) {
     let (p, notes, _) = playedLog(genre, seed)
     #expect(!notes.isEmpty, "\(genre) \(seed): no notes")
-    let known = knownIssues[genre] ?? []
+    let known = knownIssues["\(genre) \(Int(seed))"] ?? []
 
     let scale = scaleConsistency(p, notes)
     #expect(!scale.isEmpty, "\(genre) \(seed): no tonal role")
@@ -242,7 +254,7 @@ struct RealismMirrorTests {
     _ figure: RealismFigure, _ genre: String, _ known: Set<RealismFigure>, _ body: () -> Void
   ) {
     if known.contains(figure) {
-      withKnownIssue("\(genre): \(figure.rawValue)", isIntermittent: true) { body() }
+      withKnownIssue("\(genre): \(figure.rawValue)") { body() }
     } else {
       body()
     }
