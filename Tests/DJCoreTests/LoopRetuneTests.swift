@@ -104,9 +104,20 @@ struct LoopRetuneTests {
     return (clip, roles)
   }
 
-  /// A tonal part on a synth voice, and another instrument for it.
+  /// A tonal part on a synth voice, and another instrument for it. Only a part whose wave the
+  /// instrument decides: beats' wave engine voices every bass-group lane as a saw and every
+  /// harmony lane as its soft pad wave whatever the instrument (`tonalVoice`), so "square" on
+  /// the bass or the pad renders the same bytes and there would be nothing to retune.
+  static func retunablePart(_ roles: [RoleVoice]) -> RoleVoice? {
+    roles.first {
+      !$0.role.contains(" · ") && $0.instrument == "saw"
+        && tonalVoice(instrument: "square", group: $0.role).wave
+          != tonalVoice(instrument: "saw", group: $0.role).wave
+    }
+  }
+
   func retunable(_ roles: [RoleVoice]) throws -> (RoleVoice, [Int: String]) {
-    let part = try #require(roles.first { !$0.role.contains(" · ") && $0.instrument == "saw" })
+    let part = try #require(Self.retunablePart(roles))
     return (part, [part.channel: "square"])
   }
 
@@ -140,9 +151,7 @@ struct LoopRetuneTests {
 
   @Test func anotherInstrumentChangesOnlyItsPart() async throws {
     let (clip, roles) = try await netTake()
-    let part = try #require(
-      roles.first { !$0.role.contains(" · ") && $0.instrument == "saw" })
-    let voices = [part.channel: "square"]
+    let (part, voices) = try retunable(roles)
     let changed = try ClipRetune.render(clip: clip, voices: voices, sampleRate: 48_000)
     let db = nullDB(changed.buffer, clip.buffer)
     print("retune null, \(part.role) on square: \(db) dB")

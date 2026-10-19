@@ -115,9 +115,13 @@ struct StereoTests {
   /// A whole track through the deck's options: a wide mix (side 5–25 dB under mid) whose low
   /// end is mono (side more than 30 dB under mid below 150 Hz), pads reaching down to C3
   /// included (lofi, jazz).
+  ///
+  /// Without `.layerBudget` (6.2): its rests leave the first 12 s of minimal lofi and jazz to the
+  /// drums and bass (side −30 / −29 dB with it, −17 / −23 without), so with it this would measure
+  /// the arrangement, not where the parts sit. Width under the budget is the same per part.
   @Test(arguments: ["trance", "lofi", "jazz"])
   func aTrackIsWideAboveAndMonoBelow(genre: String) {
-    let m = deckMetrics(genre)
+    let m = deckMetrics(genre, without: .layerBudget)
     #expect(m.sideDB > -25 && m.sideDB < -5, "\(genre): side \(m.sideDB) dB")
     #expect(m.lowSideDB < -30, "\(genre): low side \(m.lowSideDB) dB")
     #expect(m.clipped == 0)
@@ -217,10 +221,12 @@ private func sampledDeckMetrics(_ source: WaveDeckSource, _ track: PreparedTrack
 
 /// Twelve seconds of `genre` seed 42 through the deck's options and the deck (its limiter holds
 /// the peaks the track's loudness gain brings).
-private func deckMetrics(_ genre: String) -> AudioMetrics {
+private func deckMetrics(_ genre: String, without: DJMusicality.Fixes = []) -> AudioMetrics {
+  var opts = WaveOptions.extended
+  opts.musicality.subtract(without)
   let track = PreparedTrack(
-    spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr)
-  let source = WaveDeckSource(sampleRate: sr, opts: .extended)
+    spec: TrackSpec(genre: genre, seed: 42, structure: "minimal"), sampleRate: sr, opts: opts)
+  let source = WaveDeckSource(sampleRate: sr, opts: opts)
   source.load(track.prepared)
   source.play()
   var l = [Float](repeating: 0, count: Int(12 * sr))

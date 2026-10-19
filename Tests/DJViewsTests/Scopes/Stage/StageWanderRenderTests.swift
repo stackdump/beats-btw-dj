@@ -237,6 +237,19 @@ struct StageWanderRenderTests {
 
   // MARK: off
 
+  /// Pixels where any channel of `a` and `b` differs by more than `tolerance`.
+  func changedPixels(_ a: Pixels, _ b: Pixels, tolerance: Int = 2) -> Int {
+    guard a.rgba.count == b.rgba.count else { return max(a.rgba.count, b.rgba.count) / 4 }
+    var n = 0
+    for i in stride(from: 0, to: a.rgba.count, by: 4) {
+      for c in 0..<4 where abs(Int(a.rgba[i + c]) - Int(b.rgba[i + c])) > tolerance {
+        n += 1
+        break
+      }
+    }
+    return n
+  }
+
   @Test func withTheButtonOffTheStageIsPixelForPixelWhatItWasWithoutTheLayer() throws {
     let rig = try StageViewRig()
     defer { rig.stop() }
@@ -263,8 +276,11 @@ struct StageWanderRenderTests {
     savePNG(
       StageScene(model: rig.model, context: context(rig, wander: [deck])),
       width: Int(rig.width), height: Int(rig.height), name: "stage-wander-scene")
-    #expect(sameSamples(off.rgba, today.rgba) == .identical, "the ∿ button off draws nothing")
-    #expect(sameSamples(on.rgba, today.rgba) != .identical, "and on, the walk is drawn")
+    // Pixel for pixel up to rounding: two renders of the same scene can differ by one level in
+    // a few hundred scattered pixels (the first render of a process against later ones), so a
+    // pixel counts as changed only when a channel moves by more than 2 of 255.
+    #expect(changedPixels(off, today) == 0, "the ∿ button off draws nothing")
+    #expect(changedPixels(on, today) > 0, "and on, the walk is drawn")
 
     // and a solo visualizer hides it like the button does
     var solo = context(rig, wander: [deck])

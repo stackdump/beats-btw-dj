@@ -208,46 +208,14 @@ struct HistoryPanel: View {
       Text("Nothing to rewind to yet.").font(.caption).foregroundStyle(.secondary)
     } else {
       ScrollView(.vertical) {
-        VStack(alignment: .leading, spacing: 1) {
-          ForEach(Array(points.enumerated()), id: \.element.id) { i, p in
-            if p.fromFile, i == 0 || !points[i - 1].fromFile {
-              Text("earlier — checkpoints in the file").font(.caption2).foregroundStyle(.secondary)
-                .padding(.top, DJStyle.xs)
-            }
-            pointRow(p)
-          }
-        }
+        RewindPointRows(points: points, picked: picked?.seq, busy: busy) { picked = $0 }
       }
       .frame(height: 180)
     }
   }
 
-  private func pointRow(_ p: RewindPoint) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: DJStyle.xs) {
-      Text(Self.time(p)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-      Text(p.summary).font(.caption).lineLimit(1)
-        .foregroundStyle(Self.color(p.kind))
-        .fontWeight(p.kind == .action ? .regular : .semibold)
-      Spacer(minLength: 0)
-      Button("⟲") { picked = p }
-        .buttonStyle(.borderless).font(.caption.bold()).foregroundStyle(.orange)
-        .disabled(busy).help("Rewind to #\(p.seq)…")
-    }
-    .padding(.vertical, 1)
-    .background(picked?.seq == p.seq ? Color.orange.opacity(0.15) : .clear)
-  }
-
-  private static func time(_ p: RewindPoint) -> String {
+  static func time(_ p: RewindPoint) -> String {
     p.time.formatted(date: .omitted, time: .standard)
-  }
-
-  private static func color(_ k: RewindPoint.Kind) -> Color {
-    switch k {
-    case .note: noteTint
-    case .mark: .orange
-    case .checkpoint: .cyan
-    case .action: .primary
-    }
   }
 
   private func rewind(to p: RewindPoint) {
@@ -265,6 +233,52 @@ struct HistoryPanel: View {
       }
       busy = false
       older = await model.fileRewindPoints()
+    }
+  }
+}
+
+/// The rewind picker's rows, newest first, each with its ⟲ (outside the panel's ScrollView so
+/// the layout tests can draw them: `ImageRenderer` draws no ScrollView). The ⟲ is a plain
+/// button, a SwiftUI-drawn label, so it renders offscreen as on screen.
+struct RewindPointRows: View {
+  let points: [RewindPoint]
+  let picked: Int?
+  let busy: Bool
+  let pick: (RewindPoint) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 1) {
+      ForEach(Array(points.enumerated()), id: \.element.id) { i, p in
+        if p.fromFile, i == 0 || !points[i - 1].fromFile {
+          Text("earlier — checkpoints in the file").font(.caption2).foregroundStyle(.secondary)
+            .padding(.top, DJStyle.xs)
+        }
+        row(p)
+      }
+    }
+  }
+
+  private func row(_ p: RewindPoint) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: DJStyle.xs) {
+      Text(HistoryPanel.time(p)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+      Text(p.summary).font(.caption).lineLimit(1)
+        .foregroundStyle(Self.color(p.kind))
+        .fontWeight(p.kind == .action ? .regular : .semibold)
+      Spacer(minLength: 0)
+      Button("⟲") { pick(p) }
+        .buttonStyle(.plain).font(.caption.bold()).foregroundStyle(.orange)
+        .disabled(busy).help("Rewind to #\(p.seq)…")
+    }
+    .padding(.vertical, 1)
+    .background(picked == p.seq ? Color.orange.opacity(0.15) : .clear)
+  }
+
+  private static func color(_ k: RewindPoint.Kind) -> Color {
+    switch k {
+    case .note: noteTint
+    case .mark: .orange
+    case .checkpoint: .cyan
+    case .action: .primary
     }
   }
 }

@@ -72,7 +72,10 @@ private func pearson(_ x: [Double], _ y: [Double]) -> Double {
 struct FeelTests {
   /// A tonal lane gets the swing only: the measured ratio is the table's at three tempi
   /// (within 2 %), the off-beat sixteenths (2r − 1) sixteenths late, the rest on the grid.
-  @Test(arguments: [80.0, 105.0, 130.0])
+  /// The tempi are where the chill line swings: fitted from the Groove MIDI Dataset's hip-hop
+  /// files (grooves.json: 0.363 + 0.00175 × bpm), it is all but straight at 80 bpm (0.503), so
+  /// 80 could not tell the swing from none; 95 is the slowest tempo here it clearly swings.
+  @Test(arguments: [95.0, 105.0, 130.0])
   func swingFollowsTheTable(bpm: Double) throws {
     let hits = render(sixteenths(drum: false, tempo: bpm), fixes: [.feel], feel: lofi).hits
     try #require(hits.count >= 60, "\(hits.count) hits")
