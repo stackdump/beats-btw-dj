@@ -38,6 +38,7 @@ public final class OfflineConductor {
       }
       dj.serviceLoopTakes()
       dj.serviceWander()
+      dj.serviceAutoMix()
     }
     let status = try dj.engine.renderOffline(AVAudioFrameCount(Self.blockFrames), to: out)
     guard status == .success else { return ([], []) }
@@ -115,6 +116,7 @@ public final class SessionPlayer {
     dj.crossfader = session.crossfader
     dj.master = session.master
     dj.loopChannel.gain = session.loopGain
+    dj.restoreAutoMix(session.autoMix)
     try dj.start()
     defer { dj.stop() }
 

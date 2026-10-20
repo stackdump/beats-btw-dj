@@ -244,7 +244,7 @@ extension Journal {
       sampleRate: at.sampleRate,
       frames: last.frame - start.frame + Int(tail * at.sampleRate),
       decks: at.decks.mapValues(\.source), params: params, crossfader: at.crossfader,
-      master: at.master, events: events)
+      master: at.master, events: events, autoMix: at.autoMix.start)
   }
 }
 

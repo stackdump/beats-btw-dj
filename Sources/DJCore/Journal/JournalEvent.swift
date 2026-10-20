@@ -279,6 +279,11 @@ extension DeckAction {
       return "\(deck) fx unit \(on ? "killed" : "back")" + (onBeat ? " on the beat" : "")
     case .stemMute(let deck, let stem, let on):
       return "\(deck) stem \(stem) \(on ? "muted" : "back")"
+    case .autoMix(let on, let bars, let every):
+      return "auto-mix \(on ? "on" : "off") · "
+        + AutoMixSettings(on: on, bars: bars, every: every).label
+    case .autoMixNow: return "mix now"
+    case .autoMixDefer(let n): return "auto-mix deferred #\(n)"
     case .clipRetune(let id, let voices):
       return "clipRetune \(id.prefix(12))…"
         + voices.sorted { $0.key < $1.key }.map { " ch\($0.key)=\($0.value)" }.joined()

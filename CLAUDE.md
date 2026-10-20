@@ -63,6 +63,38 @@ under structural rules, rather than editing audio freely.
   sets the pace, the browser push toggles it (both `[MIXXX]`, uncaptured). Sample decks don't
   wander. The log (newest first, ★ stars the track a move led to) is in the panel and
   `dj_state.decks.X.wander`.
+- **Auto-mix is Wander across two decks** (`AutoMix.swift` rule + state, `AutoMixEngine.swift`
+  the walk, docs/AUTOMIX.md the design): while one deck plays, the idle deck gets the next track
+  a phrase ahead and the two hand over on a phrase boundary. Poke: `DeckAction.autoMix(on:bars:
+  every:)` (the whole setting; bars 4/8/16/32, default 8; every 0 = a song to its outro, a loop 8
+  phrases, else 4/8/16 phrases) and `.autoMixNow` (next phrase boundary ≥ 4 bars on); the mixer
+  foot's AUTO panel, `dj_state.autoMix`. Rule: `AutoMix.plan` = `Wander.plan(_:random:kinds:)`
+  over only seed / instrument / genre, from (playing spec's CID ^ `AutoMix.salt`, hand-off
+  counter), both decks' locks (union), genre hops only where `tempoMatch` reaches at mult 1
+  (`WanderContext.mixBPM`), key pinned to the outgoing root or a fifth (`pinKey`, same scale
+  only; key lock wins). A net the user loads on the idle deck is a cue: used as-is. Boundary: H =
+  the outro (or `every` phrases), P = H − 8 (Mix now H − 4): at P the plan is taken (counter++),
+  the incoming composed stopped at tick 0 with its mix-in baked in (`WaveOptions.extraRest`), the
+  outgoing's disabled roles copied, both walks held (`Deck.wanderHeld`); in bar H − 1 the mix-out
+  (`mixOutPoint` = what `mixOut` in that bar does; prepared at P live, `MixOutAhead`) is the point
+  of no return; from beat 3.5 the incoming is started with `play` + `align` worked out from both
+  clocks so its first tick is the outgoing's step 16H (a pending swap's slot counted), corrected
+  once in bar H; the crossfader steps once per bar of the incoming clock (equal power, linear in
+  position) and the old deck stops on its tail's bar line (auto-next suppressed:
+  `Deck.autoMixingOut`). Only the pokes are recorded, plus live-only `.autoMixDefer(handoff:)`
+  when a compose missed the mix-out point. Steering pokes (`DeckAction.autoMixTouch`, the
+  surface's and the jog's) pause it for 8 quiet bars; before the mix-out they cancel the start
+  (plan kept), after it play/stop/load ends it; a moved crossfader is the user's for the rest of
+  the hand-off. Never touches EQ, filter, volume, FX, macros, mutes, locks or Wander's on/pace.
+  Sample decks: never started as incoming (the demo loop or an empty deck is replaced); from a
+  playing sample deck it waits for a cued net. Session start: `Session.autoMix` (settings +
+  counter, only when not default); checkpoints carry the in-flight run. Levels:
+  `djctl automix <genre> <seed> [--bars --every --handoffs --crossfade-only --out]`
+  (`AutoMixMeasure`) prints before / after / short-term-per-beat / dip / bump / peaks per hand-off;
+  `AutoMix.maxDipLU` (24 LU, lofi's near-silent drums-forward overlap) names its source there.
+  Note: a relocation prepared from `nextSwapTick` (16k − 1: a mid-song `mixOut`, `mixIn`, kit
+  / palette retargets) plays one tick slot late from then on (the swap slot plays nothing);
+  starts on a bar line (sections, `.nextBar`, an outro) don't. The start math counts it.
 - **Coordinates vs moves**: beats' `compose()` is the coordinate system and stays
   byte-identical (Origin and boundary, GO-DIVERGENCE.md). dj's moves and rules live in
   `DJMusicality.apply`, the share overrides, the runner and the engine.

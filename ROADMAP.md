@@ -91,8 +91,12 @@ filtered debug runs go in parallel.
 
 **Done**: the APC mini faders → FX unit layout (`roadmap/apc-fx-unit`; faders 1–8 = filter,
 HP, LP, phaser mix, crush, drive, pitch, room, SHIFT + 8 = echo `[UNVERIFIED]`; bottom-row pads
-7 / 8 = reset / kill on the beat). **Queued after testing**: auto-mix — a two-deck autopilot
-on Wander + mix-in / mix-out (`.dj-wt/AUTOMIX-HANDOFF.md`, design first). Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
+7 / 8 = reset / kill on the beat). **Done**: auto-mix — a two-deck autopilot on Wander + mix-in / mix-out
+(`roadmap/auto-mix`, docs/AUTOMIX.md; every recommended default accepted). **Auto-mix open
+items**: bind it on the Inpulse ASSIST button (SHIFT + ASSIST = Mix now) once the user names
+which of the centre buttons 0x90 01–03 ASSIST is (they stay `unbound` until then); listen to
+`djctl automix` renders and decide on an EQ / bass swap (question 10.8); a re-roll poke
+(question 10.14); auto-mix starting sample decks (v1 never does). Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
 the repo).
 
 ## Open work (2026-10-17)

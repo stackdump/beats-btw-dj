@@ -196,6 +196,48 @@ In **Perform**:
 
 Each button is lit while it is playing out.
 
+### Auto-mix (the two decks by themselves)
+
+Under the crossfader:
+
+- **AUTO** turns auto-mix on or off (it pulses while a hand-off runs). It always starts off when
+  the app launches; the two settings below are remembered.
+- **mix 4 · 8 · 16 · 32** — how many bars a hand-off lasts (default 8).
+- **play outro · 4 · 8 · 16** — how long a track plays: a song to its outro (a loop: 8 phrases,
+  64 bars), or that many 8-bar phrases.
+- **Mix now** — hand off at the next phrase boundary at least 4 bars away.
+- The status line: "A playing · → B in 23 bars", "B: house · seed 512 (genre) · ready · in 6
+  bars", "mixing A → B · bar 3/8", "paused · resumes after 8 quiet bars", or what it is waiting
+  for ("start a deck", "B holds a sample: cue a net there…").
+
+**What happens.** Start a net track on one deck and press AUTO. Eight bars before the hand-off the
+other deck gets the next track — the next seed, the same song with another instrument, or (about
+one hand-off in seven) a neighbouring genre whose tempo the pitch fader can reach, in a
+compatible key (the same root or a fifth). Its header says **NEXT · auto**; you can pre-listen it
+on the headphone cue. On the hand-off bar it starts synced, with only its drums and bass; the
+playing deck goes to its outro and plays drums and bass too; the crossfader steps across one bar
+at a time; on the last bar line the old deck stops and the new deck's melody, chords and arp come
+in. Then it starts over the other way. The set keeps one tempo: each new track is pitched to it.
+
+**Steering.**
+- Load a net on the idle deck yourself (Generate, a favorite, Load…) and that track comes in next,
+  as it is.
+- Your Wander locks (on either deck) hold the hand-offs too: genre, tempo (±6 %), key,
+  instruments, palette, keep *part*. A part you disabled on the playing deck stays off on the next.
+- Steering a deck — play/stop, cue, hot cues, loops, sync, sections, loads, the seed wheel, the
+  jog — pauses auto-mix until 8 bars pass with no input. Knobs, EQ, filter, mutes, STEMS,
+  macros, stingers and the FX unit don't pause it: that is playing the mix.
+- During a hand-off: moving the crossfader takes it (auto-mix leaves it where you put it, the rest
+  of the hand-off completes); play, stop or a load on either deck ends the hand-off where it is.
+  Turning AUTO off does the same.
+- Wander keeps walking on its own deck, but holds still from 8 bars before a hand-off to its end.
+- A sample deck is never started by auto-mix. The demo loop (or an empty deck) on the idle side is
+  simply replaced; a sample you loaded yourself makes it wait. From a playing sample deck it waits
+  for you to cue a net on the other deck.
+
+On the Inpulse, auto-mix is meant to go on the **ASSIST** button (SHIFT + ASSIST = Mix now), once
+we know which of the three centre buttons it is; until then use the panel (or `dj_perform`).
+
 ### Sync and tempo
 
 - **Sync** (Perform, net decks) matches this deck's tempo to the other deck and lines up the bar.

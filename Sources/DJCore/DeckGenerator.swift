@@ -561,7 +561,8 @@ extension Deck {
     }
     if playing && !wave.isPlaying && wave.hasEnded {
       playing = false
-      if autoAdvance {
+      // a deck auto-mix mixed out stays stopped (the next track is on the other deck)
+      if autoAdvance && !autoMixingOut {
         // the next version, now; or as soon as it is composed
         if advanceToNext() { startNext() } else { awaitingNext = true }
       }

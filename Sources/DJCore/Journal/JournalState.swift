@@ -173,6 +173,9 @@ public struct JournalState: Equatable, Sendable {
   /// `DJEngine.lockedActions`, sorted.
   public var locked: [String]
   public var stores: JournalStoreState
+  /// Auto-mix: settings, counter, and a hand-off in flight (`AutoMixState.checkpointJSON`);
+  /// written only when on or not the default, so older checkpoints encode as before.
+  public var autoMix = AutoMixState()
   /// Whether `stores` is part of this state. Line 0 always carries them; a mid-file checkpoint
   /// (`Journal.checkpoint`) leaves them out (no `stores` key), and a replay that starts there
   /// folds line 0's stores and the store events before it instead.
@@ -235,6 +238,7 @@ public struct JournalState: Equatable, Sendable {
     removed = dj.removedClips.map { ($0.clip.id, $0.index) }
     locked = dj.lockedActions.sorted()
     self.stores = stores
+    autoMix = dj.autoMix
   }
 
   public var json: JSONValue {
@@ -262,13 +266,12 @@ public struct JournalState: Equatable, Sendable {
     }
     var loop = loopChannel.json.object ?? JSONObject()
     loop["mute"] = .bool(loopMute)
+    var mixer = JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))])
+    if autoMix.settings.on || !autoMix.isSessionDefault { mixer["autoMix"] = autoMix.checkpointJSON }
     var out = JSONObject([
       ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
       ("decks", .object(decksObj)), ("loopChannel", .object(loop)),
-      (
-        "mixer",
-        .object(JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))]))
-      ),
+      ("mixer", .object(mixer)),
       ("loopSettings", .array(loopSettings.map(\.json))),
       (
         "clips",
@@ -327,6 +330,7 @@ public struct JournalState: Equatable, Sendable {
     loopMute = loop?["mute"]?.bool ?? false
     crossfader = v["mixer"]?["crossfader"]?.double ?? 0.5
     master = v["mixer"]?["master"]?.double ?? 0.8
+    autoMix = AutoMixState(json: v["mixer"]?["autoMix"])
     loopSettings = (v["loopSettings"]?.array ?? []).compactMap(DeckAction.init(json:))
     clips = (v["clips"]?.array ?? []).compactMap { c in
       guard let id = c["id"]?.string else { return nil }
@@ -448,6 +452,7 @@ public struct JournalState: Equatable, Sendable {
     dj.crossfader = crossfader
     dj.master = master
     dj.lockedActions = Set(locked)
+    dj.restoreAutoMix(autoMix)
     for c in clips where c.looping && dj.clip(c.id) != nil { dj.startLoop(c.id, atOnce: true) }
     let toPlay = decks.keys.sorted().filter { decks[$0]!.playing }.compactMap { dj[$0] }
     return StagedRestore(warnings: warnings, netSeeks: netSeeks, toPlay: toPlay)

@@ -55,7 +55,20 @@ extension AppModel {
               + "(dj_stock_loops addToRow puts a stock loop on the row)")
         }
       }
-      if let deck = a["deck"]?.string {
+      // auto-mix: only the lengths and phrases the app offers; the defer is the engine's own
+      if case .autoMixDefer = action {
+        throw ControlRequestError.bad("autoMixDefer is recorded by the app itself, not performed")
+      }
+      if case .autoMix = action {
+        if let bars = a["bars"], !AutoMixSettings.lengths.contains(bars.int ?? -1) {
+          throw ControlRequestError.bad("autoMix bars must be one of \(AutoMixSettings.lengths)")
+        }
+        if let every = a["every"], !AutoMixSettings.everies.contains(every.int ?? -1) {
+          throw ControlRequestError.bad(
+            "autoMix every must be one of \(AutoMixSettings.everies) (0 = to the outro)")
+        }
+      }
+      if let deck = a["deck"]?.string, a["op"]?.string?.hasPrefix("autoMix") != true {
         let d = try requireDeck(deck)
         let netOnly = [
           "section", "role", "macro", "stinger", "panic", "voiceTweak", "voiceSynth", "setKit",
@@ -160,6 +173,7 @@ extension AppModel {
       case .clipForget(let id): deleteForever(id)
       // as the panel's buttons do: remembered for the deck
       case .wanderPace(let deck, let bars): setWanderPace(deck, bars)
+      case .autoMix(let on, let bars, let every): setAutoMix(on: on, bars: bars, every: every)
       case .wanderLock(let deck, let dim, let on): setWanderLock(deck, dim, on)
       // rendered off the main thread, as the clip settings' "Retune" does
       case .clipRetune(let id, let voices):
@@ -735,6 +749,7 @@ extension AppModel {
     o["decks"] = .object(
       JSONObject(decks.keys.sorted().compactMap { n in deckJSON(n).map { (n, $0) } }))
     o["crossfader"] = .number(crossfader)
+    o["autoMix"] = engine?.autoMixJSON ?? .null
     o["master"] = .number(master)
     o["focus"] = .string(engine?.focus ?? "A")
     o["fxUnit"] = fxUnitJSON()

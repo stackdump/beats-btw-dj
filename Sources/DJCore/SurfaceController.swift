@@ -118,6 +118,7 @@ public final class SurfaceController {
     if dj.lockedActions.contains(b.lockKey) { return result }
     let deck = target(b)
     let press = e.pressed && (!e.isCC || e.value > 0.5)
+    noteAutoMixTouch(b, deck: deck, event: e, press: press)
     if let param = Self.parameter(b),
       let me = b.index.map({ "\(profile.name)/\(Self.key(b.group, $0))" })
     {
@@ -209,6 +210,16 @@ public final class SurfaceController {
     case .wanderPace:
       guard e.delta != 0, let d = dj[dj.focus], d.mode == .net else { break }
       d.stepWanderPace(e.delta)
+    case .autoMix:
+      // recorded as the MIDI that pressed it, replayed through the router (as .wander is)
+      guard press else { break }
+      if let i = b.index { flashed[Self.key(b.group, i)] = now }
+      let s = dj.autoMix.settings
+      dj.setAutoMix(on: !s.on, bars: s.bars, every: s.every)
+    case .autoMixNow:
+      guard press else { break }
+      if let i = b.index { flashed[Self.key(b.group, i)] = now }
+      dj.autoMixNow()
     case .section, .sectionPrev, .sectionNext, .roleMute, .stemMute, .macro, .panic, .stinger,
       .nextTrack,
       .keys, .sync, .quantize, .rewind, .pfl:
@@ -229,6 +240,35 @@ public final class SurfaceController {
       }
     }
     return result
+  }
+
+  /// Tell auto-mix what a control did (`DJEngine.noteAutoMixTouch`): the steering ones pause
+  /// it; knobs, mutes, macros and FX don't. The crossfader is not a touch: auto-mix sees a
+  /// moved fader itself.
+  private func noteAutoMixTouch(
+    _ b: SurfaceProfile.Binding, deck: Deck?, event e: ControlEvent, press: Bool
+  ) {
+    let kind: AutoMixTouch
+    switch b.action {
+    case .play: kind = .transport
+    case .nextTrack, .regenerate: kind = .load
+    case .cue, .hotcue, .loopIn, .loopOut, .loopHalve, .loopDouble, .sync, .section,
+      .sectionPrev, .sectionNext, .rewind:
+      kind = .steer
+    case .seedStep:
+      guard e.delta != 0 else { return }
+      let nets = dj.decks.values.filter { $0.playing && $0.mode == .net && $0.currentSpec != nil }
+      let d = nets.first(where: { $0.name == dj.focus }) ?? (nets.count == 1 ? nets.first : nil)
+      if let d { dj.noteAutoMixTouch(d.name, .steer) }
+      return
+    case .nudge:
+      guard abs(e.value - 0.5) > 0.02 else { return }
+      dj.noteAutoMixTouch(dj.focus, .steer)
+      return
+    default: return
+    }
+    guard press, let deck else { return }
+    dj.noteAutoMixTouch(deck.name, kind)
   }
 
   /// Net-deck performance actions. They act on the binding's deck, or the focus deck for
@@ -395,6 +435,11 @@ public final class SurfaceController {
       guard let d, let t = dj.loopTakeProgress(d.name) else { return leds.singleOff }
       return t.released ? leds.singleBlink : leds.singleOn
     case .shift: return (shift ?? shiftHeld) ? leds.singleOn : leds.singleOff
+    case .autoMix:
+      // lit while on, blinking while a hand-off runs
+      let a = dj.autoMix
+      guard a.settings.on else { return leds.singleOff }
+      return a.run != nil ? leds.singleBlink : leds.singleOn
     case .wander:
       // lit while the focus deck wanders, blinking while the wheel holds it
       guard let w = dj[dj.focus]?.wander, w.on else { return leds.singleOff }

@@ -790,6 +790,10 @@ case "levels":
   for f in survey.failures { stderr("\(f.name): \(f.error)") }
   try line(["summary": survey.summary])
 
+case "automix":
+  // djctl automix <genre> <seed> [--bars N] [--every P] [--handoffs K] … (AutomixCommand.swift)
+  automixCommand()
+
 case "measure":
   // djctl measure <file> [--start S] [--seconds N] [--note N] [--sections] (MeasureCommand.swift)
   measureCommand()

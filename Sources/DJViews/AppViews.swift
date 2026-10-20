@@ -136,6 +136,12 @@ public final class AppModel {
   /// The saved scenes, as chips.
   var scenes: [SceneState] = []
   var crossfader = 0.5
+  /// The two-deck autopilot as the mixer's foot shows it (AutoMix.swift), refreshed by `poll`.
+  var autoMix = AutoMixDisplay()
+  /// Auto-mix's length and phrases, remembered across launches (on is not: an autopilot never
+  /// starts itself).
+  static let autoMixBarsKey = "autoMix.bars"
+  static let autoMixEveryKey = "autoMix.every"
   var master = 0.8
   var headphoneMix = 0.0
   var headphoneLevel = 0.7
@@ -458,6 +464,8 @@ public final class AppModel {
     let ringsDue = ringGate.due(now: now, level: scopeHub?.vizLevel ?? 0)
     devices = hub?.devices ?? []
     crossfader = dj.crossfader
+    let am = AutoMixDisplay(dj)
+    if am != autoMix { autoMix = am }
     master = dj.master
     headphoneMix = dj.headphoneMix
     headphoneLevel = dj.headphoneLevel
@@ -1301,6 +1309,45 @@ public final class AppModel {
       let pace = defaults.integer(forKey: Self.wanderPaceKey(name))
       if pace > 0 { d.setWanderPace(pace) }
     }
+    // auto-mix's settings (never on: it waits for the AUTO button)
+    let bars = defaults.integer(forKey: Self.autoMixBarsKey)
+    let every = defaults.object(forKey: Self.autoMixEveryKey) as? Int ?? 0
+    if bars > 0 || every > 0 {
+      dj.setAutoMix(on: false, bars: bars > 0 ? bars : AutoMixSettings.defaultBars, every: every)
+    }
+  }
+
+  // MARK: auto-mix
+
+  /// Auto-mix on or off with its settings (the AUTO button, its length and phrase choices);
+  /// the length and phrases are remembered.
+  func setAutoMix(on: Bool, bars: Int, every: Int) {
+    guard let dj else { return }
+    dj.perform(.autoMix(on: on, bars: bars, every: every))
+    defaults.set(dj.autoMix.settings.bars, forKey: Self.autoMixBarsKey)
+    defaults.set(dj.autoMix.settings.every, forKey: Self.autoMixEveryKey)
+    poll()
+  }
+
+  func toggleAutoMix() {
+    let s = dj?.autoMix.settings ?? AutoMixSettings()
+    setAutoMix(on: !s.on, bars: s.bars, every: s.every)
+  }
+
+  func setAutoMixBars(_ bars: Int) {
+    let s = dj?.autoMix.settings ?? AutoMixSettings()
+    setAutoMix(on: s.on, bars: bars, every: s.every)
+  }
+
+  func setAutoMixEvery(_ every: Int) {
+    let s = dj?.autoMix.settings ?? AutoMixSettings()
+    setAutoMix(on: s.on, bars: s.bars, every: every)
+  }
+
+  /// Hand off at the next phrase boundary at least 4 bars away.
+  func autoMixNow() {
+    dj?.perform(.autoMixNow)
+    poll()
   }
 
   // MARK: wander
@@ -1977,6 +2024,13 @@ struct DeckView: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .animation(.easeOut(duration: 0.25), value: state.title)
+      if model.autoMix.incoming == name {
+        // auto-mix put the next track here: it can be pre-listened on the headphone cue
+        Text("NEXT · auto").font(.caption2.weight(.semibold)).foregroundStyle(tint)
+          .padding(.horizontal, 5).padding(.vertical, 1)
+          .overlay(Capsule().stroke(tint.opacity(0.6)))
+          .help("Auto-mix: the next track, coming in at the hand-off")
+      }
       if state.sourceCID != nil {
         let starred = model.isFavorite(name)
         Button {
@@ -2148,6 +2202,8 @@ struct MixerView: View {
           Text("B")
         }
         .font(.caption)
+        AutoMixPanel(model: model)
+          .padding(.top, DJStyle.s)
       }
     }
     // 160 pt unless the row sets its width (`ContentView.mixerWidth`)

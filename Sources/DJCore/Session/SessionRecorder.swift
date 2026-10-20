@@ -10,6 +10,7 @@ public final class SessionRecorder {
   private let crossfader: Double
   private let master: Double
   private let loopGain: Double
+  private let autoMix: AutoMixState
   private let lock = NSLock()
   private var events: [SessionEvent] = []
 
@@ -45,6 +46,7 @@ public final class SessionRecorder {
     crossfader = engine.crossfader
     master = engine.master
     loopGain = engine.loopChannel.gain
+    autoMix = engine.autoMix.start
   }
 
   func record(midi port: String, _ bytes: [UInt8]) {
@@ -64,7 +66,7 @@ public final class SessionRecorder {
     return Session(
       sampleRate: engine.sampleRate, frames: engine.frame - startFrame, decks: initial.decks,
       params: initial.params, crossfader: crossfader, master: master,
-      events: lock.withLock { events }, loopGain: loopGain)
+      events: lock.withLock { events }, loopGain: loopGain, autoMix: autoMix)
   }
 }
 
@@ -184,6 +186,7 @@ extension DJEngine {
     -> BeatGrid?
   {
     func deck(_ n: String) -> Deck? { self[n] }
+    if let t = action.autoMixTouch { noteAutoMixTouch(t.deck, t.kind) }
     switch action {
     case .play(let n, let on): deck(n)?.setPlaying(on)
     case .cue(let n): deck(n)?.cue()
@@ -340,6 +343,9 @@ extension DJEngine {
           buffer: b, title: title, bpm: bpm > 0 ? bpm : nil, beats: beats,
           provenance: provenance)
       }
+    case .autoMix(let on, let bars, let every): setAutoMix(on: on, bars: bars, every: every)
+    case .autoMixNow: autoMixNow()
+    case .autoMixDefer(let n): deferAutoMix(handoff: n)
     }
     return nil
   }

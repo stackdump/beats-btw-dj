@@ -83,6 +83,20 @@ public final class DJEngine {
   /// a control id, or "ui". Drives soft takeover between devices.
   public var owners: [String: String] = [:]
 
+  /// The two-deck autopilot (AutoMix.swift): its settings, the hand-off counter, where it is.
+  public internal(set) var autoMix = AutoMixState()
+  /// The mix-out a hand-off prepares a phrase ahead (live only; `AutoMixEngine.swift`).
+  let autoMixAhead = MixOutAhead()
+  /// Tests: hold a hand-off's start commands back this many service ticks after they are
+  /// worked out, as a live start can land a block late (`aLateArmIsCorrectedBeforeItIsHeard`).
+  var autoMixArmDelay = 0
+  var autoMixPendingArm: PendingArm?
+  /// Measurement only (`djctl automix --crossfade-only`): hand-offs without the mix-in / mix-out
+  /// rests, the crossfader's gain law alone. Never set in the app.
+  public var autoMixCrossfadeOnly = false
+  /// Tests: a live compose that has not landed by the mix-out point (`aDeferIsRecordedAndReplayed`).
+  var autoMixComposeStalls = false
+
   /// 0 = all A, 1 = all B, constant-power curve. Only decks "A" and "B" are faded.
   public var crossfader = 0.5 { didSet { applyGains() } }
   /// The deck keys, the joystick and other deck-less performance controls act on:
@@ -306,6 +320,11 @@ public final class Deck: JogClock {
   var mixInEndTick: Int?
   /// The deck's walk (Wander.swift): on/off, pace, step, locks, the log of moves.
   public internal(set) var wander = WanderState()
+  /// Auto-mix holds the walk (a hand-off this deck is in, from its prep point to its end):
+  /// derived, never recorded; not `wander.paused`, which is the user's.
+  public internal(set) var wanderHeld = false
+  /// Auto-mix is mixing this deck out: auto-next does not restart it when the tail ends.
+  var autoMixingOut = false
   /// The same point of the chain as `tap`, but the LEFT channel alone instead of the mono
   /// mixdown (the stage's corona). Off until `leftTap.acquire()`; the same frame time base.
   public var leftTap: ScopeTap { renderer.leftTap }
