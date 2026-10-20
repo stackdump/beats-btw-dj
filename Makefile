@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT    ?= 8765
 
 .PHONY: build run test test-go test-web e2e serve devices ports monitor clean \
-        swift-build swift-test swift-test-filter swift-shots swift-rt-test swift-rt-test-filter app run-app app-release run-app-release djctl \
+        swift-build swift-test swift-test-filter swift-shots swift-rt-test swift-rt-test-filter app run-app app-release run-app-release install-app icon djctl \
         mcp-install sampler-sweep soundfonts minecraft fmt lint fixtures-beats fixtures-chrome fixtures-go beats-tables share-url-check groove-templates melody-bigrams listen
 
 # With only the Command Line Tools (no Xcode), swift-testing's framework is
@@ -89,6 +89,18 @@ app-release:
 
 run-app-release: app-release
 	open build/DJApp.app
+
+# Install the release app as ~/Applications/dj-vevr-se.app (no sudo), replacing any earlier copy.
+install-app: app-release
+	mkdir -p $(HOME)/Applications
+	rm -rf $(HOME)/Applications/dj-vevr-se.app
+	cp -R build/DJApp.app $(HOME)/Applications/dj-vevr-se.app
+	touch $(HOME)/Applications/dj-vevr-se.app
+	@echo "installed $(HOME)/Applications/dj-vevr-se.app"
+
+# Redraw assets/AppIcon.png (the placeholder icon) from scripts/make-icon.swift.
+icon:
+	swift scripts/make-icon.swift assets/AppIcon.png
 
 # Every installed sampled instrument through the sound checks (pitch, level, determinism);
 # the default suite takes one per category. Slow: each load reads its samples into memory.

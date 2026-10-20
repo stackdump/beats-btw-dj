@@ -127,6 +127,10 @@ its copy; the two are now independent. Rules inherited from that split:
 - Makefile-driven: `make swift-test`, `make run-app`, `make test` (Swift + Go
   + node), `make fmt lint`. Run tests through make — under Command Line Tools
   only, bare `swift test` cannot find the Testing framework.
+- App targets: `make run-app` (debug), `make run-app-release` (optimized, the one to listen
+  with), `make install-app` (release build copied to `~/Applications/dj-vevr-se.app`, no sudo,
+  replacing the old copy). The icon is `assets/AppIcon.png`, drawn by `scripts/make-icon.swift`
+  (`make icon` redraws it); `bundle-app.sh` turns it into `AppIcon.icns` via sips + iconutil.
 - **Verify with fast spot checks, not full regression** (user's rule, 2026-10-19). For a change:
   the filtered suites it touches through `djtest_swift_test` (debug; `release: true` only if it
   touches the render thread), the parity filter only if it touches `compose()` /
