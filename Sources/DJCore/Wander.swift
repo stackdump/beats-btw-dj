@@ -224,6 +224,10 @@ struct WanderContext: Sendable {
   /// What Hit 1–4 fire (`Deck.stingers`, the curated table): the stinger move fires one of them
   /// through `Deck.stinger`, and its log line names it. Empty = "hit n".
   var stingers: [String] = []
+  /// Auto-mix's tempo (the outgoing deck's, `AutoMix.plan`): a genre move only reaches genres
+  /// whose tempo the incoming deck's pitch fader can match at the same beat (nil: Wander, no
+  /// such limit).
+  var mixBPM: Double? = nil
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -335,7 +339,16 @@ public enum Wander {
   /// kind is left (every move locked).
   static func plan(_ c: WanderContext, step: Int) -> WanderPlan? {
     var rng = WanderRandom(spec: c.spec, step: step)
-    var kinds = kinds(c)
+    return plan(c, random: &rng, kinds: kinds(c))
+  }
+
+  /// The draw itself, from a stream the caller seeded, over the kinds it allows (in
+  /// `WanderMoveKind` order, each with its weight): Wander's own `plan(_:step:)` passes every kind
+  /// the locks leave; auto-mix (`AutoMix.plan`) only the new-track ones, from its own stream.
+  static func plan(
+    _ c: WanderContext, random rng: inout WanderRandom, kinds allowed: [WanderMoveKind]
+  ) -> WanderPlan? {
+    var kinds = allowed
     while !kinds.isEmpty {
       var r = rng.int(kinds.reduce(0) { $0 + weight($1, c) })
       var k = kinds[0]
@@ -507,6 +520,10 @@ public enum Wander {
         let scale = c.key?.scale ?? here.scaleName
         let root = c.key.map { ($0.rootPC - $0.offset + 12) % 12 } ?? here.rootNote % 12
         if g.scaleName != scale || g.rootNote % 12 != root { return false }
+      }
+      if let mix = c.mixBPM {
+        let m = Deck.tempoMatch(base: g.bpm, target: mix)
+        if m.clamped || m.mult != 1 { return false }
       }
       return true
     }
@@ -755,6 +772,9 @@ extension Deck {
   func advanceWander(toBar bar: Int, lockedActions: Set<String>) {
     guard wander.on, mode == .net, currentSpec != nil, bar != wander.lastBar else { return }
     wander.lastBar = bar
+    // auto-mix holds the walk through a hand-off (AutoMix.swift): no move, no look-ahead, and
+    // the held bars are not quiet bars
+    if wanderHeld { return lookAhead.drop() }
     if wander.paused {
       wander.quietBars += 1
       if wander.quietBars >= wander.pace {

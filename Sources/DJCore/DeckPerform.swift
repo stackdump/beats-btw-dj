@@ -74,17 +74,49 @@ extension Deck {
   /// default; inline in `deterministic` (replay) mode. `tail` / `rest`: the project from there
   /// on plays that mix-out tail, or that extra rest on top of the song's (`mixOut`, `mixIn`).
   public func relocate(toTick tick: Int, tail: MixOutTail? = nil, rest: RestSchedule.Entry? = nil) {
-    guard mode == .net, let project = netProject else { return }
+    guard mode == .net, let move = moveRequest(toTick: tick, tail: tail, rest: rest) else { return }
     if deterministic {
-      wave.load(
-        WaveRunner.prepare(
-          project, sampleRate: wave.sampleRate,
-          opts: movedOptions(waveOptions, project, tail: tail, rest: rest),
-          startTick: max(0, tick), trackSerial: wave.latest?.trackSerial))
+      wave.load(move.prepare())
       applyNetTempo()
     } else {
       Task { @MainActor in await self.jumpToTick(tick, tail: tail, rest: rest) }
     }
+  }
+
+  /// What `relocate(toTick:tail:rest:)` prepares, read on the main thread: `prepare()` it on
+  /// any thread (auto-mix prepares a mix-out a phrase ahead with it). nil off a net.
+  func moveRequest(toTick tick: Int, tail: MixOutTail?, rest: RestSchedule.Entry?) -> MoveRequest? {
+    guard mode == .net, let project = netProject else { return nil }
+    return MoveRequest(
+      project: project, sampleRate: wave.sampleRate,
+      opts: movedOptions(waveOptions, project, tail: tail, rest: rest), startTick: max(0, tick),
+      trackSerial: wave.latest?.trackSerial)
+  }
+
+  /// A relocation's inputs (`moveRequest`), prepared off the main thread.
+  struct MoveRequest: @unchecked Sendable {
+    var project: Project
+    var sampleRate: Double
+    var opts: WaveOptions
+    var startTick: Int
+    var trackSerial: Int32?
+    func prepare() -> WaveProject {
+      WaveRunner.prepare(
+        project, sampleRate: sampleRate, opts: opts, startTick: startTick, trackSerial: trackSerial)
+    }
+  }
+
+  /// Where `mixOut(bars:)` performed in bar `h - 1` of a playing deck starts (the tick the
+  /// relocation prepares from) and the tail it plays: the outro if it is still ahead, else the
+  /// bar line `h`. What auto-mix prepares a phrase early (`AutoMixEngine.swift`).
+  func mixOutPoint(atBar h: Int, bars: Int) -> (tick: Int, tail: MixOutTail) {
+    var tick = h * 16 - 1  // `nextSwapTick` anywhere in bar h - 1
+    var bar = h * 16
+    if let outro = sections.last(where: { $0.name == "outro" }), outro.startTick >= bar {
+      tick = outro.startTick
+      bar = outro.startTick
+    }
+    return (tick, MixOutTail(fromTick: bar, bars: max(1, bars)))
   }
 
   /// `sameSongOptions(opts)` with a new mix-out tail and / or one more rest (in song ticks).
