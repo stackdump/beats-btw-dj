@@ -65,6 +65,12 @@ public final class ControllerRouter {
       dj.recorder?.record(midi: port, bytes)
       dj.journal?.record(.midi(port: port, bytes: bytes))
       for a in jogAdapters { a.handle(e) }
+      // a hand on the platter (touch, scratch, ring nudge) steers its deck: auto-mix pauses
+      switch e {
+      case .touch(let d, _, true), .scratch(let d, _, _), .bend(let d, _, _):
+        dj.noteAutoMixTouch(d, .steer)
+      default: break
+      }
       return .jog(e)
     }
     guard let s = surfaces[port] else { return .ignored }

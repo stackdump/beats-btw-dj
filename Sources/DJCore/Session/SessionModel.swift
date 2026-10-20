@@ -256,6 +256,17 @@ public enum DeckAction: Equatable, Sendable {
   case fxReset(deck: String, onBeat: Bool)
   /// The FX unit bypassed (`on`), its knobs kept, or back; `onBeat`: on the next beat.
   case fxKill(deck: String, on: Bool, onBeat: Bool)
+  /// Auto-mix on or off with its settings, the whole value at once (`DJEngine.setAutoMix`):
+  /// `bars` the hand-off length (4 | 8 | 16 | 32), `every` how many 8-bar phrases a track plays
+  /// before the next hand-off (0 = a song to its outro, a loop 8; 4 | 8 | 16). Hand-offs are
+  /// derived (AutoMix.swift).
+  case autoMix(on: Bool, bars: Int, every: Int)
+  /// Hand off at the next phrase boundary at least 4 bars away (`DJEngine.autoMixNow`).
+  case autoMixNow
+  /// Recorded by the engine, live only (as `.grid` is when an analysis lands): hand-off
+  /// `handoff`'s incoming track was not composed by its mix-out point, so it moves a phrase
+  /// later. A replay (inline composes) never defers by itself; it applies this.
+  case autoMixDefer(handoff: Int)
 }
 
 public enum SessionEventKind: Equatable, Sendable {
@@ -286,6 +297,10 @@ public struct Session: Equatable, Sendable {
   /// was recorded played L at unity (`legacyLoopGain`), which is what they decode to; written
   /// only when it differs, so their canonical text and CID stay the same.
   public var loopGain: Double
+  /// Auto-mix at the start (settings and hand-off counter; AutoMix.swift). Written only when
+  /// not the default, so older sessions keep their text and CID. A session starts with its
+  /// decks at rest, so no hand-off is ever in flight at its start.
+  public var autoMix: AutoMixState
   public var events: [SessionEvent]
 
   /// L's trim before `DJEngine.loopChannelGain`: unity.
@@ -294,8 +309,9 @@ public struct Session: Equatable, Sendable {
   public init(
     sampleRate: Double, frames: Int, decks: [String: DeckSourceDescriptor],
     params: [String: DeckParams], crossfader: Double, master: Double, events: [SessionEvent],
-    loopGain: Double = Session.legacyLoopGain
+    loopGain: Double = Session.legacyLoopGain, autoMix: AutoMixState = AutoMixState()
   ) {
+    self.autoMix = autoMix
     self.sampleRate = sampleRate
     self.frames = frames
     self.decks = decks
@@ -594,6 +610,10 @@ extension DeckAction {
       return o("fxReset", [d(deck)] + (onBeat ? [("onBeat", .bool(true))] : []))
     case .fxKill(let deck, let on, let onBeat):
       return o("fxKill", [d(deck), ("on", .bool(on))] + (onBeat ? [("onBeat", .bool(true))] : []))
+    case .autoMix(let on, let bars, let every):
+      return o("autoMix", [("on", .bool(on)), ("bars", .int(bars)), ("every", .int(every))])
+    case .autoMixNow: return o("autoMixNow", [])
+    case .autoMixDefer(let n): return o("autoMixDefer", [("handoff", .int(n))])
     }
   }
 
@@ -613,7 +633,7 @@ extension DeckAction {
     "clipMove",
     "lock", "wander", "wanderPace", "wanderLock", "setKit", "setPalette", "clipFx", "loopFxLink",
     "setRoleVoice", "clipImport", "mixOut", "mixIn", "rewind", "focus", "stemMute", "masterFx",
-    "clipRetune", "fx", "fxReset", "fxKill",
+    "clipRetune", "fx", "fxReset", "fxKill", "autoMix", "autoMixNow", "autoMixDefer",
   ]
 
   /// Instruments by MIDI channel as JSON: `{"3": "saw"}`, channels in order.
@@ -751,6 +771,16 @@ extension DeckAction {
     case "fxReset": self = .fxReset(deck: deck, onBeat: v["onBeat"]?.bool ?? false)
     case "fxKill":
       self = .fxKill(deck: deck, on: v["on"]?.bool ?? true, onBeat: v["onBeat"]?.bool ?? false)
+    case "autoMix":
+      // clamped to what the engine offers (`AutoMixSettings`)
+      let s = AutoMixSettings(
+        on: v["on"]?.bool ?? false, bars: v["bars"]?.int ?? AutoMixSettings.defaultBars,
+        every: v["every"]?.int ?? 0)
+      self = .autoMix(on: s.on, bars: s.bars, every: s.every)
+    case "autoMixNow": self = .autoMixNow
+    case "autoMixDefer":
+      guard let n = v["handoff"]?.int else { return nil }
+      self = .autoMixDefer(handoff: n)
     default: return nil
     }
   }
@@ -796,6 +826,7 @@ extension Session {
     }
     var mixer = JSONObject([("crossfader", .number(crossfader)), ("master", .number(master))])
     if loopGain != Self.legacyLoopGain { mixer["loopGain"] = .number(loopGain) }
+    if !autoMix.isSessionDefault { mixer["autoMix"] = autoMix.sessionJSON }
     return .object(
       JSONObject([
         ("schema", .string(Self.schema)), ("sampleRate", .number(sampleRate)),
@@ -832,7 +863,8 @@ extension Session {
       sampleRate: sr, frames: frames, decks: decks, params: params,
       crossfader: v["mixer"]?["crossfader"]?.double ?? 0.5,
       master: v["mixer"]?["master"]?.double ?? 0.8, events: events,
-      loopGain: v["mixer"]?["loopGain"]?.double ?? Self.legacyLoopGain)
+      loopGain: v["mixer"]?["loopGain"]?.double ?? Self.legacyLoopGain,
+      autoMix: AutoMixState(start: v["mixer"]?["autoMix"]))
   }
 
   /// Parse envelope text; with `cid`, the content must hash to it.

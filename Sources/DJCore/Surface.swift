@@ -50,6 +50,8 @@ public enum DJActionKind: String, Codable, Sendable, CaseIterable {
   case autoNext  // press: toggle the deck's auto-next
   case wander  // press: wander on/off (focus deck)
   case wanderPace  // relative: wander's pace 4 → 8 → 16 → 32 bars and back (focus deck)
+  case autoMix  // press: auto-mix on/off (deck-less; its length and phrases as set)
+  case autoMixNow  // press: auto-mix hands off at the next phrase boundary ≥ 4 bars away
   case unbound  // parked on purpose; see `reason`
 }
 

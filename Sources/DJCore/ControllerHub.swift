@@ -128,6 +128,7 @@ public final class ControllerHub {
     }
     dj.serviceLoopTakes()
     dj.serviceWander()
+    dj.serviceAutoMix()
     if now - lastLED >= 0.05 {
       lastLED = now
       for (port, messages) in router.ledFrames(now: now) { send(messages, to: port) }

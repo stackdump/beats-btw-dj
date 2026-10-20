@@ -105,6 +105,10 @@ public struct WaveOptions {
   /// `stop-transport` is ignored, and the deck stops on its `endTick`. nil = the song as it
   /// ends (parity, and every deck until `Deck.mixOut` sets one).
   public var tail: MixOutTail?
+  /// One more rest joined to the song's schedule at prepare (in song ticks, so a section jump
+  /// keeps it, as `Deck.mixIn`'s does): auto-mix bakes an incoming track's mix-in in with it, so
+  /// the deck is prepared once. nil = none (parity, and every other caller).
+  public var extraRest: RestSchedule.Entry?
   /// The track's genre, set by `forGenre`; nil (raw nets, parity) = unknown, and the gestures
   /// a genre gates (`.bandStop`: the song family) stay off.
   public var genre: String?
@@ -1502,8 +1506,9 @@ public final class WaveRunner {
     let energy =
       opts.musicality.contains(.energy) || opts.musicality.contains(.sweep)
       ? (opts.trackEnergy ?? EnergyCurve(project: project)) : nil
-    let songRests =
+    var songRests =
       opts.trackRests ?? RestSchedule.build(project, fixes: opts.musicality, genre: opts.genre)
+    if let extra = opts.extraRest { songRests = songRests.with(rest: extra) }
     let rests = opts.tail.map { songRests.with(tail: $0) } ?? songRests
     // `.sectionHarmony` / `.harmonicRhythm`: the band moves with the section and its chords
     // (a pure function of the played project, cheap: rebuilt on section jumps rather than

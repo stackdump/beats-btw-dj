@@ -21,6 +21,7 @@ extension DJEngine {
   @MainActor @discardableResult
   public func reset(to state: JournalState, clip: (String) -> LoopClip?) async -> [String] {
     if !deterministic { await Task.yield() }  // pending main-actor loads start, to be superseded
+    restoreAutoMix(AutoMixState())  // a hand-off in flight lets go of its decks first
     clearLoopRow()
     clearScenes()
     for d in decks.values.sorted(by: { $0.name < $1.name }) { resetDeck(d) }

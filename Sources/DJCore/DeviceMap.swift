@@ -71,6 +71,8 @@ extension SurfaceProfile.Binding {
     case .seedStep: return "seed ± (playing net; grabs wander)"
     case .wander: return "wander on/off (focus deck)"
     case .wanderPace: return "wander pace ± (focus deck)"
+    case .autoMix: return "auto-mix on/off"
+    case .autoMixNow: return "auto-mix: mix now"
     case .shift: return "SHIFT"
     default: return action.rawValue + on
     }
