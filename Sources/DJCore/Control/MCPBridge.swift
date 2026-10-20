@@ -128,7 +128,11 @@ public struct MCPBridge {
         + "(the Inpulse's audio device and whether it is routed, or null), awake (screen kept "
         + "awake), view (which panels are open), scope (open, kind, source, measured), stage "
         + "(window open and its toolbar settings), crates, saved voice variations by "
-        + "instrument, and the "
+        + "instrument, autoMix (the two-deck autopilot: on, bars, every, phase "
+        + "off|idle|playing|paused|preparing|armed|mixing, playing / incoming deck, handoffs, "
+        + "handoffBar and handoffInBars, next {genre, seed, cid, kind seed|instrument|genre|cued, "
+        + "move}, fader auto|user, paused / resumesInBars, idle: why it can't act, log of "
+        + "hand-offs newest first), and the "
         + "app's build (id, version, build = git commit, date).",
       [:]),
     tool(
@@ -246,7 +250,18 @@ public struct MCPBridge {
       0.92), not on sample decks or L; master macros ride on top of the unit and release back \
       to it · fxReset {deck, onBeat?}: every FX unit control to neutral and its kill off \
       (onBeat: on the deck's next beat) · fxKill {deck, on, onBeat?}: bypass the FX unit \
-      keeping its knobs, or back (dj_state.fxUnit). \
+      keeping its knobs, or back (dj_state.fxUnit) · \
+      autoMix {on, bars: 4|8|16|32 (default 8), every: 0|4|8|16 (default 0)}: the two-deck \
+      autopilot, the whole setting at once: while one deck plays, a phrase before the hand-off \
+      the other gets a neighbouring track (the next seed, another instrument, or a neighbouring \
+      genre the pitch fader reaches; a compatible key; both decks' wander locks hold; a net you \
+      load on the idle deck yourself is used as-is), starts on a phrase boundary synced, comes \
+      in drums-forward while the playing deck mixes out over bars bars, the crossfader stepping \
+      across bar by bar; every 0 = a song to its outro (a loop 8 phrases), else that many \
+      8-bar phrases; steering pokes (play, cue, loops, sync, sections, loads, the seed wheel, \
+      the jog) pause it for a phrase, knobs / mutes / macros / FX don't; dj_state.autoMix · \
+      autoMixNow {}: hand off at the next phrase boundary at least 4 bars away · \
+      autoMixDefer {handoff}: recorded by the app itself when a compose is late; refused here. \
       Deck "L" also takes param volume / mute (1 = muted), \
       and macro (master-chain ids only: the loops' master FX, on the next loop bar) and panic; \
       loopFxLink {on}: a master macro on deck A / B fires on the loops too (dj_state.loops.masterFx).

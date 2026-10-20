@@ -993,19 +993,19 @@
    "group": "mixer.buttons",
    "index": 1,
    "action": "unbound",
-   "reason": "captured (0x90 01-03) but not named: ASSIST/PREP, MASTER and BEATMATCH GUIDE in unknown order. Name each on the unit first; no existing action is an obvious fit until then"
+   "reason": "captured (0x90 01-03) but not named: ASSIST/PREP, MASTER and BEATMATCH GUIDE in unknown order. Auto-mix goes on ASSIST (autoMix; SHIFT + ASSIST = autoMixNow) once the user names which one it is; until then it is in the mixer panel and dj_perform"
   },
   {
    "group": "mixer.buttons",
    "index": 2,
    "action": "unbound",
-   "reason": "captured (0x90 01-03) but not named: ASSIST/PREP, MASTER and BEATMATCH GUIDE in unknown order. Name each on the unit first; no existing action is an obvious fit until then"
+   "reason": "captured (0x90 01-03) but not named: ASSIST/PREP, MASTER and BEATMATCH GUIDE in unknown order. Auto-mix goes on ASSIST (autoMix; SHIFT + ASSIST = autoMixNow) once the user names which one it is; until then it is in the mixer panel and dj_perform"
   },
   {
    "group": "mixer.buttons",
    "index": 3,
    "action": "unbound",
-   "reason": "captured (0x90 01-03) but not named: ASSIST/PREP, MASTER and BEATMATCH GUIDE in unknown order. Name each on the unit first; no existing action is an obvious fit until then"
+   "reason": "captured (0x90 01-03) but not named: ASSIST/PREP, MASTER and BEATMATCH GUIDE in unknown order. Auto-mix goes on ASSIST (autoMix; SHIFT + ASSIST = autoMixNow) once the user names which one it is; until then it is in the mixer panel and dj_perform"
   },
   {
    "group": "mixer.browser",
