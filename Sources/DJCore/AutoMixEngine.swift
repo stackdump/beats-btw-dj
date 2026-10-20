@@ -70,6 +70,7 @@ extension DJEngine {
       autoMix.kept = nil
     }
     autoMix.handoffBar = nil  // worked out again with the new settings
+    serviceAutoMix()  // the status reads right at once (a replay does the same at this frame)
   }
 
   /// Hand off at the next phrase boundary at least `AutoMix.nowPrepBars` away
@@ -453,7 +454,9 @@ extension DJEngine {
         return
       }
       if run.outIsNet && !autoMixCrossfadeOnly {
-        run.mixOutTick = loadMixOut(out, run)
+        let point = loadMixOut(out, run)
+        run.mixOutTick = point.tick
+        run.outHandoffTick = point.tail.fromTick
         out.autoMixingOut = true
       }
       run.mixOutLoaded = true
@@ -508,7 +511,7 @@ extension DJEngine {
   /// Hand the mix-out to the outgoing deck in bar H − 1 (it takes over on H): the one prepared
   /// ahead if nothing was loaded on the deck since, else `mixOut` itself (inline in a replay; a
   /// late relocation live). Returns where the mix-out project starts.
-  private func loadMixOut(_ out: Deck, _ run: AutoMixRun) -> Int {
+  private func loadMixOut(_ out: Deck, _ run: AutoMixRun) -> (tick: Int, tail: MixOutTail) {
     let point = out.mixOutPoint(atBar: run.handoffBar, bars: run.bars)
     if !deterministic, let p = autoMixAhead.take(), out.wave.latest?.generation == run.outGeneration,
       p.startTick == point.tick, p.tail == point.tail
@@ -519,7 +522,7 @@ extension DJEngine {
       autoMixAhead.drop()
       out.mixOut(bars: run.bars)
     }
-    return point.tick
+    return point
   }
 
   /// When the start is due (from beat 3.5 of bar H − 1): the align that puts the incoming
@@ -535,7 +538,10 @@ extension DJEngine {
     let frames: Double
     if run.outIsNet {
       let t = out.wave.tick
-      let late = t >= h * 16
+      // the step that plays on the hand-off bar line: the mix-out's first (an outro jumped to)
+      let target = run.outHandoffTick ?? h * 16
+      let installed = out.wave.activeGeneration == out.wave.latest?.generation
+      let late = installed ? t >= target : t >= h * 16
       guard late || t >= h * 16 - 2 else { return nil }
       if late { return 0 }  // missed: start now, the correction puts it in place
       let tempo = out.wave.tempo
@@ -544,8 +550,8 @@ extension DJEngine {
       let p = out.wave.tickPhase * spt
       // doTicks to the one that plays step 16H: a swap still pending takes a tick of its own
       let pending = out.wave.activeGeneration != out.wave.latest?.generation
-      var j = h * 16 - t
-      if pending, let c = run.mixOutTick { j = (h * 16 - 1 - t) + 1 + (h * 16 - c) }
+      var j = target - t
+      if pending, let c = run.mixOutTick { j = (h * 16 - 1 - t) + 1 + (target - c) }
       frames = ((Double(j + 1) * spt - p - 1).rounded(.up))
     } else {
       guard let s = out.beatState, s.bpm > 0 else { return nil }
@@ -587,7 +593,7 @@ extension DJEngine {
       run.corrected = true
       return
     }
-    let h = run.handoffBar * 16
+    let h = run.outHandoffTick ?? run.handoffBar * 16
     guard renderedFrames(out, inc) != nil, inc.wave.tick >= 1, out.wave.tick > h,
       out.wave.isPlaying
     else { return }

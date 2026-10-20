@@ -156,6 +156,9 @@ struct AutoMixRun: Equatable, Sendable {
   var outGeneration: Int32?
   /// Where the mix-out project starts (`Deck.mixOutPoint`); set when it is loaded.
   var mixOutTick: Int?
+  /// The outgoing deck's song tick on the hand-off bar line: its tail's first tick (the mix-out
+  /// jumps to an outro still ahead), else the bar's own.
+  var outHandoffTick: Int?
   var mixOutLoaded = false
   var armed = false
   var corrected = false
@@ -179,6 +182,7 @@ struct AutoMixRun: Equatable, Sendable {
       ("mult", .number(mult)),
     ])
     if let t = mixOutTick { o["mixOutTick"] = .int(t) }
+    if let t = outHandoffTick { o["outHandoffTick"] = .int(t) }
     if let c = c0 { o["c0"] = .number(c) }
     if let l = lastFader { o["lastFader"] = .number(l) }
     if let l = prevLeader { o["prevLeader"] = .string(l) }
@@ -209,6 +213,7 @@ struct AutoMixRun: Equatable, Sendable {
       xEnd: v["xEnd"]?.double ?? 1)
     incomingReady = v["ready"]?.bool ?? false
     mixOutTick = v["mixOutTick"]?.int
+    outHandoffTick = v["outHandoffTick"]?.int
     mixOutLoaded = v["mixOutLoaded"]?.bool ?? false
     armed = v["armed"]?.bool ?? false
     corrected = v["corrected"]?.bool ?? false
@@ -344,8 +349,11 @@ public enum AutoMix {
   /// The largest dip (LU) of the short-term loudness during a hand-off below the quieter of the
   /// two tracks alone, from `djctl automix` (see `maxDipSource`). The full hand-off's drums-
   /// forward overlap is a planned dip: this is the worst measured, rounded up to 0.5 LU.
-  public static let maxDipLU = 6.0
-  public static let maxDipSource = "unmeasured"
+  public static let maxDipLU = 24.0
+  public static let maxDipSource =
+    "djctl automix matrix 2026-10-19 (techno house trance dnb lofi jazz × seeds 42, 7; bars 8, "
+    + "every 4; 48 kHz synth voices), n=12, worst lofi 7 −23.64 LU (lofi's drums and bass alone "
+    + "are near silent: −39 LUFS short-term); the worst outside lofi trance 42 −9.40"
 
   /// Hand-off `n`'s incoming configuration over the outgoing deck's (`c`, with both decks'
   /// locks and `c.mixBPM`): Wander's seed / instrument / genre moves drawn from (the spec's CID
