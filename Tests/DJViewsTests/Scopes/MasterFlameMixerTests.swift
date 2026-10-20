@@ -33,17 +33,21 @@ struct MasterFlameMixerTests {
           ZStack {
             Color(white: 0.6)
             view
-          }.environment(\.displayScale, 1), width: 160, height: 300))
+          }.environment(\.displayScale, 1), width: 160, height: 420))
       let dark = (0..<px.height).filter { y in
         let c = px.color(80, y)
         return c.r + c.g + c.b < 140
       }
-      guard let first = dark.first, let last = dark.last else { return (0, 0) }
+      // the meter is the first dark run from the top: the auto-mix panel under the crossfader
+      // (hence the taller render) has dark buttons of its own further down
+      guard let first = dark.first else { return (0, 0) }
+      var last = first
+      while dark.contains(last + 1) { last += 1 }
       let mid = (first + last) / 2
       let columns = (4..<156).filter {
         px.near($0, mid, (26, 42, 58), tol: 8) || px.near($0, mid + 1, (26, 42, 58), tol: 8)
       }
-      return (dark.count, columns.count)
+      return (last - first + 1, columns.count)
     }
     let before = try box(MixerView(model: m))
     m.start()

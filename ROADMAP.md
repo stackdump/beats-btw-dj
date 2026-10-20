@@ -63,6 +63,22 @@ slid against the bar; crate pads came out newest first; MasterFx session replays
 the deck's options; sampled parts are balanced against their own synth voice; the loudness probe
 hears the section's energy gain.
 
+**Full run #4 (2026-10-20, integrate/roadmap with auto-mix and main merged; `make -k test`)**:
+debug 2863 tests, 24 issues (13 known); release RT 79 tests, 2 issues; Go and web pass. Two
+tests updated for what the roadmap added (Dig is the stage's 11th canvas; the mixer meter test
+renders taller and takes the first dark run, the AUTO panel sits under the crossfader). Still
+failing, none from auto-mix:
+- `JournalRewindRealTimeTests.resettingWhileRenderingDoesNotAllocateOnTheRenderThread` and
+  `SectionTransposeRealTimeTests.harmonicRhythmDoesNotAllocate`: fail the same at a8f0707 (before
+  auto-mix). The rewind one's allocations pass; its final state compare differs in the test's
+  premises (5 default loop settings, the demo loop's title and grid, master 0.8 as Float).
+- `TruePeakLimiterTests.everyGenreReadsUnderTheCeiling` lofi synth 2.1, trap sampled 2.3 (bound
+  2.0): thin margins under load.
+- `WaveDeckSourceTests.everyFreeIsClassified`: unrecorded frees under a full parallel run; passes
+  alone (flaky under load).
+- `BalanceTests.chillFamiliesMeetTheirTargets(lofi)` and
+  `LevelMatchTests.aSampledTrackPlaysAtTheReference` lofi / bossa: as below.
+
 **Open after round 3**
 - `BalanceTests.chillFamiliesMeetTheirTargets(lofi)` vs `HFTiltTests` — **needs a decision**: with the
   hats trimmed after `.hfTilt`, lofi balances (1.52 ≤ 2) but synthwave / bossa get a 16 kHz bump;

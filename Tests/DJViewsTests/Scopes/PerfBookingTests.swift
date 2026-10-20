@@ -85,13 +85,14 @@ struct PerfBookingTests {
     perf.start()
     _ = try #require(renderPixels(scene, width: 600, height: 400))
     let v = perf.currentViz(.stage)
-    // background, flame, bolts, meta, pulse, panels, empty message, wander walk, solo, Blocks:
-    // ten canvases, each one span of one 4 ms tick (the model's frame is booked by the host, not
+    // background, flame, bolts, meta, pulse, panels, empty message, wander walk, solo, Blocks,
+    // Dig: eleven canvases, each one span of one 4 ms tick (the model's frame is booked by the host, not
     // by the scene). Was eight before the roadmap added the wander walk (`StageWanderLayer`, on
     // by default with the ∿ button) and the Blocks visualizer (`StageMinecraftLayer`, a canvas
-    // that draws nothing unless it is the solo showing, like `StageSoloLayer`).
-    #expect(v.calls == 10, "\(v.calls) booked draws")
-    #expect(abs(v.ms - 40) < 1e-6, "\(v.ms) ms")
+    // that draws nothing unless it is the solo showing, like `StageSoloLayer`); ten before Dig
+    // (`StageDigLayer`, the same kind of canvas).
+    #expect(v.calls == 11, "\(v.calls) booked draws")
+    #expect(abs(v.ms - 44) < 1e-6, "\(v.ms) ms")
     #expect(perf.currentViz(.scope).calls == 0 && perf.currentViz(.ring).calls == 0)
   }
 
