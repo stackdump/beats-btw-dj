@@ -1,9 +1,7 @@
 # Auto-mix: a two-deck autopilot (design)
 
-Status: **design, not built** (2026-10-19, branch `roadmap/auto-mix` from integrate/roadmap
-59f795a). Brief: `.dj-wt/AUTOMIX-HANDOFF.md`. Section 10 lists the decisions this needs from the
-user before the build starts; every other choice below is a recommendation that follows from
-the code as it is.
+Status: **built** on `roadmap/auto-mix` (2026-10-19), every recommended default in §10 accepted.
+Where the build differs from this design, §11 says so; the rest is as written below.
 
 Auto-mix is Wander across two decks. Wander walks one deck through configuration space one move
 per phrase; auto-mix walks **the mix**: the playing deck plays, a phrase ahead the idle deck is
@@ -533,3 +531,43 @@ Each with the recommended default.
 15. **Start mechanism** — *Recommend existing commands + anchor correction*, with
     `WaveCommand.playAt` (one audio-thread compare per block) only if the measured residual
     misses ±1 sample. OK to add audio-thread code if it comes to that?
+
+## 11. As built (differences from the design)
+
+- **Genre hops only at the same beat**: `tempoMatch` must reach the mix tempo with multiplier 1
+  (unclamped); half / double time is left out, so the bar lines of both decks always coincide.
+  A cued deck that needs ½ / 2 still starts on the bar line but is not phase-corrected.
+- **The point of no return is the mix-out load** (the first service tick in bar H − 1), not the
+  arm: a late compose is deferred there (`.autoMixDefer`), before the outgoing deck gets its
+  tail. Steering before it cancels the start (plan kept); after it, play / stop / load end the
+  hand-off and anything else lets it complete.
+- **Start exactness**: the arm works from both decks' published clocks at the end of one block
+  (`renderedFrames` equal), counting the swap slot of a pending mix-out (a relocation prepared
+  from `nextSwapTick` plays one slot late); the correction in bar H uses the same published
+  positions instead of the anchor rings. Measured: the incoming's first tick and every bar line
+  of the hand-off within ±1 sample offline, and a start held back 512 frames corrected before bar
+  1 (`aLateArmIsCorrectedBeforeItIsHeard`). No `WaveCommand.playAt` was needed (question 10.15).
+- **The hand-off bar is fixed per countdown** (recomputed after a pause, Mix now, new settings,
+  another playing deck, or if it has passed), so a Wander structure move between doesn't move
+  it; the mix-out still jumps to an outro that is ahead.
+- **The fader steps on the incoming deck's bars** (its tick 0 is the hand-off bar), so they keep
+  stepping after the outgoing tail has stopped; a moved fader is detected by value, which covers
+  the UI, MCP and the hardware alike.
+- **The demo loop (or nothing) on the idle deck is replaced**; only a sample the user loaded
+  makes auto-mix wait (the app launches with the demo loop on both decks).
+- **A cued deck starts from its top**, rebuilt with the mix-in (tick 0 keeps the phrase grid).
+- **From a sample deck with a beat grid**, a cued net hands off at the next phrase boundary ≥ 9
+  bars on; the start is worked out from the grid (not to the sample) and the sample deck is
+  stopped at the end by the engine.
+- **Checkpoints** carry the in-flight run and a restore takes it up; the decks' mix-in / tail
+  are not in a checkpoint's sources, so the restored hand-off still ends on its bar line but
+  the overlap plays full (as documented for mid-file checkpoints). The full "replay from a
+  checkpoint inside H…H+N" comparison was not built; `aCheckpointMidHandOffCarriesIt` checks the
+  round trip and the restore.
+- **Levels** (`djctl automix`, synth voices, 48 kHz, bars 8, every 4; dip = min short-term
+  during the hand-off − the quieter track alone): full hand-off techno −6.3 / −6.6, house −3.0 /
+  −4.4, trance −9.4 / −7.3, dnb −6.4 / −7.4, lofi −23.2 / −23.6, jazz −7.1 / −6.8 LU (seeds 42 /
+  7); bumps ≤ +1.0 LU; true peak ≤ −1.8 dBTP. Crossfade only (no rests): −0.8 … −4.1 LU except
+  lofi 7 −11.6 and jazz 7 −5.8 (the incoming's intro is quieter than its body), true peak ≤
+  −0.35 dBTP. `AutoMix.maxDipLU` = 24 LU from the worst full dip.
+
