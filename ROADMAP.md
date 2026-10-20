@@ -96,7 +96,15 @@ HP, LP, phaser mix, crush, drive, pitch, room, SHIFT + 8 = echo `[UNVERIFIED]`; 
 items**: bind it on the Inpulse ASSIST button (SHIFT + ASSIST = Mix now) once the user names
 which of the centre buttons 0x90 01–03 ASSIST is (they stay `unbound` until then); listen to
 `djctl automix` renders and decide on an EQ / bass swap (question 10.8); a re-roll poke
-(question 10.14); auto-mix starting sample decks (v1 never does). Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
+(question 10.14); auto-mix starting sample decks (v1 never does); the full "replay from a
+checkpoint inside a hand-off == full replay" test (only the round trip / restore is tested);
+the existing one-sixteenth slip of relocations prepared from `nextSwapTick` (mid-song mixOut,
+mixIn, kit / palette retargets; auto-mix counts it, the fix is separate); the lofi hand-off gap
+(−23.6 LU: lofi's drums and bass alone are near silent; `AutoMix.maxDipLU` = 24 until the shape
+changes). **Unmerged on purpose** (2026-10-19): `sound/level-match`, `sound/palettes`,
+`wip/djctl-mix` are old WIP branches whose work landed here another way (LevelMatch / PeakLimiter,
+palettes, `SessionMix`); keep them for reference or delete them. `main`'s iPad-port scope
+(docs/ipad-port.md) is merged in. Side work: a seeded progressive-house share generator (local, `.dj-wt/shares/`, not in
 the repo).
 
 ## Open work (2026-10-17)
