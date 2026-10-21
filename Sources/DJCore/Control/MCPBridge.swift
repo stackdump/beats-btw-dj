@@ -173,14 +173,16 @@ public struct MCPBridge {
       offset seconds into the sample), replacing the analysis · \
       queueNext {deck, share: {genre, seed, structure?}} · \
       wander {deck, on} (works on dj_compose / dj_import tracks too, on the moves that need no \
-      seed: mutes, STEMS, macros, FX, stingers, palette hops): the deck walks by itself, one move per phrase (a mute, a macro, a \
+      seed: mutes, STEMS, macros, FX, stingers, palette hops, and layer moves: a library vocal / riser / \
+      texture loop comes in over the track, is swapped for another of its kind, or goes out): the deck walks by itself, one move per phrase (a mute, a macro, a \
       stinger, the next seed, another instrument, structure or genre, swapped in at the next \
       bar), drawn from its configuration so a recording replays the same walk; \
       dj_state.decks.X.wander shows on, pace, nextMoveInBars, paused (the browser wheel steers \
       and pauses it for a phrase), locks and the log of moves · wanderPace {deck, bars: \
       4|8|16|32} · wanderLock {deck, dimension: genre|tempo|key|structure|instruments|\
-      arrangement|fx|palette|keep:<role>, on}: what the walk must not change (tempo: within 6 % \
-      of now; palette: the deck's sound palette; keep:bass keeps the bass's instrument and never \
+      arrangement|fx|palette|layers|keep:<role>, on}: what the walk must not change (tempo: within 6 % \
+      of now; palette: the deck's sound palette; layers: no loop comes in, swaps or goes out; \
+      keep:bass keeps the bass's instrument and never \
       mutes it) · \
       loopRecord {deck, on, bars?}: LOOP record, held (on true) then let go (on false): the \
       deck's bars from the downbeat before the press to the one after the release become a \

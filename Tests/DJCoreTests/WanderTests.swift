@@ -66,7 +66,9 @@ struct WanderPlannerTests {
     for step in 0..<4000 {
       if let p = Wander.plan(context(), step: step) { counts[p.kind, default: 0] += 1 }
     }
-    for k in WanderMoveKind.allCases {
+    // (layer moves need a pool and a layer list this context doesn't have: WanderLayerPlannerTests)
+    let layerKinds: Set<WanderMoveKind> = [.layerAdd, .layerSwap, .layerRemove]
+    for k in WanderMoveKind.allCases where !layerKinds.contains(k) {
       let share = Double(counts[k] ?? 0) / 4000
       #expect(abs(share - Double(k.weight) / 100) < 0.03, "\(k): \(share)")
     }
@@ -81,7 +83,9 @@ struct WanderPlannerTests {
         #expect(s != "music" && s != "mic", "both hold the melody")
       }
       if p.kind == .instrument { #expect(!p.detail.contains("melody")) }
-      if case .swap(let spec) = p.action {
+      // (a genre hop lands on the new genre's own channels, and a palette hop pins the kept sound as a
+      // `voice`, not an `instrument`: this checks the plain carry)
+      if case .swap(let spec) = p.action, p.kind != .genre, p.kind != .palette {
         // the kept melody's instrument comes with every new track (on the channel the melody
         // plays in that genre)
         let picks = (spec.layers["tracks"]?.object?.entries ?? []).compactMap {
@@ -161,7 +165,9 @@ struct WanderPlannerTests {
 
   @Test func theInstrumentsLockCarriesEveryInstrument() {
     for p in walk(context(locks: ["instruments"]), steps: 300) {
-      guard case .swap(let s) = p.action, s.genre == "techno" else { continue }
+      // same-genre swaps only: a genre hop lands on the new genre's own channel numbers
+      guard case .swap(let s) = p.action, s.genre == "techno", p.kind != .genre, p.kind != .palette
+      else { continue }
       #expect(s.layers["tracks"]?["2"]?["instrument"]?.string == "sub-bass", "\(p.detail)")
       #expect(s.layers["tracks"]?["1"]?["instrument"]?.string == "lead")
     }

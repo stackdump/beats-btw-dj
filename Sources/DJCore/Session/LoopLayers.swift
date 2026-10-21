@@ -23,10 +23,14 @@ public struct LoopLayerSpec: Equatable, Sendable {
   public var length: Int?
   public var gainDB: Double
   public var keyLock: Bool
+  /// Set once resolved against the library (the loop's length in beats and its category), so a
+  /// saved layer can be played and Wander-edited without the library at hand.
+  public var beats: Int?
+  public var category: String?
 
   public init(
     loop: String, name: String? = nil, bars: [Int], length: Int? = nil, gainDB: Double = -3,
-    keyLock: Bool = true
+    keyLock: Bool = true, beats: Int? = nil, category: String? = nil
   ) {
     self.loop = loop
     self.name = name
@@ -34,6 +38,8 @@ public struct LoopLayerSpec: Equatable, Sendable {
     self.length = length
     self.gainDB = gainDB
     self.keyLock = keyLock
+    self.beats = beats
+    self.category = category
   }
 
   public var json: JSONValue {
@@ -43,6 +49,8 @@ public struct LoopLayerSpec: Equatable, Sendable {
     if let length { o["bars"] = .int(length) }
     o["gain"] = .number(gainDB)
     o["keyLock"] = .bool(keyLock)
+    if let beats { o["beats"] = .int(beats) }
+    if let category { o["category"] = .string(category) }
     return .object(o)
   }
 }
@@ -89,7 +97,8 @@ public enum LoopLayers {
       }
       return LoopLayerSpec(
         loop: loop, name: l["name"]?.string, bars: starts.sorted(), length: length, gainDB: gain,
-        keyLock: l["keyLock"]?.bool ?? true)
+        keyLock: l["keyLock"]?.bool ?? true, beats: l["beats"]?.double.map { Int($0) },
+        category: l["category"]?.string)
     }
   }
 
@@ -130,5 +139,118 @@ public enum LoopLayers {
     return .failure(
       PianoRollError.bad(
         "`\(q)` matches \(pool.count) loops: \(names): use the full name or the path"))
+  }
+}
+
+// MARK: - the live layer list (what a deck is performing)
+
+/// A library sound a layer plays: enough to launch it and to describe it.
+public struct LayerLoop: Equatable, Sendable, Hashable {
+  public var path: String
+  public var name: String
+  public var category: String
+  public var beats: Int
+
+  public init(path: String, name: String, category: String = "", beats: Int = 16) {
+    self.path = path
+    self.name = name
+    self.category = category
+    self.beats = beats
+  }
+
+  public init(_ l: StockLoop) {
+    self.init(path: l.path, name: l.name, category: l.category, beats: l.beats)
+  }
+
+  /// One pass of the loop in bars (at least 1).
+  public var bars: Int { max(1, (beats + 3) / 4) }
+}
+
+/// One window of one loop on a deck's layer list: the loop is on from bar `start` for `length` bars.
+/// A track's `loopLayers` expand into these at load; Wander adds, swaps and removes them as it walks
+/// (`WanderAction.layers`), and `LayerRunner` follows the list.
+public struct LayerEntry: Equatable, Sendable {
+  public var loop: LayerLoop
+  public var start: Int  // 1-based bar
+  public var length: Int
+  public var gainDB: Double
+  public var keyLock: Bool
+  /// The bar after the last one it is on.
+  public var end: Int { start + length }
+
+  public init(loop: LayerLoop, start: Int, length: Int, gainDB: Double = -3, keyLock: Bool = true) {
+    self.loop = loop
+    self.start = start
+    self.length = max(1, length)
+    self.gainDB = gainDB
+    self.keyLock = keyLock
+  }
+}
+
+extension LoopLayers {
+  /// A track's layers as windows: each start of each layer is one entry (`length`: the layer's, else
+  /// one pass of the loop).
+  public static func entries(from specs: [LoopLayerSpec]) -> [LayerEntry] {
+    specs.flatMap { s -> [LayerEntry] in
+      let loop = LayerLoop(
+        path: s.loop,
+        name: s.name ?? URL(fileURLWithPath: s.loop).deletingPathExtension().lastPathComponent,
+        category: s.category ?? "", beats: s.beats ?? 16)
+      return s.bars.map {
+        LayerEntry(
+          loop: loop, start: $0, length: s.length ?? loop.bars, gainDB: s.gainDB, keyLock: s.keyLock
+        )
+      }
+    }.sorted { ($0.start, $0.loop.path) < ($1.start, $1.loop.path) }
+  }
+
+  /// The categories Wander and the agent draw layers from: sounds that sit over a track, not drums.
+  public static let layerCategories: Set<String> = ["Vocals", "Sound Effect", "Texture/Atmosphere"]
+
+  /// How loud a layer from `category` goes in under the track.
+  public static func defaultGain(category: String) -> Double {
+    switch category {
+    case "Sound Effect": -6
+    default: -9
+    }
+  }
+
+  /// The library loops that could go over a track at `bpm` in `key` ("A minor", nil = unknown): the
+  /// layer categories, a tempo that matches at 1×, ½× or 2× within 8 %, and for a tonal loop a key
+  /// that is the track's, its relative or a fifth away (a loop with no key goes anywhere; with the
+  /// track's key unknown only keyless loops are offered). A deterministic sample of at most `limit`
+  /// (by a hash of the path), by name: the pool Wander draws its layer moves from.
+  public static func pool(library: [StockLoop], bpm: Double, key: String?, limit: Int = 400)
+    -> [LayerLoop]
+  {
+    guard bpm > 0 else { return [] }
+    let ok = library.filter { l in
+      guard layerCategories.contains(l.category), l.bpm > 0 else { return false }
+      guard [1.0, 0.5, 2.0].contains(where: { abs(l.bpm * $0 / bpm - 1) <= 0.08 }) else {
+        return false
+      }
+      guard let lk = l.key, !lk.isEmpty else { return true }
+      guard let key else { return false }
+      return keysNear(loopKey: lk, trackKey: key)
+    }
+    func hash(_ s: String) -> UInt64 {
+      var h: UInt64 = 0xcbf2_9ce4_8422_2325
+      for b in s.utf8 {
+        h ^= UInt64(b)
+        h = h &* 0x100_0000_01b3
+      }
+      return h
+    }
+    let sampled =
+      ok.count <= limit ? ok : Array(ok.sorted { hash($0.path) < hash($1.path) }.prefix(limit))
+    return sampled.sorted { ($0.name, $0.path) < ($1.name, $1.path) }.map(LayerLoop.init)
+  }
+
+  /// A loop's tonic (mode unknown: it may be major or minor) against the track's key: within a fifth.
+  static func keysNear(loopKey: String, trackKey: String) -> Bool {
+    for mode in ["major", "minor"] {
+      if let d = SetPlanner.keyDistance(loopKey + " " + mode, trackKey), d <= 1 { return true }
+    }
+    return false
   }
 }

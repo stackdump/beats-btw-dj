@@ -1447,7 +1447,7 @@ struct LayerRunnerTests {
 
     m.engine?.perform(.play(deck: "A", on: true))
     m.serviceLayers(bars: ["A": 1])  // builds the plan and puts the loop on the row
-    let ready = await waitUntil { m.layerPlans["A"]?.ready == true }
+    let ready = await waitUntil { m.layerPlans["A"]?.clipIDs.isEmpty == false }
     #expect(ready, "the loop should reach the row")
     #expect(m.engine?.clips.count == 1)
     #expect(
@@ -1466,10 +1466,48 @@ struct LayerRunnerTests {
     m.serviceLayers(bars: ["A": 2])
     #expect(looping(m) == true)
 
-    // the deck stops: its layers are let go
+    // the deck stops: what its layers had looping is let go
     m.engine?.perform(.play(deck: "A", on: false))
     m.serviceLayers(bars: ["A": 2])
-    #expect(m.layerPlans["A"] == nil && m.layersJSON("A") == nil)
+    #expect(looping(m) == false && m.layerPlans["A"]?.active.isEmpty == true)
+  }
+
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func theRunnerFollowsTheDecksListWhenWanderEditsIt() async throws {
+    let m = try model()
+    _ = try await m.control("composeRoll", JSONValue.parse(Self.layered))
+    let d = try #require(m.engine?["A"])
+    m.engine?.perform(.play(deck: "A", on: true))
+    m.serviceLayers(bars: ["A": 1])
+    #expect(await waitUntil { m.layerPlans["A"]?.clipIDs.isEmpty == false })
+    let entry = try #require(d.layerEntries.first)
+    #expect(entry.start == 3 && entry.length == 2 && entry.loop.name == "Chill Hip-Hop Beat 08")
+    m.serviceLayers(bars: ["A": 2])
+    #expect(looping(m) == true)
+    m.serviceLayers(bars: ["A": 3])
+    #expect(looping(m) == true)
+    // Wander takes the loop out at the next bar (what a layerRemove does to a looping entry): it was
+    // to run through bar 4; now it ends after bar 3, so at bar 3 it goes
+    var out = entry
+    out.length = 1
+    d.setLayers([out])
+    m.serviceLayers(bars: ["A": 3])
+    #expect(looping(m) == false, "shortened to end now: stopped")
+    // an entry Wander adds (the same loop again, from bar 7) comes in a bar early
+    d.setLayers([out, LayerEntry(loop: entry.loop, start: 7, length: 2, gainDB: -9)])
+    m.serviceLayers(bars: ["A": 5])
+    #expect(looping(m) == false)
+    m.serviceLayers(bars: ["A": 6])
+    #expect(looping(m) == true)
+    m.serviceLayers(bars: ["A": 8])  // out a bar before its end (it is on 7 and 8)
+    #expect(looping(m) == false)
+    // a taken-away entry stops what it left going
+    d.setLayers([out, LayerEntry(loop: entry.loop, start: 11, length: 4)])
+    m.serviceLayers(bars: ["A": 10])
+    #expect(looping(m) == true)
+    d.setLayers([])
+    m.serviceLayers(bars: ["A": 10])
+    #expect(m.layerPlans["A"]?.active.isEmpty == true)
   }
 
   @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
@@ -1488,8 +1526,7 @@ struct LayerRunnerTests {
     _ = try await m.control(
       "composeRoll", JSONValue.parse(#"{"deck":"A","parts":{"kick":{"notes":[[0]]}}}"#))
     m.serviceLayers(bars: ["A": 1])
-    #expect(m.layerPlans["A"] == nil)
-    // layers can also be attached to an import
+    #expect(m.layersJSON("A") == nil && m.engine?["A"]?.layerEntries.isEmpty == true)
     #expect(m.engine?.clips.isEmpty == true)
   }
 }

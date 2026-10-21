@@ -127,6 +127,12 @@ playing them in your music, not handing them on, so a track with layers is never
 composition names the loops (path + name), never their audio. The `dj_state` deck shows `layers`:
 `ready`, each loop's bars, `looping`, `onRow`, and `problems`.
 
+**Wander plays layers too.** With Wander on, a deck brings library loops in over the track by itself, swaps
+them for another of their kind and takes them out, on phrase boundaries (a vocal / riser / texture from a
+pool that fits the track's tempo and key, never more than 3 at once, never a loop twice). Your `layers` are
+the starting list; Wander edits it from there. Lock `layers` (`dj_perform wanderLock dimension=layers`) to
+keep it from touching them. `dj_state.decks.X.layers.pool` says how many loops it can draw from.
+
 ## 5. Form (what "standard format instead of a loop" means for a roll)
 
 A roll **loops** over its `steps`. For a song, write the arrangement into the roll by when parts

@@ -364,6 +364,17 @@ public final class Deck: JogClock {
   /// The raw-`nets` share payload the deck is playing, when it is playing one (then
   /// `currentSpec` is nil).
   public internal(set) var currentRawNets: JSONValue?
+  /// The library sounds this deck is bringing in over its track (`LayerEntry`: a loop, the bar it
+  /// comes in on, how long it stays). A raw track's `loopLayers` fill it at load; Wander adds, swaps
+  /// and removes entries as it walks; `LayerRunner` (the app) launches and stops the loops on the
+  /// deck's bar clock. `layerEpoch` moves on every new track (the runner starts afresh).
+  public internal(set) var layerEntries: [LayerEntry] = []
+  public internal(set) var layerEpoch = 0
+  /// The loops Wander may draw layer moves from for this track (set by the app: `LoopLayers.pool`
+  /// for the deck's tempo and key); empty = no layer moves.
+  public var layerPool: [LayerLoop] = []
+  /// The key the track is in ("A minor") when its author said so (a raw share's `djKey`).
+  public internal(set) var layerKeyName: String?
   /// The musicality fixes the net on the deck plays with (`PreparedTrack.fixes`; a hand-built
   /// net: the deck's options'), and whether dj's pass rewrote it (`passApplied`; never for a
   /// raw-`nets` share or a hand-built net). nil / false off a net. Section jumps keep them.

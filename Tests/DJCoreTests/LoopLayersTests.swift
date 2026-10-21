@@ -116,3 +116,48 @@ struct LoopLayersTests {
     #expect(Share(payload: env).rawNetsProject() != nil)
   }
 }
+
+struct LayerPoolTests {
+  func loop(_ name: String, _ cat: String, bpm: Double = 140, key: String? = nil) -> StockLoop {
+    StockLoop(
+      path: "/lib/\(name).caf", name: name, pack: "p", category: cat, subcategory: "", genre: "",
+      beats: 16,
+      seconds: 16 * 60 / bpm, key: key)
+  }
+
+  @Test func thePoolIsLayerCategoriesAtAMatchingTempoInAFittingKey() {
+    let lib = [
+      loop("Vox Ab", "Vocals", key: "Ab"), loop("Vox F", "Vocals", key: "F"),
+      loop("Vox D", "Vocals", key: "D"),
+      loop("Riser", "Sound Effect"), loop("Half Riser", "Sound Effect", bpm: 70),
+      loop("Slow Riser", "Sound Effect", bpm: 100),
+      loop("Drums", "Drums"), loop("Texture", "Texture/Atmosphere"),
+    ]
+    func names(_ key: String?, bpm: Double = 140) -> [String] {
+      LoopLayers.pool(library: lib, bpm: bpm, key: key).map(\.name)
+    }
+    // C minor (relative Eb major): Ab and F (as F minor, its subdominant) are a step away, D is not;
+    // keyless loops go anywhere
+    #expect(names("C minor") == ["Half Riser", "Riser", "Texture", "Vox Ab", "Vox F"])
+    // the track's key unknown: only keyless loops
+    #expect(names(nil) == ["Half Riser", "Riser", "Texture"])
+    // tempo: 70 matches at 2×; 100 is 29 % off
+    #expect(!names("C minor").contains("Slow Riser") && !names("C minor").contains("Drums"))
+    #expect(
+      names("C minor", bpm: 70).contains("Riser")
+        && names("C minor", bpm: 70).contains("Half Riser"))
+    #expect(LoopLayers.pool(library: lib, bpm: 0, key: "C minor").isEmpty)
+  }
+
+  @Test func aBigLibraryIsSampledTheSameWayEveryTime() {
+    let lib = (0..<1500).map { loop("Fx \($0)", "Sound Effect") }
+    let a = LoopLayers.pool(library: lib, bpm: 140, key: nil, limit: 200)
+    #expect(a.count == 200 && a == LoopLayers.pool(library: lib, bpm: 140, key: nil, limit: 200))
+    #expect(
+      a.map(\.name) == a.map(\.name).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        || a.count == 200)
+    #expect(
+      Set(a.map(\.path)).count == 200
+        && LoopLayers.pool(library: lib, bpm: 140, key: nil, limit: 5000).count == 1500)
+  }
+}

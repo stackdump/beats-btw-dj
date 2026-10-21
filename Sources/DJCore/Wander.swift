@@ -27,7 +27,7 @@ import Foundation
 public enum WanderLock {
   /// The dimensions, in the order the UI shows their chips.
   public static let dimensions = [
-    "genre", "tempo", "key", "structure", "instruments", "arrangement", "fx", "palette",
+    "genre", "tempo", "key", "structure", "instruments", "arrangement", "fx", "palette", "layers",
   ]
   public static let keepPrefix = "keep:"
   /// How far (either way, as a fraction) a tempo-locked walk may move from the tempo the lock
@@ -80,6 +80,13 @@ public enum WanderMoveKind: String, CaseIterable, Sendable {
   /// The same song in a neighbouring sound palette (`SoundPalette.neighbours`), swapped in at
   /// the next phrase.
   case palette
+  /// A library sound (a vocal, a riser, a texture) comes in over the track as a parallel loop, from
+  /// the next phrase.
+  case layerAdd
+  /// A looping layer is swapped for another loop of its kind, from the next phrase.
+  case layerSwap
+  /// A looping layer goes out at the next bar.
+  case layerRemove
 
   /// Out of 100. Tuned for a walk you can follow: about two moves in three change the mix of
   /// the track playing, one in three moves to another track, one in twenty to another genre.
@@ -95,6 +102,9 @@ public enum WanderMoveKind: String, CaseIterable, Sendable {
     case .structure: 4
     case .genre: 5
     case .palette: 2
+    case .layerAdd: 6
+    case .layerSwap: 4
+    case .layerRemove: 3
     }
   }
 
@@ -110,6 +120,7 @@ public enum WanderMoveKind: String, CaseIterable, Sendable {
     case .structure: "structure"
     case .genre: "genre"
     case .palette: "palette"
+    case .layerAdd, .layerSwap, .layerRemove: "layers"
     case .seed: nil
     }
   }
@@ -238,6 +249,14 @@ struct WanderContext: Sendable {
   /// (FNV-1a of the raw share's CID), and only the moves that need no spec are taken.
   var rawBase: UInt64? = nil
   var isRaw: Bool { rawBase != nil }
+  /// The deck's layer list and the loops a layer move may draw from (`Deck.layerEntries` /
+  /// `layerPool`), and the bar (1-based) a move is taken in: a layer comes in from the next one.
+  var layers: [LayerEntry] = []
+  var layerPool: [LayerLoop] = []
+  var bar = 0
+  /// Bars per move (`WanderState.pace`): an added layer stays on a little longer than that, so the
+  /// next move has something to swap or take out.
+  var pace = 8
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -259,6 +278,8 @@ enum WanderAction: Equatable, Sendable {
   /// A raw-nets deck's palette hop: the same song, retargeted at the next bar (`Deck.setPalette`),
   /// with the kept roles' sounds pinned as their own option.
   case palette(String, pins: [WanderPin])
+  /// The deck's new layer list (a layer added, swapped or taken out).
+  case layers([LayerEntry])
 }
 
 /// A kept role's sound, pinned through a palette hop (`Deck.setRoleVoice`).
@@ -313,7 +334,11 @@ struct WanderRandom {
 public enum Wander {
   static let tonalRoles: Set<String> = ["bass", "melody", "harmony", "arp"]
   /// The moves a raw-nets deck can take: none of them needs a `TrackSpec`.
-  static let rawKinds: Set<WanderMoveKind> = [.role, .stem, .macro, .fx, .stinger, .palette]
+  static let rawKinds: Set<WanderMoveKind> = [
+    .role, .stem, .macro, .fx, .stinger, .palette, .layerAdd, .layerSwap, .layerRemove,
+  ]
+  /// The most layers on at once (a mix that wide is mud).
+  static let maxLayers = 3
   static let netMacros: [NetMacro] = [.drop, .breakdown, .beatRepeat, .soloDrums, .doubleDrop]
   static let masterMacros: [MasterMacro] = [
     .sweepLp, .sweepHp, .riser, .reverbWash, .filterRes, .buildCrush,
@@ -357,7 +382,16 @@ public enum Wander {
 
   /// A STEMS group the walk muted wants back: its weight goes up until it is.
   static func weight(_ k: WanderMoveKind, _ c: WanderContext) -> Int {
-    k == .stem && !c.stemsMuted.isEmpty ? 40 : k.weight
+    if k == .stem && !c.stemsMuted.isEmpty { return 40 }
+    // layers come and go in a coherent way: with one on, the walk soon takes it out or swaps it;
+    // with none on, one is likelier to come in
+    let live = c.layers.contains { $0.end > c.bar + 1 }
+    switch k {
+    case .layerRemove where live: return 18
+    case .layerSwap where live: return 9
+    case .layerAdd where !live: return 9
+    default: return k.weight
+    }
   }
 
   /// The move for step `step`: a weighted kind, then its parameters, all drawn from the spec and
@@ -502,6 +536,62 @@ public enum Wander {
       return WanderPlan(
         kind: .genre, action: .swap(s),
         detail: "\(c.spec.genre) → \(g) · seed \(seedText(s.seed))")
+
+    case .layerAdd:
+      let next = c.bar + 1
+      let live = c.layers.filter { $0.end > next }
+      guard live.count < maxLayers else { return nil }
+      let taken = Set(live.map(\.loop.path))
+      let options = c.layerPool.filter { !taken.contains($0.path) }
+      guard !options.isEmpty else { return nil }
+      let loop = rng.pick(options)
+      let e = LayerEntry(
+        loop: loop, start: next, length: min(16, c.pace + loop.bars),
+        gainDB: LoopLayers.defaultGain(category: loop.category))
+      return WanderPlan(
+        kind: .layerAdd, action: .layers((c.layers + [e]).sorted { $0.start < $1.start }),
+        detail: "+ \(loop.name) · bars \(e.start)–\(e.end - 1)")
+
+    case .layerRemove:
+      let next = c.bar + 1
+      let options = c.layers.indices.filter { c.layers[$0].end > next }
+      guard !options.isEmpty else { return nil }
+      let i = rng.pick(options)
+      var list = c.layers
+      let name = list[i].loop.name
+      if list[i].start >= next {  // not on yet: just never comes in
+        list.remove(at: i)
+      } else {  // on: out at the next bar
+        list[i].length = max(1, next - list[i].start)
+      }
+      return WanderPlan(kind: .layerRemove, action: .layers(list), detail: "− \(name)")
+
+    case .layerSwap:
+      let next = c.bar + 1
+      let options = c.layers.indices.filter { c.layers[$0].end > next }
+      guard !options.isEmpty else { return nil }
+      let i = rng.pick(options)
+      let old = c.layers[i]
+      let busy = Set(c.layers.filter { $0.end > next }.map(\.loop.path))
+      let same = c.layerPool.filter { $0.category == old.loop.category && !busy.contains($0.path) }
+      let any = c.layerPool.filter { !busy.contains($0.path) }
+      let pool = same.isEmpty ? any : same
+      guard !pool.isEmpty else { return nil }
+      let loop = rng.pick(pool)
+      var list = c.layers
+      if old.start >= next {  // not on yet: the other loop comes in instead
+        list[i].loop = loop
+        list[i].length = min(8, max(list[i].length, 1))
+      } else {  // on: this one goes out at the next bar, the other comes in from it
+        list[i].length = max(1, next - old.start)
+        list.append(
+          LayerEntry(
+            loop: loop, start: next, length: min(8, max(1, old.end - next)),
+            gainDB: old.gainDB, keyLock: old.keyLock))
+      }
+      return WanderPlan(
+        kind: .layerSwap, action: .layers(list.sorted { $0.start < $1.start }),
+        detail: "\(old.loop.name) → \(loop.name)")
 
     case .palette:
       let here = SoundPalette.playing(c.palette)
@@ -739,6 +829,9 @@ extension Deck {
       channels: netProject?.channels ?? [],
       stingers: stingers.map { $0.kind == .fallback ? "stinger" : $0.label })
     c.rawBase = rawBase
+    c.layers = layerEntries
+    c.layerPool = layerPool
+    c.pace = wander.pace
     return c
   }
 
@@ -861,6 +954,7 @@ extension Deck {
   /// (with the anchors `advanceWander` fills in at the move, not written here).
   func wanderSwapKey(bar: Int, lockedActions: Set<String>) -> LookAheadSlot.Key? {
     guard var c = wanderContext(lockedActions: lockedActions) else { return nil }
+    c.bar = bar + 1  // as the move itself will see it, so the same kind is drawn
     if wander.isLocked("tempo"), c.anchorBPM == nil {
       c.anchorBPM = currentSpec.map(Wander.bpm(of:))
     }
@@ -879,9 +973,9 @@ extension Deck {
   /// Take the walk's next move now, as if a phrase had just reached its last bar (`bar`).
   @discardableResult
   func takeWanderMove(bar: Int, lockedActions: Set<String>) -> WanderMove? {
-    guard let c = wanderContext(lockedActions: lockedActions),
-      let plan = Wander.plan(c, step: wander.step)
-    else { return nil }
+    guard var c = wanderContext(lockedActions: lockedActions) else { return nil }
+    c.bar = bar + 1  // the bar the move is taken in, 1-based: layers come in from the next
+    guard let plan = Wander.plan(c, step: wander.step) else { return nil }
     var move = WanderMove(
       step: wander.step, bar: bar + 1, kind: plan.kind, detail: plan.detail,
       spec: c.isRaw ? nil : c.spec, cid: nil)
@@ -904,6 +998,7 @@ extension Deck {
     case .palette(let id, let pins):
       setPalette(id)
       for pin in pins { setRoleVoice(pin.role, pin.option) }
+    case .layers(let list): setLayers(list)
     case .swap(let spec):
       move.spec = spec
       move.cid = BeatsCID.shareCID(spec.payload)

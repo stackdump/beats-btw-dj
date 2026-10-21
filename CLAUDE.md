@@ -776,6 +776,19 @@ its copy; the two are now independent. Rules inherited from that split:
   following the louder deck), resets on the loop-round, and lets go when the deck stops or the track changes.
   Poke = `clipLoop`, rule = the roll's own list, boundary = the bar. `dj_state.decks.X.layers` shows it.
   **Local only**: a track with layers is never published (stock loops stay off the CDN, `Session.importedClips`).
+  **Wander plays the layers** (`WanderMoveKind.layerAdd` / `.layerSwap` / `.layerRemove`, lock dimension
+  `layers`): the deck's live list is `Deck.layerEntries` (a `LayerEntry` per window: loop, start bar, length;
+  a raw track's `loopLayers` expand into it at `loadNet`, `layerEpoch` moves on every new track), and
+  `LayerRunner` follows *that list*, so Wander's edits take effect on the next bar. A move is taken on a
+  phrase's last bar `b` (`WanderContext.bar`, `.pace`): **add** brings a loop from `Deck.layerPool` in from
+  bar b+1 for `min(16, pace + its length)` bars (a little over a phrase, at `LoopLayers.defaultGain`; at most
+  3 live, never a loop twice); **remove** ends a live one after bar b (or drops one not yet on); **swap** ends
+  the live one and brings another of its category in from b+1 for what was left (or replaces one not yet on in
+  place). With a layer live the walk weights remove 18 / swap 9, with none add 9 (else 3 / 4 / 6), so loops come
+  and go coherently. The pool (`LoopLayers.pool`: Vocals / Sound Effect / Texture-Atmosphere, tempo within 8 %
+  at 1× ½× 2×, tonal loops only in a key within a fifth of the track's `djKey` or its genre key, a hash-sampled
+  ≤ 400) is rebuilt by the app per deck when tempo / key / library change. Derived from the CID + step like
+  every move (not recorded), the same on composed decks (their list starts empty). Lock `layers` to stop it.
   Not built: sample-exact hits inside the net (a sample voice fired by a roll step, for an impact on the exact
   drop beat); layers on a composed (`.net`) deck; the loop's own key retuned to the track.
 - **The debug console** (⇧⌘D or the bottom bar's "Debug Console"; `ConsoleModel` / `ConsoleView`, parser in

@@ -185,6 +185,8 @@ public enum PianoRoll {
       env["tempo"] = .number(t)
     }
     if let s = params["swing"]?.double { env["swing"] = .number(s) }
+    // the key the author said it is in (`djKey`): layer moves pick tonal loops that fit it
+    if let k = params["key"]?.string, !k.isEmpty { env["djKey"] = .string(k) }
     env["nets"] = .object(nets)
     // library sounds that come in over the track as parallel tracks (`LoopLayers`)
     let layers = try LoopLayers.parse(params["layers"] ?? params[LoopLayers.envelopeKey])

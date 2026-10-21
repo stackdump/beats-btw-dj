@@ -255,6 +255,8 @@ public final class AppModel {
   /// Loop layers a raw track brings in (`LayerRunner`): one plan per deck, checked a few times a second.
   @ObservationIgnored var layerPlans: [String: LayerPlan] = [:]
   @ObservationIgnored var layersCheckedAt = 0.0
+  /// What each deck's layer pool was built for (tempo, key, library size), so it is rebuilt only when that changes.
+  @ObservationIgnored var layerPoolStamps: [String: String] = [:]
   /// The debug console (`ConsoleWindow`): one per app, so its scrollback outlives the window.
   @ObservationIgnored public lazy var console: ConsoleModel = {
     let c = ConsoleModel(app: self)

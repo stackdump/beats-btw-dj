@@ -468,6 +468,7 @@ extension Deck {
       keepVoices: keepsVoiceSettings(loading: track.source))
     currentSpec = track.spec
     if case .rawNets(let payload) = track.source { currentRawNets = payload }
+    resetLayers(from: track.source)
     fixes = track.fixes
     passApplied = track.passApplied
   }
