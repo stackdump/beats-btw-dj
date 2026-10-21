@@ -366,8 +366,12 @@ public struct MCPBridge {
       notes}; a note is [step, midi, dur?, vel?] (dur in sixteenths, default 2 for tonal \
       parts and 1 for drums; vel 1–127, default 100; middle C = 60). Notes on the same step \
       (chords) are fine: they play together. `steps` defaults to the roll's length rounded up \
-      to whole bars (max 1024); a 32-step part under a 128-step one repeats. Write the \
-      whole form out (8–64 bars) with a clear key and chord plan, not one riff. Takes a few \
+      to whole bars (max 1024). A part repeats a pattern with {every, from?, until?, notes}: the \
+      notes (steps relative to the pattern) recur every `every` steps from step `from` up to \
+      `until` (default `steps`, which a repeat needs if no `until`), so a bar of drums is \
+      written once; give a LIST of such segments for an arrangement (a part enters at bar 5 \
+      with from 64). Without `every` notes sit at `from` + step. Write the whole form out \
+      (8–64 bars) with a clear key and chord plan, not one riff. Takes a few \
       seconds, returns the deck with share {kind rawNets, cid} and `saved`, the file it was kept \
       in (dj_compositions lists and reloads them). Does not start playback — \
       follow with dj_perform play. Roles light up in dj_state like any net deck, so dj_perform \
@@ -385,8 +389,9 @@ public struct MCPBridge {
           (
             "description",
             .string(
-              "{role: {instrument?: string, channel?: 1-16, notes: [[step, midi, dur?, vel?], "
-                + "…]}}, e.g. {\"kick\":{\"notes\":[[0],[4],[8],[12]]},\"bass\":{\"instrument\":"
+              "{role: {instrument?: string, channel?: 1-16, every?, from?, until?, notes: "
+                + "[[step, midi, dur?, vel?], …]}} or a list of such segments, e.g. "
+                + "{\"kick\":{\"every\":16,\"until\":256,\"notes\":[[0],[4],[8],[12]]},\"bass\":{\"instrument\":"
                 + "\"sub-bass\",\"notes\":[[0,36,4,100],[8,43,4,100]]}}. Instruments are beats' names "
                 + "(dj_catalog, dj_set_instrument); omit for the role's default.")
           ),
@@ -424,8 +429,9 @@ public struct MCPBridge {
           (
             "description",
             .string(
-              "As dj_compose: {role: {instrument?, channel?, notes: [[step, midi, dur?, vel?], "
-                + "…]}} with roles kick snare hihat clap bass melody harmony arp.")
+              "As dj_compose: {role: {instrument?, channel?, every?, from?, until?, notes: "
+                + "[[step, midi, dur?, vel?], …]}} (or a list of segments) with roles kick snare "
+                + "hihat clap bass melody harmony arp.")
           ),
         ]),
       ],

@@ -727,6 +727,13 @@ its copy; the two are now independent. Rules inherited from that split:
   line; the same CID is kept once; the reply's `saved` is the path. **`dj_compositions`** lists them
   (newest first) and `load {deck, id}` puts one back on a deck (`id` = any unique part: a title word, a
   CID tail). `AppModel(compositions:)` injects a store (tests pass `temporaryCompositions()`).
+- **The `/dj-compose` skill** (`.claude/skills/dj-compose/SKILL.md`, worked `example.json` kept valid by
+  `DJComposeSkillTests`) is the working vocabulary and format for all of the above: which tool a phrase
+  means ("inspired by" → `dj_inspired`, "push to A" = load on deck A, "standard" = a song form, not a
+  loop), the one-line style card (`BPM · key · progression · feel · drums · bass · harmony · lead · form`),
+  the roll grid and roles, a genre cheat sheet, the instrument vocabulary and the originality rules.
+  Rolls take repeating patterns: a part is a segment or list of segments `{from?, every?, until?,
+  instrument?, notes}` (`PianoRoll`), so a bar of drums is written once and a part enters at `from`.
 - Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
   on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
   through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a

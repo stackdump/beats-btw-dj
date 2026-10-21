@@ -201,3 +201,11 @@ func temporaryDirectory() -> URL {
   FileManager.default.temporaryDirectory.appendingPathComponent(
     "compositions-\(UUID().uuidString)", isDirectory: true)
 }
+
+/// The `/dj-compose` skill's example.json (next to SKILL.md), read by path from this file.
+func skillExampleText() -> String {
+  let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent()
+  let url = root.appendingPathComponent(".claude/skills/dj-compose/example.json")
+  return String(decoding: FileManager.default.contents(atPath: url.path) ?? Data(), as: UTF8.self)
+}

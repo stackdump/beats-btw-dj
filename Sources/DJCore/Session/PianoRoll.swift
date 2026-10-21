@@ -57,33 +57,99 @@ public enum PianoRoll {
         "`parts` is required: {role: {instrument?, notes: [[step, note, dur?, vel?], …]}}, "
           + "roles kick snare hihat clap bass melody harmony arp")
     }
-    var parsed: [(id: String, defaults: RoleDefaults, instrument: String, notes: [Note])] = []
+    // A part is one segment or an array of them: {from?, every?, until?, notes}. Without `every`
+    // the notes sit at `from` + their step; with it the pattern repeats every `every` steps from
+    // `from` up to `until` (default: the roll's end), so a bar of drums is written once.
+    struct Segment {
+      var notes: [Note]
+      var from: Int
+      var every: Int?
+      var until: Int?
+    }
+    func int(_ v: JSONValue?) -> Int? { v?.double.map { Int($0.rounded()) } }
+    var parsed: [(id: String, defaults: RoleDefaults, instrument: String, segments: [Segment])] = []
     for (id, part) in parts.entries {
       let d =
         roles[id] ?? RoleDefaults(channel: 1, instrument: "piano", drumNote: nil)
-      let notes = try self.notes(of: part, in: id, drumNote: d.drumNote)
+      let list = part.array ?? [part]
+      guard !list.isEmpty else { throw PianoRollError.bad("part `\(id)` is an empty list") }
+      var segments: [Segment] = []
       var d2 = d
-      if let ch = part["channel"]?.double { d2.channel = min(16, max(1, Int(ch.rounded()))) }
-      parsed.append((id, d2, part["instrument"]?.string ?? d.instrument, notes))
+      var instrument = d.instrument
+      for (k, seg) in list.enumerated() {
+        let from = int(seg["from"]) ?? 0
+        let every = int(seg["every"])
+        guard from >= 0, every == nil || every! >= 1 else {
+          throw PianoRollError.bad("part `\(id)`: `from` must be ≥ 0 and `every` ≥ 1 step")
+        }
+        segments.append(
+          Segment(
+            notes: try self.notes(of: seg, in: id, drumNote: d.drumNote), from: from,
+            every: every, until: int(seg["until"])))
+        if k == 0 || seg["instrument"] != nil, let i = seg["instrument"]?.string { instrument = i }
+        if let ch = int(seg["channel"]) { d2.channel = min(16, max(1, ch)) }
+      }
+      parsed.append((id, d2, instrument, segments))
     }
 
-    let longest = parsed.flatMap(\.notes).map { $0.step + $0.duration }.max() ?? 0
-    var steps = longest <= 0 ? 16 : (longest + 15) / 16 * 16
-    if let s = params["steps"]?.double {
-      steps = Int(s.rounded())
-      guard steps >= 1 && steps <= maxSteps else {
-        throw PianoRollError.bad("`steps` must be 1…\(maxSteps) (sixteenths; 16 = one bar)")
-      }
-      if let late = parsed.flatMap(\.notes).first(where: { $0.step >= steps }) {
-        throw PianoRollError.bad("a note starts on step \(late.step), past `steps` \(steps)")
+    let explicit = int(params["steps"])
+    if let explicit, !(1...maxSteps).contains(explicit) {
+      throw PianoRollError.bad("`steps` must be 1…\(maxSteps) (sixteenths; 16 = one bar)")
+    }
+    var longest = 0
+    for p in parsed {
+      for seg in p.segments {
+        if seg.every != nil {
+          guard let end = seg.until ?? explicit else {
+            throw PianoRollError.bad(
+              "part `\(p.id)`: a repeating pattern (`every`) needs `until` or the roll's `steps`")
+          }
+          longest = max(longest, end)
+        } else {
+          longest = max(longest, seg.from + (seg.notes.map { $0.step + $0.duration }.max() ?? 0))
+        }
       }
     }
+    let steps = explicit ?? (longest <= 0 ? 16 : (longest + 15) / 16 * 16)
     guard steps <= maxSteps else {
       throw PianoRollError.bad("the roll is \(steps) steps; the most is \(maxSteps) (64 bars)")
     }
+    // expand the segments into one note list per part
+    var expanded: [(id: String, defaults: RoleDefaults, instrument: String, notes: [Note])] = []
+    for p in parsed {
+      var notes: [Note] = []
+      for seg in p.segments {
+        if let every = seg.every {  // a pattern repeated from `from` up to `until`
+          let bound = min(steps, seg.until ?? steps)
+          var offset = seg.from
+          while offset < bound {
+            for n in seg.notes where offset + n.step < bound {
+              var m = n
+              m.step = offset + n.step
+              m.duration = min(n.duration, steps - m.step)
+              notes.append(m)
+            }
+            offset += every
+          }
+        } else {
+          for n in seg.notes {
+            let at = seg.from + n.step
+            guard at < steps else {
+              throw PianoRollError.bad("a note starts on step \(at), past `steps` \(steps)")
+            }
+            var m = n
+            m.step = at
+            m.duration = min(n.duration, steps - at)
+            notes.append(m)
+          }
+        }
+      }
+      expanded.append((p.id, p.defaults, p.instrument, notes))
+    }
+    let parsedNotes = expanded
 
     var nets = JSONObject()
-    for p in parsed {
+    for p in parsedNotes {
       // One note starts per step per net: chord tones (notes on the same step) spill into
       // sibling nets (`melody-b`, …) grouped under the same role, played together.
       var lanes: [[Int: Note]] = []

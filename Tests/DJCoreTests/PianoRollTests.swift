@@ -88,3 +88,69 @@ struct PianoRollTests {
     #expect(MCPBridge.instructions.contains("dj_compose"))
   }
 }
+
+struct PianoRollPatternTests {
+  func project(_ json: String) throws -> Project {
+    try #require(Share(payload: PianoRoll.envelope(JSONValue.parse(json))).rawNetsProject())
+  }
+
+  @Test func aRepeatedPatternFillsTheRollFromWhereItStarts() throws {
+    // one bar of four-on-the-floor kick, written once, from bar 5 on, in a 16-bar roll
+    let p = try project(
+      #"{"steps":256,"parts":{"kick":{"every":16,"from":64,"notes":[[0],[4],[8],[12]]}}}"#)
+    let kick = try #require(p.nets["kick"])
+    #expect(kick.places.count == 256)
+    #expect(kick.bindings["t0"] == nil && kick.bindings["t60"] == nil)
+    #expect(kick.bindings["t64"]?.note == 36 && kick.bindings["t68"]?.note == 36)
+    #expect(kick.bindings["t252"]?.note == 36 && kick.bindings.count == 48)  // 12 bars × 4
+  }
+
+  @Test func segmentsAndUntilBuildAnArrangement() throws {
+    // melody: bars 1-2 one pattern, bars 3-4 another; a part given as a list of segments
+    let p = try project(
+      """
+      {"parts":{"melody":[
+        {"every":16,"until":32,"notes":[[0,72,4]]},
+        {"from":32,"until":64,"every":32,"notes":[[0,76,8],[16,79,8]]}]}}
+      """)
+    let m = try #require(p.nets["melody"])
+    #expect(m.places.count == 64)  // from the longest `until`
+    #expect(m.bindings["t0"]?.note == 72 && m.bindings["t16"]?.note == 72)
+    #expect(m.bindings["t32"]?.note == 76 && m.bindings["t48"]?.note == 79)
+    #expect(m.bindings.count == 4)
+  }
+
+  @Test func aRepeatNeedsAnEndAndNotesStayInsideIt() throws {
+    func message(_ json: String) -> String {
+      do {
+        _ = try PianoRoll.envelope(JSONValue.parse(json))
+        return ""
+      } catch { return "\(error)" }
+    }
+    #expect(message(#"{"parts":{"kick":{"every":16,"notes":[[0]]}}}"#).contains("`until`"))
+    #expect(
+      message(#"{"parts":{"kick":{"every":0,"until":16,"notes":[[0]]}}}"#).contains("`every`"))
+    // a pattern note past `until` is simply not played; a plain note past `steps` is an error
+    #expect(
+      message(#"{"steps":16,"parts":{"kick":{"every":8,"until":12,"notes":[[0],[6]]}}}"#) == "")
+    #expect(
+      message(#"{"steps":16,"parts":{"kick":{"from":8,"notes":[[10]]}}}"#).contains("past `steps`"))
+  }
+}
+
+struct DJComposeSkillTests {
+  /// The skill's worked example stays a valid roll: 16 bars, every role the right size.
+  @Test func theSkillExampleBuildsAPlayableRoll() throws {
+    let params = try JSONValue.parse(skillExampleText())
+    let p = try #require(Share(payload: PianoRoll.envelope(params)).rawNetsProject())
+    #expect(p.tempo == 124)
+    #expect(p.nets["kick"]?.places.count == 256 && p.nets["kick"]?.bindings.count == 64)
+    #expect(p.nets["clap"]?.bindings["t4"] == nil && p.nets["clap"]?.bindings["t68"]?.note == 39)
+    #expect(
+      p.nets["bass"]?.bindings["t66"]?.note == 45 && p.nets["bass"]?.bindings["t242"]?.note == 43)
+    #expect(Set(p.nets.keys).isSuperset(of: ["harmony", "harmony-b", "harmony-c", "melody"]))
+    #expect(
+      p.nets["melody"]?.bindings["t128"]?.note == 72 && p.nets["melody"]?.bindings["t127"] == nil)
+    #expect(p.nets["harmony"]?.track.instrument == "warm-pad")
+  }
+}
