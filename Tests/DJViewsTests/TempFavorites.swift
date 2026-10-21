@@ -67,3 +67,11 @@ func describedStockLoop(_ name: String, category: String, beats: Int, seconds: D
     path: "/nowhere/\(category)/\(name).caf", name: name, pack: "Test Pack", category: category,
     subcategory: "", genre: "Test", beats: beats, seconds: seconds, key: nil)
 }
+
+/// A compositions store in a fresh temporary folder (so `dj_compose` tests never write to the
+/// app's real one).
+func temporaryCompositions() -> CompositionStore {
+  CompositionStore(
+    directory: FileManager.default.temporaryDirectory
+      .appendingPathComponent("compositions-\(UUID().uuidString)", isDirectory: true))
+}

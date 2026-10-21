@@ -246,6 +246,8 @@ public final class AppModel {
   static func wanderLocksKey(_ deck: String) -> String { "wanderLocks.\(deck)" }
   static func wanderPaceKey(_ deck: String) -> String { "wanderPace.\(deck)" }
   @ObservationIgnored let favoritesStore: FavoritesStore
+  /// Where `dj_compose` / `dj_inspired` / `dj_import` keep what they played.
+  @ObservationIgnored let compositionStore: CompositionStore
   /// The journal (JournalModel.swift): the run's event log, the notes it holds, its latest lines.
   var notes: [TrackNote] = []
   var journalEntries: [JournalEntry] = []
@@ -313,8 +315,9 @@ public final class AppModel {
     engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
     loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil,
     voices: VoiceVariationStore = VoiceVariationStore(), notes: NotesStore = NotesStore(),
-    journal: URL? = nil
+    journal: URL? = nil, compositions: CompositionStore = CompositionStore()
   ) {
+    compositionStore = compositions
     notesStore = notes
     journalDir = journal
     self.notes = notes.list()

@@ -720,6 +720,13 @@ its copy; the two are now independent. Rules inherited from that split:
   grid dropped and every source channel's role (`map` re-assigns, `inspect` only reports). Only for
   material the user owns or that is public domain / CC: `source` (origin + licence) goes in the
   share's `note`; nothing here publishes, and a share of a CC BY-SA / NC piece carries those terms.
+- **Everything composed is kept** (`Session/CompositionStore.swift`): `dj_compose`, `dj_inspired` and
+  `dj_import` save each track to `~/Library/Application Support/dj-vevr-se/compositions/`
+  (`$DJ_COMPOSITIONS_DIR`) as `<UTC time>-<title slug>-<cid tail>.json` — the request that made it (the
+  roll, brief, or the import's source and report) and the raw-nets `envelope`, one top-level key per
+  line; the same CID is kept once; the reply's `saved` is the path. **`dj_compositions`** lists them
+  (newest first) and `load {deck, id}` puts one back on a deck (`id` = any unique part: a title word, a
+  CID tail). `AppModel(compositions:)` injects a store (tests pass `temporaryCompositions()`).
 - Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
   on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
   through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a

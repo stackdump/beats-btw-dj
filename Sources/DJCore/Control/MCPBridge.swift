@@ -18,6 +18,7 @@ public struct MCPBridge {
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_load_share": "loadShare",
     "dj_compose": "composeRoll", "dj_inspired": "composeRoll", "dj_import": "importScore",
+    "dj_compositions": "compositions",
     "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
@@ -367,7 +368,8 @@ public struct MCPBridge {
       (chords) are fine: they play together. `steps` defaults to the roll's length rounded up \
       to whole bars (max 1024); a 32-step part under a 128-step one repeats. Write the \
       whole form out (8–64 bars) with a clear key and chord plan, not one riff. Takes a few \
-      seconds, returns the deck with share {kind rawNets, cid}. Does not start playback — \
+      seconds, returns the deck with share {kind rawNets, cid} and `saved`, the file it was kept \
+      in (dj_compositions lists and reloads them). Does not start playback — \
       follow with dj_perform play. Roles light up in dj_state like any net deck, so dj_perform \
       (role mutes, macros, FX) and the controllers work on it. A deck that is playing keeps \
       playing on load.
@@ -465,6 +467,26 @@ public struct MCPBridge {
         ]),
       ],
       required: ["path"]),
+    tool(
+      "dj_compositions",
+      """
+      The tracks dj_compose, dj_inspired and dj_import have played, kept on disk for reference: \
+      each is a JSON file in the compositions folder (reply `directory`; \
+      ~/Library/Application Support/dj-vevr-se/compositions/) holding the request that made it \
+      (the roll: parts, notes, tempo, brief; for an import its source and report) and the \
+      raw-nets envelope. Those three tools save automatically and say where (`saved`). action \
+      list (default) returns them newest first with id, name, kind compose|inspired|import, \
+      deck, saved, cid, tempo, note and path (optional `query` filters ids, `limit` caps); load \
+      {deck, id} puts one back on a deck (id may be any unique part: a title word or the cid \
+      tail). Does not start playback. Never publishes.
+      """,
+      [
+        "action": prop("string", "list (default) or load"),
+        "deck": prop("string", "A or B (load)"),
+        "id": prop("string", "The composition's id, or a unique part of it (load)"),
+        "query": prop("string", "Filter the list by part of an id (list)"),
+        "limit": prop("number", "Most rows to list (default 50)"),
+      ]),
     tool(
       "dj_favorites",
       """

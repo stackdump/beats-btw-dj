@@ -196,3 +196,8 @@ func fourVoiceMidi() -> Data {
   }
   return f.data
 }
+
+func temporaryDirectory() -> URL {
+  FileManager.default.temporaryDirectory.appendingPathComponent(
+    "compositions-\(UUID().uuidString)", isDirectory: true)
+}

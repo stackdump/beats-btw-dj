@@ -11,7 +11,7 @@ struct AppControlTests {
     dj["A"]!.loadDemo()
     dj["B"]!.loadDemo()
     try dj.start()
-    let m = AppModel(engine: dj)
+    let m = AppModel(engine: dj, compositions: temporaryCompositions())
     m.start()
     return m
   }
@@ -760,6 +760,24 @@ struct AppControlTests {
     await #expect(throws: (any Error).self) {
       try await m.control("composeRoll", try JSONValue.parse(#"{"deck":"A","parts":{}}"#))
     }
+
+    // it was kept on disk: listed, kept once for the same roll, and reloadable onto the other deck
+    let saved = try #require(r["saved"]?.string)
+    #expect(saved.hasSuffix(".json") && saved.contains("-roll-"))
+    _ = try await m.control("composeRoll", roll)
+    let list = try await m.control("compositions", JSONValue.parse("{}"))
+    let rows = try #require(list["compositions"]?.array)
+    #expect(rows.count == 1 && rows[0]["kind"]?.string == "compose")
+    #expect(rows[0]["name"]?.string == "Roll" && rows[0]["tempo"]?.double == 100)
+    #expect(rows[0]["cid"]?.string?.isEmpty == false && rows[0]["path"]?.string == saved)
+    let back = try await m.control(
+      "compositions", JSONValue.parse(#"{"action":"load","deck":"B","id":"roll"}"#))
+    #expect(back["share"]?["kind"]?.string == "rawNets" && back["title"]?.string == "Roll")
+    #expect(back["saved"] == nil)  // loading one does not save another
+    await #expect(throws: (any Error).self) {
+      try await m.control(
+        "compositions", JSONValue.parse(#"{"action":"load","deck":"B","id":"nope"}"#))
+    }
   }
 
   /// `importScore` (dj_import): a .mid on disk loads as a raw-nets deck with a report of what was
@@ -784,6 +802,9 @@ struct AppControlTests {
         ])))
     #expect(r["share"]?["kind"]?.string == "rawNets" && r["title"]?.string == "one-note")
     #expect(r["import"]?["totalBars"]?.int == 1)
+    #expect(r["saved"]?.string?.contains("-one-note-") == true)
+    let imported = try await m.control("compositions", JSONValue.parse(#"{"query":"one-note"}"#))
+    #expect(imported["compositions"]?.array?.first?["kind"]?.string == "import")
     let project = try #require(dj["B"]?.netProject)
     #expect(project.nets["melody"]?.bindings["t0"]?.note == 60)
 

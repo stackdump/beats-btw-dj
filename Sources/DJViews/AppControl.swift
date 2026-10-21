@@ -223,7 +223,29 @@ extension AppModel {
       poll()
       return deckJSON(deck) ?? .null
 
-    case "loadShare", "composeRoll", "importScore":
+    case "loadShare", "composeRoll", "importScore", "compositions":
+      if method == "compositions", (p["action"]?.string ?? "list") == "list" {
+        let q = p["query"]?.string?.lowercased()
+        let rows = compositionStore.list().filter { q == nil || $0.id.lowercased().contains(q!) }
+        return .object(
+          JSONObject([
+            ("directory", .string(compositionStore.directory.path)),
+            (
+              "compositions",
+              .array(
+                rows.prefix(p["limit"]?.int ?? 50).map { e in
+                  var j = JSONObject([
+                    ("id", .string(e.id)), ("name", .string(e.name)), ("kind", .string(e.kind)),
+                    ("deck", .string(e.deck)), ("saved", .string(e.saved)),
+                    ("cid", .string(e.cid)), ("path", .string(e.url.path)),
+                  ])
+                  if let t = e.tempo { j["tempo"] = .number(t) }
+                  if let n = e.note { j["note"] = .string(n) }
+                  return .object(j)
+                })
+            ),
+          ]))
+      }
       let inspecting = method == "importScore" && p["inspect"]?.bool == true
       let deck = p["deck"]?.string ?? ""
       if !inspecting { _ = try requireDeck(deck) }
@@ -234,6 +256,12 @@ extension AppModel {
       if method == "composeRoll" {
         do { rollPayload = try PianoRoll.envelope(p) } catch let e as PianoRollError {
           throw ControlRequestError.bad(e.description)
+        }
+      } else if method == "compositions" {  // action load: a saved composition back on a deck
+        do {
+          rollPayload = try compositionStore.envelope(matching: p["id"]?.string ?? "").envelope
+        } catch {
+          throw ControlRequestError.bad("\(error)")
         }
       } else if method == "importScore" {
         let path = ((p["path"]?.string ?? "") as NSString).expandingTildeInPath
@@ -273,6 +301,18 @@ extension AppModel {
       poll()
       var o = deckJSON(deck)?.object ?? JSONObject()
       if let importSummary { o["import"] = importSummary }
+      // Keep what was composed or imported, for reference and replay (never fails the load).
+      if method == "composeRoll" || method == "importScore", let envelope = rollPayload {
+        var req = p.object ?? JSONObject()
+        if let importSummary { req["import"] = importSummary }
+        do {
+          let kept = try compositionStore.save(
+            kind: method == "importScore"
+              ? "import" : (p["inspiredBy"]?.string?.isEmpty == false ? "inspired" : "compose"),
+            deck: deck, envelope: envelope, request: .object(req))
+          o["saved"] = .string(kept.url.path)
+        } catch { o["saved"] = .string("not saved: \(error)") }
+      }
       if case .rawNets(let payload) = source {
         o["share"] = .object(
           JSONObject([
