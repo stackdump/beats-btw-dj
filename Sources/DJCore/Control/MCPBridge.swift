@@ -172,7 +172,8 @@ public struct MCPBridge {
       grid {deck, bpm > 0, offset s}: a sample deck's beat grid by hand (the first beat at \
       offset seconds into the sample), replacing the analysis · \
       queueNext {deck, share: {genre, seed, structure?}} · \
-      wander {deck, on}: the deck walks by itself, one move per phrase (a mute, a macro, a \
+      wander {deck, on} (works on dj_compose / dj_import tracks too, on the moves that need no \
+      seed: mutes, STEMS, macros, FX, stingers, palette hops): the deck walks by itself, one move per phrase (a mute, a macro, a \
       stinger, the next seed, another instrument, structure or genre, swapped in at the next \
       bar), drawn from its configuration so a recording replays the same walk; \
       dj_state.decks.X.wander shows on, pace, nextMoveInBars, paused (the browser wheel steers \

@@ -7,6 +7,12 @@ import Foundation
 // session replays the same walk: the moves are derived, not recorded; only the pokes that set
 // wander up (`DeckAction.wander`, `.wanderPace`, `.wanderLock`, the controller's MIDI) are.
 //
+// A raw-`nets` deck (a composed roll, an imported score: `dj_compose`, `dj_import`) has no
+// `TrackSpec` — no seed, genre or structure to hop between — so its walk takes only the moves
+// that need none: role mutes, STEMS, net and master macros, stingers, and palette hops (the same
+// song in a neighbouring sound world, retargeted at the next bar). It is seeded from the raw
+// share's own CID and the step, as a composed deck's is from its spec's (`WanderContext.rawBase`).
+//
 // The three things a feature names (CLAUDE.md, the theme):
 // 1. the poke: wander on/off, its pace, its locks; the browser wheel steers (and pauses it);
 // 2. the rule: `Wander.plan` — weighted move kinds, seeded from the spec's share CID + step;
@@ -228,6 +234,10 @@ struct WanderContext: Sendable {
   /// whose tempo the incoming deck's pitch fader can match at the same beat (nil: Wander, no
   /// such limit).
   var mixBPM: Double? = nil
+  /// A raw-nets deck (no `TrackSpec`: `spec` is a placeholder): the walk's draws start from this
+  /// (FNV-1a of the raw share's CID), and only the moves that need no spec are taken.
+  var rawBase: UInt64? = nil
+  var isRaw: Bool { rawBase != nil }
 
   var kept: Set<String> { Set(locks.compactMap(WanderLock.keptRole)) }
   func locked(_ dimension: String) -> Bool { locks.contains(dimension) }
@@ -246,6 +256,15 @@ enum WanderAction: Equatable, Sendable {
   case masterMacro(MasterMacro)
   case stinger(Int)
   case swap(TrackSpec)
+  /// A raw-nets deck's palette hop: the same song, retargeted at the next bar (`Deck.setPalette`),
+  /// with the kept roles' sounds pinned as their own option.
+  case palette(String, pins: [WanderPin])
+}
+
+/// A kept role's sound, pinned through a palette hop (`Deck.setRoleVoice`).
+struct WanderPin: Equatable, Sendable {
+  var role: String
+  var option: String
 }
 
 struct WanderPlan: Equatable, Sendable {
@@ -265,9 +284,12 @@ struct WanderRandom {
   }
 
   /// FNV-1a of the spec's share CID: what every draw on this configuration starts from.
-  static func base(_ spec: TrackSpec) -> UInt64 {
+  static func base(_ spec: TrackSpec) -> UInt64 { base(cid: BeatsCID.shareCID(spec.payload)) }
+
+  /// The same from any share CID (a raw-nets deck's payload).
+  static func base(cid: String) -> UInt64 {
     var h: UInt64 = 0xcbf2_9ce4_8422_2325
-    for b in BeatsCID.shareCID(spec.payload).utf8 {
+    for b in cid.utf8 {
       h ^= UInt64(b)
       h = h &* 0x100_0000_01b3
     }
@@ -290,6 +312,8 @@ struct WanderRandom {
 
 public enum Wander {
   static let tonalRoles: Set<String> = ["bass", "melody", "harmony", "arp"]
+  /// The moves a raw-nets deck can take: none of them needs a `TrackSpec`.
+  static let rawKinds: Set<WanderMoveKind> = [.role, .stem, .macro, .fx, .stinger, .palette]
   static let netMacros: [NetMacro] = [.drop, .breakdown, .beatRepeat, .soloDrums, .doubleDrop]
   static let masterMacros: [MasterMacro] = [
     .sweepLp, .sweepHp, .riser, .reverbWash, .filterRes, .buildCrush,
@@ -320,6 +344,8 @@ public enum Wander {
   /// The move kinds the locks leave (before the deck's own state rules any out).
   static func kinds(_ c: WanderContext) -> [WanderMoveKind] {
     WanderMoveKind.allCases.filter { k in
+      // a raw-nets deck has no seed, genre or structure to move, and no spec to swap
+      if c.isRaw, !rawKinds.contains(k) { return false }
       if let l = k.lock, c.locked(l) { return false }
       // a palette hop changes every role's sound: the instruments lock holds them too
       if k == .palette && c.locked("instruments") { return false }
@@ -338,7 +364,8 @@ public enum Wander {
   /// the step. A kind with nothing it may do here is struck and the draw goes on; nil when no
   /// kind is left (every move locked).
   static func plan(_ c: WanderContext, step: Int) -> WanderPlan? {
-    var rng = WanderRandom(spec: c.spec, step: step)
+    var rng =
+      c.rawBase.map { WanderRandom(base: $0, step: step) } ?? WanderRandom(spec: c.spec, step: step)
     return plan(c, random: &rng, kinds: kinds(c))
   }
 
@@ -369,7 +396,7 @@ public enum Wander {
   static func canMove(_ c: WanderContext) -> Bool {
     // trying each kind with a throwaway draw tells whether any could be built (a genre move
     // by its options alone: building one composes the new genre when instruments are pinned)
-    let base = WanderRandom.base(c.spec)
+    let base = c.rawBase ?? WanderRandom.base(c.spec)
     return kinds(c).contains { k in
       if k == .genre { return !genreOptions(c).isEmpty }
       var rng = WanderRandom(base: base, step: 0)
@@ -483,6 +510,14 @@ public enum Wander {
       }
       guard let from = here, !options.isEmpty else { return nil }
       let to = rng.pick(options)
+      if c.isRaw {  // the same song in the neighbouring palette, at the next bar
+        let pins = c.voices.filter { v in
+          v.roles.contains(where: c.kept.contains) && !v.overridden
+        }.compactMap { v in v.roles.first.map { WanderPin(role: $0, option: v.option ?? "own") } }
+        return WanderPlan(
+          kind: .palette, action: .palette(SoundPalette.normalized(to) ?? to, pins: pins),
+          detail: "palette \(from.label) → \(SoundPalette.named(to)?.label ?? to)")
+      }
       var s = c.spec
       let channels = c.channels.isEmpty ? s.project().channels : c.channels
       if case .net(let next)? = DeckSourceDescriptor.net(s).withPalette(
@@ -683,15 +718,28 @@ extension Deck {
   }
 
   func wanderContext(lockedActions: Set<String>) -> WanderContext? {
-    guard mode == .net, let spec = currentSpec else { return nil }
+    guard mode == .net else { return nil }
+    // a raw-nets deck walks too, on the moves that need no spec (`Wander.rawKinds`)
+    let spec: TrackSpec
+    var rawBase: UInt64?
+    if let s = currentSpec {
+      spec = s
+    } else if let raw = currentRawNets {
+      spec = TrackSpec(genre: "", seed: 0)
+      rawBase = WanderRandom.base(cid: BeatsCID.shareCID(raw))
+    } else {
+      return nil
+    }
     let rs = roles
-    return WanderContext(
+    var c = WanderContext(
       deck: name, spec: spec, isLoop: isNetLoop, roles: rs, rolesOn: Set(rs.filter(isRoleOn)),
       disabledRoles: disabledRoles, stemsMuted: Set(stemsMuted.keys),
       lockedActions: lockedActions, locks: wander.locks, voices: wanderVoices,
       anchorBPM: wander.anchorBPM, key: wander.key, palette: palette, kit: kit,
       channels: netProject?.channels ?? [],
       stingers: stingers.map { $0.kind == .fallback ? "stinger" : $0.label })
+    c.rawBase = rawBase
+    return c
   }
 
   /// Wander on or off (`DeckAction.wander`). On, it waits for the next phrase end; the bar it
@@ -770,7 +818,9 @@ extension Deck {
 
   /// The deck's clock is in bar `bar` (0-based): what `serviceWander` does with a reading.
   func advanceWander(toBar bar: Int, lockedActions: Set<String>) {
-    guard wander.on, mode == .net, currentSpec != nil, bar != wander.lastBar else { return }
+    guard wander.on, mode == .net, currentSpec != nil || currentRawNets != nil,
+      bar != wander.lastBar
+    else { return }
     wander.lastBar = bar
     // auto-mix holds the walk through a hand-off (AutoMix.swift): no move, no look-ahead, and
     // the held bars are not quiet bars
@@ -833,8 +883,8 @@ extension Deck {
       let plan = Wander.plan(c, step: wander.step)
     else { return nil }
     var move = WanderMove(
-      step: wander.step, bar: bar + 1, kind: plan.kind, detail: plan.detail, spec: c.spec,
-      cid: nil)
+      step: wander.step, bar: bar + 1, kind: plan.kind, detail: plan.detail,
+      spec: c.isRaw ? nil : c.spec, cid: nil)
     // the look-ahead, if it composed this very swap (else it is dropped)
     var ahead: LookAheadSlot.Taken?
     if case .swap(let spec) = plan.action {
@@ -851,6 +901,9 @@ extension Deck {
     case .netMacro(let m): fire(m, duration: 1)  // over the phrase's last bar
     case .masterMacro(let m): fire(m)
     case .stinger(let n): stinger(n)
+    case .palette(let id, let pins):
+      setPalette(id)
+      for pin in pins { setRoleVoice(pin.role, pin.option) }
     case .swap(let spec):
       move.spec = spec
       move.cid = BeatsCID.shareCID(spec.payload)

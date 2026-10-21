@@ -58,7 +58,12 @@ under structural rules, rather than editing audio freely.
   `keep:<role>` (its instrument rides along, never muted or re-picked; a seedable part keeps
   its line too: same-genre swaps carry `partSeeds[role]` = its part seed or the seed it played
   under, a genre hop or a freed keep drops it — `Wander.carry`). Everything locked: wander says so and stands
-  still. **Steering**: the browser wheel steps the seed (loops and now songs, swapped at the
+  still. **Raw-nets decks wander too** (`dj_compose` / `dj_import` tracks have no `TrackSpec`: no seed, genre
+  or structure): `WanderContext.rawBase` (FNV-1a of the raw share's CID, in place of the spec's) seeds the
+  draw and `Wander.rawKinds` limits it to role, stem, macro, fx, stinger and palette (`WanderAction.palette`:
+  `Deck.setPalette` retargets the same song at the next bar, kept roles pinned with `setRoleVoice`); no
+  look-ahead, no swap, `WanderMove.spec` nil. Locks work as before (the genre / tempo / key / structure
+  ones have nothing to constrain). **Steering**: the browser wheel steps the seed (loops and now songs, swapped at the
   next bar) and pauses a wandering deck until a whole phrase passes with no turn; SHIFT + wheel
   sets the pace, the browser push toggles it (both `[MIXXX]`, uncaptured). Sample decks don't
   wander. The log (newest first, ★ stars the track a move led to) is in the panel and

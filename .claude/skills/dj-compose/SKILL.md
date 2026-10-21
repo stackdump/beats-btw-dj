@@ -177,6 +177,12 @@ Files: `~/Library/Application Support/dj-vevr-se/sets/<name>.json`. Order of wor
 Words: "warm-up / build / lift / peak / cool-down" are the plan's slot labels. A set has no hard length;
 6–10 tracks of 36–64 bars is a night. Sets never publish anything.
 
+**Wander works on your tracks.** `dj_perform {op:"wander", deck, on:true}` (pace 4/8/16/32 bars) walks a
+composed or imported deck by itself, one move per phrase: part mutes, STEMS, macros, master FX, stingers
+and palette hops (no seed, genre or structure moves: there is none). Moves are derived from the track's
+CID, so the same track walks the same path. Write tracks with long arrangements and clean parts and
+Wander has more to play with; lock `arrangement` / `fx` / `palette` to keep it from touching those.
+
 ## 8. Not supported yet
 
 Auto-advancing a set without `dj_set mix` (the auto-mix runner is next), tempo changes inside a roll, per-bar time-signature changes, drums beyond kick/snare/hat/clap, vocals,
