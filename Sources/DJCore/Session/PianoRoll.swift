@@ -48,7 +48,7 @@ public enum PianoRoll {
     var velocity: Int
   }
 
-  /// `params`: `{name?, tempo?, swing?, steps?, parts: {role: {instrument?, channel?, notes}}}`.
+  /// `params`: `{name?, tempo?, swing?, steps?, inspiredBy?, brief?, parts: {role: {instrument?, channel?, notes}}}`.
   /// A note is `[step, note, dur?, vel?]` or `{step, note?, dur?, vel?}` (steps count sixteenths
   /// from 0; `dur` in sixteenths; drum parts may leave `note` out). Returns the envelope.
   public static func envelope(_ params: JSONValue) throws -> JSONValue {
@@ -104,7 +104,16 @@ public enum PianoRoll {
     }
 
     var env = JSONObject()
-    env["name"] = .string(params["name"]?.string ?? "Piano roll")
+    // `dj_inspired`: an original piece in an artist's general style. The share says so, so the
+    // provenance travels with the notes (a style read, never a transcription).
+    let inspiredBy = params["inspiredBy"]?.string.flatMap { $0.isEmpty ? nil : $0 }
+    env["name"] = .string(
+      params["name"]?.string ?? inspiredBy.map { "\($0)-style (original)" } ?? "Piano roll")
+    if let inspiredBy {
+      var note = "Original piece inspired by \(inspiredBy): style only, no melody or lyric taken."
+      if let brief = params["brief"]?.string, !brief.isEmpty { note += " Brief: \(brief)" }
+      env["note"] = .string(note)
+    }
     if let t = params["tempo"]?.double {
       guard t >= 40 && t <= 300 else { throw PianoRollError.bad("`tempo` must be 40…300 BPM") }
       env["tempo"] = .number(t)

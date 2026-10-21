@@ -762,6 +762,37 @@ struct AppControlTests {
     }
   }
 
+  /// `importScore` (dj_import): a .mid on disk loads as a raw-nets deck with a report of what was
+  /// kept; `inspect` reads the report without loading; other extensions are refused.
+  @Test func importScoreLoadsAMidiFileAndInspectLoadsNothing() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    let (dir, path) = try writeTempMidi()
+    defer { removeTemp(dir) }
+
+    let peek = try await m.control(
+      "importScore",
+      .object(JSONObject([("path", .string(path)), ("inspect", .bool(true))])))
+    #expect(peek["import"]?["parts"]?.array?.first?["role"]?.string == "melody")
+    #expect(peek["import"]?["tempo"]?.double == 120 && peek["mode"] == nil)
+
+    let r = try await m.control(
+      "importScore",
+      .object(
+        JSONObject([
+          ("deck", .string("B")), ("path", .string(path)), ("source", .string("test, CC0")),
+        ])))
+    #expect(r["share"]?["kind"]?.string == "rawNets" && r["title"]?.string == "one-note")
+    #expect(r["import"]?["totalBars"]?.int == 1)
+    let project = try #require(dj["B"]?.netProject)
+    #expect(project.nets["melody"]?.bindings["t0"]?.note == 60)
+
+    await #expect(throws: (any Error).self) {
+      try await m.control(
+        "importScore", .object(JSONObject([("deck", .string("B")), ("path", .string(dir))])))
+    }
+  }
+
   /// Load ▸ "Share link from clipboard" calls `AppModel.loadShare(deck, text)` with the
   /// pasteboard's string: a good link lands on the deck (recorded), a bad one only says why.
   @Test func theClipboardMenuItemLoadsAShareOrSaysWhy() async throws {

@@ -708,6 +708,18 @@ its copy; the two are now independent. Rules inherited from that split:
   musicality pass and no `TrackSpec`: Wander can't derive moves from it, auto-mix may take it as a
   cued track. A specific song, versus `dj_generate`'s seeds; the server instructions say so.
   `tempo` is a top-level envelope key (not under `overrides`). Never publishes anything.
+- **Words (settled with the user):** "inspired by <artist>" / "<artist>-style" → **`dj_inspired`**
+  (`composeRoll` with `inspiredBy` + a one-line `brief`: the style read — tempo, key, progression
+  type, groove, palette, form — recorded in the share's `note`, title `<artist>-style (original)`).
+  Original notes only: never the artist's melody, hook, bassline or lyric; a request to transcribe a
+  specific copyrighted song is declined and an inspired original offered. "Import / play this file"
+  → **`dj_import`** (`importScore`, `Session/MidiImport.swift`): a `.mid` (MusicXML next) read into the
+  same roll (sixteenth steps; drums by GM note → kick/snare/hihat/clap; bass by program or register;
+  chordy channels → harmony, the busiest line → melody; ≤ 3 notes per step per role; first tempo
+  and time signature; an excerpt of `bars` from `from`, max 64), with a report of everything the
+  grid dropped and every source channel's role (`map` re-assigns, `inspect` only reports). Only for
+  material the user owns or that is public domain / CC: `source` (origin + licence) goes in the
+  share's `note`; nothing here publishes, and a share of a CC BY-SA / NC piece carries those terms.
 - Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
   on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
   through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a

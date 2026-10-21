@@ -17,7 +17,7 @@ public struct MCPBridge {
   static let methods: [String: String] = [
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_load_share": "loadShare",
-    "dj_compose": "composeRoll",
+    "dj_compose": "composeRoll", "dj_inspired": "composeRoll", "dj_import": "importScore",
     "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
@@ -116,6 +116,13 @@ public struct MCPBridge {
     tempo) and plays exactly those notes on a deck as a Petri-net track — a specific song, not \
     a generator seed. Reach for it when asked for a particular melody, riff, chord progression \
     or arrangement; use dj_generate / dj_load_share to explore the generator's own space.
+
+    Words matter. "Inspired by <artist>" (or "<artist>-style") → dj_inspired: an original piece \
+    that reads the artist's general style (tempo, key, progression, groove, sound palette, \
+    form), never their melody, hook or lyric. "Import / play this file" → dj_import (a \
+    .mid today, MusicXML next; only material the user owns or that is public domain / \
+    Creative Commons, whose licence the share records). A request to transcribe or reproduce a \
+    specific copyrighted song's melody is declined: offer an inspired original instead.
     """
 
   static let tools: [JSONValue] = [
@@ -379,10 +386,83 @@ public struct MCPBridge {
               "{role: {instrument?: string, channel?: 1-16, notes: [[step, midi, dur?, vel?], "
                 + "…]}}, e.g. {\"kick\":{\"notes\":[[0],[4],[8],[12]]},\"bass\":{\"instrument\":"
                 + "\"sub-bass\",\"notes\":[[0,36,4,100],[8,43,4,100]]}}. Instruments are beats' names "
-                + "(dj_catalog, dj_set_instrument); omit for the role's default.")),
+                + "(dj_catalog, dj_set_instrument); omit for the role's default.")
+          ),
         ]),
       ],
       required: ["deck", "parts"]),
+    tool(
+      "dj_inspired",
+      """
+      Compose an ORIGINAL piece inspired by an artist or a track and play it: dj_compose with \
+      the convention fixed. First read the style in general terms (tempo, key and mode, chord \
+      progression type, groove and drum pattern, bass behaviour, sound palette, section form \
+      and energy curve) and put that one-line read in `brief`; then write the notes \
+      yourself. Never transcribe or closely paraphrase the artist's actual melody, hook, \
+      bassline or lyric, and do not take a chord progression note-for-note together with its \
+      rhythm; a generic progression and groove in that genre is the point. `inspiredBy` names \
+      who or what it is inspired by; it, and the brief, are recorded in the share's note, and \
+      the title defaults to "<inspiredBy>-style (original)". Parts, notes, steps and playback \
+      are as dj_compose (read its description). Write a full form (16–64 bars, build and drop \
+      by leaving parts out of early bars), not one loop.
+      """,
+      [
+        "deck": prop("string", "A or B"),
+        "inspiredBy": prop("string", "The artist or track, e.g. \"Avicii\" or \"Avicii – Levels\""),
+        "brief": prop(
+          "string",
+          "Your one-line style read, e.g. \"126 BPM, C# minor, i–VI–III–VII, offbeat bass, "
+            + "syncopated saw stabs, 8-bar build into a drop\""),
+        "name": prop("string", "Title (default: <inspiredBy>-style (original))"),
+        "tempo": prop("number", "BPM, 40–300 (default 120)"),
+        "swing": prop("number", "Swing 0–100 (default 0)"),
+        "steps": prop("number", "Loop length in sixteenth steps (default: the longest part)"),
+        "parts": obj([
+          ("type", .string("object")),
+          (
+            "description",
+            .string(
+              "As dj_compose: {role: {instrument?, channel?, notes: [[step, midi, dur?, vel?], "
+                + "…]}} with roles kick snare hihat clap bass melody harmony arp.")
+          ),
+        ]),
+      ],
+      required: ["deck", "inspiredBy", "parts"]),
+    tool(
+      "dj_import",
+      """
+      Load a score file from this Mac onto a deck as a raw-nets Petri-net track playing its \
+      notes: a Standard MIDI File (.mid / .midi; MusicXML is next). Quantised to sixteenth \
+      steps, the channels sorted into roles (drums by GM note; bass by program or register; \
+      chordy channels → harmony; the busiest remaining line → melody), at the file's first \
+      tempo. Loads an excerpt of `bars` bars from bar `from` (default 16 from the start, max \
+      64); the reply's `import` says what was kept and dropped (tempo changes, drums with no \
+      role, over three notes on one step, notes outside the excerpt) and lists every source \
+      channel with its role, so you can re-import with `map` to fix a call. Use `inspect: \
+      true` to read that summary without loading. Only for material the user owns or that is \
+      public domain / Creative Commons: pass its licence and origin in `source` (kept in the \
+      share's note). Does not start playback, and never publishes.
+      """,
+      [
+        "deck": prop("string", "A or B (not needed with inspect)"),
+        "path": prop("string", "Absolute path (or ~/…) to a .mid / .midi file"),
+        "from": prop("number", "First bar of the excerpt, 0-based (default 0)"),
+        "bars": prop("number", "Bars to load, 1–64 (default 16)"),
+        "tempo": prop("number", "BPM override, 40–300 (default: the file's first tempo)"),
+        "name": prop("string", "Title (default: the file's title or name)"),
+        "source": prop("string", "Origin and licence, e.g. \"Mutopia, J.S. Bach, public domain\""),
+        "inspect": prop("boolean", "Only return the summary; load nothing"),
+        "map": obj([
+          ("type", .string("object")),
+          (
+            "description",
+            .string(
+              "Override roles: {\"<track>:<channel>\" or \"<channel>\": role}, role one of bass, "
+                + "melody, harmony, arp, skip (drums are mapped by note)")
+          ),
+        ]),
+      ],
+      required: ["path"]),
     tool(
       "dj_favorites",
       """
