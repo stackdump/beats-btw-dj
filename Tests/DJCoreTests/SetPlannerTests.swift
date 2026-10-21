@@ -85,4 +85,24 @@ struct SetPlannerTests {
     #expect(try store.load("Friday Night") == set)
     #expect(throws: SetStore.StoreError.noSet("nope")) { try store.load("nope") }
   }
+
+  @Test func autoStartsTheFadeSoItEndsWithTheTrackAndBeginsALeadEarly() {
+    let plain = SetItem(composition: "t")
+    // 52 bars, 8-bar fade: the fade starts at bar 45 (1-based) and ends with bar 52
+    #expect(SetAuto.startBar(bars: 52, item: plain, fadeBars: 8) == 45)
+    #expect(
+      SetAuto.startBar(bars: 52, item: SetItem(composition: "t", mixOutBar: 30), fadeBars: 8) == 30)
+    #expect(SetAuto.startBar(bars: nil, item: plain, fadeBars: 8) == nil)
+    #expect(
+      SetAuto.startBar(bars: nil, item: SetItem(composition: "t", mixOutBar: 20), fadeBars: 8) == 20
+    )
+    #expect(SetAuto.startBar(bars: 4, item: plain, fadeBars: 8) == 1)  // a track shorter than its fade
+    #expect(!SetAuto.due(bar: 43, startBar: 45, leadBars: 1))
+    #expect(
+      SetAuto.due(bar: 44, startBar: 45, leadBars: 1)
+        && SetAuto.due(bar: 50, startBar: 45, leadBars: 1))
+    #expect(
+      SetAuto.due(bar: 45, startBar: 45, leadBars: 0)
+        && !SetAuto.due(bar: 44, startBar: 45, leadBars: 0))
+  }
 }

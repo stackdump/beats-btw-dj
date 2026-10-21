@@ -154,3 +154,29 @@ struct DJComposeSkillTests {
     #expect(p.nets["harmony"]?.track.instrument == "warm-pad")
   }
 }
+
+struct DJAgentDefinitionTests {
+  /// Every dj-vevr-se tool the agent is given exists, and it can do the whole job.
+  @Test func theAgentsToolsAreRealAndSufficient() throws {
+    let text = djAgentText()
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    #expect(lines.first == "---" && lines.contains { $0.hasPrefix("name: dj") })
+    let tools = try #require(lines.first { $0.hasPrefix("tools:") })
+      .dropFirst("tools:".count).split(separator: ",").map {
+        $0.trimmingCharacters(in: .whitespaces)
+      }
+    let mcp = tools.filter { $0.hasPrefix("mcp__dj-vevr-se__") }.map {
+      String($0.dropFirst("mcp__dj-vevr-se__".count))
+    }
+    for t in mcp { #expect(MCPBridge.methods[t] != nil, "\(t) is not an MCP tool") }
+    for needed in [
+      "dj_state", "dj_perform", "dj_set", "dj_compose", "dj_inspired", "dj_compositions",
+    ] {
+      #expect(mcp.contains(needed), "the DJ needs \(needed)")
+    }
+    // what the DJ must not have: nothing that publishes, edits settings, or runs a shell
+    #expect(!tools.contains("Bash") && !tools.contains("Write") && !tools.contains("Edit"))
+    #expect(!mcp.contains("dj_settings"))
+    #expect(text.contains("dj-compose") && text.contains("Never publish"))
+  }
+}

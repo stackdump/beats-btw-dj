@@ -209,3 +209,11 @@ func skillExampleText() -> String {
   let url = root.appendingPathComponent(".claude/skills/dj-compose/example.json")
   return String(decoding: FileManager.default.contents(atPath: url.path) ?? Data(), as: UTF8.self)
 }
+
+/// The `dj` subagent's definition (`.claude/agents/dj.md`), read by path from this file.
+func djAgentText() -> String {
+  let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent()
+  let url = root.appendingPathComponent(".claude/agents/dj.md")
+  return String(decoding: FileManager.default.contents(atPath: url.path) ?? Data(), as: UTF8.self)
+}

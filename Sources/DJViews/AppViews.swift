@@ -251,6 +251,7 @@ public final class AppModel {
   /// Named sets of compositions on an energy curve (`dj_set`), and the one now running.
   @ObservationIgnored let setStore: SetStore
   @ObservationIgnored var setRun: SetRun?
+  @ObservationIgnored var setAutoCheckedAt = 0.0
   /// How the set runner waits between crossfade steps (tests swap in a no-op).
   @ObservationIgnored var setSleep: (Double) async -> Void = { seconds in
     try? await Task.sleep(for: .seconds(seconds))
@@ -468,6 +469,7 @@ public final class AppModel {
   /// Refresh the display state from the engine (30 Hz in the app).
   public func poll() {
     guard let dj else { return }
+    serviceSetAuto()  // a running set with auto on hands off by itself (`dj_set auto`)
     let now = uptime()
     let router = hub?.router ?? injectedRouter
     // The perf monitor measures while something plays; the rings are rebuilt less often at the

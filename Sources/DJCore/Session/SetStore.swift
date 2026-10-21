@@ -278,3 +278,24 @@ public enum SetPlanner {
     }
   }
 }
+
+// MARK: - auto-advance
+
+/// When a running set hands off on its own (`dj_set auto`): the bar (1-based, on the playing deck's
+/// clock) the crossfade should start at, and when to begin loading the next track to be ready for it.
+public enum SetAuto {
+  /// The bar the fade starts at: the item's `mixOutBar`, else `fadeBars` before the track's last
+  /// bar so the crossfade ends as the track does. nil: the track's length isn't known (and nothing
+  /// was set), so there is nothing to time against.
+  public static func startBar(bars: Int?, item: SetItem, fadeBars: Int) -> Int? {
+    if let b = item.mixOutBar { return max(1, b) }
+    guard let bars else { return nil }
+    return max(1, bars - fadeBars + 1)
+  }
+
+  /// Begin the hand-off at `bar`: `leadBars` early, so the next track is loaded and aligned and the
+  /// fade starts on `startBar` (loading takes under a bar at any tempo worth mixing).
+  public static func due(bar: Int, startBar: Int, leadBars: Int) -> Bool {
+    bar >= startBar - max(0, leadBars)
+  }
+}

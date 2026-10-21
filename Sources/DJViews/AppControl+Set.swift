@@ -11,6 +11,13 @@ struct SetRun {
   var progress = ""
   var warnings: [String] = []
   var task: Task<Void, Never>?
+  /// `dj_set auto`: hand off to the next track by itself, `leadBars` bars before the fade is due.
+  var auto = false
+  var leadBars = 1
+  /// After each hand-off turn Wander on for the incoming deck and off for the outgoing one.
+  var wander = false
+  /// The playing track's length in bars, looked up once per track (nil: not yet / unknown).
+  var currentBars: Int?
 }
 
 extension AppModel {
@@ -233,34 +240,21 @@ extension AppModel {
 
     case "mix":
       let n = try name()
-      var set = try load(n)
+      let set = try load(n)
+      let task = try beginSetMix(set, fadeBars: p["fadeBars"]?.int)
+      if p["wait"]?.bool == true { await task.value }
+      return setStatus(set)
+
+    case "auto":
+      let n = try name()
+      let set = try load(n)
       guard var run = setRun, run.name == set.name else {
         throw ControlRequestError.bad("`\(n)` isn't running: dj_set start first")
       }
-      guard run.task == nil || run.phase != "fading" && run.phase != "loading" else {
-        throw ControlRequestError.bad("a hand-off is already running (dj_set status / abort)")
-      }
-      let next = run.cursor + 1
-      guard set.items.indices.contains(next) else {
-        throw ControlRequestError.bad("`\(n)` is on its last track")
-      }
-      let out = run.deck
-      let inn = out == "A" ? "B" : "A"
-      guard engine?[out]?.beatState != nil, engine?[out]?.playing == true else {
-        throw ControlRequestError.bad("deck \(out) isn't playing: dj_perform play first")
-      }
-      let current = set.items[run.cursor]
-      let fade = min(32, max(1, p["fadeBars"]?.int ?? current.fadeBars ?? set.fadeBars))
-      run.phase = "loading"
-      run.progress = "loading \(set.items[next].composition)"
-      run.warnings = []
-      let task = Task { @MainActor in
-        await self.runSetMix(set: set.name, out: out, inn: inn, next: next, fadeBars: fade)
-      }
-      run.task = task
+      if let on = p["on"]?.bool { run.auto = on }
+      if let lead = p["leadBars"]?.int { run.leadBars = min(8, max(0, lead)) }
+      if let w = p["wander"]?.bool { run.wander = w }
       setRun = run
-      set.cursor = run.cursor
-      if p["wait"]?.bool == true { await task.value }
       return setStatus(set)
 
     case "status":
@@ -278,9 +272,71 @@ extension AppModel {
 
     default:
       throw ControlRequestError.bad(
-        "unknown action \(action): list, show, plan, add, remove, sequence, start, mix, status, abort"
+        "unknown action \(action): list, show, plan, add, remove, sequence, start, mix, auto, status, abort"
       )
     }
+  }
+
+  // MARK: starting a hand-off, by hand or on its own
+
+  /// Begin the hand-off from the deck the set is on to the next track (`dj_set mix`, and the auto
+  /// runner). The task runs `runSetMix`; the caller may await it.
+  @discardableResult
+  func beginSetMix(_ set: DJSet, fadeBars override: Int?) throws -> Task<Void, Never> {
+    guard var run = setRun, run.name == set.name else {
+      throw ControlRequestError.bad("`\(set.name)` isn't running: dj_set start first")
+    }
+    guard run.task == nil || run.phase != "fading" && run.phase != "loading" else {
+      throw ControlRequestError.bad("a hand-off is already running (dj_set status / abort)")
+    }
+    let next = run.cursor + 1
+    guard set.items.indices.contains(next) else {
+      throw ControlRequestError.bad("`\(set.name)` is on its last track")
+    }
+    let out = run.deck
+    let inn = out == "A" ? "B" : "A"
+    guard engine?[out]?.beatState != nil, engine?[out]?.playing == true else {
+      throw ControlRequestError.bad("deck \(out) isn't playing: dj_perform play first")
+    }
+    let current = set.items[run.cursor]
+    let fade = min(32, max(1, override ?? current.fadeBars ?? set.fadeBars))
+    run.phase = "loading"
+    run.progress = "loading \(set.items[next].composition)"
+    run.warnings = []
+    let task = Task { @MainActor in
+      await self.runSetMix(set: set.name, out: out, inn: inn, next: next, fadeBars: fade)
+    }
+    run.task = task
+    setRun = run
+    return task
+  }
+
+  /// The auto runner (`AppModel.poll`): while a set is running with `auto` on and its deck is
+  /// playing, begin the hand-off `leadBars` before the fade is due (`SetAuto`). `bar` overrides the
+  /// deck's clock reading (1-based), for tests.
+  func serviceSetAuto(bar override: Int? = nil) {
+    // a few checks a second is plenty (poll runs every frame); a test's explicit bar always runs
+    if override == nil {
+      let now = uptime()
+      guard now - setAutoCheckedAt >= 0.25 else { return }
+      setAutoCheckedAt = now
+    }
+    guard let run = setRun, run.auto, run.phase != "loading", run.phase != "fading",
+      let d = engine?[run.deck], d.playing,
+      let bar = override ?? d.beatState.map({ $0.bar + 1 }),
+      let set = try? setStore.load(run.name), set.items.indices.contains(run.cursor + 1)
+    else { return }
+    let item = set.items[run.cursor]
+    if setRun?.currentBars == nil {
+      setRun?.currentBars = compositionStore.list().first { $0.id == item.composition }?.bars
+    }
+    let fade = item.fadeBars ?? set.fadeBars
+    guard let start = SetAuto.startBar(bars: setRun?.currentBars, item: item, fadeBars: fade),
+      SetAuto.due(bar: bar, startBar: start, leadBars: run.leadBars),
+      // not again on the loop round: only from the start bar up to the track's end
+      bar <= (setRun?.currentBars ?? .max)
+    else { return }
+    _ = try? beginSetMix(set, fadeBars: nil)
   }
 
   // MARK: the hand-off
@@ -330,6 +386,11 @@ extension AppModel {
     try? setStore.save(set)
     setRun?.deck = inn
     setRun?.cursor = next
+    setRun?.currentBars = nil
+    if setRun?.wander == true {  // the walk follows the music: on for the incoming deck
+      dj.perform(.wander(deck: out, on: false))
+      dj.perform(.wander(deck: inn, on: true))
+    }
     note("done", "on deck \(inn): \(next + 1)/\(set.items.count)")
     poll()
   }
@@ -382,9 +443,20 @@ extension AppModel {
     if let run = setRun, run.name == set.name {
       var r = JSONObject([
         ("deck", .string(run.deck)), ("cursor", .int(run.cursor)), ("phase", .string(run.phase)),
-        ("progress", .string(run.progress)),
+        ("progress", .string(run.progress)), ("auto", .bool(run.auto)),
+        ("wander", .bool(run.wander)), ("leadBars", .int(run.leadBars)),
         ("warnings", .array(run.warnings.map { .string($0) })),
       ])
+      if run.auto, set.items.indices.contains(run.cursor),
+        let start = SetAuto.startBar(
+          bars: run.currentBars
+            ?? compositionStore.list().first {
+              $0.id == set.items[run.cursor].composition
+            }?.bars, item: set.items[run.cursor],
+          fadeBars: set.items[run.cursor].fadeBars ?? set.fadeBars)
+      {
+        r["nextMixAtBar"] = .int(start)
+      }
       if let d = engine?[run.deck], let bs = d.beatState {
         r["bar"] = .int(bs.bar + 1)
         if let b = set.items.indices.contains(run.cursor) ? run.cursor : nil,

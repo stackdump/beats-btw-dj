@@ -742,8 +742,21 @@ its copy; the two are now independent. Rules inherited from that split:
   `dj_set mix` (`runSetMix`) is the hand-off — load the next on the idle deck, its bass EQ down, play,
   `Deck.sync(.bar)`, crossfade over `fadeBars` in quarter-bar steps with the bass swapped at the midpoint,
   stop the old deck — every step a `DJEngine.perform`, so it records and journals. It runs in the app
-  (returns at once; `status` polls), `AppModel.setSleep` is the injectable clock. Step 2 (not built):
-  wire the set into auto-mix so the next track is cued and handed off with no call.
+  (returns at once; `status` polls), `AppModel.setSleep` is the injectable clock. **`dj_set auto`**
+  (`serviceSetAuto`, called from `AppModel.poll`, ≤ 4×/s): while a set runs with auto on and its deck
+  plays, the hand-off begins `leadBars` (default 1) before the fade is due — `SetAuto.startBar` = the item's
+  `mixOutBar`, else `fadeBars` before the track's last bar so the crossfade ends as the track does; with
+  `wander` the walk follows the music (on for the incoming deck, off for the outgoing). It is the app's
+  clock, not the LLM's: bar-exact timing never depends on an agent polling. (The deeper step — the set
+  driving auto-mix's own planner and phrase boundaries — is not built.)
+- **The `dj` agent** (`.claude/agents/dj.md`, a Claude Code subagent; `DJAgentDefinitionTests` check its
+  tools exist and that it has no shell, write or settings access): plans, pre-rolls, starts and runs a set
+  (compose into slots with `load:false`, `sequence`, `start`, `auto` + wander), adapts the not-yet-played
+  slots to requests, performs inside tracks, and reports; full autonomy inside the set (the user chose
+  "Full DJ"), never replacing an audible deck unasked, never publishing. It cannot wait: it sets `auto`
+  going and returns with `nextMixAtBar`; state lives in the app and on disk, so a second call resumes.
+  The standalone long-running version (a Claude Code session in the `workbit` tmux window or a val job,
+  woken per decision) is the next step.
 - **The `/dj-compose` skill** (`.claude/skills/dj-compose/SKILL.md`, worked `example.json` kept valid by
   `DJComposeSkillTests`) is the working vocabulary and format for all of the above: which tool a phrase
   means ("inspired by" → `dj_inspired`, "push to A" = load on deck A, "standard" = a song form, not a

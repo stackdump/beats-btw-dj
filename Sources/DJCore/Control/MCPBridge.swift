@@ -536,13 +536,23 @@ public struct MCPBridge {
       bass swapped at the midpoint, stops the old deck. It returns at once (hand-off runs in the \
       app; poll `status`: phase loading|fading|done, progress, warnings such as a tempo gap, bar, \
       barsInTrack); `wait` blocks until done. Other actions: list, show, add {set, id, slot?}, \
-      remove {set, index|id}, abort. The app does not advance by itself yet: call `mix` when you \
-      want the next track (every move is recorded like the performer's own).
+      remove {set, index|id}, abort. `auto` {set, on, leadBars?, wander?} makes the app hand off by \
+      itself: while the set's deck plays, the next hand-off begins leadBars (default 1) before its fade is \
+      due (the track's `mixOutBar`, else fadeBars before its last bar, so the crossfade ends as the track \
+      does), and with wander true the walk moves to each incoming deck. `status` shows auto, \
+      nextMixAtBar and the bar. Every move is recorded like the performer's own.
       """,
       [
         "action": prop(
           "string",
-          "list (default) | show | plan | add | remove | sequence | start | mix | status | abort"),
+          "list (default) | show | plan | add | remove | sequence | start | mix | auto | status | abort"
+        ),
+        "on": prop("boolean", "auto: turn the runner on or off"),
+        "leadBars": prop(
+          "number",
+          "auto: begin the hand-off this many bars before the fade is due (0–8, default 1)"),
+        "wander": prop(
+          "boolean", "auto: turn Wander on for each incoming deck and off for the outgoing one"),
         "set": prop("string", "The set's name"),
         "slots": obj([
           ("type", .string("array")),

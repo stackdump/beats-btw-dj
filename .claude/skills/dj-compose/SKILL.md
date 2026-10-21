@@ -170,8 +170,11 @@ Files: `~/Library/Application Support/dj-vevr-se/sets/<name>.json`. Order of wor
    you want the next track: it loads it on the idle deck with its bass EQ down, starts it, tempo- and
    bar-aligns it, crossfades (default 8 bars) with the bass handed over at the midpoint, stops the old
    deck. It returns at once; `dj_set status` shows phase, progress, warnings (tempo gap) and the bar.
-   `wait: true` blocks until done. Mix when the current track is in its outro (`status.bar` vs
-   `barsInTrack`); the app does not advance by itself yet.
+   `wait: true` blocks until done. Or let the app do it: `dj_set {action:"auto", set, on:true, wander:true}`
+   begins each hand-off a bar before its fade is due (the track's `mixOutBar`, else `fadeBars` before its
+   last bar, so the crossfade ends as the track does) and moves Wander to each incoming deck; `status`
+   shows `nextMixAtBar`. Hand the whole job to the **`dj` agent** (`.claude/agents/dj.md`) when you want
+   planning, composing, running and restocking done for you.
 5. **Report** the plan as a table (slot, label, track, tempo, key, energy), any gaps, and warnings.
 
 Words: "warm-up / build / lift / peak / cool-down" are the plan's slot labels. A set has no hard length;
@@ -185,5 +188,5 @@ Wander has more to play with; lock `arrangement` / `fx` / `palette` to keep it f
 
 ## 8. Not supported yet
 
-Auto-advancing a set without `dj_set mix` (the auto-mix runner is next), tempo changes inside a roll, per-bar time-signature changes, drums beyond kick/snare/hat/clap, vocals,
+Tempo changes inside a roll, per-bar time-signature changes, drums beyond kick/snare/hat/clap, vocals,
 and lyrics. Live filter sweeps and risers are performed (`dj_perform` macros / FX), not written.

@@ -1142,6 +1142,42 @@ struct SetControlTests {
     #expect(list["sets"]?.array?.first?["tracks"]?.int == 2)
   }
 
+  @Test func autoHandsOffByItselfAtTheRightBarAndMovesWanderAlong() async throws {
+    let m = try model()
+    func call(_ method: String, _ json: String) async throws -> JSONValue {
+      try await m.control(method, JSONValue.parse(json))
+    }
+    // two 4-bar tracks, a 2-bar fade: the fade is due at bar 3, begun a bar early (bar 2)
+    _ = try await call(
+      "set",
+      #"{"action":"plan","set":"fri","slots":[{"label":"a","energy":0.3},{"label":"b","energy":0.9}],"fadeBars":2}"#
+    )
+    _ = try await call("composeRoll", roll("One", tempo: 124, energy: 0.3, slot: 0))
+    _ = try await call("composeRoll", roll("Two", tempo: 124, energy: 0.9, slot: 1))
+    _ = try await call("set", #"{"action":"start","set":"fri","deck":"A","play":true}"#)
+    m.engine?.crossfader = 0
+    let on = try await call("set", #"{"action":"auto","set":"fri","on":true,"wander":true}"#)
+    #expect(on["running"]?["auto"]?.bool == true && on["running"]?["nextMixAtBar"]?.int == 3)
+
+    m.serviceSetAuto(bar: 1)  // too early: nothing starts
+    #expect(m.setRun?.phase == "idle" && m.engine?["B"]?.title == "demo loop")
+
+    m.serviceSetAuto(bar: 2)  // a bar before the fade: the hand-off begins
+    let task = try #require(m.setRun?.task)
+    await task.value
+    #expect(m.setRun?.phase == "done" && m.setRun?.deck == "B" && m.setRun?.cursor == 1)
+    #expect(m.engine?["B"]?.title == "Two" && m.engine?["B"]?.playing == true)
+    #expect(m.engine?["A"]?.playing == false && m.engine?.crossfader == 1)
+    #expect(m.engine?["B"]?.wander.on == true && m.engine?["A"]?.wander.on == false)
+
+    // the last track: auto has nothing to hand off to, and says so only by staying put
+    m.serviceSetAuto(bar: 4)
+    #expect(m.setRun?.phase == "done" && m.setRun?.cursor == 1)
+    // turned off it never fires
+    _ = try await call("set", #"{"action":"auto","set":"fri","on":false}"#)
+    #expect(m.setRun?.auto == false)
+  }
+
   @Test func aSlotNothingFitsComesBackWithTheBriefToCompose() async throws {
     let m = try model()
     _ = try await m.control(
