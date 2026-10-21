@@ -83,7 +83,7 @@ struct PianoRollTests {
   @Test func theToolIsListedAndMapsToTheControlMethod() throws {
     let tools = MCPBridge.tools
     let tool = try #require(tools.first { $0["name"]?.string == "dj_compose" })
-    #expect(tool["inputSchema"]?["required"] == .array([.string("deck"), .string("parts")]))
+    #expect(tool["inputSchema"]?["required"] == .array([.string("parts")]))
     #expect(MCPBridge.methods["dj_compose"] == "composeRoll")
     #expect(MCPBridge.instructions.contains("dj_compose"))
   }

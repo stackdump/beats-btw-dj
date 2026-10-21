@@ -727,6 +727,18 @@ its copy; the two are now independent. Rules inherited from that split:
   line; the same CID is kept once; the reply's `saved` is the path. **`dj_compositions`** lists them
   (newest first) and `load {deck, id}` puts one back on a deck (`id` = any unique part: a title word, a
   CID tail). `AppModel(compositions:)` injects a store (tests pass `temporaryCompositions()`).
+- **Sets** (`Session/SetStore.swift`, `DJViews/AppControl+Set.swift`, `dj_set`): a `DJSet` is a plan of
+  slots (label, energy 0…1, bpm?, key?, bars?) plus items (a saved composition per slot, optional
+  `mixOutBar` / `fadeBars`) and a cursor, kept in `…/dj-vevr-se/sets/<slug>.json` (`$DJ_SETS_DIR`).
+  Pre-roll with `dj_compose` / `dj_inspired` / `dj_import` `load:false` (+ `set`, `slot`, `energy`, `key`:
+  saved, filed in the set, no deck touched). `SetPlanner.sequence` fills a plan from what's saved
+  (cost = 2·|energy gap| + 4·tempo gap at 1× / ½× / 2× + 0.12·circle-of-fifths key distance, gap above
+  0.6 → the brief to compose) and reports tempo jumps beyond the ±8 % fader. `dj_set start` loads track 1;
+  `dj_set mix` (`runSetMix`) is the hand-off — load the next on the idle deck, its bass EQ down, play,
+  `Deck.sync(.bar)`, crossfade over `fadeBars` in quarter-bar steps with the bass swapped at the midpoint,
+  stop the old deck — every step a `DJEngine.perform`, so it records and journals. It runs in the app
+  (returns at once; `status` polls), `AppModel.setSleep` is the injectable clock. Step 2 (not built):
+  wire the set into auto-mix so the next track is cued and handed off with no call.
 - **The `/dj-compose` skill** (`.claude/skills/dj-compose/SKILL.md`, worked `example.json` kept valid by
   `DJComposeSkillTests`) is the working vocabulary and format for all of the above: which tool a phrase
   means ("inspired by" → `dj_inspired`, "push to A" = load on deck A, "standard" = a song form, not a

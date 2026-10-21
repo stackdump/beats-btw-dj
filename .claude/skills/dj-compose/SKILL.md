@@ -1,6 +1,6 @@
 ---
 name: dj-compose
-description: Write music for the dj-vevr-se app and play it on a deck — an original track from a genre or style brief, a piece "inspired by" an artist, a song in a chosen form, or a score file imported from disk. Use for "compose / write / make me a <genre> track", "<artist>-style", "inspired by …", "push/load … to A or B", "hard techno / trance / house …", "import this .mid / MusicXML", or "what have we made / reload that one". Gives the one vocabulary, the style-brief card, the roll format and the genre cheat sheet the dj_compose, dj_inspired, dj_import and dj_compositions tools expect.
+description: Write music for the dj-vevr-se app and play it on a deck — an original track from a genre or style brief, a piece "inspired by" an artist, a song in a chosen form, a score file imported from disk, or a whole pre-rolled set queued and mixed on an energy curve. Use for "compose / write / make me a <genre> track", "pre-roll / queue a set", "mix into the next", "<artist>-style", "inspired by …", "push/load … to A or B", "hard techno / trance / house …", "import this .mid / MusicXML", or "what have we made / reload that one". Gives the one vocabulary, the style-brief card, the roll format and the genre cheat sheet the dj_compose, dj_inspired, dj_import and dj_compositions tools expect.
 ---
 
 # dj-compose
@@ -16,6 +16,8 @@ share). You cannot hear it: read `dj_state` (roles on, level), say what you wrot
 | "compose / write / make a <genre> track" (no artist) | `dj_compose` |
 | "import / play this file" (.mid .midi .musicxml .xml .mxl) | `dj_import` (`inspect: true` first if unsure of the roles) |
 | "what have we made", "reload the daft punk one" | `dj_compositions` (list, then `load {deck, id}`) |
+| "**pre-roll / queue up a set**", "a set of N tracks", "plan a night" | `dj_set` plan → compose each track with `load: false` into the set → `sequence` → `start` → `mix` (section 9) |
+| "**mix into the next**", "swap A to B", "bring in the next one" | `dj_set mix` (the beat-matched, bass-swapped crossfade) |
 | "random / generate me some <genre>" (no notes from you) | `dj_generate` (the generator's own seeds); add `structure` |
 | "**push / load / send** … to **A** or **B**" | load it on that deck. In this app "push" is never git push |
 | "**play** / start it" | `dj_perform` play. Loading does not start a deck (a deck already playing keeps playing) |
@@ -147,7 +149,35 @@ with `{genre, seed, structure}`) gives the full seven-section song with no notes
 6. Start playback only if asked (or the deck was already playing). Don't overwrite a playing deck
    unasked unless the user named it.
 
+## 9. Sets (pre-roll a night, queue it, mix it)
+
+A **set** is a named plan of slots on an energy curve, each slot filled by a saved composition.
+Files: `~/Library/Application Support/dj-vevr-se/sets/<name>.json`. Order of work:
+
+1. **Plan the curve.** `dj_set {action:"plan", set:"fri", count:6, shape:"arc", bpm:[124,150]}`
+   (shapes: `arc` warm-up → peak → cool-down, `rise`, `plateau`), or explicit
+   `slots:[{label, energy 0–1, bpm?, key?, bars?}]`. Tempo steps between neighbours should stay within
+   ±8 % (the pitch fader; half/double time also counts) so every hand-off can be beat-matched.
+2. **Pre-roll the tracks, don't load them.** Each `dj_compose` / `dj_inspired` / `dj_import` call takes
+   `load: false`, `set: "fri"`, `slot: N`, `energy`, `key` ("A minor"). It saves the track, fills the slot,
+   touches no deck. Compose to the slot's brief (energy, tempo, key, `bars`). Keep neighbours in
+   compatible keys (same, relative, or a fifth apart) and write each track as a full form (section 5)
+   with an intro and an outro long enough to mix in and out of (≥ 8 bars each side).
+3. **Sequence.** `dj_set sequence` fills the plan from *everything saved* by energy, then tempo, then
+   key distance, and returns `gaps` (a slot nothing fits, with the exact brief to compose) and
+   `tempoJumps` (neighbours the fader can't match). Compose the gaps, `sequence` again.
+4. **Start and mix.** `dj_set start {set, deck:"A", play:true}`, then `dj_set mix {set, fadeBars?}` when
+   you want the next track: it loads it on the idle deck with its bass EQ down, starts it, tempo- and
+   bar-aligns it, crossfades (default 8 bars) with the bass handed over at the midpoint, stops the old
+   deck. It returns at once; `dj_set status` shows phase, progress, warnings (tempo gap) and the bar.
+   `wait: true` blocks until done. Mix when the current track is in its outro (`status.bar` vs
+   `barsInTrack`); the app does not advance by itself yet.
+5. **Report** the plan as a table (slot, label, track, tempo, key, energy), any gaps, and warnings.
+
+Words: "warm-up / build / lift / peak / cool-down" are the plan's slot labels. A set has no hard length;
+6–10 tracks of 36–64 bars is a night. Sets never publish anything.
+
 ## 8. Not supported yet
 
-Tempo changes inside a roll, per-bar time-signature changes, drums beyond kick/snare/hat/clap, vocals,
+Auto-advancing a set without `dj_set mix` (the auto-mix runner is next), tempo changes inside a roll, per-bar time-signature changes, drums beyond kick/snare/hat/clap, vocals,
 and lyrics. Live filter sweeps and risers are performed (`dj_perform` macros / FX), not written.

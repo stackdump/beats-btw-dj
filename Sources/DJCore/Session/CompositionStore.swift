@@ -33,6 +33,10 @@ public struct CompositionStore {
     public var cid: String
     public var note: String?
     public var tempo: Double?
+    /// Set planning: how hard it hits (0…1), its key ("A minor") and its length, when known.
+    public var energy: Double?
+    public var key: String?
+    public var bars: Int?
   }
 
   public enum StoreError: Error, Equatable, CustomStringConvertible {
@@ -91,6 +95,11 @@ public struct CompositionStore {
     ])
     if let n = envelope["note"]?.string { head["note"] = .string(n) }
     if let t = envelope["tempo"]?.double { head["tempo"] = .number(t) }
+    if let e = request?["energy"]?.double { head["energy"] = .number(min(1, max(0, e))) }
+    if let k = request?["key"]?.string, !k.isEmpty { head["key"] = .string(k) }
+    if let steps = envelope["nets"]?.object?.entries.first?.value["places"]?.object?.entries.count {
+      head["bars"] = .int(steps / 16)
+    }
     if let request { head["request"] = request }
     head["envelope"] = envelope
     // one top-level key per line
@@ -121,7 +130,8 @@ public struct CompositionStore {
         id: url.deletingPathExtension().lastPathComponent, url: url,
         name: doc["name"]?.string ?? "", kind: doc["kind"]?.string ?? "",
         deck: doc["deck"]?.string ?? "", saved: doc["saved"]?.string ?? "",
-        cid: doc["cid"]?.string ?? "", note: doc["note"]?.string, tempo: doc["tempo"]?.double)
+        cid: doc["cid"]?.string ?? "", note: doc["note"]?.string, tempo: doc["tempo"]?.double,
+        energy: doc["energy"]?.double, key: doc["key"]?.string, bars: doc["bars"]?.int)
     }
   }
 

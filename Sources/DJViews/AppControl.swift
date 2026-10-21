@@ -248,7 +248,9 @@ extension AppModel {
       }
       let inspecting = method == "importScore" && p["inspect"]?.bool == true
       let deck = p["deck"]?.string ?? ""
-      if !inspecting { _ = try requireDeck(deck) }
+      // `load: false` stages a composition (saved, maybe added to a set) without a deck.
+      let staging = (method == "composeRoll" || method == "importScore") && p["load"]?.bool == false
+      if !inspecting && !staging { _ = try requireDeck(deck) }
       // dj_compose / dj_inspired: a piano roll becomes a raw-nets envelope, then loads like
       // any share. dj_import: a score file is read into the same kind of envelope.
       var rollPayload: JSONValue?
@@ -284,6 +286,15 @@ extension AppModel {
         }
         if inspecting { return .object(JSONObject([("import", importSummary ?? .null)])) }
       }
+      if staging, let envelope = rollPayload {
+        var o = keepComposition(
+          method: method, p: p, deck: deck, envelope: envelope, importSummary: importSummary)
+        o["staged"] = .bool(true)
+        o["name"] = envelope["name"] ?? .null
+        if let t = envelope["tempo"] { o["tempo"] = t }
+        if let importSummary { o["import"] = importSummary }
+        return .object(o)
+      }
       let source: DeckSourceDescriptor
       do {
         if rollPayload == nil, let link = p["link"]?.string {
@@ -303,15 +314,9 @@ extension AppModel {
       if let importSummary { o["import"] = importSummary }
       // Keep what was composed or imported, for reference and replay (never fails the load).
       if method == "composeRoll" || method == "importScore", let envelope = rollPayload {
-        var req = p.object ?? JSONObject()
-        if let importSummary { req["import"] = importSummary }
-        do {
-          let kept = try compositionStore.save(
-            kind: method == "importScore"
-              ? "import" : (p["inspiredBy"]?.string?.isEmpty == false ? "inspired" : "compose"),
-            deck: deck, envelope: envelope, request: .object(req))
-          o["saved"] = .string(kept.url.path)
-        } catch { o["saved"] = .string("not saved: \(error)") }
+        for (k, v) in keepComposition(
+          method: method, p: p, deck: deck, envelope: envelope, importSummary: importSummary
+        ).entries { o[k] = v }
       }
       if case .rawNets(let payload) = source {
         o["share"] = .object(
@@ -326,6 +331,9 @@ extension AppModel {
           ]))
       }
       return .object(o)
+
+    case "set":
+      return try await controlSet(p)
 
     case "loadFile":
       let deck = p["deck"]?.string ?? ""

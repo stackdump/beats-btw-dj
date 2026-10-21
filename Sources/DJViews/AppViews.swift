@@ -248,6 +248,13 @@ public final class AppModel {
   @ObservationIgnored let favoritesStore: FavoritesStore
   /// Where `dj_compose` / `dj_inspired` / `dj_import` keep what they played.
   @ObservationIgnored let compositionStore: CompositionStore
+  /// Named sets of compositions on an energy curve (`dj_set`), and the one now running.
+  @ObservationIgnored let setStore: SetStore
+  @ObservationIgnored var setRun: SetRun?
+  /// How the set runner waits between crossfade steps (tests swap in a no-op).
+  @ObservationIgnored var setSleep: (Double) async -> Void = { seconds in
+    try? await Task.sleep(for: .seconds(seconds))
+  }
   /// The journal (JournalModel.swift): the run's event log, the notes it holds, its latest lines.
   var notes: [TrackNote] = []
   var journalEntries: [JournalEntry] = []
@@ -315,9 +322,11 @@ public final class AppModel {
     engine: DJEngine? = nil, perf: PerfMonitor? = nil, favorites: FavoritesStore = FavoritesStore(),
     loops: StockLoopLibrary = StockLoopLibrary(), takes: LoopLibrary? = nil,
     voices: VoiceVariationStore = VoiceVariationStore(), notes: NotesStore = NotesStore(),
-    journal: URL? = nil, compositions: CompositionStore = CompositionStore()
+    journal: URL? = nil, compositions: CompositionStore = CompositionStore(),
+    sets: SetStore = SetStore()
   ) {
     compositionStore = compositions
+    setStore = sets
     notesStore = notes
     journalDir = journal
     self.notes = notes.list()

@@ -18,7 +18,7 @@ public struct MCPBridge {
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_load_share": "loadShare",
     "dj_compose": "composeRoll", "dj_inspired": "composeRoll", "dj_import": "importScore",
-    "dj_compositions": "compositions",
+    "dj_compositions": "compositions", "dj_set": "set",
     "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
@@ -379,7 +379,15 @@ public struct MCPBridge {
       playing on load.
       """,
       [
-        "deck": prop("string", "A or B"),
+        "deck": prop("string", "A or B (not needed with load false)"),
+        "load": prop(
+          "boolean",
+          "false = stage it: save the track (and add it to `set`) without loading a deck, so a whole set can be pre-rolled"
+        ),
+        "energy": prop("number", "How hard it hits, 0–1 (kept for set planning)"),
+        "key": prop("string", "Its key, e.g. \"A minor\" (kept for set planning)"),
+        "set": prop("string", "Add it to this set (created if new), in `slot` if given"),
+        "slot": prop("number", "Plan slot index to fill in `set`"),
         "name": prop("string", "Title shown on the deck"),
         "tempo": prop("number", "BPM, 40–300 (default 120)"),
         "swing": prop("number", "Swing 0–100 (default 0)"),
@@ -397,7 +405,7 @@ public struct MCPBridge {
           ),
         ]),
       ],
-      required: ["deck", "parts"]),
+      required: ["parts"]),
     tool(
       "dj_inspired",
       """
@@ -414,7 +422,15 @@ public struct MCPBridge {
       by leaving parts out of early bars), not one loop.
       """,
       [
-        "deck": prop("string", "A or B"),
+        "deck": prop("string", "A or B (not needed with load false)"),
+        "load": prop(
+          "boolean",
+          "false = stage it: save the track (and add it to `set`) without loading a deck, so a whole set can be pre-rolled"
+        ),
+        "energy": prop("number", "How hard it hits, 0–1 (kept for set planning)"),
+        "key": prop("string", "Its key, e.g. \"A minor\" (kept for set planning)"),
+        "set": prop("string", "Add it to this set (created if new), in `slot` if given"),
+        "slot": prop("number", "Plan slot index to fill in `set`"),
         "inspiredBy": prop("string", "The artist or track, e.g. \"Avicii\" or \"Avicii – Levels\""),
         "brief": prop(
           "string",
@@ -435,7 +451,7 @@ public struct MCPBridge {
           ),
         ]),
       ],
-      required: ["deck", "inspiredBy", "parts"]),
+      required: ["inspiredBy", "parts"]),
     tool(
       "dj_import",
       """
@@ -453,7 +469,16 @@ public struct MCPBridge {
       share's note). Does not start playback, and never publishes.
       """,
       [
-        "deck": prop("string", "A or B (not needed with inspect)"),
+        "deck": prop("string", "A or B (not needed with inspect or load false)"),
+        "load": prop(
+          "boolean",
+          "false = stage it: save the track (and add it to `set`) without loading a deck, so a whole set can be pre-rolled"
+        ),
+        "energy": prop("number", "How hard it hits, 0–1 (kept for set planning)"),
+        "key": prop("string", "Its key, e.g. \"A minor\" (kept for set planning)"),
+        "set": prop("string", "Add it to this set (created if new), in `slot` if given"),
+        "slot": prop("number", "Plan slot index to fill in `set`"),
+
         "path": prop(
           "string", "Absolute path (or ~/…) to a .mid / .midi / .musicxml / .xml / .mxl file"),
         "from": prop("number", "First bar of the excerpt, 0-based (default 0)"),
@@ -492,6 +517,56 @@ public struct MCPBridge {
         "id": prop("string", "The composition's id, or a unique part of it (load)"),
         "query": prop("string", "Filter the list by part of an id (list)"),
         "limit": prop("number", "Most rows to list (default 50)"),
+      ]),
+    tool(
+      "dj_set",
+      """
+      Plan, pre-roll and play a whole set. A set is a named plan of slots on an energy curve \
+      (label, energy 0–1, tempo, key) with a saved composition in each slot, kept in \
+      ~/Library/Application Support/dj-vevr-se/sets/. Workflow: `plan` {set, count, shape arc|rise|\
+      plateau, bpm [low, high]} (or explicit `slots` [{label, energy, bpm?, key?, bars?}]) → pre-roll \
+      tracks with dj_compose / dj_inspired / dj_import using load false, set, slot, energy, key (they \
+      are saved and filled into the plan; nothing is loaded) → `sequence` fills the plan from \
+      everything saved by energy, tempo (matchable at 1×, ½×, 2×) and key distance on the circle of \
+      fifths, and returns `gaps` (slots nothing fits: the brief to compose) and `tempoJumps` → \
+      `start` {set, deck?, play?} loads track 1 → `mix` {set, fadeBars?, wait?} hands off to the next \
+      track: loads it on the idle deck with its bass EQ down, starts it, tempo-matches and \
+      bar-aligns it (the deck's sync), crossfades over fadeBars bars (default the set's, 8) with the \
+      bass swapped at the midpoint, stops the old deck. It returns at once (hand-off runs in the \
+      app; poll `status`: phase loading|fading|done, progress, warnings such as a tempo gap, bar, \
+      barsInTrack); `wait` blocks until done. Other actions: list, show, add {set, id, slot?}, \
+      remove {set, index|id}, abort. The app does not advance by itself yet: call `mix` when you \
+      want the next track (every move is recorded like the performer's own).
+      """,
+      [
+        "action": prop(
+          "string",
+          "list (default) | show | plan | add | remove | sequence | start | mix | status | abort"),
+        "set": prop("string", "The set's name"),
+        "slots": obj([
+          ("type", .string("array")),
+          ("description", .string("plan: [{label, energy 0-1, bpm?, key?, bars?}]")),
+        ]),
+        "count": prop("number", "plan: generate this many slots on a curve (1–32)"),
+        "shape": prop("string", "plan with count: arc (default) | rise | plateau"),
+        "bpm": obj([
+          ("type", .string("array")),
+          ("description", .string("plan with count: [low, high] tempo mapped onto the curve")),
+        ]),
+        "fadeBars": prop(
+          "number",
+          "Crossfade length in bars, 1–32 (plan: the set's default; mix: this hand-off; add: this track's)"
+        ),
+        "keepItems": prop("boolean", "plan: keep the tracks already in the set"),
+        "from": prop(
+          "string", "sequence: all (default, everything saved) | set (only tracks already in it)"),
+        "id": prop("string", "add / remove: a composition id or any unique part of it"),
+        "index": prop("number", "remove: track index"),
+        "slot": prop("number", "add: plan slot to fill"),
+        "mixOutBar": prop("number", "add: bar to start mixing out at (for the auto runner)"),
+        "deck": prop("string", "start: A (default) or B"),
+        "play": prop("boolean", "start: also start the deck"),
+        "wait": prop("boolean", "mix: wait for the hand-off to finish"),
       ]),
     tool(
       "dj_favorites",

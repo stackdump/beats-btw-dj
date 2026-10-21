@@ -1069,3 +1069,92 @@ struct ScreenWakeLockTests {
     #expect(!m.defaults.bool(forKey: AppModel.keepScreenAwakeKey))
   }
 }
+
+/// `dj_set`: pre-roll tracks without loading, fill a plan, start the set and hand off.
+@MainActor
+struct SetControlTests {
+  func model() throws -> AppModel {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, compositions: temporaryCompositions(), sets: temporarySets())
+    m.setSleep = { _ in }  // no waiting between crossfade steps
+    m.start()
+    return m
+  }
+
+  func roll(_ name: String, tempo: Int, energy: Double, slot: Int?) -> String {
+    #"{"load":false,"set":"fri","name":"\#(name)","tempo":\#(tempo),"energy":\#(energy),"key":"A minor","#
+      + (slot.map { #""slot":\#($0),"# } ?? "")
+      + #""parts":{"kick":{"every":16,"until":64,"notes":[[0],[4],[8],[12]]},"bass":{"every":16,"until":64,"notes":[[2,45,2]]}}}"#
+  }
+
+  @Test func preRollsFillsThePlanStartsAndHandsOff() async throws {
+    let m = try model()
+    func call(_ method: String, _ json: String) async throws -> JSONValue {
+      try await m.control(method, JSONValue.parse(json))
+    }
+    let plan = try await call(
+      "set",
+      #"{"action":"plan","set":"fri","slots":[{"label":"warm-up","energy":0.3,"bpm":124},{"label":"peak","energy":0.95,"bpm":124}]}"#
+    )
+    #expect(plan["plan"]?.array?.count == 2 && plan["empty"]?.array?.count == 2)
+
+    // staging: saved and added to the set, no deck touched
+    let s1 = try await call("composeRoll", roll("Peak", tempo: 124, energy: 0.95, slot: 1))
+    #expect(s1["staged"]?.bool == true && s1["saved"]?.string?.contains("-peak-") == true)
+    #expect(s1["set"]?["items"]?.int == 1)
+    _ = try await call("composeRoll", roll("Warm", tempo: 124, energy: 0.3, slot: nil))
+    #expect(m.engine?["A"]?.title == "demo loop")
+    let shown = try await call("set", #"{"action":"show","set":"fri"}"#)
+    let tracks = try #require(shown["tracks"]?.array)
+    #expect(tracks.map { $0["name"]?.string } == ["Warm", "Peak"])  // slot 0 (auto), slot 1
+    #expect(tracks.map { $0["slot"]?.int } == [0, 1] && tracks[1]["energy"]?.double == 0.95)
+    #expect(shown["empty"]?.array?.isEmpty == true)
+
+    // sequencing from everything saved gives the same order, and no gaps
+    let seq = try await call("set", #"{"action":"sequence","set":"fri"}"#)
+    #expect(seq["tracks"]?.array?.map { $0["name"]?.string } == ["Warm", "Peak"])
+    #expect(seq["gaps"]?.array?.isEmpty == true && seq["tempoJumps"]?.array?.isEmpty == true)
+
+    // start: track 1 on A, playing
+    let started = try await call("set", #"{"action":"start","set":"fri","deck":"A","play":true}"#)
+    #expect(started["running"]?["deck"]?.string == "A" && started["running"]?["cursor"]?.int == 0)
+    #expect(m.engine?["A"]?.title == "Warm" && m.engine?["A"]?.playing == true)
+    m.engine?.crossfader = 0
+
+    // hand off: B loads track 2, plays; the fader lands on B, A stops, the bass EQ is back
+    let mixed = try await call("set", #"{"action":"mix","set":"fri","fadeBars":2,"wait":true}"#)
+    let run = try #require(mixed["running"])
+    #expect(run["phase"]?.string == "done" && run["deck"]?.string == "B" && run["cursor"]?.int == 1)
+    #expect(m.engine?["B"]?.title == "Peak" && m.engine?["B"]?.playing == true)
+    #expect(m.engine?["A"]?.playing == false && m.engine?.crossfader == 1)
+    #expect(m.engine?["A"]?.eqLow == 0.5 && m.engine?["B"]?.eqLow == 0.5)
+    #expect(try m.setStore.load("fri").cursor == 1)
+
+    // the last track: nothing to mix into
+    await #expect(throws: (any Error).self) {
+      try await call("set", #"{"action":"mix","set":"fri"}"#)
+    }
+    // the same set again, from the top
+    let list = try await call("set", "{}")
+    #expect(list["sets"]?.array?.first?["tracks"]?.int == 2)
+  }
+
+  @Test func aSlotNothingFitsComesBackWithTheBriefToCompose() async throws {
+    let m = try model()
+    _ = try await m.control(
+      "set",
+      JSONValue.parse(
+        #"{"action":"plan","set":"g","slots":[{"label":"peak","energy":1,"bpm":150,"key":"A minor","bars":36}]}"#
+      ))
+    let seq = try await m.control("set", JSONValue.parse(#"{"action":"sequence","set":"g"}"#))
+    let gap = try #require(seq["gaps"]?.array?.first)
+    #expect(gap["label"]?.string == "peak" && gap["bpm"]?.double == 150)
+    #expect(gap["compose"]?.string?.contains("load false") == true)
+    await #expect(throws: (any Error).self) {
+      try await m.control("set", JSONValue.parse(#"{"action":"start","set":"g"}"#))
+    }
+  }
+}

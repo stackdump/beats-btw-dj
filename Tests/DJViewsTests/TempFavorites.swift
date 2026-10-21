@@ -75,3 +75,10 @@ func temporaryCompositions() -> CompositionStore {
     directory: FileManager.default.temporaryDirectory
       .appendingPathComponent("compositions-\(UUID().uuidString)", isDirectory: true))
 }
+
+/// A sets store in a fresh temporary folder.
+func temporarySets() -> SetStore {
+  SetStore(
+    directory: FileManager.default.temporaryDirectory
+      .appendingPathComponent("sets-\(UUID().uuidString)", isDirectory: true))
+}
