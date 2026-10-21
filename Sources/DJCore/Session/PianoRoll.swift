@@ -48,7 +48,7 @@ public enum PianoRoll {
     var velocity: Int
   }
 
-  /// `params`: `{name?, tempo?, swing?, steps?, inspiredBy?, brief?, parts: {role: {instrument?, channel?, notes}}}`.
+  /// `params`: `{name?, tempo?, swing?, steps?, inspiredBy?, brief?, layers?, parts: {role: {instrument?, channel?, notes}}}`.
   /// A note is `[step, note, dur?, vel?]` or `{step, note?, dur?, vel?}` (steps count sixteenths
   /// from 0; `dur` in sixteenths; drum parts may leave `note` out). Returns the envelope.
   public static func envelope(_ params: JSONValue) throws -> JSONValue {
@@ -186,6 +186,9 @@ public enum PianoRoll {
     }
     if let s = params["swing"]?.double { env["swing"] = .number(s) }
     env["nets"] = .object(nets)
+    // library sounds that come in over the track as parallel tracks (`LoopLayers`)
+    let layers = try LoopLayers.parse(params["layers"] ?? params[LoopLayers.envelopeKey])
+    if !layers.isEmpty { env[LoopLayers.envelopeKey] = LoopLayers.json(layers) }
     return .object(env)
   }
 

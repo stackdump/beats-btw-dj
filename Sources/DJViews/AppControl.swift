@@ -286,6 +286,11 @@ extension AppModel {
         }
         if inspecting { return .object(JSONObject([("import", importSummary ?? .null)])) }
       }
+      // library sounds that come in over the track (`layers`): resolved against the library now,
+      // so what is saved and loaded names exact loops
+      if method == "composeRoll" || method == "importScore", let env = rollPayload {
+        rollPayload = try await attachLayers(to: env, from: p)
+      }
       if staging, let envelope = rollPayload {
         var o = keepComposition(
           method: method, p: p, deck: deck, envelope: envelope, importSummary: importSummary)
@@ -1033,6 +1038,7 @@ extension AppModel {
     o["title"] = .string(s.title)
     o["mode"] = .string(s.isNet ? "net" : "sample")
     o["playing"] = .bool(s.playing)
+    if let layers = layersJSON(name) { o["layers"] = layers }
     if let bpm = s.bpm { o["bpm"] = .number((bpm * 10).rounded() / 10) }
     o["position"] = .number((s.positionSeconds * 100).rounded() / 100)
     o["duration"] = .number((s.duration * 100).rounded() / 100)

@@ -252,6 +252,9 @@ public final class AppModel {
   @ObservationIgnored let setStore: SetStore
   @ObservationIgnored var setRun: SetRun?
   @ObservationIgnored var setAutoCheckedAt = 0.0
+  /// Loop layers a raw track brings in (`LayerRunner`): one plan per deck, checked a few times a second.
+  @ObservationIgnored var layerPlans: [String: LayerPlan] = [:]
+  @ObservationIgnored var layersCheckedAt = 0.0
   /// The debug console (`ConsoleWindow`): one per app, so its scrollback outlives the window.
   @ObservationIgnored public lazy var console: ConsoleModel = {
     let c = ConsoleModel(app: self)
@@ -487,6 +490,7 @@ public final class AppModel {
   public func poll() {
     guard let dj else { return }
     serviceSetAuto()  // a running set with auto on hands off by itself (`dj_set auto`)
+    serviceLayers()  // loop layers come in and go out on the deck's bars
     let now = uptime()
     let router = hub?.router ?? injectedRouter
     // The perf monitor measures while something plays; the rings are rebuilt less often at the

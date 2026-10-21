@@ -29,6 +29,7 @@ journal, so nothing is unrecoverable.
 - **Start and run**: `dj_set start {deck, play: true}` then `dj_set auto {on: true, wander: true}`:
   the app begins each hand-off a bar before its fade is due and moves Wander to each incoming deck.
   Check `dj_set status` (`phase`, `warnings`, `nextMixAtBar`).
+- **Layer in library sounds**: vocals, risers, impacts from the Apple Loops (`layers` on a compose, the skill's section 4b): find with `dj_stock_loops list`, choose by tempo and key, place them on bars; they are local-only, never published.
 - **Perform inside a track**: Wander (`dj_perform` op wander / wanderPace / wanderLock), macros, FX,
   stingers, role mutes, EQ. Lock `arrangement` / `fx` / `palette` on a deck when a moment needs
   holding still. Restore EQ you moved. Keep `master` and deck volumes where you found them

@@ -764,6 +764,20 @@ its copy; the two are now independent. Rules inherited from that split:
   the roll grid and roles, a genre cheat sheet, the instrument vocabulary and the originality rules.
   Rolls take repeating patterns: a part is a segment or list of segments `{from?, every?, until?,
   instrument?, notes}` (`PianoRoll`), so a bar of drums is written once and a part enters at `from`.
+- **Loop layers** (`Session/LoopLayers.swift`, `DJViews/LayerRunner.swift`): a raw track brings library sounds —
+  vocals, risers, impacts — in as parallel tracks on the loop channel. `layers: [{loop, bar, bars?, gain?,
+  keyLock?}]` on `dj_compose` / `dj_inspired` / `dj_import` is validated by `LoopLayers.parse`, resolved against
+  the Apple Loops library at compose time (`AppModel.attachLayers`: exact name, or a unique part, else an error
+  naming the candidates) and stored in the envelope as `loopLayers` (path + name, never audio; saved with the
+  composition, so sets and the agent carry it). `AppModel.serviceLayers` (poll, ≤ 4×/s) reads the playing raw
+  deck's `currentRawNets["loopLayers"]`, puts each loop on the row once (`addStockLoopToRow`, `clipGain`,
+  `clipKeyLock`), then on the deck's own bar clock launches a layer a bar before its bar and stops it a bar
+  before its end (`DeckAction.clipLoop`, so the loop bank's launch quantum lands both on the bar lines, tempo
+  following the louder deck), resets on the loop-round, and lets go when the deck stops or the track changes.
+  Poke = `clipLoop`, rule = the roll's own list, boundary = the bar. `dj_state.decks.X.layers` shows it.
+  **Local only**: a track with layers is never published (stock loops stay off the CDN, `Session.importedClips`).
+  Not built: sample-exact hits inside the net (a sample voice fired by a roll step, for an impact on the exact
+  drop beat); layers on a composed (`.net`) deck; the loop's own key retuned to the track.
 - **The debug console** (⇧⌘D or the bottom bar's "Debug Console"; `ConsoleModel` / `ConsoleView`, parser in
   `Control/ConsoleCommand.swift`): a CLI over **every MCP tool**, through the same `AppModel.control` the
   socket and MCP use (so it records the same). The command list *is* `MCPBridge.catalog` (a tool added to the

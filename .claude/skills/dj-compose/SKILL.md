@@ -95,6 +95,38 @@ here (16-bar house; a test keeps it valid):
   "bass":[{"from":64,"every":64,"until":256,"notes":[[2,45,2],[6,45,2]]}]}}
 ```
 
+## 4b. Layers: vocals and sound effects from the library
+
+A raw track can bring Apple Loops in as **parallel tracks** on the loop channel: vocals for fun, risers,
+impacts, textures. Name them in `layers` on `dj_compose` / `dj_inspired` / `dj_import`:
+
+```json
+"layers": [
+  {"loop": "Heavy Tech Riser 01",     "bar": 28, "bars": 4, "gain": -6},
+  {"loop": "Heavy Tech Impact",       "bar": 32, "bars": 2, "gain": -3},
+  {"loop": "Bhangra Glow Chop Vox 01", "bar": [33, 41], "bars": 4, "gain": -9}
+]
+```
+
+`bar` is the 1-based bar it comes in on (one, or a list), `bars` how long it stays (default one pass of the
+loop), `gain` dB under unity (−24…0, default −3; loops are never boosted), `keyLock` keeps its pitch when the
+deck's tempo isn't the loop's own (default on). The app launches each a bar early and stops it a bar early so
+the loop bank's quantizing lands both on the bar; it follows the playing deck's tempo.
+
+**Find them** with `dj_stock_loops {action:list, category, query, near:<bpm>, limit}` (≈15 000 loops;
+categories Vocals 694, Sound Effect 503, Texture/Atmosphere 96; the `19 Transition Effects` pack is risers and
+impacts). Each has `bpm`, `beats` and, for tonal loops, a `key`. **Choose:** tempo at 1×, ½× or 2× of the
+track's (`near` sorts that way); for vocals and pads a key that is the track's or a fifth/relative away
+(same distance rule as sets: `SetPlanner.keyDistance` ≤ 1), noise/FX any key.
+
+**Place them like a producer would:** a riser over the last 1–4 bars of a build, ending on the drop bar; an
+impact *on* the drop bar (`bars` 1–2); vocal chops in drops (from the drop bar, a phrase at a time,
+−6…−10 dB); vocal pads and textures in breakdowns; never more than 3 layers at once; leave the first bar
+alone (a layer needs a bar to come in, so `bar` ≥ 2). They are **local only**: Apple's licence covers
+playing them in your music, not handing them on, so a track with layers is never published, and a saved
+composition names the loops (path + name), never their audio. The `dj_state` deck shows `layers`:
+`ready`, each loop's bars, `looping`, `onRow`, and `problems`.
+
 ## 5. Form (what "standard format instead of a loop" means for a roll)
 
 A roll **loops** over its `steps`. For a song, write the arrangement into the roll by when parts

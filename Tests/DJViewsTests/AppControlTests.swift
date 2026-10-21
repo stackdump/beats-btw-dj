@@ -1408,3 +1408,88 @@ struct AgentControllerTests {
       })
   }
 }
+
+/// Loop layers: a library loop brought in over a raw track on the deck's bars.
+@MainActor
+struct LayerRunnerTests {
+  func model() throws -> AppModel {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(
+      engine: dj, loops: try temporaryLoopLibrary(), compositions: temporaryCompositions(),
+      sets: temporarySets())
+    m.start()
+    return m
+  }
+
+  static let layered =
+    #"{"deck":"A","name":"Layered","tempo":124,"layers":[{"loop":"Chill Hip-Hop","bar":3,"bars":2,"gain":-6}],"parts":{"kick":{"every":16,"until":128,"notes":[[0],[4],[8],[12]]}}}"#
+
+  func looping(_ m: AppModel) -> Bool? {
+    m.layersJSON("A")?["layers"]?.array?.first?["looping"]?.bool
+  }
+
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func aLayerComesInABarEarlyGoesOutABarEarlyAndRepeatsOnTheNextPass() async throws {
+    let m = try model()
+    let r = try await m.control("composeRoll", JSONValue.parse(Self.layered))
+    // the loop was resolved to the library's exact one and is what was saved
+    let saved = try await m.control("compositions", JSONValue.parse("{}"))
+    #expect(saved["compositions"]?.array?.count == 1 && r["saved"]?.string != nil)
+    let env = try m.compositionStore.envelope(matching: "layered").envelope
+    let layer = try #require(env["loopLayers"]?.array?.first)
+    #expect(
+      layer["name"]?.string == "Chill Hip-Hop Beat 08"
+        && layer["loop"]?.string?.hasSuffix(".caf") == true)
+    #expect(layer["gain"]?.double == -6 && layer["bar"] == .array([.number(3)]))
+
+    m.engine?.perform(.play(deck: "A", on: true))
+    m.serviceLayers(bars: ["A": 1])  // builds the plan and puts the loop on the row
+    let ready = await waitUntil { m.layerPlans["A"]?.ready == true }
+    #expect(ready, "the loop should reach the row")
+    #expect(m.engine?.clips.count == 1)
+    #expect(
+      looping(m) == false && m.layersJSON("A")?["layers"]?.array?.first?["onRow"]?.bool == true)
+
+    m.serviceLayers(bars: ["A": 1])
+    #expect(looping(m) == false)  // bar 1: too early
+    m.serviceLayers(bars: ["A": 2])  // a bar before it comes in (bar 3)
+    #expect(looping(m) == true)
+    m.serviceLayers(bars: ["A": 3])
+    #expect(looping(m) == true)
+    m.serviceLayers(bars: ["A": 4])  // a bar before it goes (it is on bars 3 and 4)
+    #expect(looping(m) == false)
+    // the track goes round again: the layer comes back
+    m.serviceLayers(bars: ["A": 1])
+    m.serviceLayers(bars: ["A": 2])
+    #expect(looping(m) == true)
+
+    // the deck stops: its layers are let go
+    m.engine?.perform(.play(deck: "A", on: false))
+    m.serviceLayers(bars: ["A": 2])
+    #expect(m.layerPlans["A"] == nil && m.layersJSON("A") == nil)
+  }
+
+  @Test(.enabled(if: installedAppleLoop != nil, "needs the Apple Loops content"))
+  func aTrackWithoutLayersAndAnUnknownLoopAreHandled() async throws {
+    let m = try model()
+    // an unknown loop is refused when composing, naming what to do
+    await #expect {
+      try await m.control(
+        "composeRoll",
+        JSONValue.parse(
+          #"{"deck":"A","layers":[{"loop":"No Such Loop","bar":2}],"parts":{"kick":{"notes":[[0]]}}}"#
+        ))
+    } throws: { "\($0)".contains("no loop called") }
+    #expect(m.engine?["A"]?.title == "demo loop")
+    // a plain track has no plan
+    _ = try await m.control(
+      "composeRoll", JSONValue.parse(#"{"deck":"A","parts":{"kick":{"notes":[[0]]}}}"#))
+    m.serviceLayers(bars: ["A": 1])
+    #expect(m.layerPlans["A"] == nil)
+    // layers can also be attached to an import
+    #expect(m.engine?.clips.isEmpty == true)
+  }
+}

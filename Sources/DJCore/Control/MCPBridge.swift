@@ -372,7 +372,8 @@ public struct MCPBridge {
       `until` (default `steps`, which a repeat needs if no `until`), so a bar of drums is \
       written once; give a LIST of such segments for an arrangement (a part enters at bar 5 \
       with from 64). Without `every` notes sit at `from` + step. Write the whole form out \
-      (8–64 bars) with a clear key and chord plan, not one riff. Takes a few \
+      (8–64 bars) with a clear key and chord plan, not one riff. `layers` bring library vocals / \
+      risers / impacts in over it as parallel loops (see the argument); they follow the deck's tempo. Takes a few \
       seconds, returns the deck with share {kind rawNets, cid} and `saved`, the file it was kept \
       in (dj_compositions lists and reloads them). Does not start playback — \
       follow with dj_perform play. Roles light up in dj_state like any net deck, so dj_perform \
@@ -390,6 +391,15 @@ public struct MCPBridge {
         "set": prop("string", "Add it to this set (created if new), in `slot` if given"),
         "slot": prop("number", "Plan slot index to fill in `set`"),
         "name": prop("string", "Title shown on the deck"),
+        "layers": obj([
+          ("type", .string("array")),
+          (
+            "description",
+            .string(
+              "Library sounds (vocals, risers, impacts, textures) that come in over the track as parallel tracks on the loop channel: [{loop: name|path, bar: N or [N,…] (the 1-based bar it comes in on), bars?: how long it stays (default one pass of the loop), gain?: dB under unity −24…0 (default −3), keyLock?: keep its pitch at another tempo (default true)}]. Find loops with dj_stock_loops list (category Vocals, Sound Effect, Texture/Atmosphere; near=<the track's bpm>). Launched a bar early so the loop bank's quantizing lands them on the bar; the track is local only, never published."
+            )
+          ),
+        ]),
         "tempo": prop("number", "BPM, 40–300 (default 120)"),
         "swing": prop("number", "Swing 0–100 (default 0)"),
         "steps": prop("number", "Loop length in sixteenth steps (default: the longest part)"),
@@ -438,6 +448,15 @@ public struct MCPBridge {
           "Your one-line style read, e.g. \"126 BPM, C# minor, i–VI–III–VII, offbeat bass, "
             + "syncopated saw stabs, 8-bar build into a drop\""),
         "name": prop("string", "Title (default: <inspiredBy>-style (original))"),
+        "layers": obj([
+          ("type", .string("array")),
+          (
+            "description",
+            .string(
+              "Library sounds (vocals, risers, impacts, textures) that come in over the track as parallel tracks on the loop channel: [{loop: name|path, bar: N or [N,…] (the 1-based bar it comes in on), bars?: how long it stays (default one pass of the loop), gain?: dB under unity −24…0 (default −3), keyLock?: keep its pitch at another tempo (default true)}]. Find loops with dj_stock_loops list (category Vocals, Sound Effect, Texture/Atmosphere; near=<the track's bpm>). Launched a bar early so the loop bank's quantizing lands them on the bar; the track is local only, never published."
+            )
+          ),
+        ]),
         "tempo": prop("number", "BPM, 40–300 (default 120)"),
         "swing": prop("number", "Swing 0–100 (default 0)"),
         "steps": prop("number", "Loop length in sixteenth steps (default: the longest part)"),
@@ -487,6 +506,15 @@ public struct MCPBridge {
         "tempo": prop("number", "BPM override, 40–300 (default: the file's first tempo)"),
         "name": prop("string", "Title (default: the file's title or name)"),
         "source": prop("string", "Origin and licence, e.g. \"Mutopia, J.S. Bach, public domain\""),
+        "layers": obj([
+          ("type", .string("array")),
+          (
+            "description",
+            .string(
+              "Library sounds (vocals, risers, impacts, textures) that come in over the track as parallel tracks on the loop channel: [{loop: name|path, bar: N or [N,…] (the 1-based bar it comes in on), bars?: how long it stays (default one pass of the loop), gain?: dB under unity −24…0 (default −3), keyLock?: keep its pitch at another tempo (default true)}]. Find loops with dj_stock_loops list (category Vocals, Sound Effect, Texture/Atmosphere; near=<the track's bpm>). Launched a bar early so the loop bank's quantizing lands them on the bar; the track is local only, never published."
+            )
+          ),
+        ]),
         "inspect": prop("boolean", "Only return the summary; load nothing"),
         "map": obj([
           ("type", .string("object")),
