@@ -17,6 +17,7 @@ public struct MCPBridge {
   static let methods: [String: String] = [
     "dj_state": "state", "dj_perform": "perform", "dj_generate": "generate",
     "dj_catalog": "catalog", "dj_load_file": "loadFile", "dj_load_share": "loadShare",
+    "dj_compose": "composeRoll",
     "dj_press_pad": "pad",
     "dj_record": "record", "dj_screenshot": "screenshot",
     "dj_audition": "audition", "dj_favorites": "favorites", "dj_copy_deck": "copyDeck",
@@ -110,6 +111,11 @@ public struct MCPBridge {
     sample or a live Petri-net track. Call dj_state first. Everything sent here goes through \
     the same path as the app's own buttons, so it is recorded when a session is recording. \
     Audio plays on the Mac's speakers — you cannot hear it; read dj_state instead.
+
+    You can compose, not just select: dj_compose takes a piano roll you write (parts, notes, \
+    tempo) and plays exactly those notes on a deck as a Petri-net track — a specific song, not \
+    a generator seed. Reach for it when asked for a particular melody, riff, chord progression \
+    or arrangement; use dj_generate / dj_load_share to explore the generator's own space.
     """
 
   static let tools: [JSONValue] = [
@@ -326,7 +332,7 @@ public struct MCPBridge {
       Load a beats (beats.bitwrap.io) share onto a deck as a live Petri-net track, exactly as \
       the share describes it: a composed share (genre + seed + traits, overrides, overlays) is \
       composed here; a raw-nets share plays its nets as given (arranged if it has a \
-      structure). Takes a few seconds; returns the deck when loaded, with `share` = {kind \
+      structure; to write your own notes use dj_compose). Takes a few seconds; returns the deck when loaded, with `share` = {kind \
       net|rawNets, cid}. Does not start playback — follow with dj_perform play. A short \
       ?cid= link without &z= can't be loaded (its payload is on a server): pass the full \
       link or the payload.
@@ -340,6 +346,43 @@ public struct MCPBridge {
             + "(e.g. {\"genre\":\"techno\",\"seed\":42})"),
       ],
       required: ["deck", "link"]),
+    tool(
+      "dj_compose",
+      """
+      Write a song and play it: a piano roll you compose becomes a live Petri-net track on a \
+      deck, playing exactly your notes (no generator, no musicality pass). Each part is a \
+      step-sequencer net of sixteenth-note steps (16 steps = one 4/4 bar, step 0 = bar 1 beat \
+      1; 4 steps = a beat), looping; all parts share one length so they stay in phase. \
+      Parts are keyed by role: kick, snare, hihat, clap (drums; `note` may be left out: GM \
+      36 / 38 / 42 / 39), bass, melody, harmony, arp. Each takes {instrument?, channel?, \
+      notes}; a note is [step, midi, dur?, vel?] (dur in sixteenths, default 2 for tonal \
+      parts and 1 for drums; vel 1–127, default 100; middle C = 60). Notes on the same step \
+      (chords) are fine: they play together. `steps` defaults to the roll's length rounded up \
+      to whole bars (max 1024); a 32-step part under a 128-step one repeats. Write the \
+      whole form out (8–64 bars) with a clear key and chord plan, not one riff. Takes a few \
+      seconds, returns the deck with share {kind rawNets, cid}. Does not start playback — \
+      follow with dj_perform play. Roles light up in dj_state like any net deck, so dj_perform \
+      (role mutes, macros, FX) and the controllers work on it. A deck that is playing keeps \
+      playing on load.
+      """,
+      [
+        "deck": prop("string", "A or B"),
+        "name": prop("string", "Title shown on the deck"),
+        "tempo": prop("number", "BPM, 40–300 (default 120)"),
+        "swing": prop("number", "Swing 0–100 (default 0)"),
+        "steps": prop("number", "Loop length in sixteenth steps (default: the longest part)"),
+        "parts": obj([
+          ("type", .string("object")),
+          (
+            "description",
+            .string(
+              "{role: {instrument?: string, channel?: 1-16, notes: [[step, midi, dur?, vel?], "
+                + "…]}}, e.g. {\"kick\":{\"notes\":[[0],[4],[8],[12]]},\"bass\":{\"instrument\":"
+                + "\"sub-bass\",\"notes\":[[0,36,4,100],[8,43,4,100]]}}. Instruments are beats' names "
+                + "(dj_catalog, dj_set_instrument); omit for the role's default.")),
+        ]),
+      ],
+      required: ["deck", "parts"]),
     tool(
       "dj_favorites",
       """

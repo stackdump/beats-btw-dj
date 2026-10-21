@@ -737,6 +737,31 @@ struct AppControlTests {
       ])
   }
 
+  /// `composeRoll` (dj_compose): a piano roll loads as a raw-nets deck, recorded as the load a
+  /// replay needs; a chord's sibling nets stay under their role.
+  @Test func composeRollLoadsARollAsARawNetsDeck() async throws {
+    let m = try model()
+    let dj = try #require(m.engine)
+    let rec = try SessionRecorder.start(on: dj)
+    let roll = try JSONValue.parse(
+      """
+      {"deck":"A","name":"Roll","tempo":100,"parts":{
+        "kick":{"notes":[[0],[8]]},
+        "harmony":{"notes":[[0,60,16],[0,64,16],[0,67,16]]}}}
+      """)
+    let r = try await m.control("composeRoll", roll)
+    #expect(r["share"]?["kind"]?.string == "rawNets")
+    #expect(r["title"]?.string == "Roll" && r["mode"]?.string == "net")
+    let project = try #require(dj["A"]?.netProject)
+    #expect(Set(project.nets.keys) == ["kick", "harmony", "harmony-b", "harmony-c"])
+    #expect(dj["A"]?.roles == ["kick", "harmony"])
+    let source = try DeckSourceDescriptor.share(payload: PianoRoll.envelope(roll))
+    #expect(rec.finish().events.map(\.kind) == [.action(.load(deck: "A", source: source))])
+    await #expect(throws: (any Error).self) {
+      try await m.control("composeRoll", try JSONValue.parse(#"{"deck":"A","parts":{}}"#))
+    }
+  }
+
   /// Load ▸ "Share link from clipboard" calls `AppModel.loadShare(deck, text)` with the
   /// pasteboard's string: a good link lands on the deck (recorded), a bad one only says why.
   @Test func theClipboardMenuItemLoadsAShareOrSaysWhy() async throws {

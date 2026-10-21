@@ -699,6 +699,15 @@ its copy; the two are now independent. Rules inherited from that split:
   app can restart under a live MCP session. `make mcp-install` copies it to `build/mcp/` and
   registers `dj-vevr-se` at user scope. `djctl ctl <method> [json]` sends one raw request.
 - Publishing is deliberately not a tool (it's public and asks in a modal).
+- **Composing is a tool: `dj_compose`** (`composeRoll`, `Session/PianoRoll.swift`). An LLM writes a
+  piano roll (`parts: {role: {instrument?, channel?, notes: [[step, midi, dur?, vel?]…]}}`, sixteenth
+  steps, `tempo`, `name`, `steps`) and it plays exactly those notes: each part becomes a
+  raw-`nets` ring of N step places whose transition at step i carries that step's MIDI binding;
+  notes on one step spill into sibling nets (`harmony-b`, `riffGroup` = the role, so they are one
+  role). The envelope loads through the `loadShare` path (`.rawNets`, recorded, CID'd), so no
+  musicality pass and no `TrackSpec`: Wander can't derive moves from it, auto-mix may take it as a
+  cued track. A specific song, versus `dj_generate`'s seeds; the server instructions say so.
+  `tempo` is a top-level envelope key (not under `overrides`). Never publishes anything.
 - Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
   on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
   through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a

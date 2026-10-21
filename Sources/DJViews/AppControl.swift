@@ -223,14 +223,21 @@ extension AppModel {
       poll()
       return deckJSON(deck) ?? .null
 
-    case "loadShare":
+    case "loadShare", "composeRoll":
       let deck = p["deck"]?.string ?? ""
       _ = try requireDeck(deck)
+      // dj_compose: a piano roll becomes a raw-nets envelope, then loads like any share.
+      var rollPayload: JSONValue?
+      if method == "composeRoll" {
+        do { rollPayload = try PianoRoll.envelope(p) } catch let e as PianoRollError {
+          throw ControlRequestError.bad(e.description)
+        }
+      }
       let source: DeckSourceDescriptor
       do {
-        if let link = p["link"]?.string {
+        if rollPayload == nil, let link = p["link"]?.string {
           source = try .share(link)
-        } else if let payload = p["link"] ?? p["payload"], payload.object != nil {
+        } else if let payload = rollPayload ?? p["link"] ?? p["payload"], payload.object != nil {
           source = try .share(payload: payload)
         } else {
           throw ControlRequestError.bad(
