@@ -186,6 +186,10 @@ and palette hops (no seed, genre or structure moves: there is none). Moves are d
 CID, so the same track walks the same path. Write tracks with long arrangements and clean parts and
 Wander has more to play with; lock `arrangement` / `fx` / `palette` to keep it from touching those.
 
+**The console.** The app's Debug Console (⇧⌘D) is a CLI over every tool in this skill (`set show first-night`,
+`compose {…}`, `perform op=…`; `help <tool>`), and its `agent start` runs the `dj` agent as a process you can
+talk to (`agent say more energy`), optionally woken by the app when a hand-off finishes.
+
 ## 8. Not supported yet
 
 Tempo changes inside a roll, per-bar time-signature changes, drums beyond kick/snare/hat/clap, vocals,

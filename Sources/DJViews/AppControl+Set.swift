@@ -393,6 +393,38 @@ extension AppModel {
     }
     note("done", "on deck \(inn): \(next + 1)/\(set.items.count)")
     poll()
+    wakeAgentAfterHandoff(set: set, deck: inn, index: next)
+  }
+
+  /// Tell the agent a hand-off finished (when wakes are on): what plays now, when the next hand-off
+  /// is due, how many tracks remain, so it can restock, re-plan or just say `ok`.
+  func wakeAgentAfterHandoff(set: DJSet, deck: String, index: Int) {
+    guard let agent = agentIfCreated, agent.wakeOnEvents else { return }
+    let names = Dictionary(
+      compositionStore.list().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let title = names[set.items[index].composition]?.name ?? set.items[index].composition
+    let left = set.items.count - 1 - index
+    var text =
+      "[app event] hand-off complete in set \"\(set.name)\": deck \(deck) now plays \"\(title)\" "
+      + "(track \(index + 1) of \(set.items.count)"
+    if let bpm = engine?[deck]?.effectiveBPM { text += ", \(Int(bpm)) BPM" }
+    text += "). "
+    if left > 0 {
+      if let bars = names[set.items[index].composition]?.bars, let bpm = engine?[deck]?.effectiveBPM
+      {
+        let start = SetAuto.startBar(
+          bars: bars, item: set.items[index], fadeBars: set.items[index].fadeBars ?? set.fadeBars)
+        if let start {
+          text +=
+            "The next hand-off begins at bar \(start) (about \(Int(Double(start - 1) * 240 / bpm)) s). "
+        }
+      }
+      text += "\(left) track\(left == 1 ? "" : "s") left. "
+    } else {
+      text += "This is the last track. "
+    }
+    text += "Check dj_set status; restock, re-plan or adjust only if it helps, else reply `ok`."
+    agent.wake(text)
   }
 
   // MARK: JSON

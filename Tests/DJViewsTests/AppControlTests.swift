@@ -1194,3 +1194,217 @@ struct SetControlTests {
     }
   }
 }
+
+/// The debug console: every MCP tool as a command, through the app's own control path.
+@MainActor
+struct ConsoleModelTests {
+  func console() throws -> (AppModel, ConsoleModel) {
+    let dj = try DJEngine(decks: ["A", "B"], offline: true, sampleRate: 22_050)
+    dj["A"]!.loadDemo()
+    dj["B"]!.loadDemo()
+    try dj.start()
+    let m = AppModel(engine: dj, compositions: temporaryCompositions(), sets: temporarySets())
+    m.start()
+    return (m, ConsoleModel(app: m, defaults: temporaryDefaults()))
+  }
+
+  func text(_ c: ConsoleModel, kind: ConsoleModel.Kind? = nil) -> String {
+    c.lines.filter { kind == nil || $0.kind == kind }.map(\.text).joined(separator: "\n")
+  }
+
+  @Test func aToolRunsThroughTheControlPathAndPrintsItsJSON() async throws {
+    let (_, c) = try console()
+    await c.run("state")
+    let out = text(c, kind: .output)
+    #expect(out.contains("\"decks\"") && out.contains("\"title\": \"demo loop\""), "\(text(c))")
+    #expect(c.lines.contains { $0.kind == .input && $0.text == "› state" })
+  }
+
+  @Test func performWorksLooseAndAnotherDeckPlays() async throws {
+    let (m, c) = try console()
+    await c.run("perform op=crossfader value=1")
+    #expect(m.engine?.crossfader == 1)
+    await c.run("perform play A on=true")
+    #expect(m.engine?["A"]?.playing == true)
+    #expect(!c.lines.contains { $0.kind == .error })
+  }
+
+  @Test func theSetWorkflowRunsFromTheConsole() async throws {
+    let (_, c) = try console()
+    await c.run(
+      #"set action=plan set=cli slots=[{"label":"a","energy":0.4},{"label":"b","energy":0.9}]"#)
+    #expect(text(c, kind: .output).contains("\"label\": \"a\""))
+    await c.run(
+      #"compose load=false set=cli slot=0 energy=0.4 name=One tempo=124 parts={"kick":{"every":16,"until":64,"notes":[[0],[4],[8],[12]]}}"#
+    )
+    #expect(text(c, kind: .output).contains("\"staged\": true"))
+    await c.run("set show cli")
+    #expect(text(c, kind: .output).contains("\"name\": \"One\""))
+    await c.run("compositions")
+    #expect(text(c, kind: .output).contains("\"kind\": \"compose\""))
+  }
+
+  @Test func errorsAreShownAsErrorsAndNothingCrashes() async throws {
+    let (_, c) = try console()
+    await c.run("frobnicate")
+    await c.run("set start nosuchset")
+    await c.run("perform op=notAnOp")
+    let errors = c.lines.filter { $0.kind == .error }.map(\.text)
+    #expect(errors.count == 3)
+    #expect(errors[0].contains("unknown command") && errors[1].contains("nosuchset"))
+  }
+
+  @Test func helpToolsClearAndExpand() async throws {
+    let (_, c) = try console()
+    await c.run("help")
+    #expect(text(c, kind: .info).contains("A CLI over the same tools"))
+    await c.run("help set")
+    #expect(
+      text(c, kind: .info).contains("control method `set`")
+        && text(c, kind: .info).contains("arguments:"))
+    await c.run("tools dub")
+    #expect(text(c, kind: .info).contains("compose"))  // matches on the description too
+    // a long output is shortened; expand prints it all
+    await c.run("tools")
+    await c.run("catalog")
+    let shown = c.lines.filter { $0.kind == .output }.count
+    #expect(shown <= ConsoleModel.maxOutputLines + 1)
+    await c.run("expand")
+    #expect(
+      c.lines.filter { $0.kind == .output }.count > shown || shown < ConsoleModel.maxOutputLines)
+    await c.run("clear")
+    #expect(c.lines.isEmpty)
+  }
+
+  @Test func historyBrowsesAndTabCompletes() async throws {
+    let (_, c) = try console()
+    c.input = "state"
+    await c.submit()
+    c.input = "set show x"
+    await c.submit()
+    #expect(c.history == ["state", "set show x"] && c.input.isEmpty)
+    c.input = "half typed"
+    c.historyBack()
+    #expect(c.input == "set show x")
+    c.historyBack()
+    #expect(c.input == "state")
+    c.historyForward()
+    c.historyForward()
+    #expect(c.input == "half typed")  // back to what was being typed
+    c.input = "sta"
+    c.complete()
+    #expect(c.input == "state ")
+    c.input = "set lead"
+    c.complete()
+    #expect(c.input == "set leadBars=")
+    // history survives a new console on the same defaults
+    #expect(ConsoleModel(app: nil, defaults: c.testDefaults).history == c.history)
+  }
+}
+
+/// The agent process: start / say / stop against a fake `claude`, and the console's `agent` commands.
+@MainActor
+struct AgentControllerTests {
+  func agent() -> (AgentController, ConsoleModel) {
+    let console = ConsoleModel(app: nil, defaults: temporaryDefaults())
+    let a = AgentController(console: console, defaults: temporaryDefaults())
+    a.executableOverride = fakeClaude()
+    a.cwd = tempDirPath()
+    console.agentHandler = { [a] sub, text in await a.command(sub, text) }
+    return (a, console)
+  }
+
+  func until(_ what: String, timeout: Double = 8, _ cond: @MainActor () -> Bool) async {
+    let ok = await waitUntil(timeout, cond)
+    #expect(ok, "timed out waiting for \(what)")
+  }
+
+  @Test func itStartsTakesAMessageShowsWhatItDidAndStops() async throws {
+    let (a, c) = agent()
+    await c.run("agent start new")
+    #expect(a.state == .starting || a.state == .idle)
+    await until("ready") { a.state == .idle }
+    #expect(a.session == "fake-session-1")
+    #expect(c.lines.contains { $0.kind == .info && $0.text.contains("agent ready · fake-model") })
+
+    await c.run("agent say hello DJ")
+    await until("the turn") { a.state == .idle && a.turns == 1 }
+    let shown = c.lines.map(\.text)
+    #expect(shown.contains("got it") && shown.contains("⚙ dj_state") && shown.contains("  ↳ ok"))
+    #expect(c.lines.contains { $0.kind == .info && $0.text.contains("turn done · $0.05") })
+    #expect(a.cost == 0.05)
+
+    // anything that isn't a subcommand is a message
+    await c.run("agent more energy")
+    await until("the second turn") { a.turns == 2 }
+    #expect(a.cost == 0.10)
+
+    await c.run("agent stop")
+    await until("stopped") { a.state == .stopped }
+    #expect(c.lines.contains { $0.text.contains("the agent exited") })
+    await c.run("agent say anyone there")
+    #expect(c.lines.last?.kind == .error && c.lines.last?.text.contains("agent start") == true)
+  }
+
+  @Test func messagesSentWhileItIsBusyAreQueuedInOrder() async throws {
+    let (a, c) = agent()
+    await c.run("agent start new")
+    a.send("one")
+    a.send("two")  // starting or working: queued
+    a.send("three")
+    await until("three turns") { a.turns == 3 }
+    #expect(a.state == .idle)
+    a.stop()
+    await until("stopped") { a.state == .stopped }
+  }
+
+  @Test func wakesNeedToBeOnAreCoalescedAndRateLimited() async throws {
+    let (a, c) = agent()
+    await c.run("agent start new")
+    await until("ready") { a.state == .idle }
+    a.wake("first event")  // wakes are off: nothing
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(a.turns == 0)
+
+    await c.run("agent wake on")
+    #expect(a.wakeOnEvents)
+    a.minWakeInterval = 0.4
+    a.wake("hand-off done")
+    await until("a wake turn") { a.turns == 1 }
+    #expect(c.lines.contains { $0.kind == .event && $0.text.contains("hand-off done") })
+    // a second wake inside the interval waits; the latest of several wins
+    a.wake("event A")
+    a.wake("event B")
+    await until("the queued wake") { a.turns == 2 }
+    let events = c.lines.filter { $0.kind == .event }.map(\.text)
+    #expect(
+      events.count == 2 && events[1].contains("event B")
+        && !events.contains { $0.contains("event A") })
+    a.stop()
+    await until("stopped") { a.state == .stopped }
+  }
+
+  @Test func statusSettingsAndMissingPiecesAreExplained() async throws {
+    let (a, c) = agent()
+    await c.run("agent status")
+    #expect(
+      c.lines.last?.text.contains("wakes: off") == true
+        || c.lines.contains { $0.text.contains("agent: stopped") })
+    await c.run("agent budget 2.5")
+    #expect(a.budget == 2.5)
+    await c.run("agent model opus")
+    #expect(a.model == "opus")
+    await c.run("agent cwd /definitely/not/here")
+    #expect(c.lines.last?.kind == .error)
+    await c.run("agent wake on")
+    #expect(a.wakeOnEvents)
+    a.executableOverride = "/no/such/claude"
+    a.cwd = tempDirPath()
+    await c.run("agent start")
+    #expect(a.state == .stopped)
+    #expect(
+      c.lines.contains {
+        $0.kind == .error && ($0.text.contains("couldn't start") || $0.text.contains("can't find"))
+      })
+  }
+}

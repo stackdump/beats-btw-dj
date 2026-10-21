@@ -48,6 +48,7 @@ struct DJApp: App {
       CommandGroup(after: .toolbar) {
         Button("Soundboard") { model.toggleSoundboard() }
           .keyboardShortcut("b", modifiers: [.command, .shift])
+        ConsoleMenuItem()
       }
     }
     // The Stage (SPEC modes 7…21): a full-window visualization of the decks' nets, opened by the
@@ -58,5 +59,21 @@ struct DJApp: App {
         .preferredColorScheme(.dark)
     }
     .defaultSize(width: 1100, height: 760)
+    // The debug console (⇧⌘D): a CLI over every MCP tool, and the Claude agent.
+    Window(ConsoleWindow.title, id: ConsoleWindow.id) {
+      ConsoleWindowView(app: model)
+        .frame(minWidth: 560, minHeight: 320)
+        .preferredColorScheme(.dark)
+    }
+    .defaultSize(width: 940, height: 560)
+  }
+}
+
+/// View ▸ Debug Console (⇧⌘D).
+struct ConsoleMenuItem: View {
+  @Environment(\.openWindow) private var openWindow
+  var body: some View {
+    Button(ConsoleWindow.title) { openWindow(id: ConsoleWindow.id) }
+      .keyboardShortcut("d", modifiers: [.command, .shift])
   }
 }

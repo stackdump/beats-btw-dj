@@ -764,6 +764,28 @@ its copy; the two are now independent. Rules inherited from that split:
   the roll grid and roles, a genre cheat sheet, the instrument vocabulary and the originality rules.
   Rolls take repeating patterns: a part is a segment or list of segments `{from?, every?, until?,
   instrument?, notes}` (`PianoRoll`), so a bar of drums is written once and a part enters at `from`.
+- **The debug console** (⇧⌘D or the bottom bar's "Debug Console"; `ConsoleModel` / `ConsoleView`, parser in
+  `Control/ConsoleCommand.swift`): a CLI over **every MCP tool**, through the same `AppModel.control` the
+  socket and MCP use (so it records the same). The command list *is* `MCPBridge.catalog` (a tool added to the
+  MCP is in the console with its help and tab completion; `ConsoleParserTests` hold the two equal). Grammar:
+  `<tool> [word …] [key=value …] [{json}]` with the `dj_` optional (`state`, `set show first-night`,
+  `set action=plan set=fri count=6 bpm=[124,150]`, `perform op=crossfader value=0`, `compose {…}`), bare words
+  fill each tool's usual first arguments (`ConsoleParser.positional`), values read as JSON, `raw <method> …`
+  for a control method, `help [tool]`, `tools [filter]`, `history`, `expand` (the last long output in full),
+  `clear`. ↑/↓ history (kept in the app's defaults), ⇥ completes tools then argument names. Output is
+  pretty JSON, capped at 80 lines.
+- **The agent in the console** (`DJViews/AgentController`, `Control/AgentStream.swift`): `agent start [new]` spawns
+  one long-lived `claude -p --input-format stream-json --output-format stream-json --agent dj
+  --permission-mode dontAsk --strict-mcp-config` (only the dj-vevr-se MCP, via `<cwd>/build/mcp/djctl`;
+  `--allowedTools mcp__dj-vevr-se,Skill,Read,Glob,Grep`, `--max-budget-usd` default 5, `--resume` the last
+  session) in `agent cwd` (default `~/Workspace/dj-vevr-se`, where `.claude/agents/dj.md` and the skill
+  live); `agent say <text>` (or `agent <anything else>`), `stop`, `restart`, `status`, `model`, `budget`,
+  `session [clear]`, `wake on|off`, `cwd`. What it says and every tool it calls and gets back are printed
+  in the console (green / amber); the bar above the scrollback shows its state, session cost and a
+  "Wake on hand-off" box. With wakes on, a finished set hand-off sends it an `[app event] …` turn
+  (`wakeAgentAfterHandoff`: what plays now, the next hand-off bar and seconds, tracks left), at most one per 15 s,
+  the latest wins; **off by default: every turn is billed**. `DJ_CLAUDE` / `DJ_DJCTL` override the paths. The
+  process dies with the app. Tests: recorded stream lines, the launch arguments, and a fake `claude` script.
 - Minecraft gameplay → stingers: `minecraftEvents` (dj_minecraft_events, `djctl minecraft events`
   on stdin) takes valoper's `mc_recent_events` window (`{at, source, event, params}`) and maps it
   through `Resources/voices/minecraft-events.json`; `MinecraftEventFeed` (on `AppModel`) keeps a

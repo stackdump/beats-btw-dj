@@ -252,6 +252,22 @@ public final class AppModel {
   @ObservationIgnored let setStore: SetStore
   @ObservationIgnored var setRun: SetRun?
   @ObservationIgnored var setAutoCheckedAt = 0.0
+  /// The debug console (`ConsoleWindow`): one per app, so its scrollback outlives the window.
+  @ObservationIgnored public lazy var console: ConsoleModel = {
+    let c = ConsoleModel(app: self)
+    c.agentHandler = { [unowned self] sub, text in await self.agent.command(sub, text) }
+    return c
+  }()
+  /// The Claude agent the console starts and talks to (`agent start`): created on first use.
+  @ObservationIgnored private var _agent: AgentController?
+  public var agent: AgentController {
+    if let a = _agent { return a }
+    let a = AgentController(console: console)
+    _agent = a
+    return a
+  }
+  /// The agent if one was ever made (a hand-off wakes it only then).
+  var agentIfCreated: AgentController? { _agent }
   /// How the set runner waits between crossfade steps (tests swap in a no-op).
   @ObservationIgnored var setSleep: (Double) async -> Void = { seconds in
     try? await Task.sleep(for: .seconds(seconds))
@@ -459,6 +475,7 @@ public final class AppModel {
   }
 
   public func stop() {
+    agentIfCreated?.stop()  // the agent's process goes with the app
     dj?.stop()  // silence first: the rest can take a moment
     closeJournal()
     controlServer?.stop()
@@ -1852,6 +1869,8 @@ public struct ContentView: View {
         // The Stage (SPEC modes 7…21) is not a ScopeKind: it has a window of its own.
         Button(StageWindow.title) { openWindow(id: StageWindow.id) }
           .disabled(!StageWindow.canOpen(model))
+        Button(ConsoleWindow.title) { openWindow(id: ConsoleWindow.id) }
+          .help("A CLI over every MCP tool, and the Claude agent (⇧⌘D)")
         Toggle(
           model.isRecording ? "● REC" : "Record",
           isOn: Binding(get: { model.isRecording }, set: { _ in model.toggleRecording() })

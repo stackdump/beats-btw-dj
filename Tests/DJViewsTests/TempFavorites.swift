@@ -82,3 +82,38 @@ func temporarySets() -> SetStore {
     directory: FileManager.default.temporaryDirectory
       .appendingPathComponent("sets-\(UUID().uuidString)", isDirectory: true))
 }
+
+/// A defaults suite that starts empty (so a console's history never reaches the real defaults).
+func temporaryDefaults() -> UserDefaults {
+  UserDefaults(suiteName: "dj-test-\(UUID().uuidString)")!
+}
+
+/// A stand-in for `claude -p --input-format stream-json …`: says it's ready, then answers every
+/// line it is sent with a text, a tool call, its result and the end of the turn ($0.50 a turn).
+func fakeClaude() -> String {
+  let path = NSTemporaryDirectory() + "fake-claude-\(UUID().uuidString).sh"
+  let script = """
+    #!/bin/bash
+    echo '{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}'
+    n=0
+    while IFS= read -r line; do
+      n=$((n+1))
+      echo '{"type":"assistant","message":{"content":[{"type":"text","text":"got it"},{"type":"tool_use","name":"mcp__dj-vevr-se__dj_state","input":{}}]}}'
+      echo '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}'
+      echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"total_cost_usd\\":$(printf '0.%02d' $((n*5))),\\"num_turns\\":1,\\"echo\\":$(printf '%s' "$line" | wc -c | tr -d ' ')}"
+    done
+    """
+  try? script.write(toFile: path, atomically: true, encoding: .utf8)
+  chmod(path, 0o755)
+  return path
+}
+
+func tempDirPath() -> String { NSTemporaryDirectory() }
+
+/// Poll (letting the main actor run) until `cond` holds or `timeout` seconds pass.
+@MainActor
+func waitUntil(_ timeout: Double = 8, _ cond: @MainActor () -> Bool) async -> Bool {
+  let end = Date().addingTimeInterval(timeout)
+  while !cond(), Date() < end { try? await Task.sleep(for: .milliseconds(25)) }
+  return cond()
+}
