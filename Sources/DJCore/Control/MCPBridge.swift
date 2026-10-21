@@ -432,7 +432,8 @@ public struct MCPBridge {
       "dj_import",
       """
       Load a score file from this Mac onto a deck as a raw-nets Petri-net track playing its \
-      notes: a Standard MIDI File (.mid / .midi; MusicXML is next). Quantised to sixteenth \
+      notes: a Standard MIDI File (.mid / .midi) or MusicXML (.musicxml / .xml / .mxl, partwise; repeats, \
+      grace notes and later tempo changes are reported, not played). Quantised to sixteenth \
       steps, the channels sorted into roles (drums by GM note; bass by program or register; \
       chordy channels → harmony; the busiest remaining line → melody), at the file's first \
       tempo. Loads an excerpt of `bars` bars from bar `from` (default 16 from the start, max \
@@ -445,7 +446,8 @@ public struct MCPBridge {
       """,
       [
         "deck": prop("string", "A or B (not needed with inspect)"),
-        "path": prop("string", "Absolute path (or ~/…) to a .mid / .midi file"),
+        "path": prop(
+          "string", "Absolute path (or ~/…) to a .mid / .midi / .musicxml / .xml / .mxl file"),
         "from": prop("number", "First bar of the excerpt, 0-based (default 0)"),
         "bars": prop("number", "Bars to load, 1–64 (default 16)"),
         "tempo": prop("number", "BPM override, 40–300 (default: the file's first tempo)"),

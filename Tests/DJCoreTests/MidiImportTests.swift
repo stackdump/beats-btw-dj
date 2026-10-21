@@ -58,6 +58,14 @@ struct MidiImportTests {
     #expect(r.summary["dropped"]?["outsideExcerpt"]?.int ?? 0 > 0)
   }
 
+  @Test func severalLinesAreSpreadOverRolesNotAllMelody() throws {
+    let r = try MidiImport.convert(fourVoiceMidi(), file: "satb.mid")
+    let roles = r.summary["sources"]?.array?.compactMap { $0["role"]?.string }
+    // highest = melody, the inner voices = harmony, the lowest (< G3) = bass
+    #expect(roles == ["melody", "harmony", "harmony", "bass"])
+    #expect(r.summary["dropped"]?["polyphonyOverThree"] == nil)
+  }
+
   @Test func refusesWhatItCannotRead() {
     #expect(throws: MidiImportError.notMidi) {
       try MidiImport.parse(junkData())

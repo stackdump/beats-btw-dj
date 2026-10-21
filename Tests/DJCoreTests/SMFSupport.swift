@@ -90,3 +90,109 @@ func noteLessMidi() -> Data {
   f.track([(0, [0xFF, 0x51, 3, 7, 0xA1, 0x20])])
   return f.data
 }
+
+// MusicXML fixtures. `\(…)` keeps them readable; two measures of 4/4, divisions 1.
+let sampleMusicXML = """
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+  <score-partwise version="4.0">
+    <work><work-title>Tiny Score</work-title></work>
+    <part-list>
+      <score-part id="P1"><part-name>Lead</part-name></score-part>
+      <score-part id="P2"><part-name>Bass</part-name>
+        <midi-instrument id="P2-I1"><midi-program>34</midi-program></midi-instrument></score-part>
+      <score-part id="P3"><part-name>Kit</part-name>
+        <score-instrument id="P3-I36"><instrument-name>Kick</instrument-name></score-instrument>
+        <midi-instrument id="P3-I36"><midi-unpitched>36</midi-unpitched></midi-instrument>
+        <midi-instrument id="P3-I39"><midi-unpitched>39</midi-unpitched></midi-instrument></score-part>
+    </part-list>
+    <part id="P1">
+      <measure number="1">
+        <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+        <direction><sound tempo="90"/></direction>
+        <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>
+        <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration></note>
+        <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><tie type="start"/></note>
+      </measure>
+      <measure number="2">
+        <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><tie type="stop"/></note>
+        <note><rest/><duration>1</duration></note>
+        <note><grace/><pitch><step>C</step><octave>5</octave></pitch></note>
+        <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration></note>
+        <note><chord/><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration></note>
+      </measure>
+    </part>
+    <part id="P2">
+      <measure number="1">
+        <attributes><divisions>1</divisions></attributes>
+        <note><pitch><step>C</step><octave>2</octave></pitch><duration>4</duration></note>
+      </measure>
+      <measure number="2">
+        <note><pitch><step>G</step><octave>2</octave></pitch><duration>4</duration></note>
+      </measure>
+    </part>
+    <part id="P3">
+      <measure number="1">
+        <attributes><divisions>1</divisions></attributes>
+        <note><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P3-I36"/></note>
+        <note><rest/><duration>1</duration></note>
+        <note><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P3-I39"/></note>
+        <note><rest/><duration>1</duration></note>
+      </measure>
+    </part>
+  </score-partwise>
+  """
+
+func sampleMusicXMLData() -> Data { Data(sampleMusicXML.utf8) }
+
+func notMusicXMLData() -> Data { Data("<html><body/></html>".utf8) }
+
+/// A zip with one deflated entry per file (what an .mxl is): local headers, a central
+/// directory and the end record. CRCs are left 0: `MiniZip` doesn't check them.
+func zipped(_ files: [(String, String)]) -> Data {
+  func le16(_ v: Int) -> [UInt8] { [UInt8(v & 255), UInt8(v >> 8 & 255)] }
+  func le32(_ v: Int) -> [UInt8] { le16(v & 0xFFFF) + le16(v >> 16 & 0xFFFF) }
+  var body: [UInt8] = []
+  var central: [UInt8] = []
+  for (name, text) in files {
+    let raw = Data(text.utf8)
+    let comp = (try? (raw as NSData).compressed(using: .zlib)) as Data? ?? raw
+    let n = Array(name.utf8)
+    let offset = body.count
+    body += le32(0x0403_4B50) + le16(20) + le16(0) + le16(8) + le16(0) + le16(0) + le32(0)
+    body += le32(comp.count) + le32(raw.count) + le16(n.count) + le16(0) + n + [UInt8](comp)
+    central += le32(0x0201_4B50) + le16(20) + le16(20) + le16(0) + le16(8) + le16(0) + le16(0)
+    central += le32(0) + le32(comp.count) + le32(raw.count) + le16(n.count)
+    central += le16(0) + le16(0) + le16(0) + le16(0) + le32(0) + le32(offset) + n
+  }
+  var out = body + central
+  out += le32(0x0605_4B50) + le16(0) + le16(0) + le16(files.count) + le16(files.count)
+  out += le32(central.count) + le32(body.count) + le16(0)
+  return Data(out)
+}
+
+func sampleMXLData() -> Data {
+  zipped([
+    (
+      "META-INF/container.xml",
+      """
+      <?xml version="1.0"?><container><rootfiles>
+      <rootfile full-path="score.xml" media-type="application/vnd.recordare.musicxml+xml"/>
+      </rootfiles></container>
+      """
+    ),
+    ("score.xml", sampleMusicXML),
+  ])
+}
+
+/// Four single-line channels like a chorale: soprano, alto, tenor, bass, one bar of quarters each.
+func fourVoiceMidi() -> Data {
+  var f = SMF()
+  f.track([(0, [0xFF, 0x51, 3, 0x07, 0xA1, 0x20])])
+  for (ch, base) in [(0, 72), (1, 67), (2, 60), (3, 48)] {
+    var ev: [(Int, [UInt8])] = []
+    for beat in 0..<4 { ev += SMF.note(UInt8(ch), UInt8(base + beat), at: beat * 480, len: 400) }
+    f.track(ev)
+  }
+  return f.data
+}

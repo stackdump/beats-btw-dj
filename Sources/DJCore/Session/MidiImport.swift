@@ -40,8 +40,11 @@ public enum MidiImport {
     public var name: String
     public var program: Int?
     public var notes: [RawNote]
-    public var key: String { "\(track):\(channel + 1)" }
-    public var isDrums: Bool { channel == 9 }
+    /// A source that isn't a MIDI (track, channel) — a MusicXML part and staff — names itself.
+    public var label: String?
+    public var drums: Bool?
+    public var key: String { label ?? "\(track):\(channel + 1)" }
+    public var isDrums: Bool { drums ?? (channel == 9) }
   }
 
   public struct Parsed {
@@ -52,6 +55,8 @@ public enum MidiImport {
     public var title: String?
     public var sources: [Source]
     public var lastTick: Int
+    /// What the reader itself left out (MusicXML: grace notes, repeats …).
+    public var warnings: [String] = []
   }
 
   // MARK: parse
@@ -286,7 +291,13 @@ public enum MidiImport {
   public static func convert(_ data: Data, file: String, options o: Options = .init()) throws
     -> Result
   {
-    let m = try parse(data)
+    try convert(try parse(data), file: file, options: o)
+  }
+
+  /// The common half: any `Parsed` score (a MIDI file, MusicXML) → envelope + report.
+  public static func convert(_ m: Parsed, file: String, options o: Options = .init()) throws
+    -> Result
+  {
     let tpq = m.ticksPerQuarter
     let stepTicks = Double(tpq) / 4
     let sig = m.timeSignature ?? (4, 4)
@@ -299,12 +310,37 @@ public enum MidiImport {
     let bars = min(o.bars, max(1, totalBars - o.from))
     let steps = bars * stepsPerBar
 
-    var warnings: [String] = []
+    var warnings: [String] = m.warnings
     var dropped: [String: Int] = [:]
     var parts: [String: [JSONValue]] = [:]
     var partInfo: [String: Part] = [:]
     var instrumentFor: [String: String] = [:]
     var sourcesJSON: [JSONValue] = []
+
+    // Roles for the pitched sources, as a set: each source on its own merits first, then spread
+    // so one role isn't everything (a four-voice chorale is melody, two inner voices, a bass).
+    func overrideRole(_ s: Source) -> String? { o.map[s.key] ?? o.map["\(s.channel + 1)"] }
+    func meanPitch(_ s: Source) -> Double {
+      Double(s.notes.reduce(0) { $0 + $1.pitch }) / Double(max(1, s.notes.count))
+    }
+    var roleFor: [String: String] = [:]
+    let auto = m.sources.filter { !$0.isDrums && !$0.notes.isEmpty && overrideRole($0) == nil }
+    for s in auto { roleFor[s.key] = Self.role(of: s, stepTicks: stepTicks) }
+    let taken = Set(
+      m.sources.compactMap { $0.isDrums ? nil : overrideRole($0) }.filter { $0 != "skip" })
+    if auto.count > 1 {
+      let hasBass = taken.contains("bass") || auto.contains { roleFor[$0.key] == "bass" }
+      if !hasBass, let low = auto.min(by: { meanPitch($0) < meanPitch($1) }), meanPitch(low) < 55 {
+        roleFor[low.key] = "bass"
+      }
+      let melodies = auto.filter { roleFor[$0.key] == "melody" }.sorted {
+        meanPitch($0) > meanPitch($1)
+      }
+      let melodyTaken = taken.contains("melody")
+      for (i, extra) in melodies.enumerated() where i > 0 || melodyTaken {
+        roleFor[extra.key] = "harmony"
+      }
+    }
 
     for s in m.sources where !s.notes.isEmpty {
       let override = o.map[s.key] ?? o.map["\(s.channel + 1)"]
@@ -334,7 +370,7 @@ public enum MidiImport {
         sourcesJSON.append(srcJSON(s, role: "drums", kept: kept))
         continue
       }
-      role = override ?? Self.role(of: s, stepTicks: stepTicks)
+      role = override ?? roleFor[s.key] ?? Self.role(of: s, stepTicks: stepTicks)
       guard PianoRoll.roles[role] != nil, PianoRoll.roles[role]?.drumNote == nil else {
         throw MidiImportError.bad(
           "`map` role \(role) for \(s.key): use bass, melody, harmony, arp or skip")
@@ -393,8 +429,8 @@ public enum MidiImport {
     } else {
       bpm = 120
     }
-    let clamped = min(300, max(40, bpm))
-    if clamped != bpm { warnings.append("tempo \(Int(bpm)) BPM clamped to \(Int(clamped))") }
+    let clamped = min(300, max(40, (bpm * 100).rounded() / 100))  // 666667 µs → 90, not 89.9999
+    if bpm < 40 || bpm > 300 { warnings.append("tempo \(Int(bpm)) BPM clamped to \(Int(clamped))") }
     if m.tempos.count > 1 && o.tempo == nil {
       warnings.append("\(m.tempos.count) tempo changes: only the first is kept")
     }
@@ -460,5 +496,26 @@ public enum MidiImport {
     if !s.name.isEmpty { j["name"] = .string(s.name) }
     if let p = s.program { j["program"] = .int(p) }
     return .object(j)
+  }
+}
+
+/// A score file by extension: `.mid` / `.midi` → `MidiImport.parse`, `.musicxml` / `.xml` / `.mxl`
+/// → `MusicXMLImport.parse`; both then go through `MidiImport.convert`.
+public enum ScoreImport {
+  public static let extensions = ["mid", "midi", "musicxml", "xml", "mxl"]
+
+  public static func convert(_ data: Data, file: String, options: MidiImport.Options = .init())
+    throws -> MidiImport.Result
+  {
+    let ext = (file as NSString).pathExtension.lowercased()
+    switch ext {
+    case "mid", "midi":
+      return try MidiImport.convert(data, file: file, options: options)
+    case "musicxml", "xml", "mxl":
+      return try MidiImport.convert(MusicXMLImport.parse(data), file: file, options: options)
+    default:
+      throw MidiImportError.bad(
+        "`path` must be one of: " + extensions.map { ".\($0)" }.joined(separator: " "))
+    }
   }
 }

@@ -240,10 +240,6 @@ extension AppModel {
         guard FileManager.default.fileExists(atPath: path),
           let data = FileManager.default.contents(atPath: path)
         else { throw ControlRequestError.bad("no file at `path`") }
-        let ext = (path as NSString).pathExtension.lowercased()
-        guard ["mid", "midi"].contains(ext) else {
-          throw ControlRequestError.bad("`path` must be a .mid / .midi file (MusicXML is next)")
-        }
         var o = MidiImport.Options()
         if let v = p["from"]?.double { o.from = Int(v) }
         if let v = p["bars"]?.double { o.bars = Int(v) }
@@ -252,7 +248,7 @@ extension AppModel {
         o.source = p["source"]?.string
         for (k, v) in p["map"]?.object?.entries ?? [] { if let r = v.string { o.map[k] = r } }
         do {
-          let r = try MidiImport.convert(data, file: path, options: o)
+          let r = try ScoreImport.convert(data, file: path, options: o)
           rollPayload = r.envelope
           importSummary = r.summary
         } catch {
