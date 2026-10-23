@@ -28,7 +28,7 @@ struct DJApp: App {
   }
 
   var body: some Scene {
-    WindowGroup("dj-vevr-se") {
+    WindowGroup("beats-btw-dj") {
       // a fixed minimum, not one measured from the content each frame (`WindowRoot`)
       WindowRoot(
         minSize: CGSize(width: 720, height: 460), idealSize: CGSize(width: 1440, height: 900)

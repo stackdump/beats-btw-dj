@@ -45,8 +45,8 @@ cat > "$app/Contents/Info.plist" <<EOF
 <dict>
   <key>CFBundleExecutable</key><string>DJApp</string>
   <key>CFBundleIdentifier</key><string>se.vevr.dj</string>
-  <key>CFBundleName</key><string>dj-vevr-se</string>
-  <key>CFBundleDisplayName</key><string>dj-vevr-se</string>
+  <key>CFBundleName</key><string>beats-btw-dj</string>
+  <key>CFBundleDisplayName</key><string>beats-btw-dj</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>

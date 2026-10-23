@@ -90,13 +90,13 @@ app-release:
 run-app-release: app-release
 	open build/DJApp.app
 
-# Install the release app as ~/Applications/dj-vevr-se.app (no sudo), replacing any earlier copy.
+# Install the release app as ~/Applications/beats-btw-dj.app (no sudo), replacing any earlier copy.
 install-app: app-release
 	mkdir -p $(HOME)/Applications
-	rm -rf $(HOME)/Applications/dj-vevr-se.app
-	cp -R build/DJApp.app $(HOME)/Applications/dj-vevr-se.app
-	touch $(HOME)/Applications/dj-vevr-se.app
-	@echo "installed $(HOME)/Applications/dj-vevr-se.app"
+	rm -rf $(HOME)/Applications/beats-btw-dj.app
+	cp -R build/DJApp.app $(HOME)/Applications/beats-btw-dj.app
+	touch $(HOME)/Applications/beats-btw-dj.app
+	@echo "installed $(HOME)/Applications/beats-btw-dj.app"
 
 # Redraw assets/AppIcon.png (the placeholder icon) from scripts/make-icon.swift.
 icon:
