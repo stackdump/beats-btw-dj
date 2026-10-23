@@ -25,7 +25,7 @@ import Testing
     #expect(back == s)
     let md = String(decoding: b.files[1].data, as: UTF8.self)
     #expect(md.contains("cid: \(b.cid)"))
-    #expect(md.contains("source: dj-vevr-se"))
+    #expect(md.contains("source: beats-btw-dj"))
     #expect(md.contains("genre: techno"))
     #expect(!md.contains("draft"))
     #expect(b.publicURL == "https://cdn.stackdump.com/ipfs/\(b.cid)/")

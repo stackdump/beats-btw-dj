@@ -70,7 +70,7 @@ public struct SessionBundle: Sendable {
     let seconds = Int(session.duration.rounded())
     let name = title ?? "Live set \(cid.prefix(10))"
     var l = [
-      "---", "title: \(yamlString(name))", "cid: \(cid)", "source: dj-vevr-se",
+      "---", "title: \(yamlString(name))", "cid: \(cid)", "source: beats-btw-dj",
       "schema: \(Session.schema)",
     ]
     if let g = genres.first { l.append("genre: \(g)") }
