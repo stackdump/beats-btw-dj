@@ -1,7 +1,8 @@
 # dj-vevr-se
 
 DJ-controller input for Petri-net music, driven **natively** rather than only
-through the browser. Private; split out of
+through the browser. The installed app is **beats-btw-dj**; sets made with it are published
+at **[dj.bitwrap.io](https://dj.bitwrap.io)** (CC BY 4.0). Split out of
 [beats-bitwrap-io](https://github.com/stackdump/beats-bitwrap-io)'s jog-wheel
 lab (`public/jog/`, commit `b7704ba`) because the goals diverged: beats is a
 deterministic, shareable web studio; this is live performance with real
@@ -203,6 +204,13 @@ Sweetwater, APC mini mk2 from Akai) — approximate, not measured.
   thread profiling), AUv3 extensions, and notarized distribution. After
   installing: `sudo xcode-select -s /Applications/Xcode.app`.
 - Go 1.25+ and node (for the Go CLI and the web lab tests).
+
+## License
+
+Code: [MIT](LICENSE), same terms and copyright holder (bitwrap.io) as its reference project
+[beats-bitwrap-io](https://github.com/stackdump/beats-bitwrap-io). Sets made with the app and
+published at [dj.bitwrap.io](https://dj.bitwrap.io) are CC BY 4.0. The datasets below keep
+their own licences.
 
 ## Data and attribution
 
