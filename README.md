@@ -1,4 +1,4 @@
-# dj-vevr-se
+# beats-btw-dj
 
 DJ-controller input for Petri-net music, driven **natively** rather than only
 through the browser. The installed app is **beats-btw-dj**; sets made with it are published
@@ -7,6 +7,10 @@ at **[dj.bitwrap.io](https://dj.bitwrap.io)** (CC BY 4.0). Split out of
 lab (`public/jog/`, commit `b7704ba`) because the goals diverged: beats is a
 deterministic, shareable web studio; this is live performance with real
 hardware (first target: Hercules DJControl Inpulse 200 MK3).
+
+The repo was renamed from `dj-vevr-se`; that name survives in code identifiers — the Go
+module and CLI binary, the SwiftPM package, the `dj-vevr-se` MCP server and
+`~/Library/Application Support/dj-vevr-se/` — which this README quotes as they are.
 
 **Playing the app:** [docs/MANUAL.md](docs/MANUAL.md) is the manual — decks, sections, loops, FX, controllers, sessions.
 
