@@ -209,6 +209,12 @@ Sweetwater, APC mini mk2 from Akai) — approximate, not measured.
   installing: `sudo xcode-select -s /Applications/Xcode.app`.
 - Go 1.25+ and node (for the Go CLI and the web lab tests).
 
+## Contributing
+
+We don't merge outside code, so pull requests won't be merged as-is.
+Feature requests and bug reports are welcome: please open an
+[issue](https://github.com/stackdump/beats-btw-dj/issues).
+
 ## License
 
 Code: [MIT](LICENSE), same terms and copyright holder (bitwrap.io) as its reference project
