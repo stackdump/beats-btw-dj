@@ -1,0 +1,32 @@
+[package]
+name = "djmobile"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "UNLICENSED"
+publish = false
+description = "The djrust engine for the Apple app (macOS, iPadOS): one deck, behind UniFFI"
+
+[lib]
+# staticlib: libdjmobile.a for the XCFramework; lib: so uniffi-bindgen can read the metadata in library mode
+crate-type = ["staticlib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+djengine = { path = "../../.djrust-embed-wt/crates/djengine" }
+# audio: cpal (CoreAudio on Apple); sf2: SoundFont palettes. Not `midi`: the Swift app keeps CoreMIDI.
+djhost = { path = "../../.djrust-embed-wt/crates/djhost", features = ["audio", "sf2"] }
+uniffi = { version = "0.32", features = ["cli"] }
+thiserror = "2"
+
+[dev-dependencies]
+miniz_oxide = "0.8"
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+debug = false
+strip = "debuginfo"

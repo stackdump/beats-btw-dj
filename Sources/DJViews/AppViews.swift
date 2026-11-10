@@ -1,5 +1,8 @@
 import AppKit
 import DJCore
+#if DJ_RUST
+  import DJRust
+#endif
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -99,6 +102,12 @@ extension ReverbState {
 @MainActor @Observable
 public final class AppModel {
   public var status = "starting…"
+  #if DJ_RUST
+    /// The Rust engine (djrust via UniFFI) and whether it, not DJEngine, plays net tracks.
+    /// Off by default; View ▸ Rust Engine or `DJ_ENGINE=rust` turns it on (AppRustEngine.swift).
+    public internal(set) var useRustEngine = false
+    @ObservationIgnored var rust: RustEngine?
+  #endif
   var devices: [ControllerHub.Device] = []
   var lastMessage = ""
   var decks: [String: DeckState] = ["A": .init(), "B": .init()]
@@ -365,6 +374,9 @@ public final class AppModel {
   private let injectedPerf: PerfMonitor?
 
   public func start() {
+    #if DJ_RUST
+      restoreRustEngine()
+    #endif
     guard dj == nil else { return }
     let savedTap = defaults.integer(forKey: Self.tapBarsKey)
     if Self.tapBarChoices.contains(savedTap) { tapBars = savedTap }
@@ -482,6 +494,9 @@ public final class AppModel {
   public func stop() {
     agentIfCreated?.stop()  // the agent's process goes with the app
     dj?.stop()  // silence first: the rest can take a moment
+    #if DJ_RUST
+      rust?.shutdown()
+    #endif
     closeJournal()
     controlServer?.stop()
     scopeHub?.perf.stop()
@@ -684,7 +699,14 @@ public final class AppModel {
 
   // Actions from the UI. Hardware goes through the hub's router; UI inputs go through
   // `DJEngine.perform`. Both are recorded when a session is being recorded.
+  #if DJ_RUST
+    /// The Swift deck steps aside when the Rust engine takes the deck over.
+    func pauseSwiftDeck(_ deck: String) { dj?.perform(.play(deck: deck, on: false)) }
+  #endif
   func togglePlay(_ deck: String) {
+    #if DJ_RUST
+      if useRustEngine, toggleRust(deck) { return }
+    #endif
     guard let d = dj?[deck] else { return }
     dj?.perform(.play(deck: deck, on: !d.playing))
   }
@@ -699,7 +721,12 @@ public final class AppModel {
   func setPitch(_ deck: String, _ v: Double) {
     dj?.perform(.param(deck: deck, name: "pitch", value: v))
   }
-  func setCrossfader(_ v: Double) { dj?.perform(.crossfader(v)) }
+  func setCrossfader(_ v: Double) {
+    #if DJ_RUST
+      if useRustEngine { try? rust?.setCrossfader(v) }
+    #endif
+    dj?.perform(.crossfader(v))
+  }
   // LOOP record and the row under the decks
   /// The press carries the tap length (a quick release records exactly that many bars).
   func loopRecord(_ deck: String, on: Bool) {
@@ -939,6 +966,9 @@ public final class AppModel {
   @discardableResult
   func prepareAndLoad(_ deck: String, _ source: DeckSourceDescriptor) async -> Bool {
     guard let dj else { return false }
+    #if DJ_RUST
+      if useRustEngine, case .net(let spec) = source, loadOnRust(deck, spec) { return true }
+    #endif
     let sr = dj.sampleRate
     let bank = dj[deck]?.wave.samplers
     let filter = dj[deck]?.roleFilter
