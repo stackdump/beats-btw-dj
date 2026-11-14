@@ -1,12 +1,12 @@
 import DJRust
 import Foundation
 
-// Smoke test of the Rust engine through the XCFramework + UniFFI Swift bindings.
-//   1. offline: compose + render through the engine's own mixer, no sound card; asserts the
-//      signal is non-silent and bit-exact repeatable.
-//   2. live: open the default CoreAudio output, play on deck A, read the engine's meters.
-//      SKIPPED (not failed) if the host's audio device never calls back (headless / lid closed).
-// Usage: djrust-smoke [genre] [seed] [seconds] [--no-live] [--require-live]
+// Smoke test of the Rust engine through the XCFramework + UniFFI Swift bindings: open the
+// default CoreAudio output, compose and play on deck A, read the engine's meters.
+// SKIPPED (not failed) if the output never calls back (headless / lid closed).
+// The spike also rendered offline; djandroid's crate has no offline render yet
+// (docs/ANDROID-PORT.md, "Engine changes wanted" 1).
+// Usage: djrust-smoke [genre] [seed] [seconds] [--require-live]
 let args = CommandLine.arguments.filter { !$0.hasPrefix("--") }
 let flags = Set(CommandLine.arguments.filter { $0.hasPrefix("--") })
 let genre = args.count > 1 ? args[1] : "house"
@@ -18,17 +18,9 @@ func fail(_ m: String) -> Never { FileHandle.standardError.write(Data("FAIL: \(m
 do {
   print("genres:", RustEngine.genres.count, RustEngine.genres.prefix(6).joined(separator: ", "), "…")
   guard RustEngine.genres.contains(genre) else { fail("unknown genre \(genre)") }
+  print("title:", trackTitle(genre: genre, seed: seed))
 
-  // 1. offline
-  let a = try renderOffline(genre: genre, seed: seed, seconds: 8, sampleRate: 48000)
-  let b = try renderOffline(genre: genre, seed: seed, seconds: 8, sampleRate: 48000)
-  print("offline: \(a.title) \(String(format: "%.1f", a.tempo)) bpm, \(a.frames) frames, peak \(a.peak), rms \(a.rms), active \(a.active), checksum \(String(a.checksum, radix: 16))")
-  if a.peak <= 0.01 || a.rms <= 0.001 || a.active < 0.5 { fail("offline render is silent") }
-  if a.checksum != b.checksum { fail("offline render is not repeatable") }
-  print("OK offline: audio rendered through the Rust engine, repeatable")
-
-  // 2. live
-  if flags.contains("--no-live") { exit(0) }
+  // live
   let e = try RustEngine()
   print("live engine: \(e.info.sampleRate) Hz, \(e.info.soundFonts) soundfonts")
   try e.load(deck: "A", genre: genre, seed: seed)

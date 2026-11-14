@@ -23,6 +23,13 @@ let rustTargets: [Target] =
         .linkedFramework("CoreFoundation"),
       ]),
     .executableTarget(name: "djrust-smoke", dependencies: ["DJRust"]),
+    // The djandroid port (docs/ANDROID-PORT.md): SwiftUI pages over the same `Player`, for
+    // iPadOS and macOS. No DJCore: it runs wherever the XCFramework has a slice.
+    .target(
+      name: "DJRustUI", dependencies: ["DJRust"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    // The port as a Mac app (`swift run DJRustApp`); the iPad app is apps/ipad (Xcode).
+    .executableTarget(
+      name: "DJRustApp", dependencies: ["DJRustUI"], swiftSettings: [.swiftLanguageMode(.v5)]),
   ] : []
 let rustDep: [Target.Dependency] = hasRust ? ["DJRust"] : []
 let rustFlag: [SwiftSetting] = hasRust ? [.define("DJ_RUST")] : []
@@ -30,12 +37,19 @@ let rustFlag: [SwiftSetting] = hasRust ? [.define("DJ_RUST")] : []
 let package = Package(
   name: "dj-vevr-se",
   // macOS 15 is also what makes swift-testing's macros compile.
-  platforms: [.macOS(.v15)],
+  // iOS: only the djrust port (DJRust, DJRustUI) builds there; the rest is macOS-only.
+  platforms: [.macOS(.v15), .iOS(.v18)],
   products: [
     .library(name: "DJCore", targets: ["DJCore"]),
     .executable(name: "djctl", targets: ["djctl"]),
     .executable(name: "DJApp", targets: ["DJApp"]),
-  ] + (hasRust ? [.executable(name: "djrust-smoke", targets: ["djrust-smoke"])] : []),
+  ]
+    + (hasRust
+      ? [
+        .executable(name: "djrust-smoke", targets: ["djrust-smoke"]),
+        .library(name: "DJRustUI", targets: ["DJRustUI"]),
+        .executable(name: "DJRustApp", targets: ["DJRustApp"]),
+      ] : []),
   targets: [
     // Device profiles, jog parsing, CoreMIDI input. No UI, no audio graph yet.
     .target(

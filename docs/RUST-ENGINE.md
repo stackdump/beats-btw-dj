@@ -1,4 +1,8 @@
-# Rust engine embed (spike, branch `rust-engine-embed`)
+# Rust engine embed
+
+> 2026-11-14: the crate copy described below is gone: the XCFramework is built from djandroid's
+> own crate at pinned revs, and the djandroid port (DJRustUI, the iPad app) is the way forward.
+> See docs/ANDROID-PORT.md. The DJApp toggle below still works.
 
 Runs the Rust DJ engine ([stackdump/djrust-vevr-se], private) inside this Swift app, the way
 `djandroid-vevr-se` nests it behind a native shell (Kotlin there, Swift here). Spike: nothing
@@ -16,9 +20,9 @@ DJRust (SwiftPM target)             Sources/DJRust/RustEngine.swift   thin Swift
 djmobileFFI.xcframework             rust/dist/ (gitignored, built by script)
    │   macos-arm64_x86_64 · ios-arm64 · ios-arm64_x86_64-simulator   (static libdjmobile.a)
    ▼
-rust/  crate `djmobile`             copy of djandroid's rust/ (same `Player` surface), staticlib
+djandroid-vevr-se rust/ (djmobile)  built as-is from a pinned snapshot (rust/PINS, rust/upstream/)
    ▼
-djrust-vevr-se  djengine + djhost   path dep ../../.djrust-embed-wt (worktree of origin/main 07b2742)
+djrust-vevr-se + djrust + windwheel  snapshots at the same pins (docs/ANDROID-PORT.md)
 ```
 
 - **Surface = djandroid's.** `Player` (decks "A"/"B": `compose`, `set_playing`, `state`, pitch,

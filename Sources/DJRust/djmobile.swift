@@ -684,15 +684,70 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 public protocol PlayerProtocol: AnyObject, Sendable {
     
     /**
+     * The output stream: live, or lost and being reopened.
+     */
+    func audioStatus()  -> AudioStatus
+    
+    /**
      * Compose `genre` / `seed` / `structure` ("loop" or None: endless) and load it on `deck`
-     * when it is ready; the deck keeps playing what it has until then.
+     * when it is ready; the deck keeps playing what it has until then. The deck's sound (its
+     * palette, kit and role voices) goes with it, as with Next and auto-next.
      */
     func compose(deck: String, genre: String, seed: Int64, structure: String?) throws  -> Bool
     
     /**
-     * Fire a macro on `deck` (for `bars` bars, or its own length), as `deck macro` on the desktop.
+     * The feel `deck` plays with now, as the feel lock keeps it (`"3:0.12"`: groove family,
+     * humanize); None with nothing composed on it.
      */
-    func fireMacro(deck: String, id: String, bars: Int32?) throws  -> Bool
+    func deckFeel(deck: String)  -> String?
+    
+    /**
+     * The key `deck` plays in now, as the key lock keeps it (`"MinorScale:9"`: scale, root
+     * pitch class); None with nothing composed on it.
+     */
+    func deckKey(deck: String)  -> String?
+    
+    /**
+     * Engage `id` on `deck`: on its next bar, for `mode` (1-4 bars, latched, or held; a
+     * transition is momentary only). Refused with the reason when the category does not allow it.
+     */
+    func engage(deck: String, id: String, mode: FxMode) throws 
+    
+    /**
+     * The groove family a feel names, for people (the genre that plays it by default).
+     */
+    func feelLabel(feel: String)  -> String
+    
+    /**
+     * An Acid Bass trick on `deck`, on (held) or off: the phone's own tricks for an Acid Bass
+     * loop ([`fx::ACID_TRICKS`]); everything else goes through [`Player::engage`].
+     */
+    func fxAcid(deck: String, id: String, on: Bool) throws 
+    
+    /**
+     * Every effect (trick or macro), each in one category.
+     */
+    func fxCatalogue()  -> [FxInfo]
+    
+    /**
+     * The panel's categories, in order.
+     */
+    func fxCategories()  -> [FxCategory]
+    
+    /**
+     * A held pad lifted: off at once. A transition runs its own length.
+     */
+    func fxRelease(deck: String, id: String) throws 
+    
+    /**
+     * What is on, or waiting for its bar, on `deck`.
+     */
+    func fxState(deck: String) throws  -> [FxActive]
+    
+    /**
+     * A latched pad pressed again: off on the next bar.
+     */
+    func fxUnlatch(deck: String, id: String) throws 
     
     /**
      * Find the zones again.
@@ -756,24 +811,45 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func info()  -> EngineInfo
     
     /**
-     * Load TD-3 loop `id` ("1A" … "4B", see [`td3_loops`]) on `deck` in place of its track and
+     * A key as [`deck_key`](Self::deck_key) writes it, for people: "A minor", "D dorian".
+     */
+    func keyLabel(key: String)  -> String
+    
+    /**
+     * Load the tracks a saved whole-mix snapshot (the `DjSnapshot` document a snapshot share
+     * names; the wallet checks the share and that the document hashes to its CID) holds on their
+     * decks, A and B. Only the tracks: the knobs, the mixer and the vocoder setup are not
+     * restored yet. Returns the decks it loaded.
+     */
+    func loadSavedMix(snapshotJson: String) throws  -> [String]
+    
+    /**
+     * Load the track a saved, signed credential holds (its `credentialSubject`, schema
+     * beats-track.v1) on `deck`, exactly as signed (its share payload, so its CID), or in the
+     * deck's locked sound when it is locked (then a new CID). Returns its name. The deck keeps
+     * playing what it has until the track is composed.
+     */
+    func loadSavedTrack(deck: String, bundleJson: String) throws  -> String
+    
+    /**
+     * Load loop `id` ("1A" … "9B", see [`td3_loops`]) on `deck` in place of its track and
      * play it, synced to the other deck on the bar when that one plays. `drums`: with a kick
      * and an offbeat hat (else the acid line alone). Compose (or back) returns to a track.
      */
     func loadTd3(deck: String, id: String, drums: Bool) throws 
     
     /**
-     * A TD-3 group on both decks: its A pattern on deck A, its B on deck B, both playing and
+     * A loop group on both decks: its A on deck A, its B on deck B, both playing and
      * locked on the bar, so the crossfader swaps the line's answer in and out.
      */
     func loadTd3Pair(group: UInt32, drums: Bool) throws 
     
-    /**
-     * Every macro: the song's own (net), the master FX ones and the pan / shape / aux ones.
-     */
-    func macroCatalogue()  -> [MacroInfo]
-    
     func mix() throws  -> MixState
+    
+    /**
+     * The whole mix as a `DjSnapshot`, or None when neither deck holds a composed track.
+     */
+    func mixSnapshot() throws  -> MixSnapshot?
     
     /**
      * Skip to the next version now (the media controls' next): the composed one if the
@@ -788,7 +864,7 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func palettes(deck: String)  -> [Palette]
     
     /**
-     * PANIC: end `deck`'s macros and tricks (the aux ones too).
+     * PANIC: end `deck`'s macros, tricks and latches, at once (the aux ones too).
      */
     func panic(deck: String) throws 
     
@@ -830,12 +906,29 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func setCrossfader(v: Double) throws 
     
     /**
+     * Lock the deck's feel to `feel` (as [`deck_feel`](Self::deck_feel) writes it), or unlock it
+     * (None). Locked, every track the deck loads plays that groove family's swing and push and
+     * that humanize, whatever its genre's own. The track on the deck now is left as it is.
+     */
+    func setFeelLock(deck: String, feel: String?) throws 
+    
+    /**
+     * Lock the deck's key to `key` (as [`deck_key`](Self::deck_key) writes it), or unlock it
+     * (None). Locked, every track the deck loads is pinned to that root, or its relative major /
+     * minor when its genre plays the other kind of scale, so the deck stays in one key for mixing.
+     * The track on the deck now is left as it is.
+     */
+    func setKeyLock(deck: String, key: String?) throws 
+    
+    /**
      * None or "studio": the default sounds.
+     * A locked deck's lock follows: the palette picked is the one kept.
      */
     func setPalette(deck: String, palette: String?) throws 
     
     /**
      * The tempo fader: -1..1 of the pitch range.
+     * A locked deck's tempo lock follows: the BPM it plays at after the move is the one kept.
      */
     func setPitch(deck: String, pitch: Double) throws 
     
@@ -859,8 +952,27 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func setRoleDisabled(deck: String, role: String, disabled: Bool) throws 
     
     /**
-     * The vocoder on, the synth as its carrier and `modulator` (a deck) shaping it; or off
-     * (None), the synth's notes let go.
+     * Lock the deck's sound to `palette` ("studio": the default sounds), or unlock it (None).
+     * Locked, every track the deck loads plays in that palette: Compose & load, Surprise me,
+     * next and back, auto-next, a saved track or mix, and the next composed track after a TD-3
+     * loop (which plays its own sound). The track on the deck now takes it from the next bar.
+     */
+    func setSoundLock(deck: String, palette: String?) throws 
+    
+    /**
+     * Lock the deck's tempo to `bpm` (20 to 300), or unlock it (None). Locked, every track the
+     * deck loads plays at that BPM, its genre's own tempo aside: Compose & load, Surprise me,
+     * next and back, a saved track or mix, and the next composed track after a TD-3 loop. It is
+     * composed at the tempo that, with the pitch fader where it is, plays at `bpm`. Moving the
+     * fader, its range or Sync on a locked deck moves the lock. The track on the deck now is left
+     * as it is.
+     */
+    func setTempoLock(deck: String, bpm: Double?) throws 
+    
+    /**
+     * The vocoder on, the synth as its carrier and `modulator` shaping it: a deck ("A", "B")
+     * or the Wheel tab's instrument ([`WHEEL_MODULATOR`], its input strip, tapped before the
+     * strip's fader); or off (None), the synth's notes let go.
      */
     func setVocoder(modulator: String?) throws 
     
@@ -903,24 +1015,37 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func sync(deck: String) throws 
     
     /**
-     * Fire a trick on (held) or off on `deck`, landing on the deck's own grid.
+     * The deck's locked tempo, BPM; None when it is not locked.
      */
-    func trick(deck: String, kind: String, on: Bool) throws 
+    func tempoLock(deck: String)  -> Double?
     
     /**
-     * The ids of the performance tricks, in the desktop's order.
+     * The beats share of what `deck` holds, or None (empty, an Acid Bass loop, still composing).
      */
-    func trickIds()  -> [String]
+    func trackShare(deck: String) throws  -> TrackShare?
     
     /**
      * The filter's knob under a hand: 0 low-pass all the way, 0.5 open, 1 high-pass all the way.
+     * A continuous control: it answers at once, on no bar.
      */
     func trickKnob(deck: String, v: Double) throws 
     
     /**
-     * The tricks now on, as "deck:kind" ("A:stutter").
+     * TVs fetching the stream now (0 while it is off).
      */
-    func tricksOn() throws  -> [String]
+    func tvStreamListeners()  -> UInt32
+    
+    /**
+     * Serve the master mix for a Chromecast at `peer` (its IP address) to play: an endless
+     * WAV, from the moment each request arrives. Returns the URL to send the Stage receiver,
+     * with the phone's address on the route to `peer`. Started once; later calls reuse it.
+     */
+    func tvStreamStart(peer: String) throws  -> String
+    
+    /**
+     * Close the TV's stream (a TV still fetching is cut off).
+     */
+    func tvStreamStop() 
     
     func vocoder() throws  -> VocoderState
     
@@ -939,6 +1064,163 @@ public protocol PlayerProtocol: AnyObject, Sendable {
      * Set a vocoder knob by name ("cutoff", "mix", …) in its own units (clamped).
      */
     func vocoderSet(name: String, value: Double) throws  -> Double
+    
+    /**
+     * Brightness 0…1: a tighter coil and smaller magnet (brighter, quieter), then re-wind.
+     */
+    func wheelBrightness(brightness: Double) throws  -> WheelLayout
+    
+    /**
+     * The finger drives the cord at `v` m/s along the path.
+     */
+    func wheelDrive(v: Double) throws 
+    
+    /**
+     * The finger holds the rail's sled at `z`.
+     */
+    func wheelHand(z: Double) throws 
+    
+    /**
+     * The wheel in the master (true) or out of it (false: its strip muted). Out, it still
+     * shapes the vocoder when it is the modulator: the vocoder taps the strip before its fader.
+     */
+    func wheelInMix(on: Bool) throws 
+    
+    /**
+     * Gravity: a magnet drops by itself every `seconds` (0: by hand only).
+     */
+    func wheelInterval(seconds: Double) throws 
+    
+    /**
+     * Re-wind the instrument for `root` ("D3") and `transpose` (±24 semitones): every note is
+     * designed again for this coil. Takes a few hundred ms; the wheel keeps playing meanwhile.
+     */
+    func wheelKey(root: String, transpose: Int32) throws  -> WheelLayout
+    
+    /**
+     * Set the wheel's motor so its tempo lands on the whole-number multiple of `deck`'s BPM
+     * nearest its tempo now. Only a cord round a loop (hoop, drum, rope) has a tempo.
+     * The wheel's build knobs (magnets, carrier mass, Lenz drag, drop height / pluck size,
+     * load, the notes' timbre and decay), all live: what changes the winding crossfades in.
+     */
+    func wheelKnobs(knobs: WheelKnobs) throws  -> WheelLayout
+    
+    /**
+     * The instrument on the wheel (None before the first load).
+     */
+    func wheelLayout()  -> WheelLayout?
+    
+    /**
+     * Put instrument `id` (one of [`wheel_presets`]) on the wheel, at rest.
+     */
+    func wheelLoad(id: String) throws  -> WheelLayout
+    
+    /**
+     * The wheel's magnets and their speeds on the voice's clock, for the drawing to poll at the
+     * display's rate: the wheel's lock only (not the engine's), held for a copy.
+     */
+    func wheelMotion() throws  -> WheelMotion
+    
+    /**
+     * The motor on at `speed` m/s along the path, or off (the cord coasts).
+     */
+    func wheelMotor(on: Bool, speed: Double) throws 
+    
+    /**
+     * Pause the wheel (everything held where it is: magnets, speeds, motor, settings; silent)
+     * or play on from exactly there.
+     */
+    func wheelPause(paused: Bool) throws 
+    
+    /**
+     * Drop a magnet (into tube `segment`, else the next), pluck the pendulum or the spring.
+     */
+    func wheelPluck(segment: UInt32?) throws 
+    
+    /**
+     * Let go: the cord keeps `v` (a flick) or coasts, the sled slides.
+     */
+    func wheelRelease(v: Double?) throws 
+    
+    /**
+     * Set the wheel's tempo on rung `index` of `deck`'s ladder: ×1 at 0, ×(i+1) above, 1/(1−i)
+     * below (the sync × slider), within the motor's range.
+     */
+    func wheelRung(deck: String, index: Int32) throws  -> WheelSync
+    
+    /**
+     * Wind a note sequence ("C E G B C B G E") round the instrument's path, in order, in place
+     * of its notes; "" goes back to none. A few hundred ms, as a key change.
+     */
+    func wheelSequence(text: String) throws  -> WheelLayout
+    
+    func wheelState() throws  -> WheelState
+    
+    /**
+     * Step the wheel's tempo one rung against `deck`: `up` to the next whole-number multiple of
+     * its BPM, else the one below (and on into ½, ⅓, … below ×1), within the motor's range;
+     * None at its end (nothing changes).
+     */
+    func wheelStep(deck: String, up: Bool) throws  -> WheelSync?
+    
+    /**
+     * Everything stops: the motor off, the magnets at rest.
+     */
+    func wheelStop() throws 
+    
+    func wheelSync(deck: String) throws  -> WheelSync
+    
+    /**
+     * The trigger (a variable load across the coil: 0 open, ½ matched, 1 short), or None for
+     * the instrument's fixed load.
+     */
+    func wheelTrigger(pull: Double?) throws 
+    
+    func wheelVolume(db: Double) throws 
+    
+    /**
+     * Switch `effect` ("filter", "crush", "delay", "reverb") on `target` on or off: it fades
+     * in or out; a delay's or reverb's tail rings out.
+     */
+    func insertOn(target: String, effect: String, on: Bool) throws 
+    
+    /**
+     * Move a knob ("filter.sweep", "delay.mix", …, 0...1) on `target`; the new reading back
+     * ("LP 1.2 kHz").
+     */
+    func insertParam(target: String, param: String, value: Double) throws  -> String
+    
+    /**
+     * `target`'s chain: every effect, its switch and knobs, and the delay's tempo.
+     */
+    func insertState(target: String) throws  -> InsertChainState
+    
+    /**
+     * Every target's chain, in page order (one lock: the page's poll).
+     */
+    func insertStates() throws  -> [InsertChainState]
+    
+    /**
+     * The FX page's targets: "A", "B", "Wheel", "Master".
+     */
+    func insertTargets()  -> [String]
+    
+    /**
+     * Every effect on every target off (the tails ring out).
+     */
+    func insertsOff() throws 
+    
+    /**
+     * Put back what [`inserts_save`](Self::inserts_save) gave; unknown targets and keys are
+     * skipped. `switches` false: the knobs only, every effect left off (a fresh start does not
+     * come up with a delay on). The targets restored.
+     */
+    func insertsRestore(json: String, switches: Bool) throws  -> [String]
+    
+    /**
+     * Every target's switches and knobs, as JSON keyed by page target (for the app to keep).
+     */
+    func insertsSave() throws  -> String
     
 }
 open class Player: PlayerProtocol, @unchecked Sendable {
@@ -1009,8 +1291,21 @@ public convenience init(soundfontDir: String)throws  {
 
     
     /**
+     * The output stream: live, or lost and being reopened.
+     */
+open func audioStatus() -> AudioStatus  {
+    return try!  FfiConverterTypeAudioStatus_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_audio_status(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Compose `genre` / `seed` / `structure` ("loop" or None: endless) and load it on `deck`
-     * when it is ready; the deck keeps playing what it has until then.
+     * when it is ready; the deck keeps playing what it has until then. The deck's sound (its
+     * palette, kit and role voices) goes with it, as with Next and auto-next.
      */
 open func compose(deck: String, genre: String, seed: Int64, structure: String?)throws  -> Bool  {
     return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
@@ -1026,18 +1321,137 @@ open func compose(deck: String, genre: String, seed: Int64, structure: String?)t
 }
     
     /**
-     * Fire a macro on `deck` (for `bars` bars, or its own length), as `deck macro` on the desktop.
+     * The feel `deck` plays with now, as the feel lock keeps it (`"3:0.12"`: groove family,
+     * humanize); None with nothing composed on it.
      */
-open func fireMacro(deck: String, id: String, bars: Int32?)throws  -> Bool  {
-    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func deckFeel(deck: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_djmobile_fn_method_player_fire_macro(
+    uniffi_djmobile_fn_method_player_deck_feel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The key `deck` plays in now, as the key lock keeps it (`"MinorScale:9"`: scale, root
+     * pitch class); None with nothing composed on it.
+     */
+open func deckKey(deck: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_deck_key(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Engage `id` on `deck`: on its next bar, for `mode` (1-4 bars, latched, or held; a
+     * transition is momentary only). Refused with the reason when the category does not allow it.
+     */
+open func engage(deck: String, id: String, mode: FxMode)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_engage(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(deck),
         FfiConverterString.lower(id),
-        FfiConverterOptionInt32.lower(bars),uniffiCallStatus
+        FfiConverterTypeFxMode_lower(mode),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The groove family a feel names, for people (the genre that plays it by default).
+     */
+open func feelLabel(feel: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_feel_label(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(feel),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * An Acid Bass trick on `deck`, on (held) or off: the phone's own tricks for an Acid Bass
+     * loop ([`fx::ACID_TRICKS`]); everything else goes through [`Player::engage`].
+     */
+open func fxAcid(deck: String, id: String, on: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_fx_acid(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterString.lower(id),
+        FfiConverterBool.lower(on),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Every effect (trick or macro), each in one category.
+     */
+open func fxCatalogue() -> [FxInfo]  {
+    return try!  FfiConverterSequenceTypeFxInfo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_fx_catalogue(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The panel's categories, in order.
+     */
+open func fxCategories() -> [FxCategory]  {
+    return try!  FfiConverterSequenceTypeFxCategory.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_fx_categories(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A held pad lifted: off at once. A transition runs its own length.
+     */
+open func fxRelease(deck: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_fx_release(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * What is on, or waiting for its bar, on `deck`.
+     */
+open func fxState(deck: String)throws  -> [FxActive]  {
+    return try  FfiConverterSequenceTypeFxActive.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_fx_state(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A latched pad pressed again: off on the next bar.
+     */
+open func fxUnlatch(deck: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_fx_unlatch(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -1195,7 +1609,53 @@ open func info() -> EngineInfo  {
 }
     
     /**
-     * Load TD-3 loop `id` ("1A" … "4B", see [`td3_loops`]) on `deck` in place of its track and
+     * A key as [`deck_key`](Self::deck_key) writes it, for people: "A minor", "D dorian".
+     */
+open func keyLabel(key: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_key_label(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Load the tracks a saved whole-mix snapshot (the `DjSnapshot` document a snapshot share
+     * names; the wallet checks the share and that the document hashes to its CID) holds on their
+     * decks, A and B. Only the tracks: the knobs, the mixer and the vocoder setup are not
+     * restored yet. Returns the decks it loaded.
+     */
+open func loadSavedMix(snapshotJson: String)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_load_saved_mix(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(snapshotJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Load the track a saved, signed credential holds (its `credentialSubject`, schema
+     * beats-track.v1) on `deck`, exactly as signed (its share payload, so its CID), or in the
+     * deck's locked sound when it is locked (then a new CID). Returns its name. The deck keeps
+     * playing what it has until the track is composed.
+     */
+open func loadSavedTrack(deck: String, bundleJson: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_load_saved_track(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterString.lower(bundleJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Load loop `id` ("1A" … "9B", see [`td3_loops`]) on `deck` in place of its track and
      * play it, synced to the other deck on the bar when that one plays. `drums`: with a kick
      * and an offbeat hat (else the acid line alone). Compose (or back) returns to a track.
      */
@@ -1211,7 +1671,7 @@ open func loadTd3(deck: String, id: String, drums: Bool)throws   {try rustCallWi
 }
     
     /**
-     * A TD-3 group on both decks: its A pattern on deck A, its B on deck B, both playing and
+     * A loop group on both decks: its A on deck A, its B on deck B, both playing and
      * locked on the bar, so the crossfader swaps the line's answer in and out.
      */
 open func loadTd3Pair(group: UInt32, drums: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
@@ -1224,22 +1684,22 @@ open func loadTd3Pair(group: UInt32, drums: Bool)throws   {try rustCallWithError
 }
 }
     
-    /**
-     * Every macro: the song's own (net), the master FX ones and the pan / shape / aux ones.
-     */
-open func macroCatalogue() -> [MacroInfo]  {
-    return try!  FfiConverterSequenceTypeMacroInfo.lift(try! rustCall() {
+open func mix()throws  -> MixState  {
+    return try  FfiConverterTypeMixState_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
-    uniffi_djmobile_fn_method_player_macro_catalogue(
+    uniffi_djmobile_fn_method_player_mix(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
-open func mix()throws  -> MixState  {
-    return try  FfiConverterTypeMixState_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+    /**
+     * The whole mix as a `DjSnapshot`, or None when neither deck holds a composed track.
+     */
+open func mixSnapshot()throws  -> MixSnapshot?  {
+    return try  FfiConverterOptionTypeMixSnapshot.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
-    uniffi_djmobile_fn_method_player_mix(
+    uniffi_djmobile_fn_method_player_mix_snapshot(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1274,7 +1734,7 @@ open func palettes(deck: String) -> [Palette]  {
 }
     
     /**
-     * PANIC: end `deck`'s macros and tricks (the aux ones too).
+     * PANIC: end `deck`'s macros, tricks and latches, at once (the aux ones too).
      */
 open func panic(deck: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
@@ -1369,7 +1829,39 @@ open func setCrossfader(v: Double)throws   {try rustCallWithError(FfiConverterTy
 }
     
     /**
+     * Lock the deck's feel to `feel` (as [`deck_feel`](Self::deck_feel) writes it), or unlock it
+     * (None). Locked, every track the deck loads plays that groove family's swing and push and
+     * that humanize, whatever its genre's own. The track on the deck now is left as it is.
+     */
+open func setFeelLock(deck: String, feel: String?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_set_feel_lock(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterOptionString.lower(feel),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Lock the deck's key to `key` (as [`deck_key`](Self::deck_key) writes it), or unlock it
+     * (None). Locked, every track the deck loads is pinned to that root, or its relative major /
+     * minor when its genre plays the other kind of scale, so the deck stays in one key for mixing.
+     * The track on the deck now is left as it is.
+     */
+open func setKeyLock(deck: String, key: String?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_set_key_lock(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterOptionString.lower(key),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * None or "studio": the default sounds.
+     * A locked deck's lock follows: the palette picked is the one kept.
      */
 open func setPalette(deck: String, palette: String?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
@@ -1383,6 +1875,7 @@ open func setPalette(deck: String, palette: String?)throws   {try rustCallWithEr
     
     /**
      * The tempo fader: -1..1 of the pitch range.
+     * A locked deck's tempo lock follows: the BPM it plays at after the move is the one kept.
      */
 open func setPitch(deck: String, pitch: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
@@ -1448,8 +1941,43 @@ open func setRoleDisabled(deck: String, role: String, disabled: Bool)throws   {t
 }
     
     /**
-     * The vocoder on, the synth as its carrier and `modulator` (a deck) shaping it; or off
-     * (None), the synth's notes let go.
+     * Lock the deck's sound to `palette` ("studio": the default sounds), or unlock it (None).
+     * Locked, every track the deck loads plays in that palette: Compose & load, Surprise me,
+     * next and back, auto-next, a saved track or mix, and the next composed track after a TD-3
+     * loop (which plays its own sound). The track on the deck now takes it from the next bar.
+     */
+open func setSoundLock(deck: String, palette: String?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_set_sound_lock(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterOptionString.lower(palette),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Lock the deck's tempo to `bpm` (20 to 300), or unlock it (None). Locked, every track the
+     * deck loads plays at that BPM, its genre's own tempo aside: Compose & load, Surprise me,
+     * next and back, a saved track or mix, and the next composed track after a TD-3 loop. It is
+     * composed at the tempo that, with the pitch fader where it is, plays at `bpm`. Moving the
+     * fader, its range or Sync on a locked deck moves the lock. The track on the deck now is left
+     * as it is.
+     */
+open func setTempoLock(deck: String, bpm: Double?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_set_tempo_lock(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterOptionDouble.lower(bpm),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The vocoder on, the synth as its carrier and `modulator` shaping it: a deck ("A", "B")
+     * or the Wheel tab's instrument ([`WHEEL_MODULATOR`], its input strip, tapped before the
+     * strip's fader); or off (None), the synth's notes let go.
      */
 open func setVocoder(modulator: String?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
@@ -1557,33 +2085,34 @@ open func sync(deck: String)throws   {try rustCallWithError(FfiConverterTypeDjEr
 }
     
     /**
-     * Fire a trick on (held) or off on `deck`, landing on the deck's own grid.
+     * The deck's locked tempo, BPM; None when it is not locked.
      */
-open func trick(deck: String, kind: String, on: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func tempoLock(deck: String) -> Double?  {
+    return try!  FfiConverterOptionDouble.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_djmobile_fn_method_player_trick(
+    uniffi_djmobile_fn_method_player_tempo_lock(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(deck),
-        FfiConverterString.lower(kind),
-        FfiConverterBool.lower(on),uniffiCallStatus
+        FfiConverterString.lower(deck),uniffiCallStatus
     )
-}
+})
 }
     
     /**
-     * The ids of the performance tricks, in the desktop's order.
+     * The beats share of what `deck` holds, or None (empty, an Acid Bass loop, still composing).
      */
-open func trickIds() -> [String]  {
-    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+open func trackShare(deck: String)throws  -> TrackShare?  {
+    return try  FfiConverterOptionTypeTrackShare.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
-    uniffi_djmobile_fn_method_player_trick_ids(
-            self.uniffiCloneHandle(),uniffiCallStatus
+    uniffi_djmobile_fn_method_player_track_share(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),uniffiCallStatus
     )
 })
 }
     
     /**
      * The filter's knob under a hand: 0 low-pass all the way, 0.5 open, 1 high-pass all the way.
+     * A continuous control: it answers at once, on no bar.
      */
 open func trickKnob(deck: String, v: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
@@ -1596,15 +2125,41 @@ open func trickKnob(deck: String, v: Double)throws   {try rustCallWithError(FfiC
 }
     
     /**
-     * The tricks now on, as "deck:kind" ("A:stutter").
+     * TVs fetching the stream now (0 while it is off).
      */
-open func tricksOn()throws  -> [String]  {
-    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func tvStreamListeners() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_djmobile_fn_method_player_tricks_on(
+    uniffi_djmobile_fn_method_player_tv_stream_listeners(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Serve the master mix for a Chromecast at `peer` (its IP address) to play: an endless
+     * WAV, from the moment each request arrives. Returns the URL to send the Stage receiver,
+     * with the phone's address on the route to `peer`. Started once; later calls reuse it.
+     */
+open func tvStreamStart(peer: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_tv_stream_start(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(peer),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Close the TV's stream (a TV still fetching is cut off).
+     */
+open func tvStreamStop()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_tv_stream_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
 open func vocoder()throws  -> VocoderState  {
@@ -1655,6 +2210,391 @@ open func vocoderSet(name: String, value: Double)throws  -> Double  {
 })
 }
     
+    /**
+     * Brightness 0…1: a tighter coil and smaller magnet (brighter, quieter), then re-wind.
+     */
+open func wheelBrightness(brightness: Double)throws  -> WheelLayout  {
+    return try  FfiConverterTypeWheelLayout_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_brightness(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(brightness),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The finger drives the cord at `v` m/s along the path.
+     */
+open func wheelDrive(v: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_drive(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(v),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The finger holds the rail's sled at `z`.
+     */
+open func wheelHand(z: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_hand(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(z),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The wheel in the master (true) or out of it (false: its strip muted). Out, it still
+     * shapes the vocoder when it is the modulator: the vocoder taps the strip before its fader.
+     */
+open func wheelInMix(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_in_mix(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(on),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Gravity: a magnet drops by itself every `seconds` (0: by hand only).
+     */
+open func wheelInterval(seconds: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_interval(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(seconds),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Re-wind the instrument for `root` ("D3") and `transpose` (±24 semitones): every note is
+     * designed again for this coil. Takes a few hundred ms; the wheel keeps playing meanwhile.
+     */
+open func wheelKey(root: String, transpose: Int32)throws  -> WheelLayout  {
+    return try  FfiConverterTypeWheelLayout_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_key(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(root),
+        FfiConverterInt32.lower(transpose),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Set the wheel's motor so its tempo lands on the whole-number multiple of `deck`'s BPM
+     * nearest its tempo now. Only a cord round a loop (hoop, drum, rope) has a tempo.
+     * The wheel's build knobs (magnets, carrier mass, Lenz drag, drop height / pluck size,
+     * load, the notes' timbre and decay), all live: what changes the winding crossfades in.
+     */
+open func wheelKnobs(knobs: WheelKnobs)throws  -> WheelLayout  {
+    return try  FfiConverterTypeWheelLayout_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_knobs(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeWheelKnobs_lower(knobs),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The instrument on the wheel (None before the first load).
+     */
+open func wheelLayout() -> WheelLayout?  {
+    return try!  FfiConverterOptionTypeWheelLayout.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_layout(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Put instrument `id` (one of [`wheel_presets`]) on the wheel, at rest.
+     */
+open func wheelLoad(id: String)throws  -> WheelLayout  {
+    return try  FfiConverterTypeWheelLayout_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_load(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The wheel's magnets and their speeds on the voice's clock, for the drawing to poll at the
+     * display's rate: the wheel's lock only (not the engine's), held for a copy.
+     */
+open func wheelMotion()throws  -> WheelMotion  {
+    return try  FfiConverterTypeWheelMotion_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_motion(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The motor on at `speed` m/s along the path, or off (the cord coasts).
+     */
+open func wheelMotor(on: Bool, speed: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_motor(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(on),
+        FfiConverterDouble.lower(speed),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Pause the wheel (everything held where it is: magnets, speeds, motor, settings; silent)
+     * or play on from exactly there.
+     */
+open func wheelPause(paused: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_pause(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(paused),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Drop a magnet (into tube `segment`, else the next), pluck the pendulum or the spring.
+     */
+open func wheelPluck(segment: UInt32?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_pluck(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionUInt32.lower(segment),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Let go: the cord keeps `v` (a flick) or coasts, the sled slides.
+     */
+open func wheelRelease(v: Double?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_release(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionDouble.lower(v),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Set the wheel's tempo on rung `index` of `deck`'s ladder: ×1 at 0, ×(i+1) above, 1/(1−i)
+     * below (the sync × slider), within the motor's range.
+     */
+open func wheelRung(deck: String, index: Int32)throws  -> WheelSync  {
+    return try  FfiConverterTypeWheelSync_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_rung(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterInt32.lower(index),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Wind a note sequence ("C E G B C B G E") round the instrument's path, in order, in place
+     * of its notes; "" goes back to none. A few hundred ms, as a key change.
+     */
+open func wheelSequence(text: String)throws  -> WheelLayout  {
+    return try  FfiConverterTypeWheelLayout_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_sequence(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+})
+}
+    
+open func wheelState()throws  -> WheelState  {
+    return try  FfiConverterTypeWheelState_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Step the wheel's tempo one rung against `deck`: `up` to the next whole-number multiple of
+     * its BPM, else the one below (and on into ½, ⅓, … below ×1), within the motor's range;
+     * None at its end (nothing changes).
+     */
+open func wheelStep(deck: String, up: Bool)throws  -> WheelSync?  {
+    return try  FfiConverterOptionTypeWheelSync.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_step(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterBool.lower(up),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Everything stops: the motor off, the magnets at rest.
+     */
+open func wheelStop()throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func wheelSync(deck: String)throws  -> WheelSync  {
+    return try  FfiConverterTypeWheelSync_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_sync(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The trigger (a variable load across the coil: 0 open, ½ matched, 1 short), or None for
+     * the instrument's fixed load.
+     */
+open func wheelTrigger(pull: Double?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_trigger(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionDouble.lower(pull),uniffiCallStatus
+    )
+}
+}
+    
+open func wheelVolume(db: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_wheel_volume(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(db),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Switch `effect` ("filter", "crush", "delay", "reverb") on `target` on or off: it fades
+     * in or out; a delay's or reverb's tail rings out.
+     */
+open func insertOn(target: String, effect: String, on: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_insert_on(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(target),
+        FfiConverterString.lower(effect),
+        FfiConverterBool.lower(on),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Move a knob ("filter.sweep", "delay.mix", …, 0...1) on `target`; the new reading back
+     * ("LP 1.2 kHz").
+     */
+open func insertParam(target: String, param: String, value: Double)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_insert_param(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(target),
+        FfiConverterString.lower(param),
+        FfiConverterDouble.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * `target`'s chain: every effect, its switch and knobs, and the delay's tempo.
+     */
+open func insertState(target: String)throws  -> InsertChainState  {
+    return try  FfiConverterTypeInsertChainState_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_insert_state(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(target),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every target's chain, in page order (one lock: the page's poll).
+     */
+open func insertStates()throws  -> [InsertChainState]  {
+    return try  FfiConverterSequenceTypeInsertChainState.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_insert_states(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The FX page's targets: "A", "B", "Wheel", "Master".
+     */
+open func insertTargets() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_insert_targets(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every effect on every target off (the tails ring out).
+     */
+open func insertsOff()throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_inserts_off(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Put back what [`inserts_save`](Self::inserts_save) gave; unknown targets and keys are
+     * skipped. `switches` false: the knobs only, every effect left off (a fresh start does not
+     * come up with a delay on). The targets restored.
+     */
+open func insertsRestore(json: String, switches: Bool)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_inserts_restore(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(json),
+        FfiConverterBool.lower(switches),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every target's switches and knobs, as JSON keyed by page target (for the app to keep).
+     */
+open func insertsSave()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_inserts_save(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 
     
 }
@@ -1701,6 +2641,144 @@ public func FfiConverterTypePlayer_lower(_ value: Player) -> UInt64 {
 }
 
 
+
+
+/**
+ * The output stream as the audio owner sees it. A stream AAudio ends (the device gone, the
+ * route changed, the audio server restarted) is dropped and the default output reopened at
+ * the engine's rate, with back-off; the decks keep their place meanwhile.
+ */
+public struct AudioStatus: Equatable, Hashable {
+    /**
+     * A stream is up and calling back.
+     */
+    public var live: Bool
+    /**
+     * Streams lost so far, and reopened.
+     */
+    public var losses: UInt32
+    public var restores: UInt32
+    /**
+     * Why the last one was lost, or why the last reopen failed.
+     */
+    public var why: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A stream is up and calling back.
+         */live: Bool, 
+        /**
+         * Streams lost so far, and reopened.
+         */losses: UInt32, restores: UInt32, 
+        /**
+         * Why the last one was lost, or why the last reopen failed.
+         */why: String?) {
+        self.live = live
+        self.losses = losses
+        self.restores = restores
+        self.why = why
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AudioStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioStatus {
+        return
+            try AudioStatus(
+                live: FfiConverterBool.read(from: &buf), 
+                losses: FfiConverterUInt32.read(from: &buf), 
+                restores: FfiConverterUInt32.read(from: &buf), 
+                why: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.live, into: &buf)
+        FfiConverterUInt32.write(value.losses, into: &buf)
+        FfiConverterUInt32.write(value.restores, into: &buf)
+        FfiConverterOptionString.write(value.why, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioStatus_lift(_ buf: RustBuffer) throws -> AudioStatus {
+    return try FfiConverterTypeAudioStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioStatus_lower(_ value: AudioStatus) -> RustBuffer {
+    return FfiConverterTypeAudioStatus.lower(value)
+}
+
+
+/**
+ * Compile-time features of this build; `network` off means no code that publishes or fetches.
+ */
+public struct BuildFeatures: Equatable, Hashable {
+    public var network: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(network: Bool) {
+        self.network = network
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BuildFeatures: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBuildFeatures: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BuildFeatures {
+        return
+            try BuildFeatures(
+                network: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BuildFeatures, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.network, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBuildFeatures_lift(_ buf: RustBuffer) throws -> BuildFeatures {
+    return try FfiConverterTypeBuildFeatures.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBuildFeatures_lower(_ value: BuildFeatures) -> RustBuffer {
+    return FfiConverterTypeBuildFeatures.lower(value)
+}
 
 
 /**
@@ -1902,7 +2980,7 @@ public struct DeckState: Equatable, Hashable {
      */
     public var roles: [RoleState]
     /**
-     * The TD-3 loop on the deck ("1A"), None for a composed track.
+     * The Acid Bass loop on the deck ("1A"), None for a composed track.
      */
     public var td3: String?
     /**
@@ -1953,7 +3031,7 @@ public struct DeckState: Equatable, Hashable {
          * The song's roles in mixer order (empty before a track).
          */roles: [RoleState], 
         /**
-         * The TD-3 loop on the deck ("1A"), None for a composed track.
+         * The Acid Bass loop on the deck ("1A"), None for a composed track.
          */td3: String?, 
         /**
          * What auto level does to the deck now, dB (0 while it is off).
@@ -2153,6 +3231,245 @@ public func FfiConverterTypeEngineInfo_lift(_ buf: RustBuffer) throws -> EngineI
 #endif
 public func FfiConverterTypeEngineInfo_lower(_ value: EngineInfo) -> RustBuffer {
     return FfiConverterTypeEngineInfo.lower(value)
+}
+
+
+/**
+ * What is on, for a pad's light.
+ */
+public struct FxActive: Equatable, Hashable {
+    public var id: String
+    public var latched: Bool
+    /**
+     * Asked for, waiting for its bar.
+     */
+    public var pending: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, latched: Bool, 
+        /**
+         * Asked for, waiting for its bar.
+         */pending: Bool) {
+        self.id = id
+        self.latched = latched
+        self.pending = pending
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FxActive: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFxActive: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FxActive {
+        return
+            try FxActive(
+                id: FfiConverterString.read(from: &buf), 
+                latched: FfiConverterBool.read(from: &buf), 
+                pending: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FxActive, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterBool.write(value.latched, into: &buf)
+        FfiConverterBool.write(value.pending, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxActive_lift(_ buf: RustBuffer) throws -> FxActive {
+    return try FfiConverterTypeFxActive.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxActive_lower(_ value: FxActive) -> RustBuffer {
+    return FfiConverterTypeFxActive.lower(value)
+}
+
+
+/**
+ * A category of the panel, in panel order.
+ */
+public struct FxCategory: Equatable, Hashable {
+    public var id: String
+    public var label: String
+    /**
+     * A one-shot: momentary, no bar length, no latch.
+     */
+    public var transition: Bool
+    /**
+     * May stay on until let go.
+     */
+    public var latchable: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, label: String, 
+        /**
+         * A one-shot: momentary, no bar length, no latch.
+         */transition: Bool, 
+        /**
+         * May stay on until let go.
+         */latchable: Bool) {
+        self.id = id
+        self.label = label
+        self.transition = transition
+        self.latchable = latchable
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FxCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFxCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FxCategory {
+        return
+            try FxCategory(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                transition: FfiConverterBool.read(from: &buf), 
+                latchable: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FxCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterBool.write(value.transition, into: &buf)
+        FfiConverterBool.write(value.latchable, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxCategory_lift(_ buf: RustBuffer) throws -> FxCategory {
+    return try FfiConverterTypeFxCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxCategory_lower(_ value: FxCategory) -> RustBuffer {
+    return FfiConverterTypeFxCategory.lower(value)
+}
+
+
+/**
+ * One pad of the catalogue.
+ */
+public struct FxInfo: Equatable, Hashable {
+    /**
+     * What `Player::engage` takes.
+     */
+    public var id: String
+    public var label: String
+    /**
+     * The `FxCategory::id` it sits in (nowhere else).
+     */
+    public var category: String
+    /**
+     * "trick", "net", "master" or "aux": which engine family fires it; "acid": the phone's own
+     * Acid Bass tricks (category "acid", no panel category: their own card).
+     */
+    public var family: String
+    /**
+     * Needs a net deck (a song or pan/shape macro); the pad is dimmed on another.
+     */
+    public var needsNet: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What `Player::engage` takes.
+         */id: String, label: String, 
+        /**
+         * The `FxCategory::id` it sits in (nowhere else).
+         */category: String, 
+        /**
+         * "trick", "net", "master" or "aux": which engine family fires it; "acid": the phone's own
+         * Acid Bass tricks (category "acid", no panel category: their own card).
+         */family: String, 
+        /**
+         * Needs a net deck (a song or pan/shape macro); the pad is dimmed on another.
+         */needsNet: Bool) {
+        self.id = id
+        self.label = label
+        self.category = category
+        self.family = family
+        self.needsNet = needsNet
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FxInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFxInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FxInfo {
+        return
+            try FxInfo(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                category: FfiConverterString.read(from: &buf), 
+                family: FfiConverterString.read(from: &buf), 
+                needsNet: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FxInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.category, into: &buf)
+        FfiConverterString.write(value.family, into: &buf)
+        FfiConverterBool.write(value.needsNet, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxInfo_lift(_ buf: RustBuffer) throws -> FxInfo {
+    return try FfiConverterTypeFxInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxInfo_lower(_ value: FxInfo) -> RustBuffer {
+    return FfiConverterTypeFxInfo.lower(value)
 }
 
 
@@ -2473,31 +3790,47 @@ public func FfiConverterTypeHeosZone_lower(_ value: HeosZone) -> RustBuffer {
 
 
 /**
- * One macro of the catalogue: its id (what [`crate::Player::fire_macro`] takes) and its group.
+ * A target's chain, for the page.
  */
-public struct MacroInfo: Equatable, Hashable {
-    public var id: String
+public struct InsertChainState: Equatable, Hashable {
     /**
-     * "Net" (the song's own), "FX"/"Pitch"/"Feel" (master), "Pan"/"Shape"/"FX" (aux)
+     * "A", "B", "Wheel" or "Master".
      */
-    public var group: String
+    public var target: String
+    public var effects: [InsertEffect]
     /**
-     * "net", "master" or "aux"
+     * The tempo its delay follows now (0: nothing playing; it keeps the last).
      */
-    public var kind: String
+    public var bpm: Double
+    /**
+     * The delay's division at that tempo, ms (0 when no tempo).
+     */
+    public var delayMs: Double
+    /**
+     * Which deck that tempo comes from ("A" or "B"; empty: none playing).
+     */
+    public var tempoFrom: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, 
+    public init(
         /**
-         * "Net" (the song's own), "FX"/"Pitch"/"Feel" (master), "Pan"/"Shape"/"FX" (aux)
-         */group: String, 
+         * "A", "B", "Wheel" or "Master".
+         */target: String, effects: [InsertEffect], 
         /**
-         * "net", "master" or "aux"
-         */kind: String) {
-        self.id = id
-        self.group = group
-        self.kind = kind
+         * The tempo its delay follows now (0: nothing playing; it keeps the last).
+         */bpm: Double, 
+        /**
+         * The delay's division at that tempo, ms (0 when no tempo).
+         */delayMs: Double, 
+        /**
+         * Which deck that tempo comes from ("A" or "B"; empty: none playing).
+         */tempoFrom: String) {
+        self.target = target
+        self.effects = effects
+        self.bpm = bpm
+        self.delayMs = delayMs
+        self.tempoFrom = tempoFrom
     }
 
     
@@ -2506,26 +3839,30 @@ public struct MacroInfo: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension MacroInfo: Sendable {}
+extension InsertChainState: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMacroInfo: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MacroInfo {
+public struct FfiConverterTypeInsertChainState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InsertChainState {
         return
-            try MacroInfo(
-                id: FfiConverterString.read(from: &buf), 
-                group: FfiConverterString.read(from: &buf), 
-                kind: FfiConverterString.read(from: &buf)
+            try InsertChainState(
+                target: FfiConverterString.read(from: &buf), 
+                effects: FfiConverterSequenceTypeInsertEffect.read(from: &buf), 
+                bpm: FfiConverterDouble.read(from: &buf), 
+                delayMs: FfiConverterDouble.read(from: &buf), 
+                tempoFrom: FfiConverterString.read(from: &buf)
         )
     }
 
-    public static func write(_ value: MacroInfo, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.id, into: &buf)
-        FfiConverterString.write(value.group, into: &buf)
-        FfiConverterString.write(value.kind, into: &buf)
+    public static func write(_ value: InsertChainState, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.target, into: &buf)
+        FfiConverterSequenceTypeInsertEffect.write(value.effects, into: &buf)
+        FfiConverterDouble.write(value.bpm, into: &buf)
+        FfiConverterDouble.write(value.delayMs, into: &buf)
+        FfiConverterString.write(value.tempoFrom, into: &buf)
     }
 }
 
@@ -2533,15 +3870,274 @@ public struct FfiConverterTypeMacroInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMacroInfo_lift(_ buf: RustBuffer) throws -> MacroInfo {
-    return try FfiConverterTypeMacroInfo.lift(buf)
+public func FfiConverterTypeInsertChainState_lift(_ buf: RustBuffer) throws -> InsertChainState {
+    return try FfiConverterTypeInsertChainState.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMacroInfo_lower(_ value: MacroInfo) -> RustBuffer {
-    return FfiConverterTypeMacroInfo.lower(value)
+public func FfiConverterTypeInsertChainState_lower(_ value: InsertChainState) -> RustBuffer {
+    return FfiConverterTypeInsertChainState.lower(value)
+}
+
+
+/**
+ * One effect of a chain.
+ */
+public struct InsertEffect: Equatable, Hashable {
+    /**
+     * "filter", "crush", "delay", "reverb": what [`Player::insert_on`] takes.
+     */
+    public var id: String
+    public var label: String
+    public var on: Bool
+    public var knobs: [InsertKnob]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * "filter", "crush", "delay", "reverb": what [`Player::insert_on`] takes.
+         */id: String, label: String, on: Bool, knobs: [InsertKnob]) {
+        self.id = id
+        self.label = label
+        self.on = on
+        self.knobs = knobs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension InsertEffect: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInsertEffect: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InsertEffect {
+        return
+            try InsertEffect(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                on: FfiConverterBool.read(from: &buf), 
+                knobs: FfiConverterSequenceTypeInsertKnob.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InsertEffect, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterBool.write(value.on, into: &buf)
+        FfiConverterSequenceTypeInsertKnob.write(value.knobs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInsertEffect_lift(_ buf: RustBuffer) throws -> InsertEffect {
+    return try FfiConverterTypeInsertEffect.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInsertEffect_lower(_ value: InsertEffect) -> RustBuffer {
+    return FfiConverterTypeInsertEffect.lower(value)
+}
+
+
+/**
+ * One knob, for the page.
+ */
+public struct InsertKnob: Equatable, Hashable {
+    /**
+     * What [`Player::insert_param`] takes: "filter.sweep", "delay.mix", …
+     */
+    public var id: String
+    public var label: String
+    /**
+     * 0...1.
+     */
+    public var value: Double
+    /**
+     * "LP 1.2 kHz", "3/16", "45 %".
+     */
+    public var display: String
+    /**
+     * Steps for a discrete knob (the delay's divisions); 0: continuous.
+     */
+    public var steps: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What [`Player::insert_param`] takes: "filter.sweep", "delay.mix", …
+         */id: String, label: String, 
+        /**
+         * 0...1.
+         */value: Double, 
+        /**
+         * "LP 1.2 kHz", "3/16", "45 %".
+         */display: String, 
+        /**
+         * Steps for a discrete knob (the delay's divisions); 0: continuous.
+         */steps: UInt32) {
+        self.id = id
+        self.label = label
+        self.value = value
+        self.display = display
+        self.steps = steps
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension InsertKnob: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInsertKnob: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InsertKnob {
+        return
+            try InsertKnob(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                value: FfiConverterDouble.read(from: &buf), 
+                display: FfiConverterString.read(from: &buf), 
+                steps: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InsertKnob, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterDouble.write(value.value, into: &buf)
+        FfiConverterString.write(value.display, into: &buf)
+        FfiConverterUInt32.write(value.steps, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInsertKnob_lift(_ buf: RustBuffer) throws -> InsertKnob {
+    return try FfiConverterTypeInsertKnob.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInsertKnob_lower(_ value: InsertKnob) -> RustBuffer {
+    return FfiConverterTypeInsertKnob.lower(value)
+}
+
+
+/**
+ * The whole mix as one `DjSnapshot` v1 document (djhost `deck::snapshot`, the same capture djweb
+ * makes): both decks (track, knobs, position, playing), the mixer and the vocoder setup. What
+ * the wallet signs under `dj-snapshot.v1`.
+ */
+public struct MixSnapshot: Equatable, Hashable {
+    /**
+     * Canonical JSON (JCS): the bytes `cid` hashes.
+     */
+    public var json: String
+    public var cid: String
+    /**
+     * The tracks' names, "A × B"; also the document's `title`.
+     */
+    public var title: String
+    /**
+     * Decks whose composed track is in it.
+     */
+    public var decks: [String]
+    /**
+     * Decks playing an Acid Bass loop, which a snapshot cannot hold (they are saved empty).
+     */
+    public var leftOut: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Canonical JSON (JCS): the bytes `cid` hashes.
+         */json: String, cid: String, 
+        /**
+         * The tracks' names, "A × B"; also the document's `title`.
+         */title: String, 
+        /**
+         * Decks whose composed track is in it.
+         */decks: [String], 
+        /**
+         * Decks playing an Acid Bass loop, which a snapshot cannot hold (they are saved empty).
+         */leftOut: [String]) {
+        self.json = json
+        self.cid = cid
+        self.title = title
+        self.decks = decks
+        self.leftOut = leftOut
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MixSnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMixSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MixSnapshot {
+        return
+            try MixSnapshot(
+                json: FfiConverterString.read(from: &buf), 
+                cid: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                decks: FfiConverterSequenceString.read(from: &buf), 
+                leftOut: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MixSnapshot, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.json, into: &buf)
+        FfiConverterString.write(value.cid, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceString.write(value.decks, into: &buf)
+        FfiConverterSequenceString.write(value.leftOut, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMixSnapshot_lift(_ buf: RustBuffer) throws -> MixSnapshot {
+    return try FfiConverterTypeMixSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMixSnapshot_lower(_ value: MixSnapshot) -> RustBuffer {
+    return FfiConverterTypeMixSnapshot.lower(value)
 }
 
 
@@ -2690,105 +4286,6 @@ public func FfiConverterTypePalette_lift(_ buf: RustBuffer) throws -> Palette {
 #endif
 public func FfiConverterTypePalette_lower(_ value: Palette) -> RustBuffer {
     return FfiConverterTypePalette.lower(value)
-}
-
-
-/**
- * What an offline render of the engine measured (no audio device involved).
- */
-public struct RenderStats: Equatable, Hashable {
-    public var frames: UInt64
-    public var sampleRate: UInt32
-    public var tempo: Double
-    public var title: String
-    /**
-     * Largest |sample| over both channels.
-     */
-    public var peak: Float
-    public var rms: Float
-    /**
-     * Share of frames that were not digital silence.
-     */
-    public var active: Float
-    /**
-     * FNV-1a of the rendered samples (bit-exact repeatability check).
-     */
-    public var checksum: UInt64
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(frames: UInt64, sampleRate: UInt32, tempo: Double, title: String, 
-        /**
-         * Largest |sample| over both channels.
-         */peak: Float, rms: Float, 
-        /**
-         * Share of frames that were not digital silence.
-         */active: Float, 
-        /**
-         * FNV-1a of the rendered samples (bit-exact repeatability check).
-         */checksum: UInt64) {
-        self.frames = frames
-        self.sampleRate = sampleRate
-        self.tempo = tempo
-        self.title = title
-        self.peak = peak
-        self.rms = rms
-        self.active = active
-        self.checksum = checksum
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension RenderStats: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeRenderStats: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RenderStats {
-        return
-            try RenderStats(
-                frames: FfiConverterUInt64.read(from: &buf), 
-                sampleRate: FfiConverterUInt32.read(from: &buf), 
-                tempo: FfiConverterDouble.read(from: &buf), 
-                title: FfiConverterString.read(from: &buf), 
-                peak: FfiConverterFloat.read(from: &buf), 
-                rms: FfiConverterFloat.read(from: &buf), 
-                active: FfiConverterFloat.read(from: &buf), 
-                checksum: FfiConverterUInt64.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: RenderStats, into buf: inout [UInt8]) {
-        FfiConverterUInt64.write(value.frames, into: &buf)
-        FfiConverterUInt32.write(value.sampleRate, into: &buf)
-        FfiConverterDouble.write(value.tempo, into: &buf)
-        FfiConverterString.write(value.title, into: &buf)
-        FfiConverterFloat.write(value.peak, into: &buf)
-        FfiConverterFloat.write(value.rms, into: &buf)
-        FfiConverterFloat.write(value.active, into: &buf)
-        FfiConverterUInt64.write(value.checksum, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeRenderStats_lift(_ buf: RustBuffer) throws -> RenderStats {
-    return try FfiConverterTypeRenderStats.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeRenderStats_lower(_ value: RenderStats) -> RustBuffer {
-    return FfiConverterTypeRenderStats.lower(value)
 }
 
 
@@ -3184,11 +4681,11 @@ public func FfiConverterTypeStageProject_lower(_ value: StageProject) -> RustBuf
  */
 public struct Td3Loop: Equatable, Hashable {
     /**
-     * "1A" … "4B".
+     * "1A" … "9B".
      */
     public var id: String
     /**
-     * 1..=4.
+     * 1..=9.
      */
     public var group: UInt32
     /**
@@ -3206,10 +4703,10 @@ public struct Td3Loop: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
-         * "1A" … "4B".
+         * "1A" … "9B".
          */id: String, 
         /**
-         * 1..=4.
+         * 1..=9.
          */group: UInt32, 
         /**
          * "A" or "B".
@@ -3273,6 +4770,68 @@ public func FfiConverterTypeTd3Loop_lift(_ buf: RustBuffer) throws -> Td3Loop {
 #endif
 public func FfiConverterTypeTd3Loop_lower(_ value: Td3Loop) -> RustBuffer {
     return FfiConverterTypeTd3Loop.lower(value)
+}
+
+
+/**
+ * The beats share a deck's track is: its payload as canonical JSON and its share CID (djengine
+ * `cid::share_cid`, the CID beats.bitwrap.io names the track by). What the wallet signs.
+ */
+public struct TrackShare: Equatable, Hashable {
+    public var json: String
+    public var cid: String
+    public var title: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(json: String, cid: String, title: String) {
+        self.json = json
+        self.cid = cid
+        self.title = title
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TrackShare: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTrackShare: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrackShare {
+        return
+            try TrackShare(
+                json: FfiConverterString.read(from: &buf), 
+                cid: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TrackShare, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.json, into: &buf)
+        FfiConverterString.write(value.cid, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTrackShare_lift(_ buf: RustBuffer) throws -> TrackShare {
+    return try FfiConverterTypeTrackShare.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTrackShare_lower(_ value: TrackShare) -> RustBuffer {
+    return FfiConverterTypeTrackShare.lower(value)
 }
 
 
@@ -3419,7 +4978,7 @@ public func FfiConverterTypeVocoderPreset_lower(_ value: VocoderPreset) -> RustB
 public struct VocoderState: Equatable, Hashable {
     public var on: Bool
     /**
-     * The deck shaping the synth (None: off).
+     * What shapes the synth: "A", "B" or [`WHEEL_MODULATOR`] (None: off).
      */
     public var modulator: String?
     /**
@@ -3452,7 +5011,7 @@ public struct VocoderState: Equatable, Hashable {
     // declare one manually.
     public init(on: Bool, 
         /**
-         * The deck shaping the synth (None: off).
+         * What shapes the synth: "A", "B" or [`WHEEL_MODULATOR`] (None: off).
          */modulator: String?, 
         /**
          * The notes the synth holds.
@@ -3544,6 +5103,1162 @@ public func FfiConverterTypeVocoderState_lower(_ value: VocoderState) -> RustBuf
 }
 
 
+/**
+ * The build knobs, all at once (see [`WheelLayout`]); each applies live.
+ */
+public struct WheelKnobs: Equatable, Hashable {
+    public var magnets: UInt32
+    public var carrierG: Double
+    public var braking: Bool
+    public var releaseM: Double
+    public var loadOhms: Double
+    public var timbre: String
+    public var decayMs: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(magnets: UInt32, carrierG: Double, braking: Bool, releaseM: Double, loadOhms: Double, timbre: String, decayMs: Double) {
+        self.magnets = magnets
+        self.carrierG = carrierG
+        self.braking = braking
+        self.releaseM = releaseM
+        self.loadOhms = loadOhms
+        self.timbre = timbre
+        self.decayMs = decayMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelKnobs: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelKnobs: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelKnobs {
+        return
+            try WheelKnobs(
+                magnets: FfiConverterUInt32.read(from: &buf), 
+                carrierG: FfiConverterDouble.read(from: &buf), 
+                braking: FfiConverterBool.read(from: &buf), 
+                releaseM: FfiConverterDouble.read(from: &buf), 
+                loadOhms: FfiConverterDouble.read(from: &buf), 
+                timbre: FfiConverterString.read(from: &buf), 
+                decayMs: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelKnobs, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.magnets, into: &buf)
+        FfiConverterDouble.write(value.carrierG, into: &buf)
+        FfiConverterBool.write(value.braking, into: &buf)
+        FfiConverterDouble.write(value.releaseM, into: &buf)
+        FfiConverterDouble.write(value.loadOhms, into: &buf)
+        FfiConverterString.write(value.timbre, into: &buf)
+        FfiConverterDouble.write(value.decayMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelKnobs_lift(_ buf: RustBuffer) throws -> WheelKnobs {
+    return try FfiConverterTypeWheelKnobs.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelKnobs_lower(_ value: WheelKnobs) -> RustBuffer {
+    return FfiConverterTypeWheelKnobs.lower(value)
+}
+
+
+/**
+ * The instrument loaded: what the tab draws and its controls start from.
+ */
+public struct WheelLayout: Equatable, Hashable {
+    public var id: String
+    public var name: String
+    public var description: String
+    public var law: String
+    public var path: String
+    /**
+     * The magnets share one cord (drive, motor, bow); else each moves on its own.
+     */
+    public var cord: Bool
+    public var periodic: Bool
+    public var extentM: Double
+    public var sectionLengthM: Double
+    public var shapes: [WheelShape]
+    /**
+     * The pendulum's pivot, the tube's anchor ([x, y]).
+     */
+    public var pivot: [Double]?
+    public var anchor: [Double]?
+    /**
+     * Signed turns per section.
+     */
+    public var turns: [Int32]
+    public var notes: [WheelNote]
+    public var magnets: UInt32
+    public var root: String
+    public var transpose: Int32
+    /**
+     * The note sequence as typed ("" when the notes are the preset's own).
+     */
+    public var sequence: String
+    public var brightness: Double
+    public var volumeDb: Double
+    /**
+     * The trigger's pull (0 open … ½ matched … 1 short); None: the fixed load.
+     */
+    public var trigger: Double?
+    public var loadOhms: Double
+    public var coilOhms: Double
+    /**
+     * The motor runs (drum, bow); the speed it runs at, and the speed notes are wound for.
+     */
+    public var motor: Bool
+    public var speedMps: Double
+    /**
+     * Gravity: a magnet drops by itself every this many seconds (0: by hand only).
+     */
+    public var intervalS: Double
+    /**
+     * The rail's ends.
+     */
+    public var loZ: Double
+    public var hiZ: Double
+    public var buildable: Bool
+    /**
+     * Notes and patterns this coil can't reach in this key.
+     */
+    public var outOfReach: UInt32
+    public var coilRadiusMm: Double
+    public var magnetMm: Double
+    /**
+     * The build knobs (the web toy's): the carrier's own mass (g), the coil's Lenz drag on the
+     * motion, the drop height / pluck size (m; see `release_kind`), the notes' timbre and decay.
+     */
+    public var carrierG: Double
+    public var braking: Bool
+    public var releaseM: Double
+    /**
+     * "drop" (tubes, slope: height above the coil), "pluck" (spring: its amplitude), "" (none).
+     */
+    public var releaseKind: String
+    public var timbre: String
+    public var decayMs: Double
+    /**
+     * The timbres to pick from.
+     */
+    public var timbres: [String]
+    /**
+     * Note onsets a lap on a cord round a loop: lcm(notes, magnets). 0 off one.
+     */
+    public var onsetsPerLap: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String, description: String, law: String, path: String, 
+        /**
+         * The magnets share one cord (drive, motor, bow); else each moves on its own.
+         */cord: Bool, periodic: Bool, extentM: Double, sectionLengthM: Double, shapes: [WheelShape], 
+        /**
+         * The pendulum's pivot, the tube's anchor ([x, y]).
+         */pivot: [Double]?, anchor: [Double]?, 
+        /**
+         * Signed turns per section.
+         */turns: [Int32], notes: [WheelNote], magnets: UInt32, root: String, transpose: Int32, 
+        /**
+         * The note sequence as typed ("" when the notes are the preset's own).
+         */sequence: String, brightness: Double, volumeDb: Double, 
+        /**
+         * The trigger's pull (0 open … ½ matched … 1 short); None: the fixed load.
+         */trigger: Double?, loadOhms: Double, coilOhms: Double, 
+        /**
+         * The motor runs (drum, bow); the speed it runs at, and the speed notes are wound for.
+         */motor: Bool, speedMps: Double, 
+        /**
+         * Gravity: a magnet drops by itself every this many seconds (0: by hand only).
+         */intervalS: Double, 
+        /**
+         * The rail's ends.
+         */loZ: Double, hiZ: Double, buildable: Bool, 
+        /**
+         * Notes and patterns this coil can't reach in this key.
+         */outOfReach: UInt32, coilRadiusMm: Double, magnetMm: Double, 
+        /**
+         * The build knobs (the web toy's): the carrier's own mass (g), the coil's Lenz drag on the
+         * motion, the drop height / pluck size (m; see `release_kind`), the notes' timbre and decay.
+         */carrierG: Double, braking: Bool, releaseM: Double, 
+        /**
+         * "drop" (tubes, slope: height above the coil), "pluck" (spring: its amplitude), "" (none).
+         */releaseKind: String, timbre: String, decayMs: Double, 
+        /**
+         * The timbres to pick from.
+         */timbres: [String], 
+        /**
+         * Note onsets a lap on a cord round a loop: lcm(notes, magnets). 0 off one.
+         */onsetsPerLap: UInt32) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.law = law
+        self.path = path
+        self.cord = cord
+        self.periodic = periodic
+        self.extentM = extentM
+        self.sectionLengthM = sectionLengthM
+        self.shapes = shapes
+        self.pivot = pivot
+        self.anchor = anchor
+        self.turns = turns
+        self.notes = notes
+        self.magnets = magnets
+        self.root = root
+        self.transpose = transpose
+        self.sequence = sequence
+        self.brightness = brightness
+        self.volumeDb = volumeDb
+        self.trigger = trigger
+        self.loadOhms = loadOhms
+        self.coilOhms = coilOhms
+        self.motor = motor
+        self.speedMps = speedMps
+        self.intervalS = intervalS
+        self.loZ = loZ
+        self.hiZ = hiZ
+        self.buildable = buildable
+        self.outOfReach = outOfReach
+        self.coilRadiusMm = coilRadiusMm
+        self.magnetMm = magnetMm
+        self.carrierG = carrierG
+        self.braking = braking
+        self.releaseM = releaseM
+        self.releaseKind = releaseKind
+        self.timbre = timbre
+        self.decayMs = decayMs
+        self.timbres = timbres
+        self.onsetsPerLap = onsetsPerLap
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelLayout: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelLayout: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelLayout {
+        return
+            try WheelLayout(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                law: FfiConverterString.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf), 
+                cord: FfiConverterBool.read(from: &buf), 
+                periodic: FfiConverterBool.read(from: &buf), 
+                extentM: FfiConverterDouble.read(from: &buf), 
+                sectionLengthM: FfiConverterDouble.read(from: &buf), 
+                shapes: FfiConverterSequenceTypeWheelShape.read(from: &buf), 
+                pivot: FfiConverterOptionSequenceDouble.read(from: &buf), 
+                anchor: FfiConverterOptionSequenceDouble.read(from: &buf), 
+                turns: FfiConverterSequenceInt32.read(from: &buf), 
+                notes: FfiConverterSequenceTypeWheelNote.read(from: &buf), 
+                magnets: FfiConverterUInt32.read(from: &buf), 
+                root: FfiConverterString.read(from: &buf), 
+                transpose: FfiConverterInt32.read(from: &buf), 
+                sequence: FfiConverterString.read(from: &buf), 
+                brightness: FfiConverterDouble.read(from: &buf), 
+                volumeDb: FfiConverterDouble.read(from: &buf), 
+                trigger: FfiConverterOptionDouble.read(from: &buf), 
+                loadOhms: FfiConverterDouble.read(from: &buf), 
+                coilOhms: FfiConverterDouble.read(from: &buf), 
+                motor: FfiConverterBool.read(from: &buf), 
+                speedMps: FfiConverterDouble.read(from: &buf), 
+                intervalS: FfiConverterDouble.read(from: &buf), 
+                loZ: FfiConverterDouble.read(from: &buf), 
+                hiZ: FfiConverterDouble.read(from: &buf), 
+                buildable: FfiConverterBool.read(from: &buf), 
+                outOfReach: FfiConverterUInt32.read(from: &buf), 
+                coilRadiusMm: FfiConverterDouble.read(from: &buf), 
+                magnetMm: FfiConverterDouble.read(from: &buf), 
+                carrierG: FfiConverterDouble.read(from: &buf), 
+                braking: FfiConverterBool.read(from: &buf), 
+                releaseM: FfiConverterDouble.read(from: &buf), 
+                releaseKind: FfiConverterString.read(from: &buf), 
+                timbre: FfiConverterString.read(from: &buf), 
+                decayMs: FfiConverterDouble.read(from: &buf), 
+                timbres: FfiConverterSequenceString.read(from: &buf), 
+                onsetsPerLap: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelLayout, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterString.write(value.law, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterBool.write(value.cord, into: &buf)
+        FfiConverterBool.write(value.periodic, into: &buf)
+        FfiConverterDouble.write(value.extentM, into: &buf)
+        FfiConverterDouble.write(value.sectionLengthM, into: &buf)
+        FfiConverterSequenceTypeWheelShape.write(value.shapes, into: &buf)
+        FfiConverterOptionSequenceDouble.write(value.pivot, into: &buf)
+        FfiConverterOptionSequenceDouble.write(value.anchor, into: &buf)
+        FfiConverterSequenceInt32.write(value.turns, into: &buf)
+        FfiConverterSequenceTypeWheelNote.write(value.notes, into: &buf)
+        FfiConverterUInt32.write(value.magnets, into: &buf)
+        FfiConverterString.write(value.root, into: &buf)
+        FfiConverterInt32.write(value.transpose, into: &buf)
+        FfiConverterString.write(value.sequence, into: &buf)
+        FfiConverterDouble.write(value.brightness, into: &buf)
+        FfiConverterDouble.write(value.volumeDb, into: &buf)
+        FfiConverterOptionDouble.write(value.trigger, into: &buf)
+        FfiConverterDouble.write(value.loadOhms, into: &buf)
+        FfiConverterDouble.write(value.coilOhms, into: &buf)
+        FfiConverterBool.write(value.motor, into: &buf)
+        FfiConverterDouble.write(value.speedMps, into: &buf)
+        FfiConverterDouble.write(value.intervalS, into: &buf)
+        FfiConverterDouble.write(value.loZ, into: &buf)
+        FfiConverterDouble.write(value.hiZ, into: &buf)
+        FfiConverterBool.write(value.buildable, into: &buf)
+        FfiConverterUInt32.write(value.outOfReach, into: &buf)
+        FfiConverterDouble.write(value.coilRadiusMm, into: &buf)
+        FfiConverterDouble.write(value.magnetMm, into: &buf)
+        FfiConverterDouble.write(value.carrierG, into: &buf)
+        FfiConverterBool.write(value.braking, into: &buf)
+        FfiConverterDouble.write(value.releaseM, into: &buf)
+        FfiConverterString.write(value.releaseKind, into: &buf)
+        FfiConverterString.write(value.timbre, into: &buf)
+        FfiConverterDouble.write(value.decayMs, into: &buf)
+        FfiConverterSequenceString.write(value.timbres, into: &buf)
+        FfiConverterUInt32.write(value.onsetsPerLap, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelLayout_lift(_ buf: RustBuffer) throws -> WheelLayout {
+    return try FfiConverterTypeWheelLayout.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelLayout_lower(_ value: WheelLayout) -> RustBuffer {
+    return FfiConverterTypeWheelLayout.lower(value)
+}
+
+
+public struct WheelMagnet: Equatable, Hashable {
+    public var z: Double
+    /**
+     * Its speed along the path (m/s): the drawing moves it on between polls.
+     */
+    public var v: Double
+    public var on: Bool
+    public var segment: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(z: Double, 
+        /**
+         * Its speed along the path (m/s): the drawing moves it on between polls.
+         */v: Double, on: Bool, segment: UInt32) {
+        self.z = z
+        self.v = v
+        self.on = on
+        self.segment = segment
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelMagnet: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelMagnet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelMagnet {
+        return
+            try WheelMagnet(
+                z: FfiConverterDouble.read(from: &buf), 
+                v: FfiConverterDouble.read(from: &buf), 
+                on: FfiConverterBool.read(from: &buf), 
+                segment: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelMagnet, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.z, into: &buf)
+        FfiConverterDouble.write(value.v, into: &buf)
+        FfiConverterBool.write(value.on, into: &buf)
+        FfiConverterUInt32.write(value.segment, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelMagnet_lift(_ buf: RustBuffer) throws -> WheelMagnet {
+    return try FfiConverterTypeWheelMagnet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelMagnet_lower(_ value: WheelMagnet) -> RustBuffer {
+    return FfiConverterTypeWheelMagnet.lower(value)
+}
+
+
+/**
+ * Where the magnets are, for the drawing's per-frame poll: only the wheel's own lock, held for
+ * a copy (never the engine's), so polling it at the display's rate costs the feeder nothing.
+ */
+public struct WheelMotion: Equatable, Hashable {
+    public var magnets: [WheelMagnet]
+    /**
+     * The voice's clock (s): frames it has rendered over the sample rate. The drawing maps it
+     * onto the display's clock, so a poll's timing doesn't jitter the motion.
+     */
+    public var voiceS: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(magnets: [WheelMagnet], 
+        /**
+         * The voice's clock (s): frames it has rendered over the sample rate. The drawing maps it
+         * onto the display's clock, so a poll's timing doesn't jitter the motion.
+         */voiceS: Double) {
+        self.magnets = magnets
+        self.voiceS = voiceS
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelMotion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelMotion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelMotion {
+        return
+            try WheelMotion(
+                magnets: FfiConverterSequenceTypeWheelMagnet.read(from: &buf), 
+                voiceS: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelMotion, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeWheelMagnet.write(value.magnets, into: &buf)
+        FfiConverterDouble.write(value.voiceS, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelMotion_lift(_ buf: RustBuffer) throws -> WheelMotion {
+    return try FfiConverterTypeWheelMotion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelMotion_lower(_ value: WheelMotion) -> RustBuffer {
+    return FfiConverterTypeWheelMotion.lower(value)
+}
+
+
+/**
+ * A note wound on the path.
+ */
+public struct WheelNote: Equatable, Hashable {
+    public var segment: UInt32
+    public var startSection: UInt32
+    public var count: UInt32
+    /**
+     * "E3", "G#4+12c".
+     */
+    public var name: String
+    public var freqHz: Double
+    /**
+     * Within this coil's reach at the speed it's played at.
+     */
+    public var reachable: Bool
+    public var reason: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(segment: UInt32, startSection: UInt32, count: UInt32, 
+        /**
+         * "E3", "G#4+12c".
+         */name: String, freqHz: Double, 
+        /**
+         * Within this coil's reach at the speed it's played at.
+         */reachable: Bool, reason: String?) {
+        self.segment = segment
+        self.startSection = startSection
+        self.count = count
+        self.name = name
+        self.freqHz = freqHz
+        self.reachable = reachable
+        self.reason = reason
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelNote: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelNote: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelNote {
+        return
+            try WheelNote(
+                segment: FfiConverterUInt32.read(from: &buf), 
+                startSection: FfiConverterUInt32.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                freqHz: FfiConverterDouble.read(from: &buf), 
+                reachable: FfiConverterBool.read(from: &buf), 
+                reason: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelNote, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.segment, into: &buf)
+        FfiConverterUInt32.write(value.startSection, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterDouble.write(value.freqHz, into: &buf)
+        FfiConverterBool.write(value.reachable, into: &buf)
+        FfiConverterOptionString.write(value.reason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelNote_lift(_ buf: RustBuffer) throws -> WheelNote {
+    return try FfiConverterTypeWheelNote.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelNote_lower(_ value: WheelNote) -> RustBuffer {
+    return FfiConverterTypeWheelNote.lower(value)
+}
+
+
+/**
+ * One instrument of the library, as the phone lists it.
+ */
+public struct WheelPreset: Equatable, Hashable {
+    public var id: String
+    public var name: String
+    public var description: String
+    /**
+     * The motion law: drive, motor, bow, gravity, pendulum, spring, rail.
+     */
+    public var law: String
+    /**
+     * The path: hoop, drum, loop, tube, rack, rail, incline, arc.
+     */
+    public var path: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String, description: String, 
+        /**
+         * The motion law: drive, motor, bow, gravity, pendulum, spring, rail.
+         */law: String, 
+        /**
+         * The path: hoop, drum, loop, tube, rack, rail, incline, arc.
+         */path: String) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.law = law
+        self.path = path
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelPreset: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelPreset: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelPreset {
+        return
+            try WheelPreset(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                law: FfiConverterString.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelPreset, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterString.write(value.law, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelPreset_lift(_ buf: RustBuffer) throws -> WheelPreset {
+    return try FfiConverterTypeWheelPreset.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelPreset_lower(_ value: WheelPreset) -> RustBuffer {
+    return FfiConverterTypeWheelPreset.lower(value)
+}
+
+
+/**
+ * One drawable segment of the path, in model metres (y down), with each point's z.
+ */
+public struct WheelShape: Equatable, Hashable {
+    public var xs: [Double]
+    public var ys: [Double]
+    public var zs: [Double]
+    public var closed: Bool
+    public var startM: Double
+    public var lengthM: Double
+    public var firstSection: UInt32
+    public var sections: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(xs: [Double], ys: [Double], zs: [Double], closed: Bool, startM: Double, lengthM: Double, firstSection: UInt32, sections: UInt32) {
+        self.xs = xs
+        self.ys = ys
+        self.zs = zs
+        self.closed = closed
+        self.startM = startM
+        self.lengthM = lengthM
+        self.firstSection = firstSection
+        self.sections = sections
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelShape: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelShape: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelShape {
+        return
+            try WheelShape(
+                xs: FfiConverterSequenceDouble.read(from: &buf), 
+                ys: FfiConverterSequenceDouble.read(from: &buf), 
+                zs: FfiConverterSequenceDouble.read(from: &buf), 
+                closed: FfiConverterBool.read(from: &buf), 
+                startM: FfiConverterDouble.read(from: &buf), 
+                lengthM: FfiConverterDouble.read(from: &buf), 
+                firstSection: FfiConverterUInt32.read(from: &buf), 
+                sections: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelShape, into buf: inout [UInt8]) {
+        FfiConverterSequenceDouble.write(value.xs, into: &buf)
+        FfiConverterSequenceDouble.write(value.ys, into: &buf)
+        FfiConverterSequenceDouble.write(value.zs, into: &buf)
+        FfiConverterBool.write(value.closed, into: &buf)
+        FfiConverterDouble.write(value.startM, into: &buf)
+        FfiConverterDouble.write(value.lengthM, into: &buf)
+        FfiConverterUInt32.write(value.firstSection, into: &buf)
+        FfiConverterUInt32.write(value.sections, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelShape_lift(_ buf: RustBuffer) throws -> WheelShape {
+    return try FfiConverterTypeWheelShape.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelShape_lower(_ value: WheelShape) -> RustBuffer {
+    return FfiConverterTypeWheelShape.lower(value)
+}
+
+
+/**
+ * The wheel now, for the tab's ~30 Hz poll.
+ */
+public struct WheelState: Equatable, Hashable {
+    public var magnets: [WheelMagnet]
+    /**
+     * The cord's speed, or the fastest magnet's (m/s).
+     */
+    public var speedMps: Double
+    /**
+     * Output peak since the last poll, 0…1.
+     */
+    public var outPeak: Double
+    /**
+     * The coil's drag on the motion (N) and the power it takes out (mW).
+     */
+    public var dragN: Double
+    public var powerMw: Double
+    public var trigger: Double
+    /**
+     * Dropouts since the player started (they only count up): blocks the strip found its ring
+     * short of and played silence for, and ring overruns it skipped ahead on.
+     */
+    public var underruns: UInt32
+    public var skips: UInt32
+    /**
+     * The least the ring held when the feeder looked, since the last poll (0: it ran dry), and
+     * the biggest block the output has taken from the strip at once (its callback), in ms.
+     */
+    public var ringLowMs: Double
+    public var blockMs: Double
+    /**
+     * What the feeder keeps the ring at, in ms (it grows after an underrun).
+     */
+    public var ringTargetMs: Double
+    /**
+     * The wheel's tempo: note onsets per minute at the cord's actual speed (smoothed over the
+     * last few polls), notes × laps/s × 60. None off a cord (tubes, pendulum, spring, rail).
+     */
+    public var bpm: Double?
+    /**
+     * How that tempo sits against each deck playing (filled by the player).
+     */
+    public var tempo: [WheelTempo]
+    /**
+     * Paused (Play/Pause): everything held where it was, silent, until played again.
+     */
+    public var paused: Bool
+    /**
+     * It has been played since the player started (before that: stopped, the button says Play).
+     */
+    public var started: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(magnets: [WheelMagnet], 
+        /**
+         * The cord's speed, or the fastest magnet's (m/s).
+         */speedMps: Double, 
+        /**
+         * Output peak since the last poll, 0…1.
+         */outPeak: Double, 
+        /**
+         * The coil's drag on the motion (N) and the power it takes out (mW).
+         */dragN: Double, powerMw: Double, trigger: Double, 
+        /**
+         * Dropouts since the player started (they only count up): blocks the strip found its ring
+         * short of and played silence for, and ring overruns it skipped ahead on.
+         */underruns: UInt32, skips: UInt32, 
+        /**
+         * The least the ring held when the feeder looked, since the last poll (0: it ran dry), and
+         * the biggest block the output has taken from the strip at once (its callback), in ms.
+         */ringLowMs: Double, blockMs: Double, 
+        /**
+         * What the feeder keeps the ring at, in ms (it grows after an underrun).
+         */ringTargetMs: Double, 
+        /**
+         * The wheel's tempo: note onsets per minute at the cord's actual speed (smoothed over the
+         * last few polls), notes × laps/s × 60. None off a cord (tubes, pendulum, spring, rail).
+         */bpm: Double?, 
+        /**
+         * How that tempo sits against each deck playing (filled by the player).
+         */tempo: [WheelTempo], 
+        /**
+         * Paused (Play/Pause): everything held where it was, silent, until played again.
+         */paused: Bool, 
+        /**
+         * It has been played since the player started (before that: stopped, the button says Play).
+         */started: Bool) {
+        self.magnets = magnets
+        self.speedMps = speedMps
+        self.outPeak = outPeak
+        self.dragN = dragN
+        self.powerMw = powerMw
+        self.trigger = trigger
+        self.underruns = underruns
+        self.skips = skips
+        self.ringLowMs = ringLowMs
+        self.blockMs = blockMs
+        self.ringTargetMs = ringTargetMs
+        self.bpm = bpm
+        self.tempo = tempo
+        self.paused = paused
+        self.started = started
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelState {
+        return
+            try WheelState(
+                magnets: FfiConverterSequenceTypeWheelMagnet.read(from: &buf), 
+                speedMps: FfiConverterDouble.read(from: &buf), 
+                outPeak: FfiConverterDouble.read(from: &buf), 
+                dragN: FfiConverterDouble.read(from: &buf), 
+                powerMw: FfiConverterDouble.read(from: &buf), 
+                trigger: FfiConverterDouble.read(from: &buf), 
+                underruns: FfiConverterUInt32.read(from: &buf), 
+                skips: FfiConverterUInt32.read(from: &buf), 
+                ringLowMs: FfiConverterDouble.read(from: &buf), 
+                blockMs: FfiConverterDouble.read(from: &buf), 
+                ringTargetMs: FfiConverterDouble.read(from: &buf), 
+                bpm: FfiConverterOptionDouble.read(from: &buf), 
+                tempo: FfiConverterSequenceTypeWheelTempo.read(from: &buf), 
+                paused: FfiConverterBool.read(from: &buf), 
+                started: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelState, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeWheelMagnet.write(value.magnets, into: &buf)
+        FfiConverterDouble.write(value.speedMps, into: &buf)
+        FfiConverterDouble.write(value.outPeak, into: &buf)
+        FfiConverterDouble.write(value.dragN, into: &buf)
+        FfiConverterDouble.write(value.powerMw, into: &buf)
+        FfiConverterDouble.write(value.trigger, into: &buf)
+        FfiConverterUInt32.write(value.underruns, into: &buf)
+        FfiConverterUInt32.write(value.skips, into: &buf)
+        FfiConverterDouble.write(value.ringLowMs, into: &buf)
+        FfiConverterDouble.write(value.blockMs, into: &buf)
+        FfiConverterDouble.write(value.ringTargetMs, into: &buf)
+        FfiConverterOptionDouble.write(value.bpm, into: &buf)
+        FfiConverterSequenceTypeWheelTempo.write(value.tempo, into: &buf)
+        FfiConverterBool.write(value.paused, into: &buf)
+        FfiConverterBool.write(value.started, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelState_lift(_ buf: RustBuffer) throws -> WheelState {
+    return try FfiConverterTypeWheelState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelState_lower(_ value: WheelState) -> RustBuffer {
+    return FfiConverterTypeWheelState.lower(value)
+}
+
+
+/**
+ * What a tempo sync set.
+ */
+public struct WheelSync: Equatable, Hashable {
+    public var deck: String
+    public var deckBpm: Double
+    /**
+     * The tempo aimed at: n× the deck (`multiple`), or 1/n of it.
+     */
+    public var targetBpm: Double
+    public var n: UInt32
+    public var multiple: Bool
+    /**
+     * The motor's setting for it (the cord settles a little under, against friction and drag).
+     */
+    public var motorMps: Double
+    /**
+     * The cord speed it settles at.
+     */
+    public var speedMps: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(deck: String, deckBpm: Double, 
+        /**
+         * The tempo aimed at: n× the deck (`multiple`), or 1/n of it.
+         */targetBpm: Double, n: UInt32, multiple: Bool, 
+        /**
+         * The motor's setting for it (the cord settles a little under, against friction and drag).
+         */motorMps: Double, 
+        /**
+         * The cord speed it settles at.
+         */speedMps: Double) {
+        self.deck = deck
+        self.deckBpm = deckBpm
+        self.targetBpm = targetBpm
+        self.n = n
+        self.multiple = multiple
+        self.motorMps = motorMps
+        self.speedMps = speedMps
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelSync: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelSync: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelSync {
+        return
+            try WheelSync(
+                deck: FfiConverterString.read(from: &buf), 
+                deckBpm: FfiConverterDouble.read(from: &buf), 
+                targetBpm: FfiConverterDouble.read(from: &buf), 
+                n: FfiConverterUInt32.read(from: &buf), 
+                multiple: FfiConverterBool.read(from: &buf), 
+                motorMps: FfiConverterDouble.read(from: &buf), 
+                speedMps: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelSync, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.deck, into: &buf)
+        FfiConverterDouble.write(value.deckBpm, into: &buf)
+        FfiConverterDouble.write(value.targetBpm, into: &buf)
+        FfiConverterUInt32.write(value.n, into: &buf)
+        FfiConverterBool.write(value.multiple, into: &buf)
+        FfiConverterDouble.write(value.motorMps, into: &buf)
+        FfiConverterDouble.write(value.speedMps, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelSync_lift(_ buf: RustBuffer) throws -> WheelSync {
+    return try FfiConverterTypeWheelSync.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelSync_lower(_ value: WheelSync) -> RustBuffer {
+    return FfiConverterTypeWheelSync.lower(value)
+}
+
+
+/**
+ * The wheel's tempo against one deck's.
+ */
+public struct WheelTempo: Equatable, Hashable {
+    public var deck: String
+    public var deckBpm: Double
+    /**
+     * wheel BPM / deck BPM.
+     */
+    public var ratio: Double
+    /**
+     * The nearest whole-number relation: the wheel at n× the deck (multiple) or 1/n of it.
+     */
+    public var n: UInt32
+    public var multiple: Bool
+    /**
+     * Off that relation by this much (relative; + the wheel is fast).
+     */
+    public var error: Double
+    /**
+     * Within windwheel's tolerance (1%): a whole-number multiple or divisor.
+     */
+    public var locked: Bool
+    /**
+     * A rung below / above to step to within the motor's range (the Tempo card's ◀ ▶).
+     */
+    public var down: Bool
+    public var up: Bool
+    /**
+     * The ratio as a place on the ladder (×1 at 0, ×2 at 1, ½ at −1: windwheel's ladder_place),
+     * and the places the motor reaches (the sync × slider's ends); None: no whole rung in reach.
+     */
+    public var place: Double
+    public var rungLo: Int32?
+    public var rungHi: Int32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(deck: String, deckBpm: Double, 
+        /**
+         * wheel BPM / deck BPM.
+         */ratio: Double, 
+        /**
+         * The nearest whole-number relation: the wheel at n× the deck (multiple) or 1/n of it.
+         */n: UInt32, multiple: Bool, 
+        /**
+         * Off that relation by this much (relative; + the wheel is fast).
+         */error: Double, 
+        /**
+         * Within windwheel's tolerance (1%): a whole-number multiple or divisor.
+         */locked: Bool, 
+        /**
+         * A rung below / above to step to within the motor's range (the Tempo card's ◀ ▶).
+         */down: Bool, up: Bool, 
+        /**
+         * The ratio as a place on the ladder (×1 at 0, ×2 at 1, ½ at −1: windwheel's ladder_place),
+         * and the places the motor reaches (the sync × slider's ends); None: no whole rung in reach.
+         */place: Double, rungLo: Int32?, rungHi: Int32?) {
+        self.deck = deck
+        self.deckBpm = deckBpm
+        self.ratio = ratio
+        self.n = n
+        self.multiple = multiple
+        self.error = error
+        self.locked = locked
+        self.down = down
+        self.up = up
+        self.place = place
+        self.rungLo = rungLo
+        self.rungHi = rungHi
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WheelTempo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWheelTempo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WheelTempo {
+        return
+            try WheelTempo(
+                deck: FfiConverterString.read(from: &buf), 
+                deckBpm: FfiConverterDouble.read(from: &buf), 
+                ratio: FfiConverterDouble.read(from: &buf), 
+                n: FfiConverterUInt32.read(from: &buf), 
+                multiple: FfiConverterBool.read(from: &buf), 
+                error: FfiConverterDouble.read(from: &buf), 
+                locked: FfiConverterBool.read(from: &buf), 
+                down: FfiConverterBool.read(from: &buf), 
+                up: FfiConverterBool.read(from: &buf), 
+                place: FfiConverterDouble.read(from: &buf), 
+                rungLo: FfiConverterOptionInt32.read(from: &buf), 
+                rungHi: FfiConverterOptionInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WheelTempo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.deck, into: &buf)
+        FfiConverterDouble.write(value.deckBpm, into: &buf)
+        FfiConverterDouble.write(value.ratio, into: &buf)
+        FfiConverterUInt32.write(value.n, into: &buf)
+        FfiConverterBool.write(value.multiple, into: &buf)
+        FfiConverterDouble.write(value.error, into: &buf)
+        FfiConverterBool.write(value.locked, into: &buf)
+        FfiConverterBool.write(value.down, into: &buf)
+        FfiConverterBool.write(value.up, into: &buf)
+        FfiConverterDouble.write(value.place, into: &buf)
+        FfiConverterOptionInt32.write(value.rungLo, into: &buf)
+        FfiConverterOptionInt32.write(value.rungHi, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelTempo_lift(_ buf: RustBuffer) throws -> WheelTempo {
+    return try FfiConverterTypeWheelTempo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWheelTempo_lower(_ value: WheelTempo) -> RustBuffer {
+    return FfiConverterTypeWheelTempo.lower(value)
+}
+
+
 public 
 enum DjError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
@@ -3558,6 +6273,10 @@ enum DjError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case Vocoder(String
     )
     case Heos(String
+    )
+    case Wheel(String
+    )
+    case Fx(String
     )
     case Closed
 
@@ -3604,7 +6323,13 @@ public struct FfiConverterTypeDjError: FfiConverterRustBuffer {
         case 5: return .Heos(
             try FfiConverterString.read(from: &buf)
             )
-        case 6: return .Closed
+        case 6: return .Wheel(
+            try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .Fx(
+            try FfiConverterString.read(from: &buf)
+            )
+        case 8: return .Closed
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3642,8 +6367,18 @@ public struct FfiConverterTypeDjError: FfiConverterRustBuffer {
             FfiConverterString.write(v1, into: &buf)
             
         
-        case .Closed:
+        case let .Wheel(v1):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .Fx(v1):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case .Closed:
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -3663,6 +6398,94 @@ public func FfiConverterTypeDjError_lift(_ buf: RustBuffer) throws -> DjError {
 public func FfiConverterTypeDjError_lower(_ value: DjError) -> RustBuffer {
     return FfiConverterTypeDjError.lower(value)
 }
+
+
+/**
+ * How long to engage: the choices under the pads.
+ */
+
+public enum FxMode: Equatable, Hashable {
+    
+    /**
+     * Held (a transition: its own length).
+     */
+    case momentary
+    /**
+     * This many whole bars (1 to 4).
+     */
+    case bars(bars: UInt8
+    )
+    /**
+     * Until let go.
+     */
+    case latch
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FxMode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFxMode: FfiConverterRustBuffer {
+    typealias SwiftType = FxMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FxMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .momentary
+        
+        case 2: return .bars(bars: try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 3: return .latch
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FxMode, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .momentary:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .bars(bars):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt8.write(bars, into: &buf)
+            
+        
+        case .latch:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxMode_lift(_ buf: RustBuffer) throws -> FxMode {
+    return try FfiConverterTypeFxMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFxMode_lower(_ value: FxMode) -> RustBuffer {
+    return FfiConverterTypeFxMode.lower(value)
+}
+
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -3763,6 +6586,30 @@ fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
+    typealias SwiftType = Double?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterDouble.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
     typealias SwiftType = Bool?
 
@@ -3811,6 +6658,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMixSnapshot: FfiConverterRustBuffer {
+    typealias SwiftType = MixSnapshot?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMixSnapshot.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMixSnapshot.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeStageProject: FfiConverterRustBuffer {
     typealias SwiftType = StageProject?
 
@@ -3827,6 +6698,102 @@ fileprivate struct FfiConverterOptionTypeStageProject: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeStageProject.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeTrackShare: FfiConverterRustBuffer {
+    typealias SwiftType = TrackShare?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeTrackShare.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeTrackShare.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeWheelLayout: FfiConverterRustBuffer {
+    typealias SwiftType = WheelLayout?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeWheelLayout.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeWheelLayout.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeWheelSync: FfiConverterRustBuffer {
+    typealias SwiftType = WheelSync?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeWheelSync.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeWheelSync.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceDouble: FfiConverterRustBuffer {
+    typealias SwiftType = [Double]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceDouble.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceDouble.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3859,6 +6826,31 @@ fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [Int32]
+
+    public static func write(_ value: [Int32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Int32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Int32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceInt64: FfiConverterRustBuffer {
     typealias SwiftType = [Int64]
 
@@ -3876,6 +6868,31 @@ fileprivate struct FfiConverterSequenceInt64: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterInt64.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceDouble: FfiConverterRustBuffer {
+    typealias SwiftType = [Double]
+
+    public static func write(_ value: [Double], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterDouble.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Double] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Double]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterDouble.read(from: &buf))
         }
         return seq
     }
@@ -3934,6 +6951,81 @@ fileprivate struct FfiConverterSequenceTypeChordPad: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFxActive: FfiConverterRustBuffer {
+    typealias SwiftType = [FxActive]
+
+    public static func write(_ value: [FxActive], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFxActive.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FxActive] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FxActive]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFxActive.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFxCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [FxCategory]
+
+    public static func write(_ value: [FxCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFxCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FxCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FxCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFxCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFxInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [FxInfo]
+
+    public static func write(_ value: [FxInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFxInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FxInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FxInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFxInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHeosGroup: FfiConverterRustBuffer {
     typealias SwiftType = [HeosGroup]
 
@@ -3984,23 +7076,73 @@ fileprivate struct FfiConverterSequenceTypeHeosZone: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeMacroInfo: FfiConverterRustBuffer {
-    typealias SwiftType = [MacroInfo]
+fileprivate struct FfiConverterSequenceTypeInsertChainState: FfiConverterRustBuffer {
+    typealias SwiftType = [InsertChainState]
 
-    public static func write(_ value: [MacroInfo], into buf: inout [UInt8]) {
+    public static func write(_ value: [InsertChainState], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
-            FfiConverterTypeMacroInfo.write(item, into: &buf)
+            FfiConverterTypeInsertChainState.write(item, into: &buf)
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MacroInfo] {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InsertChainState] {
         let len: Int32 = try readInt(&buf)
-        var seq = [MacroInfo]()
+        var seq = [InsertChainState]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeMacroInfo.read(from: &buf))
+            seq.append(try FfiConverterTypeInsertChainState.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeInsertEffect: FfiConverterRustBuffer {
+    typealias SwiftType = [InsertEffect]
+
+    public static func write(_ value: [InsertEffect], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInsertEffect.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InsertEffect] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InsertEffect]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInsertEffect.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeInsertKnob: FfiConverterRustBuffer {
+    typealias SwiftType = [InsertKnob]
+
+    public static func write(_ value: [InsertKnob], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeInsertKnob.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [InsertKnob] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [InsertKnob]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeInsertKnob.read(from: &buf))
         }
         return seq
     }
@@ -4180,6 +7322,138 @@ fileprivate struct FfiConverterSequenceTypeVocoderPreset: FfiConverterRustBuffer
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWheelMagnet: FfiConverterRustBuffer {
+    typealias SwiftType = [WheelMagnet]
+
+    public static func write(_ value: [WheelMagnet], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWheelMagnet.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WheelMagnet] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WheelMagnet]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWheelMagnet.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWheelNote: FfiConverterRustBuffer {
+    typealias SwiftType = [WheelNote]
+
+    public static func write(_ value: [WheelNote], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWheelNote.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WheelNote] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WheelNote]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWheelNote.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWheelPreset: FfiConverterRustBuffer {
+    typealias SwiftType = [WheelPreset]
+
+    public static func write(_ value: [WheelPreset], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWheelPreset.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WheelPreset] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WheelPreset]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWheelPreset.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWheelShape: FfiConverterRustBuffer {
+    typealias SwiftType = [WheelShape]
+
+    public static func write(_ value: [WheelShape], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWheelShape.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WheelShape] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WheelShape]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWheelShape.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWheelTempo: FfiConverterRustBuffer {
+    typealias SwiftType = [WheelTempo]
+
+    public static func write(_ value: [WheelTempo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWheelTempo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WheelTempo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WheelTempo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWheelTempo.read(from: &buf))
+        }
+        return seq
+    }
+}
+public func buildFeatures() -> BuildFeatures  {
+    return try!  FfiConverterTypeBuildFeatures_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_func_build_features(uniffiCallStatus
+    )
+})
+}
 /**
  * The vocoder's chord pads in a genre's key: its seven triads, i to vii.
  */
@@ -4202,22 +7476,6 @@ public func genres() -> [String]  {
 })
 }
 /**
- * Compose `genre`/`seed` and render `seconds` of deck A through the engine's own mixer, offline
- * (the renderer the CoreAudio callback calls, driven by hand). Deterministic: the same inputs
- * give the same `checksum`. This is the smoke test that needs no sound card.
- */
-public func renderOffline(genre: String, seed: Int64, seconds: Double, sampleRate: UInt32)throws  -> RenderStats  {
-    return try  FfiConverterTypeRenderStats_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
-        uniffiCallStatus in
-    uniffi_djmobile_fn_func_render_offline(
-        FfiConverterString.lower(genre),
-        FfiConverterInt64.lower(seed),
-        FfiConverterDouble.lower(seconds),
-        FfiConverterUInt32.lower(sampleRate),uniffiCallStatus
-    )
-})
-}
-/**
  * The structures a compose takes; "loop" means none (an endless loop).
  */
 public func structures() -> [String]  {
@@ -4227,9 +7485,6 @@ public func structures() -> [String]  {
     )
 })
 }
-/**
- * The TD-3 loops: four groups of an A and a B pattern, one bar each.
- */
 public func td3Loops() -> [Td3Loop]  {
     return try!  FfiConverterSequenceTypeTd3Loop.lift(try! rustCall() {
         uniffiCallStatus in
@@ -4259,6 +7514,30 @@ public func vocoderPresets() -> [VocoderPreset]  {
     )
 })
 }
+/**
+ * How a typed note sequence ("C E G B C B G E") reads over `root`: absolute names with their
+ * octaves ("C3", "E3", …), for the Wheel tab's chips before it winds (windwheel's own parser).
+ */
+public func wheelParseSequence(text: String, root: String)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_func_wheel_parse_sequence(
+        FfiConverterString.lower(text),
+        FfiConverterString.lower(root),uniffiCallStatus
+    )
+})
+}
+/**
+ * The loop bank: nine groups of an A and a B, one bar each (1–8 Acid Bass, 9 Floor & Sub).
+ * The Wheel tab's instruments (windwheel's preset library).
+ */
+public func wheelPresets() -> [WheelPreset]  {
+    return try!  FfiConverterSequenceTypeWheelPreset.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_func_wheel_presets(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -4275,19 +7554,19 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_djmobile_checksum_func_build_features() != 16734) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_djmobile_checksum_func_chord_pads() != 32815) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_func_genres() != 33851) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_func_render_offline() != 16358) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_djmobile_checksum_func_structures() != 9853) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_func_td3_loops() != 13652) {
+    if (uniffi_djmobile_checksum_func_td3_loops() != 50729) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_func_track_title() != 62934) {
@@ -4296,10 +7575,46 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_func_vocoder_presets() != 53759) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_compose() != 19067) {
+    if (uniffi_djmobile_checksum_func_wheel_parse_sequence() != 54675) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_fire_macro() != 17226) {
+    if (uniffi_djmobile_checksum_func_wheel_presets() != 65323) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_audio_status() != 28213) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_compose() != 60070) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_deck_feel() != 28474) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_deck_key() != 51563) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_engage() != 9633) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_feel_label() != 38701) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_fx_acid() != 35207) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_fx_catalogue() != 4715) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_fx_categories() != 38051) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_fx_release() != 62015) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_fx_state() != 10933) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_fx_unlatch() != 34321) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_heos_discover() != 14547) {
@@ -4341,16 +7656,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_info() != 22895) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_load_td3() != 40617) {
+    if (uniffi_djmobile_checksum_method_player_key_label() != 23981) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_load_td3_pair() != 65370) {
+    if (uniffi_djmobile_checksum_method_player_load_saved_mix() != 16212) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_macro_catalogue() != 25597) {
+    if (uniffi_djmobile_checksum_method_player_load_saved_track() != 51572) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_load_td3() != 17293) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_load_td3_pair() != 51864) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_mix() != 65080) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_mix_snapshot() != 62592) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_next_track() != 23416) {
@@ -4359,7 +7683,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_palettes() != 25689) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_panic() != 61876) {
+    if (uniffi_djmobile_checksum_method_player_panic() != 42345) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_previous_track() != 21267) {
@@ -4380,10 +7704,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_set_crossfader() != 32691) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_set_palette() != 8021) {
+    if (uniffi_djmobile_checksum_method_player_set_feel_lock() != 52455) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_set_pitch() != 5487) {
+    if (uniffi_djmobile_checksum_method_player_set_key_lock() != 47380) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_set_palette() != 44823) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_set_pitch() != 1725) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_set_pitch_range() != 16781) {
@@ -4398,7 +7728,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_set_role_disabled() != 19829) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_set_vocoder() != 44925) {
+    if (uniffi_djmobile_checksum_method_player_set_sound_lock() != 61704) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_set_tempo_lock() != 5278) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_set_vocoder() != 27107) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_set_vocoder_auto_level() != 43281) {
@@ -4425,16 +7761,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_sync() != 20795) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_trick() != 339) {
+    if (uniffi_djmobile_checksum_method_player_tempo_lock() != 9743) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_trick_ids() != 7598) {
+    if (uniffi_djmobile_checksum_method_player_track_share() != 44069) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_trick_knob() != 25833) {
+    if (uniffi_djmobile_checksum_method_player_trick_knob() != 25727) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_tricks_on() != 40277) {
+    if (uniffi_djmobile_checksum_method_player_tv_stream_listeners() != 40394) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_tv_stream_start() != 18786) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_tv_stream_stop() != 37298) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_vocoder() != 45011) {
@@ -4447,6 +7789,96 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_vocoder_set() != 3180) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_brightness() != 18626) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_drive() != 18318) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_hand() != 18567) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_in_mix() != 9164) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_interval() != 14675) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_key() != 43187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_knobs() != 54205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_layout() != 59123) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_load() != 63760) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_motion() != 42656) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_motor() != 23999) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_pause() != 32018) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_pluck() != 18897) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_release() != 39547) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_rung() != 50717) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_sequence() != 49895) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_state() != 2437) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_step() != 34765) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_stop() != 6907) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_sync() != 6087) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_trigger() != 45474) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_wheel_volume() != 35613) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_insert_on() != 40605) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_insert_param() != 11468) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_insert_state() != 22660) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_insert_states() != 18248) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_insert_targets() != 4278) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_inserts_off() != 56983) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_inserts_restore() != 62941) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_inserts_save() != 33021) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_constructor_player_new() != 2776) {
