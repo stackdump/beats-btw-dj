@@ -32,9 +32,8 @@ struct VoxPage: View {
         HStack(spacing: 4) {
           ForEach(deckNames + [wheelModulator], id: \.self) { d in
             let deck = model.decks[d]?.deck
-            // the wheel shapes it with whatever plays on the Wheel tab (silent until it's played)
             let wheel = d == wheelModulator
-            let what = wheel ? model.wheel.layout?.name ?? "winding…" : deck?.td3.map { "Acid Bass \($0)" } ?? deck?.genre
+            let what = wheel ? model.wheel.layout?.name : deck?.td3.map { "Acid Bass \($0)" } ?? deck?.genre
             Segment(label: wheel ? "Wheel" : "Deck \(d)", sub: what, selected: d == mod) { model.setVocoder(d) }
           }
         }

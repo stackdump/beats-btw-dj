@@ -8,6 +8,9 @@
 		<string>audio</string>
 	</array>
 	<!-- Documents (and its soundfonts folder) shows in the Files app -->
+	<!-- HEOS: a zone's TCP control port and the mix's stream server are on the local network -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>To find Denon HEOS speakers on your Wi-Fi and play the mix on them.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

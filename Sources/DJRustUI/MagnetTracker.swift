@@ -1,22 +1,18 @@
 import Foundation
 
-// The wheel's magnets between polls (djandroid MagnetTracker.kt), for a drawing that runs at the
-// display's rate.
+// The wheel's magnets between polls, for a drawing that runs at the display's rate (djandroid
+// MagnetTracker.kt).
 //
 // Each poll is a `Sample`: the magnets' places and speeds on the voice's clock (frames rendered
-// over the sample rate), stamped with the monotonic clock (`DispatchTime`, nanoseconds) when it
-// was read. The tracker keeps a smoothed offset between the two clocks, so the drawing asks
-// "where is it at this frame?" on the voice's clock and a poll's timing (late, early, two in one
-// frame) doesn't jitter the motion. Between polls a magnet moves on at its speed; when a poll
-// disagrees with that guess the difference is eased out over `easeS` instead of jumping.
+// over the sample rate), stamped with the wall clock when it was read. The tracker keeps a
+// smoothed offset between the two clocks, so the drawing asks "where is it at this frame?" on the
+// voice's clock and a poll's timing (late, early, two in one frame) doesn't jitter the motion.
+// Between polls a magnet moves on at its speed; when a poll disagrees with that guess the
+// difference is eased out over `easeS` instead of jumping.
 //
-// `extent` is a periodic path's length (positions wrap), 0 for an open one. The poll feeds it off
-// the main thread and the drawing reads it on the main thread: every access holds its lock.
+// `extent` is a periodic path's length (positions wrap), 0 for an open one.
 
-/// The monotonic clock the tracker and the drawing share.
-func monoNs() -> Int64 { Int64(DispatchTime.now().uptimeNanoseconds) }
-
-final class MagnetTracker: @unchecked Sendable {
+final class MagnetTracker {
   struct Sample {
     var z: [Double]
     var v: [Double]
@@ -24,8 +20,10 @@ final class MagnetTracker: @unchecked Sendable {
     var seg: [Int]
     /// The voice's clock at the poll (s).
     var voiceS: Double
-    /// `monoNs()` just after the poll returned.
-    var stampNs: Int64
+    /// The wall clock just after the poll returned (s, `Date.timeIntervalSinceReferenceDate`).
+    var stamp: Double
+    /// Which poll it is: a new one is fed once.
+    var seq: Int
   }
 
   static let offsetGain = 0.05
@@ -39,76 +37,56 @@ final class MagnetTracker: @unchecked Sendable {
   static let maxBackS = 0.05
 
   private let extent: Double
-  private let lock = NSLock()
-  private var cur: Sample?
-  /// voice clock − wall clock (s), smoothed; NaN before the first sample.
-  private var offset = Double.nan
+  private(set) var sample: Sample?
+  /// voice clock − wall clock (s), smoothed; nil before the first sample.
+  private var offset: Double?
   private var corr: [Double] = []
-  private var corrAtNs: Int64 = 0
+  private var corrAt = 0.0
 
   init(extent: Double) { self.extent = extent }
 
-  var sample: Sample? { lock.withLock { cur } }
-
   func feed(_ s: Sample) {
-    lock.withLock {
-      let wall = Double(s.stampNs) / 1e9
-      let o = s.voiceS - wall
-      let prev = cur
-      // where the drawing had each magnet at this instant, before taking the new sample
-      let before = prev.map { p in (0..<p.z.count).map { at(p, $0, s.stampNs) } }
-      offset = offset.isNaN || abs(o - offset) > Self.resetS ? o : offset + (o - offset) * Self.offsetGain
-      cur = s
-      var c = [Double](repeating: 0, count: s.z.count)
-      if let prev, let before, prev.z.count == s.z.count {
-        for k in c.indices {
-          guard s.on[k], prev.on[k], prev.seg[k] == s.seg[k] else { continue }
-          let d = wrap(before[k] - project(s, k, s.stampNs))
-          // a real jump (a magnet dropped back in, a hand on the rail) is drawn as one
-          if abs(d) < Self.snapM { c[k] = d }
-        }
+    let o = s.voiceS - s.stamp
+    let prev = sample
+    // where the drawing had each magnet at this instant, before taking the new sample
+    let before = prev.map { p in (0..<p.z.count).map { at(p, $0, s.stamp) } }
+    if let off = offset, abs(o - off) <= Self.resetS { offset = off + (o - off) * Self.offsetGain } else { offset = o }
+    sample = s
+    var c = [Double](repeating: 0, count: s.z.count)
+    if let p = prev, let before, p.z.count == s.z.count {
+      for k in c.indices where s.on[k] && p.on[k] && p.seg[k] == s.seg[k] {
+        let d = wrap(before[k] - project(s, k, s.stamp))
+        // a real jump (a magnet dropped back in, a hand on the rail) is drawn as one
+        if abs(d) < Self.snapM { c[k] = d }
       }
-      corr = c
-      corrAtNs = s.stampNs
     }
+    corr = c
+    corrAt = s.stamp
   }
 
-  /// Magnet k's place at frame time `ns` (`monoNs()` base).
-  func z(_ k: Int, _ ns: Int64) -> Double {
-    lock.withLock {
-      guard let s = cur else { return 0 }
-      return at(s, k, ns)
-    }
+  /// Magnet k's place at wall time `t`.
+  func z(_ k: Int, _ t: Double) -> Double {
+    guard let s = sample else { return 0 }
+    return at(s, k, t)
   }
 
-  /// Every magnet's sample and place at `ns`, under one lock (a frame's worth).
-  func frame(_ ns: Int64) -> (Sample, [Double])? {
-    lock.withLock {
-      guard let s = cur else { return nil }
-      return (s, (0..<s.z.count).map { at(s, $0, ns) })
-    }
+  /// Nothing will move until the next poll: every magnet still and the last correction eased out.
+  func idle(_ t: Double) -> Bool {
+    guard let s = sample else { return true }
+    for k in s.v.indices where s.on[k] && abs(s.v[k]) > Self.stillMps { return false }
+    let left = exp(-(t - corrAt) / Self.easeS)
+    return corr.allSatisfy { abs($0) * left < 1e-5 }
   }
 
-  /// Nothing will move until the next poll: every magnet still and the last correction eased
-  /// out. The drawing stops asking for frames then.
-  func idle(_ ns: Int64) -> Bool {
-    lock.withLock {
-      guard let s = cur else { return true }
-      for k in s.v.indices where s.on[k] && abs(s.v[k]) > Self.stillMps { return false }
-      let left = exp(-Double(ns - corrAtNs) / 1e9 / Self.easeS)
-      return corr.allSatisfy { abs($0) * left < 1e-5 }
-    }
+  private func at(_ s: Sample, _ k: Int, _ t: Double) -> Double {
+    let left = exp(-max(0, t - corrAt) / Self.easeS)
+    let c = (s.seq == sample?.seq && k < corr.count) ? corr[k] * left : 0
+    return project(s, k, t) + c
   }
 
-  private func at(_ s: Sample, _ k: Int, _ ns: Int64) -> Double {
-    let left = exp(-Double(max(0, ns - corrAtNs)) / 1e9 / Self.easeS)
-    let c = k < corr.count ? corr[k] * left : 0
-    return project(s, k, ns) + c
-  }
-
-  /// The sample's guess for magnet k at wall time `ns`: on at its speed, on the voice's clock.
-  private func project(_ s: Sample, _ k: Int, _ ns: Int64) -> Double {
-    let dt = min(max((Double(ns) / 1e9 + offset) - s.voiceS, -Self.maxBackS), Self.maxAheadS)
+  /// The sample's guess for magnet k at wall time `t`: on at its speed, on the voice's clock.
+  private func project(_ s: Sample, _ k: Int, _ t: Double) -> Double {
+    let dt = min(max(t + (offset ?? 0) - s.voiceS, -Self.maxBackS), Self.maxAheadS)
     return s.z[k] + s.v[k] * dt
   }
 
@@ -117,5 +95,41 @@ final class MagnetTracker: @unchecked Sendable {
     var x = d.truncatingRemainder(dividingBy: extent)
     if x > extent / 2 { x -= extent } else if x < -extent / 2 { x += extent }
     return x
+  }
+}
+
+/// The motion poll's hand-over to the drawing: the latest sample (not observed, so a moving
+/// wheel redraws only its magnet layer) and whether a drawing is on screen to want them.
+final class WheelFeed: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _sample: MagnetTracker.Sample?
+  private var _watchers = 0
+  var sample: MagnetTracker.Sample? { lock.withLock { _sample } }
+  var watching: Bool { lock.withLock { _watchers > 0 } }
+  func publish(_ s: MagnetTracker.Sample) { lock.withLock { _sample = s } }
+  func watch(_ on: Bool) { lock.withLock { _watchers += on ? 1 : -1 } }
+}
+
+/// The newest value of a control a drag sends dozens of times: one engine call on its way at a
+/// time, and it takes the latest value when it gets there (djandroid's `*Pending` atomics).
+final class Latest<T: Equatable>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var v: T?
+  /// Keep `x` as the latest; true when nothing was pending (the caller starts the apply).
+  func put(_ x: T) -> Bool {
+    lock.withLock {
+      let idle = v == nil
+      v = x
+      return idle
+    }
+  }
+  var value: T? { lock.withLock { v } }
+  /// Done applying `x`: true when it is still the latest (the pending slot is cleared).
+  func done(_ x: T) -> Bool {
+    lock.withLock {
+      guard v == x else { return false }
+      v = nil
+      return true
+    }
   }
 }

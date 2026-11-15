@@ -82,7 +82,8 @@ struct Chip: View {
 
   var body: some View {
     Button(action: action) {
-      Text(label).font(.system(size: 14)).lineLimit(1)
+      // its own width: a narrow row wraps or scrolls rather than truncating "32" to "…"
+      Text(label).font(.system(size: 14)).lineLimit(1).fixedSize()
         .padding(.horizontal, 14).frame(minHeight: 36)
         .foregroundStyle(selected ? Color.black : (enabled ? Color.white : DJTheme.dim))
         .background(selected ? DJTheme.accent : DJTheme.surface2, in: RoundedRectangle(cornerRadius: 12))
@@ -117,11 +118,11 @@ struct FineSlider: View {
   let value: Double
   let range: ClosedRange<Double>
   let caption: String
-  /// Labels under points of the track (the sync slider's doublings).
-  var marks: [(Double, String)] = []
   var enabled = true
+  /// Points along it labelled (a position in `range`, its text): its detents.
+  var marks: [(Double, String)] = []
   /// The thumb let go.
-  var onDone: (() -> Void)?
+  var onDone: (() -> Void)? = nil
   var onChange: (Double) -> Void
 
   var body: some View {
@@ -131,21 +132,19 @@ struct FineSlider: View {
         Text("fine").font(.system(size: 11)).foregroundStyle(DJTheme.dim).frame(width: 32, alignment: .leading)
         Slider(
           value: Binding(get: { min(max(value, range.lowerBound), range.upperBound) }, set: onChange),
-          in: range,
-          onEditingChanged: { if !$0 { onDone?() } }
+          in: range, onEditingChanged: { if !$0 { onDone?() } }
         )
         .tint(inside ? DJTheme.accent : DJTheme.dim)
         .disabled(!enabled)
         .accessibilityLabel("\(description), fine")
       }
       if !marks.isEmpty {
-        // each label centred under its point on the track (inset by about half the thumb)
+        // each label centred under its point on the track, kept inside the row at the ends
         GeometryReader { g in
-          let inset: CGFloat = 12
-          ForEach(marks.indices, id: \.self) { i in
-            let f = (marks[i].0 - range.lowerBound) / (range.upperBound - range.lowerBound)
-            Text(marks[i].1).font(.system(size: 11)).foregroundStyle(DJTheme.dim).fixedSize()
-              .position(x: inset + (g.size.width - 2 * inset) * f, y: g.size.height / 2)
+          ForEach(Array(marks.enumerated()), id: \.offset) { _, m in
+            let f = (m.0 - range.lowerBound) / (range.upperBound - range.lowerBound)
+            Text(m.1).font(.system(size: 11)).foregroundStyle(DJTheme.dim).fixedSize()
+              .position(x: min(max(10 + f * (g.size.width - 20), 8), g.size.width - 8), y: 7)
           }
         }
         .frame(height: 14).padding(.leading, 32)
