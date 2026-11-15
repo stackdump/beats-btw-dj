@@ -141,8 +141,13 @@ public final class RustDJModel {
   @ObservationIgnored var heosPolling = false
   /// Menu › Charts: count my plays toward the charts (nothing is sent in any build yet).
   var chartsOn: Bool {
-    didSet { prefs.set(chartsOn, forKey: "charts_on") }
+    didSet {
+      prefs.set(chartsOn, forKey: "charts_on")
+      charts.on = chartsOn
+    }
   }
+  /// The plays the switch counts (ChartReporting.swift; nothing is sent in any build yet).
+  @ObservationIgnored nonisolated let charts = ChartReporting()
   /// The hardware controllers connected now (the Mac's MIDI layer sets it; Settings shows it).
   public var controllers: [String] = []
   /// The folder the engine read .sf2 banks from at its start.
@@ -163,6 +168,8 @@ public final class RustDJModel {
   @ObservationIgnored let knobsPending = Latest<WheelKnobs>()
   @ObservationIgnored let brightPending = Latest<Double>()
   @ObservationIgnored let rungPending = Latest<RungPick>()
+  /// The Wheel's field log (WheelLog.swift): switch numbers, timings, the queue's depth.
+  @ObservationIgnored nonisolated let wheelLog = WheelLogCounters()
   @ObservationIgnored private var insertsSaveTask: Task<Void, Never>?
   /// The pads under a finger now (a gesture's state, not shown).
   @ObservationIgnored private var fingers: Set<Int> = []
@@ -205,10 +212,15 @@ public final class RustDJModel {
   /// `soundFontDir`: .sf2 banks the engine loads at start (missing: synth voices only).
   public init(soundFontDir: String? = nil, defaults: UserDefaults = .standard) {
     prefs = defaults
+    let bundle = Bundle.main.infoDictionary
+    WheelLog.i(
+      "app.start",
+      ["version": bundle?["CFBundleShortVersionString"] as? String, "code": bundle?["CFBundleVersion"] as? String])
     keepScreenOnWhilePlaying = defaults.bool(forKey: "keep_screen_on_playing")
     chartsOn = defaults.bool(forKey: "charts_on")
     let dir = soundFontDir ?? RustEngine.defaultSoundFontDir
     self.soundFontDir = dir
+    charts.on = chartsOn
     Task.detached(priority: .userInitiated) { [weak self] in await self?.start(soundFontDir: dir) }
   }
 
@@ -297,12 +309,17 @@ public final class RustDJModel {
   private nonisolated func poll(_ p: Player) async {
     var lastSlow: [String: DeckState] = [:]
     var lastKey: [String: String] = [:]
+    var crossfader: Double?
     var n = 0
     while !Task.isCancelled {
       var changed: [String: (DeckState, [Palette]?)] = [:]
       for deck in deckNames {
         guard let d = try? p.state(deck: deck) else { continue }
         clocks[deck]?.update(d, at: Date())
+        let heard = ChartReporting.heard(deck, playing: d.playing, volume: d.volume, crossfader: crossfader)
+        charts.observe(
+          deck, genre: d.loaded ? d.genre : nil, seed: d.seed, structure: d.structure, title: d.title, heard: heard,
+          nowMs: Int64(Date().timeIntervalSince1970 * 1000))
         var slow = d
         slow.tick = d.tick - ((d.tick % ticksPerBar) + ticksPerBar) % ticksPerBar
         slow.position = 0
@@ -319,6 +336,7 @@ public final class RustDJModel {
         changed[deck] = (slow, pals)
       }
       let mix = n % 3 == 0 ? try? p.mix() : nil
+      if let mix { crossfader = mix.crossfader }
       let fx: [String: [FxActive]]? =
         n % 3 == 0
         ? Dictionary(uniqueKeysWithValues: deckNames.map { d in (d, (try? p.fxState(deck: d)) ?? []) }) : nil

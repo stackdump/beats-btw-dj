@@ -27,6 +27,7 @@ let rustTargets: [Target] =
     // iPadOS and macOS. No DJCore: it runs wherever the XCFramework has a slice.
     .target(
       name: "DJRustUI", dependencies: ["DJRust"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    .testTarget(name: "DJRustUITests", dependencies: ["DJRustUI"]),
     // Hardware controllers for the Mac's djrust app: DJCore's CoreMIDI + device profiles → the
     // model's ControllerAction (macOS only, as DJCore).
     .target(

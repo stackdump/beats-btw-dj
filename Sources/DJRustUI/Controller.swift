@@ -23,6 +23,74 @@ public enum ControllerAction: Sendable, Equatable {
   case crossfader(position: Double)
   /// The browser encoder: steps the lead deck's seed (±1 a detent).
   case seedStep(delta: Int)
+  /// PANIC: every macro, trick and latch on the deck ended at once.
+  case panic(deck: String)
+  /// "At the end: the next seed" toggled (DJApp's autoNext binding).
+  case autoAdvanceToggle(deck: String)
+}
+
+// MARK: what the controllers' LEDs show
+
+/// A role as its pad's LED shows it: playing, paused (a tap), locked out (a long press).
+public enum RoleLight: Sendable, Equatable { case on, paused, out }
+
+/// An effect on a deck as its pad shows it: running, or waiting for its bar.
+public enum EffectLight: Sendable, Equatable { case on, waiting }
+
+/// One deck as the controllers' LEDs see it (DJRustMIDI's `RustLEDs` turns it into LED bytes).
+public struct ControllerDeckLights: Sendable, Equatable {
+  public var loaded = false
+  public var playing = false
+  /// A track is being composed (the next one, or the first).
+  public var composing = false
+  /// The deck's BPM now; nil when nothing is loaded.
+  public var tempo: Double?
+  public var autoAdvance = false
+  public var roles: [String: RoleLight] = [:]
+  /// djrust effect id → its state, for the effects on or waiting.
+  public var effects: [String: EffectLight] = [:]
+
+  public init(
+    loaded: Bool = false, playing: Bool = false, composing: Bool = false, tempo: Double? = nil,
+    autoAdvance: Bool = false, roles: [String: RoleLight] = [:], effects: [String: EffectLight] = [:]
+  ) {
+    self.loaded = loaded
+    self.playing = playing
+    self.composing = composing
+    self.tempo = tempo
+    self.autoAdvance = autoAdvance
+    self.roles = roles
+    self.effects = effects
+  }
+}
+
+/// Everything the controllers' LEDs show, read from the model once per LED frame.
+public struct ControllerLightState: Sendable, Equatable {
+  public var decks: [String: ControllerDeckLights]
+  /// djrust's effects (id, label): what a profile's macro id can be matched to.
+  public var catalogue: [ControllerEffect]
+
+  public init(decks: [String: ControllerDeckLights], catalogue: [ControllerEffect]) {
+    self.decks = decks
+    self.catalogue = catalogue
+  }
+}
+
+public struct ControllerEffect: Sendable, Equatable {
+  public var id: String
+  public var label: String
+  public init(id: String, label: String) {
+    self.id = id
+    self.label = label
+  }
+
+  /// A profile's macro id as djrust's effect: by id, else by its label ("beat-repeat" → "Beat
+  /// Repeat"). nil: djrust has no such effect (its pad does nothing, and stays dark).
+  public static func match(_ id: String, in catalogue: [ControllerEffect]) -> ControllerEffect? {
+    if let f = catalogue.first(where: { $0.id == id }) { return f }
+    let want = id.replacingOccurrences(of: "-", with: " ").lowercased()
+    return catalogue.first { $0.label.lowercased() == want }
+  }
 }
 
 extension RustDJModel {
@@ -69,14 +137,32 @@ extension RustDJModel {
         if let st = s.structure { $0.structure = st }
       }
       act { _ = try $0.compose(deck: d, genre: genre, seed: next, structure: s.structure) }
+    case .panic(let d): fxPanic(d)
+    case .autoAdvanceToggle(let d): setAutoAdvance(d, !(decks[d]?.autoAdvance ?? true))
     }
   }
 
-  /// A profile's macro id as djrust's effect: by id, else by its label ("beat-repeat" → "Beat
-  /// Repeat").
+  /// What the controllers' LEDs show now.
+  public var controllerLights: ControllerLightState {
+    var out: [String: ControllerDeckLights] = [:]
+    for (name, ui) in decks {
+      let s = ui.deck
+      var roles: [String: RoleLight] = [:]
+      for r in s?.roles ?? [] { roles[r.name] = r.disabled ? .out : (r.audible ? .on : .paused) }
+      var fx: [String: EffectLight] = [:]
+      for a in fxActive[name] ?? [] { fx[a.id] = a.pending ? .waiting : .on }
+      out[name] = ControllerDeckLights(
+        loaded: s?.loaded == true, playing: s?.playing == true, composing: s?.composing == true,
+        tempo: s?.loaded == true ? s?.tempo : nil, autoAdvance: ui.autoAdvance, roles: roles, effects: fx)
+    }
+    return ControllerLightState(
+      decks: out, catalogue: fxCatalogue.map { ControllerEffect(id: $0.id, label: $0.label) })
+  }
+
+  /// A profile's macro id as djrust's effect (`ControllerEffect.match`).
   private func controllerEffect(_ id: String) -> FxInfo? {
-    if let f = fxCatalogue.first(where: { $0.id == id }) { return f }
-    let want = id.replacingOccurrences(of: "-", with: " ").lowercased()
-    return fxCatalogue.first { $0.label.lowercased() == want }
+    let c = fxCatalogue.map { ControllerEffect(id: $0.id, label: $0.label) }
+    guard let m = ControllerEffect.match(id, in: c) else { return nil }
+    return fxCatalogue.first { $0.id == m.id }
   }
 }

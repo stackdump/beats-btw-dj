@@ -34,8 +34,14 @@ extension RustDJModel {
   func attachWheel(_ p: Player) {
     wheel = WheelUI(presets: DJRust.wheelPresets(), follow: prefs.string(forKey: "wheel_follow") ?? "A")
     let id = prefs.string(forKey: "wheel_preset") ?? "hoop-looper"
-    wheelJob { p in
-      var l = try self.loadWithSequence(p, id)
+    // a new Player each start (Kotlin's `fresh`: the iPad has no surviving engine to find on)
+    WheelLog.i("switch.restore", ["n": 0, "to": id, "fresh": true])
+    wheelJob("restore") { p in
+      var l: WheelLayout
+      do { l = try self.loadWithSequence(p, id) } catch {
+        WheelLog.w("switch.restore.fail", ["to": id, "error": "\(error)"])
+        throw error
+      }
       if l.motor {
         try p.wheelMotor(on: false, speed: l.speedMps)
         l.motor = false
@@ -109,10 +115,16 @@ extension RustDJModel {
     wheelPlayPause()
   }
 
-  /// A re-wind on the wheel's queue; its layout replaces the shown one.
-  private func wheelJob(_ f: @escaping @Sendable (Player) throws -> WheelLayout) {
-    guard let p = player else { return }
+  /// A re-wind on the wheel's queue; its layout replaces the shown one. `what` names it in the
+  /// field log when it fails.
+  private func wheelJob(_ what: String = "rewind", _ f: @escaping @Sendable (Player) throws -> WheelLayout) {
+    guard let p = player else {
+      WheelLog.w("wheel.job.skip", ["what": what, "why": "no player"])
+      return
+    }
     wheel.rewinding = true
+    let log = wheelLog
+    log.queued(+1)
     wheelQueue.async {
       do {
         let l = try f(p)
@@ -122,33 +134,102 @@ extension RustDJModel {
         }
       } catch {
         let msg = "\(error)"
+        WheelLog.w("wheel.job.fail", ["what": what, "error": msg, "type": String(describing: type(of: error))])
         Task { @MainActor in
           self.error = msg
           self.wheel.rewinding = false
         }
       }
+      log.queued(-1)
     }
   }
 
-  /// Switch the wheel to instrument `id` (its sequence and build knobs as last left on it).
+  /// Switch the wheel to instrument `id` (its sequence and build knobs as last left on it):
+  /// logged step by step (WheelLog, `switch.*` with one number `n` per switch): the state it
+  /// starts from, the routes the wheel plays through (kept: a switch replaces the voice only),
+  /// the load, what was restored, and the timings.
   func wheelLoad(_ id: String) {
+    let log = wheelLog
+    let (n, t0, sinceLast) = log.nextSwitch()
+    let w = wheel
+    let l = w.layout
+    WheelLog.i(
+      "switch.start",
+      [
+        "n": n, "from": l?.id, "to": id, "since_last_ms": sinceLast, "queued": log.queuedNow,
+        "rewinding": w.rewinding, "started": w.started, "paused": w.paused, "moving": w.moving,
+        "motor": l?.motor, "speed": l?.speedMps, "follow": w.follow,
+      ])
+    let inserts = inserts.chains["Wheel"]?.effects.filter(\.on).map(\.id).joined(separator: ",") ?? ""
+    WheelLog.i(
+      "switch.routes",
+      [
+        "n": n, "strip": "input:Windwheel", "kept": true, "vocoder": vox.state?.modulator,
+        "wheel_inserts": inserts.isEmpty ? "none" : inserts,
+      ])
     prefs.set(id, forKey: "wheel_preset")
-    wheelJob { try self.loadWithSequence($0, id) }
+    wheelJob("switch \(n) to \(id)") { p in
+      let waited = WheelLog.now() - t0
+      let got = try self.loadWithSequence(p, id, n)
+      WheelLog.i(
+        "switch.done",
+        [
+          "n": n, "to": got.id, "law": got.law, "notes": got.notes.count, "magnets": got.magnets,
+          "motor": got.motor, "interval": got.intervalS, "waited_ms": waited, "total_ms": WheelLog.now() - t0,
+        ])
+      return got
+    }
   }
 
-  /// Load `id` with the note sequence last wound on it, if one was, and its build knobs; a
-  /// restore that fails falls back to what loaded.
-  private nonisolated func loadWithSequence(_ p: Player, _ id: String) throws -> WheelLayout {
-    let l0 = try p.wheelLoad(id: id)
+  /// Load `id` with the note sequence last wound on it, if one was, and its build knobs. Each
+  /// step is logged (switch `n`; 0: the launch's restore), a restore that fails too: it falls
+  /// back to what loaded, and says so.
+  private nonisolated func loadWithSequence(_ p: Player, _ id: String, _ n: Int = 0) throws -> WheelLayout {
+    var t = WheelLog.now()
+    let l0: WheelLayout
+    do { l0 = try p.wheelLoad(id: id) } catch {
+      WheelLog.w("switch.load.fail", ["n": n, "to": id, "error": "\(error)"])
+      throw error
+    }
+    WheelLog.i("switch.load", ["n": n, "to": id, "law": l0.law, "notes": l0.notes.count, "ms": WheelLog.now() - t])
     let seq = prefs.string(forKey: seqKey(id))
+    t = WheelLog.now()
     var l = l0
-    if let seq, !seq.trimmingCharacters(in: .whitespaces).isEmpty, seq != l0.sequence {
-      l = (try? p.wheelSequence(text: seq)) ?? l0
+    if let seq, !seq.trimmingCharacters(in: .whitespaces).isEmpty {
+      if seq == l0.sequence {
+        WheelLog.i("switch.sequence", ["n": n, "restored": "same"])
+      } else {
+        do {
+          l = try p.wheelSequence(text: seq)
+          WheelLog.i("switch.sequence", ["n": n, "restored": seq, "ms": WheelLog.now() - t])
+        } catch {
+          WheelLog.w("switch.sequence.fail", ["n": n, "saved": seq, "error": "\(error)"])
+        }
+      }
+    } else {
+      WheelLog.i("switch.sequence", ["n": n, "restored": "none"])
     }
     let g = prefs.object(forKey: gearKey(id)) as? Double ?? 6
     Task { @MainActor in self.wheel.gear = g }
-    guard let k = savedKnobs(id) else { return l }
-    return (try? p.wheelKnobs(knobs: k)) ?? l
+    guard let k = savedKnobs(id) else {
+      WheelLog.i("switch.knobs", ["n": n, "restored": "none", "gear": g])
+      return l
+    }
+    t = WheelLog.now()
+    do {
+      let lk = try p.wheelKnobs(knobs: k)
+      WheelLog.i(
+        "switch.knobs",
+        [
+          "n": n, "restored": "saved", "magnets": k.magnets, "carrier_g": k.carrierG, "braking": k.braking,
+          "release_m": k.releaseM, "load_ohms": k.loadOhms, "timbre": k.timbre, "decay_ms": k.decayMs, "gear": g,
+          "ms": WheelLog.now() - t,
+        ])
+      return lk
+    } catch {
+      WheelLog.w("switch.knobs.fail", ["n": n, "saved": prefs.string(forKey: knobsKey(id)), "error": "\(error)"])
+      return l
+    }
   }
 
   private nonisolated func savedKnobs(_ id: String) -> WheelKnobs? {
@@ -256,14 +337,16 @@ extension RustDJModel {
     let t = text.trimmingCharacters(in: .whitespaces)
     guard !t.isEmpty else { return }
     prefs.set(t, forKey: seqKey(id))
-    wheelJob { try $0.wheelSequence(text: t) }
+    WheelLog.i("wheel.sequence", ["id": id, "text": t])
+    wheelJob("sequence") { try $0.wheelSequence(text: t) }
   }
 
   /// Back to the preset's own notes (forgets the sequence wound on it; the build knobs stay).
   func wheelPresetNotes() {
     guard let id = wheel.layout?.id else { return }
     prefs.removeObject(forKey: seqKey(id))
-    wheelJob { try self.loadWithSequence($0, id) }
+    WheelLog.i("wheel.preset_notes", ["id": id])
+    wheelJob("preset notes") { try self.loadWithSequence($0, id) }
   }
 
   func wheelKey(_ root: String, _ transpose: Int) {
@@ -332,6 +415,8 @@ extension RustDJModel {
   /// notes are wound for; a drop or a pluck for the others).
   func wheelPlayPause() {
     let w = wheel
+    WheelLog.i(
+      "wheel.playpause", ["to": w.started && !w.paused ? "pause" : "play", "id": w.layout?.id, "started": w.started])
     if w.started && !w.paused {
       wheel.paused = true
       wheel.moving = false
@@ -351,6 +436,39 @@ extension RustDJModel {
       if kickMotor { try p.wheelMotor(on: true, speed: speed) }
       if kickPluck { try p.wheelPluck(segment: nil) }
     }
+  }
+}
+
+/// The field log's counters (Kotlin's `switches`, `lastSwitchMs`, `wheelQueued`): touched from
+/// the main thread and the wheel's queue.
+final class WheelLogCounters: @unchecked Sendable {
+  private let lock = NSLock()
+  private var switches = 0
+  private var lastSwitchMs: Int64 = 0
+  private var queuedJobs = 0
+
+  /// The next switch's number, its start, and the ms since the last one (nil: the first).
+  func nextSwitch() -> (Int, Int64, Int64?) {
+    lock.lock()
+    defer { lock.unlock() }
+    switches += 1
+    let t = WheelLog.now()
+    let since = lastSwitchMs == 0 ? nil : t - lastSwitchMs
+    lastSwitchMs = t
+    return (switches, t, since)
+  }
+
+  /// Jobs queued on the wheel's queue and not yet done (a switch logs how many it waited behind).
+  func queued(_ d: Int) {
+    lock.lock()
+    queuedJobs += d
+    lock.unlock()
+  }
+
+  var queuedNow: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return queuedJobs
   }
 }
 

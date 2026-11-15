@@ -27,6 +27,10 @@ public struct DJRustRoot: View {
   /// `DJ_PAGE="Effects"` (a launch environment, for screenshots): open on that page.
   @State private var page: Page? = ProcessInfo.processInfo.environment["DJ_PAGE"].flatMap(Page.init(rawValue:)) ?? .deckA
 
+  /// The Wheel page's scroll, which the instrument picker's anchor moves on a switch.
+  @State private var wheelScroll = ScrollPosition()
+  @State private var picker = PickerScroll()
+
   public init(model: RustDJModel) { _model = State(initialValue: model) }
 
   /// `DJ_SCROLL=center|bottom` (a launch environment, for screenshots; the simulator can't
@@ -83,14 +87,16 @@ public struct DJRustRoot: View {
           Group {
             if wide && p == .deckA {
               decks
+            } else if p == .wheel {
+              // the Wheel's scroll is the picker anchor's to move (PickerAnchor.swift)
+              pageScroll(p)
+                .scrollPosition($wheelScroll)
+                .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y } action: { _, y in
+                  picker.scrolled(to: y)
+                }
+                .onAppear { picker.scrollTo = { y in wheelScroll.scrollTo(y: y) } }
             } else {
-              ScrollView(.vertical) {
-                pageBody(p).padding(.horizontal, 16).padding(.vertical, 8)
-                  .frame(maxWidth: 720).frame(maxWidth: .infinity)
-              }
-              .defaultScrollAnchor(scrollAnchor)
-              // a finger on the wheel's drawing keeps the gesture: neither scroll takes it
-              .scrollDisabled(model.wheelTouching)
+              pageScroll(p)
             }
           }
           .containerRelativeFrame(.horizontal)
@@ -103,6 +109,16 @@ public struct DJRustRoot: View {
     .scrollDisabled(model.wheelTouching)
     .scrollPosition(id: $page)
     .scrollIndicators(.hidden)
+  }
+
+  private func pageScroll(_ p: Page) -> some View {
+    ScrollView(.vertical) {
+      pageBody(p).padding(.horizontal, 16).padding(.vertical, 8)
+        .frame(maxWidth: 720).frame(maxWidth: .infinity)
+    }
+    .defaultScrollAnchor(scrollAnchor)
+    // a finger on the wheel's drawing keeps the gesture: neither scroll takes it
+    .scrollDisabled(model.wheelTouching)
   }
 
   /// Deck A, the mixer and Deck B side by side, each its own column of cards.
@@ -127,7 +143,7 @@ public struct DJRustRoot: View {
     case .effects: FxPage(model: model)
     case .vox: VoxPage(model: model)
     case .inserts: InsertsPage(model: model)
-    case .wheel: WheelPage(model: model)
+    case .wheel: WheelPage(model: model, picker: picker)
     default: NotPortedPage(page: p)
     }
   }

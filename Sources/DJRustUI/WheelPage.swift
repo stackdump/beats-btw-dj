@@ -11,6 +11,8 @@ import SwiftUI
 
 struct WheelPage: View {
   let model: RustDJModel
+  /// Keeps the instrument picker where it was on screen across a switch (PickerAnchor.swift).
+  var picker: PickerScroll? = nil
 
   var body: some View {
     let w = model.wheel
@@ -42,14 +44,37 @@ struct WheelPage: View {
       }
       if let l { PlayCard(model: model, l: l, follow: w.follow) }
       if let l, l.cord, l.periodic, !l.notes.isEmpty { TempoCard(model: model, l: l) }
-      if !w.presets.isEmpty { InstrumentCard(model: model, l: l) }
+      if !w.presets.isEmpty {
+        // the cards above the picker change height with the instrument: keep the picker where
+        // it was on screen, so the next tap lands on the tile it was aimed at
+        InstrumentCard(model: model, l: l) { id in
+          picker?.hold(id)
+          model.wheelLoad(id)
+        }
+        .onGeometryChange(for: Double.self) { $0.frame(in: .named(Self.space)).minY } action: { y in
+          picker?.picker(at: y, id: model.wheel.layout?.id)
+        }
+        // the switch's layout can land without the picker moving (same heights): report it too
+        .onChange(of: l?.id) { _, id in picker?.shown(id) }
+        // `DJ_PICK=<id>` (a launch environment; the simulator can't tap): two seconds in, the
+        // picker's tile for `id` is tapped, anchor and all
+        .task {
+          guard let id = ProcessInfo.processInfo.environment["DJ_PICK"] else { return }
+          try? await Task.sleep(for: .seconds(2))
+          picker?.hold(id)
+          model.wheelLoad(id)
+        }
+      }
       if let l {
         KeyCard(model: model, l: l).id(l.id)
         WheelSoundCard(model: model, l: l)
       }
       Spacer(minLength: 24)
     }
+    .coordinateSpace(.named(Self.space))
   }
+
+  private static let space = "wheel.page"
 }
 
 private func howToPlay(_ l: WheelLayout) -> String {
@@ -684,6 +709,7 @@ private struct TempoCard: View {
 private struct InstrumentCard: View {
   let model: RustDJModel
   let l: WheelLayout?
+  let pick: (String) -> Void
 
   var body: some View {
     Card("Instrument", trailing: { if model.wheel.rewinding { Caption("winding…") } }) {
@@ -691,7 +717,7 @@ private struct InstrumentCard: View {
         ForEach(model.wheel.presets, id: \.id) { p in
           let on = p.id == l?.id
           Button {
-            model.wheelLoad(p.id)
+            pick(p.id)
           } label: {
             VStack(alignment: .leading, spacing: 2) {
               Text(p.name).font(.system(size: 14, weight: .medium)).lineLimit(1).foregroundStyle(on ? Color.black : .white)

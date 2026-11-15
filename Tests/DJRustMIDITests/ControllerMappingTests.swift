@@ -38,7 +38,12 @@ private func actions(_ data: [UInt8], lead: String = "A") -> [ControllerAction] 
 }
 
 @Test func fadersSendTheirPosition() {
-  #expect(actions(bytes("mixer.faders", 0, 127)) == [.crossfader(position: 1)])
+  // a 14-bit fader's MSB alone: 127 × 128 / 16383
+  guard case .crossfader(let x)? = actions(bytes("mixer.faders", 0, 127)).first else {
+    Issue.record("the crossfader isn't bound")
+    return
+  }
+  #expect(abs(x - 1) < 0.01)
   guard case .volume(let d, let p)? = actions(bytes("deckA.faders", 0, 64)).first else {
     Issue.record("deck A's volume fader isn't bound")
     return
