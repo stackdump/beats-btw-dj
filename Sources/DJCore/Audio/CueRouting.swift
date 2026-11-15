@@ -31,8 +31,9 @@ extension DJEngine {
   /// `masterPair` (channels 1/2 by default), the headphone feed on `cuePair` (3/4).
   /// Call before `start()`. For an offline engine the manual-render format must already
   /// have `channels` channels (`DJEngine(outputChannels:)`); for live output use
-  /// `enableCueOutput(device:)`.
-  public func enableCueRouting(channels: Int = 4, masterPair: Int = 0, cuePair: Int = 2)
+  /// `enableCueOutput(device:)`. Runs on the caller's actor (`nonisolated(nonsending)`), so a
+  /// main-actor caller doesn't send the engine away and keeps using it after the await.
+  nonisolated(nonsending) public func enableCueRouting(channels: Int = 4, masterPair: Int = 0, cuePair: Int = 2)
     async throws
   {
     precondition(!engine.isRunning, "route before starting the engine")
@@ -63,7 +64,8 @@ extension DJEngine {
 
   /// Send the master to channels 1/2 and the headphone cue to 3/4 of an interface (the
   /// Inpulse's built-in sound card). Live output only; the device needs at least 4 outputs.
-  public func enableCueOutput(device: AudioOutputDevice, masterPair: Int = 0, cuePair: Int = 2)
+  /// On the caller's actor, as `enableCueRouting`.
+  nonisolated(nonsending) public func enableCueOutput(device: AudioOutputDevice, masterPair: Int = 0, cuePair: Int = 2)
     async throws
   {
     guard device.outputChannels >= max(masterPair, cuePair) + 2 else {
