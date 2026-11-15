@@ -3,7 +3,6 @@ import Foundation
 import Observation
 
 #if os(iOS)
-  import AVFAudio
   import UIKit
 #endif
 
@@ -89,6 +88,11 @@ public final class RustDJModel {
   public internal(set) var info: EngineInfo?
   var decks: [String: DeckUI] = Dictionary(uniqueKeysWithValues: deckNames.map { ($0, DeckUI()) })
   var mix: MixState?
+  /// The engine's output stream: live, or lost and being reopened (polled ~once a second).
+  var audio: AudioStatus?
+  /// The decks the media session's last pause (a headset, the lock screen, an interruption, a
+  /// pulled headphone) stopped: its play starts them again.
+  var pausedBySession: [String] = []
   var genres: [String] = []
   var structures: [String] = []
   /// Settings › keep the screen awake while anything plays (djandroid's `keep_screen_on_playing`).
@@ -110,6 +114,15 @@ public final class RustDJModel {
   #if os(macOS)
     @ObservationIgnored private var awake: NSObjectProtocol?
   #endif
+  /// The lock screen / Control Centre / media keys (MediaSession.swift), from the engine's start.
+  @ObservationIgnored private var media: MediaSession?
+  /// `DJ_AUTOPLAY=1` (a launch environment, for screenshots and smoke runs): deck A plays as
+  /// soon as its first track is loaded.
+  @ObservationIgnored private var autoplay = ProcessInfo.processInfo.environment["DJ_AUTOPLAY"] == "1"
+  #if os(iOS)
+    /// Interruptions, route changes, the charger (AudioSessionHost.swift).
+    @ObservationIgnored private(set) var session: AudioSessionHost?
+  #endif
 
   /// `soundFontDir`: .sf2 banks the engine loads at start (missing: synth voices only).
   public init(soundFontDir: String? = nil, defaults: UserDefaults = .standard) {
@@ -126,8 +139,7 @@ public final class RustDJModel {
     do {
       #if os(iOS)
         // cpal opens a RemoteIO unit: the session must be a playback one first
-        try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try AVAudioSession.sharedInstance().setActive(true)
+        try AudioSessionHost.prepare()
       #endif
       try? FileManager.default.createDirectory(atPath: soundFontDir, withIntermediateDirectories: true)
       let p = try Player(soundfontDir: soundFontDir)
@@ -174,6 +186,11 @@ public final class RustDJModel {
     }
     try? p.setAutoLevel(on: prefs.object(forKey: "auto_level") as? Bool ?? true)
     info = p.info()
+    #if os(iOS)
+      session = AudioSessionHost(model: self)
+      session?.engineRate = info.map { Double($0.sampleRate) }
+    #endif
+    media = MediaSession(model: self)
     starting = false
     // A plays from the first press; B has a track ready to mix in
     for deck in deckNames {
@@ -209,8 +226,9 @@ public final class RustDJModel {
         changed[deck] = (slow, pals)
       }
       let mix = n % 3 == 0 ? try? p.mix() : nil
+      let audio = n % 30 == 0 ? p.audioStatus() : nil
       n += 1
-      if !changed.isEmpty || mix != nil {
+      if !changed.isEmpty || mix != nil || audio != nil {
         let update = changed
         await MainActor.run {
           for (deck, (s, pals)) in update {
@@ -218,6 +236,13 @@ public final class RustDJModel {
             if let pals { self.decks[deck]?.palettes = pals }
           }
           if let mix, mix != self.mix { self.mix = mix }
+          if let audio, audio != self.audio { self.audio = audio }
+          if self.playing { self.pausedBySession = [] }
+          if self.autoplay, self.decks["A"]?.deck?.loaded == true {
+            self.autoplay = false
+            self.togglePlay("A")
+          }
+          self.media?.update()
           self.applyScreenFlag()
         }
       }
@@ -240,7 +265,36 @@ public final class RustDJModel {
 
   func togglePlay(_ deck: String) {
     let on = !(decks[deck]?.deck?.playing ?? false)
+    if on { willPlay() }
     act { try $0.setPlaying(deck: deck, on: on) }
+  }
+
+  /// A deck is about to play: a session an interruption left inactive is taken back first.
+  private func willPlay() {
+    #if os(iOS)
+      session?.willPlay()
+    #endif
+  }
+
+  /// Stop every deck that plays (djandroid DeckHost.pauseAll): the media session's pause, an
+  /// interruption another app won, a pulled headphone. They are kept for the session's play.
+  func pauseAll() {
+    act { p in
+      let stopped = deckNames.filter { d in
+        guard (try? p.state(deck: d))?.playing == true else { return false }
+        return (try? p.setPlaying(deck: d, on: false)) != nil
+      }
+      guard !stopped.isEmpty else { return }
+      Task { @MainActor in self.pausedBySession = stopped }
+    }
+  }
+
+  /// The media session's play: the decks its pause stopped, else `lead`.
+  func resumeFromSession(lead: String) {
+    let decks = pausedBySession.isEmpty ? [lead] : pausedBySession
+    pausedBySession = []
+    willPlay()
+    act { p in for d in decks { try p.setPlaying(deck: d, on: true) } }
   }
 
   /// On a locked deck the tempo lock follows the fader (the engine moves it; this keeps it).
@@ -431,8 +485,19 @@ public final class RustDJModel {
 
   private var screenHeld = false
 
-  private func applyScreenFlag() {
-    let on = keepScreenOnWhilePlaying && playing
+  /// On the charger the screen stays on while the app is in front, so the iPad works as a deck
+  /// display (djandroid MainActivity.keepAwake); on battery, only with the Settings switch and
+  /// while a deck plays. The idle timer only applies in front, so leaving the app ends it too.
+  var screenOnCharging: Bool {
+    #if os(iOS)
+      session?.charging ?? false
+    #else
+      false
+    #endif
+  }
+
+  func applyScreenFlag() {
+    let on = screenOnCharging || (keepScreenOnWhilePlaying && playing)
     guard on != screenHeld else { return }
     screenHeld = on
     #if os(iOS)
@@ -449,6 +514,10 @@ public final class RustDJModel {
   }
 
   public func shutdown() {
+    media?.detach()
+    #if os(iOS)
+      session?.detach()
+    #endif
     pollTask?.cancel()
     player?.shutdown()
   }

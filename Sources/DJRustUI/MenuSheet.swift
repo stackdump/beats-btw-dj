@@ -14,12 +14,25 @@ enum MenuSection: String, CaseIterable, Identifiable {
 struct TopBar: View {
   let model: RustDJModel
   @State private var open = false
+  @State private var start: MenuSection?
 
   var body: some View {
     HStack {
       Text("djrust").font(.system(size: 22, weight: .medium)).foregroundStyle(DJTheme.accent)
       Spacer()
+      // status as a small indicator beside the menu (DESIGN §3): the output stream lost
+      if let a = model.audio, !a.live {
+        Button {
+          start = .about
+          open = true
+        } label: {
+          Label("output lost, reopening", systemImage: "speaker.slash.fill").font(.system(size: 12))
+            .foregroundStyle(DJTheme.danger).frame(minHeight: 48).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+      }
       Button {
+        start = nil
         open = true
       } label: {
         Image(systemName: "line.3.horizontal").font(.system(size: 20)).foregroundStyle(DJTheme.dim)
@@ -29,7 +42,7 @@ struct TopBar: View {
       .accessibilityLabel("Menu")
     }
     .frame(minHeight: 48)
-    .sheet(isPresented: $open) { MenuSheet(model: model) { open = false } }
+    .sheet(isPresented: $open) { MenuSheet(model: model, section: start) { open = false } }
   }
 }
 
@@ -37,6 +50,12 @@ struct MenuSheet: View {
   let model: RustDJModel
   let onClose: () -> Void
   @State private var section: MenuSection?
+
+  init(model: RustDJModel, section: MenuSection? = nil, onClose: @escaping () -> Void) {
+    self.model = model
+    self.onClose = onClose
+    _section = State(initialValue: section)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -74,7 +93,7 @@ struct MenuSheet: View {
 
   private func status(_ s: MenuSection) -> String {
     switch s {
-    case .settings: model.keepScreenOnWhilePlaying ? "screen on while playing" : ""
+    case .settings: model.screenOnCharging ? "on the charger: screen on" : model.keepScreenOnWhilePlaying ? "screen on while playing" : ""
     case .about: model.info.map { "\($0.sampleRate / 1000) kHz" } ?? ""
     default: "not yet"
     }
@@ -97,13 +116,24 @@ struct MenuSheet: View {
 
   private var settings: some View {
     @Bindable var m = model
-    return HStack {
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Keep screen on while playing").font(.system(size: 14))
-        Text("the screen stays awake while a deck plays").font(.system(size: 12)).foregroundStyle(DJTheme.dim)
+    return VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Keep screen on while playing").font(.system(size: 14))
+          Text("the screen stays awake while a deck plays").font(.system(size: 12)).foregroundStyle(DJTheme.dim)
+        }
+        Spacer()
+        DJToggle(label: "Keep screen on while playing", isOn: $m.keepScreenOnWhilePlaying)
       }
-      Spacer()
-      DJToggle(label: "Keep screen on while playing", isOn: $m.keepScreenOnWhilePlaying)
+      #if os(iOS)
+        // djandroid's rule, not a setting: plugged in, djrust is a deck display
+        Text(
+          model.screenOnCharging
+            ? "On the charger now: the screen stays on while djrust is open."
+            : "On the charger the screen stays on while djrust is open."
+        )
+        .font(.system(size: 12)).foregroundStyle(DJTheme.dim)
+      #endif
     }
   }
 
@@ -114,6 +144,11 @@ struct MenuSheet: View {
       if let i = model.info {
         Text("\(i.sampleRate) Hz · \(i.soundFonts) SoundFonts (\(i.localOnlyBanks) local only)")
           .font(.system(size: 12, design: .monospaced)).foregroundStyle(DJTheme.dim)
+      }
+      if let a = model.audio {
+        let state = a.live ? "live" : "lost, reopening"
+        Text("output \(state) · \(a.losses) lost · \(a.restores) reopened" + (a.why.map { " · \($0)" } ?? ""))
+          .font(.system(size: 12, design: .monospaced)).foregroundStyle(a.live ? DJTheme.dim : DJTheme.danger)
       }
       Text("SoundFonts: \(RustEngine.defaultSoundFontDir)").font(.system(size: 11, design: .monospaced))
         .foregroundStyle(DJTheme.dim).textSelection(.enabled)

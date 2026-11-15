@@ -15,7 +15,8 @@ enum Page: String, CaseIterable, Identifiable {
 
 public struct DJRustRoot: View {
   @State private var model: RustDJModel
-  @State private var page: Page? = .deckA
+  /// `DJ_PAGE="Effects"` (a launch environment, for screenshots): open on that page.
+  @State private var page: Page? = ProcessInfo.processInfo.environment["DJ_PAGE"].flatMap(Page.init(rawValue:)) ?? .deckA
 
   public init(model: RustDJModel) { _model = State(initialValue: model) }
 

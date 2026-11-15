@@ -48,12 +48,12 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 | djandroid | Apple port | Engine | Swift app (DJCore) | Missing / notes |
 |---|---|---|---|---|
 | Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (decks only so far) | — | Deck columns + `DeckSections` folds; no pager | Dots for Wheel/Vox/Effects/Inserts come with those pages |
-| Top bar: "djrust" wordmark, indicators (HEOS live, update, identity), menu icon | 🟡 wordmark + menu icon | — | — | Indicators come with their features |
+| Top bar: "djrust" wordmark, indicators (HEOS live, update, identity), menu icon | 🟡 wordmark + menu icon; an "output lost, reopening" indicator (Danger) while `audioStatus().live` is false, opening About | `audioStatus` | — | Indicators come with their features. The output one is the port's own (djandroid has none) |
 | "starting the engine…" while `Player()` opens | ✅ | `Player(soundfontDir:)` | — | |
 | Error dialog ("Something went wrong", never stops playback) | ✅ `.alert` | `DjError` | — | |
 | Engine is the process's (`DeckHost`), survives a rotated/recreated screen | ✅ model owned by the `App`, not the view | — | — | iPad: also survive scene disconnect (below) |
-| Background playback (`PlaybackService`, Media3 session, lock-screen + headset buttons follow the lead deck) | 🟡 `UIBackgroundModes: audio` set; `AVAudioSession(.playback)` before `Player()` | stream reopen in `keep_output` | — | `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` (play/pause/next/prev on the lead deck); audio-session interruptions → see Engine changes |
-| Keep screen on (charging, or Settings › while playing) | 🟡 Settings toggle → `isIdleTimerDisabled` (iOS) / `beginActivity(.idleDisplaySleepDisabled)` (macOS) | — | — | "on the charger" rule (`UIDevice.batteryState`) |
+| Background playback (`PlaybackService` + `DeckPlayer`: Media3 session, lock-screen + headset buttons follow the lead deck) | ✅ `MediaSession.swift` (`MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`: play / pause / toggle / stop / next / previous on the lead deck, pause = every playing deck, play = the decks pause stopped, else the lead; title, "djrust · deck X · genre", structure, duration, elapsed + rate) and `AudioSessionHost.swift` (iOS: interruptions, route changes, media-services reset, preferred rate pinned to the engine's) | `state`, `mix`, `setPlaying`, `nextTrack`, `previousTrack`/`restart`, `audioStatus`; stream reopen in `keep_output` | — | Previous = the deck's ⏮ rule (top past 2 bars), not Media3's 3 s. iPad pauses on a pulled headphone (`oldDeviceUnavailable`, Apple's rule; djandroid has no "becoming noisy" handling). An interruption that ends without "should resume" pauses the decks and leaves the session inactive until a deck is played. Recovery speed and idle background → Engine changes 3, 6 |
+| Keep screen on (charging, or Settings › while playing) | ✅ Settings toggle → `isIdleTimerDisabled` (iOS) / `beginActivity(.idleDisplaySleepDisabled)` (macOS); on iOS the charger rule (`UIDevice.batteryState` charging / full → screen on while in front), said in Settings | — | — | macOS has no charger rule (a Mac is not a deck display on a stand) |
 | Fine sliders (`FineSlider`), tapers (`Taper.kt`: Log, Pow, Fader) | 🟡 `FineSlider`, `Fader` | `wheel::sweep` informs tapers | — | `Log` / `Pow` tapers with the Wheel and Vox |
 
 ### Deck A / Deck B (the first milestone)
@@ -102,22 +102,39 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 2. **`staticlib` in `crate-type`** (or an `apple` feature) so Apple builds don't need
    `cargo rustc --crate-type`. Optional; the script works without it.
 3. **iOS audio session lifecycle.** cpal's iOS backend opens RemoteIO; on an interruption (a
-   call, Siri, another app taking the session) the unit stops. `keep_output` already reopens a
-   lost stream; confirm it notices a stopped-but-not-errored RemoteIO, or expose
-   `audio_restart()` for the app to call from `AVAudioSession.interruptionNotification`.
+   call, Siri, another app taking the session) the unit stops. Read at 3abb5bb: `keep_output`
+   *does* notice a stopped-but-not-errored unit — no callback for `STALL_REOPEN` (3 s) counts as
+   lost — and reopens the default output with djhost's back-off (1 s, doubling to 8 s). What the
+   app can do it does (`AudioSessionHost`): reactivate the session when the interruption ends,
+   pin `preferredSampleRate` to the engine's, re-set up after a media-services reset. Still
+   wanted from the engine:
+   - **`audio_restart()`** (reopen now, back-off reset): after an interruption the sound comes
+     back on the next retry, up to ~8 s + the 3 s stall later; the app knows the exact moment.
+   - **A different hardware rate**: `keep_output` refuses an output that opens at another rate
+     ("opened at X Hz, the engine runs at Y Hz") and retries forever. A route whose hardware rate
+     the session can't pin (some Bluetooth / USB interfaces) leaves the decks silent until the
+     app restarts. Resample, or rebuild the engine at the new rate.
+   - Not verified on hardware yet: whether cpal's RemoteIO reports the interruption as an error
+     (then it's `Faulted`, reopened sooner) or just stops calling back.
 4. **Release catalogue in the engine.** `ReleaseCatalogue` (which palettes a public build hides)
    is duplicated in Kotlin and now Swift; a flag on `palettes()` (or `Palette.releasable`)
    would keep the rule in one place.
 5. **Wording.** Palette descriptions say "this Mac" (Kotlin rewrites it to "this phone", Swift to
    "this iPad"); a host-neutral wording upstream would drop both rewrites.
+6. **Idle in the background.** The engine's stream runs (silence) while every deck is paused,
+   so iOS never suspends a backgrounded app that isn't playing: a paused djrust drains the
+   battery as if it played. Android's service goes idle on pause. Wanted: `audio_suspend()` /
+   `audio_resume()` (stop/start the output without counting a loss), so the app can stop the
+   unit and deactivate its session when it is in the background with nothing playing.
 
 ## Order of work
 
 1. ✅ **Milestone 1** — XCFramework from djandroid's crate at pinned revs; the page shell (top
    bar, 7 tabs, pager, menu sheet with Settings/About); Deck A, Deck B and Mix on djrust; Mac
    app `DJRustApp`; iPad Xcode project with automatic signing (docs/IPAD.md).
-2. **Background audio & media controls** — Now Playing, remote commands on the lead deck,
-   interruptions (with engine item 3). Needed before the iPad is usable in a set.
+2. ✅ **Background audio & media controls** — Now Playing, remote commands on the lead deck,
+   interruptions and route changes (engine items 3, 6 for what the app can't do), the charger
+   rule for the screen.
 3. **Effects** page, then the **loop bank** (Td3 deck card + Mix pairs, Acid tricks).
 4. **Vox** (vocoder) — pads, sounds, knobs; multi-touch on iPad.
 5. **Inserts**.
