@@ -136,6 +136,22 @@ public final class RustDJModel {
   var td3Drums = true
   var vox = VoxUI()
   var inserts = InsertsUI()
+  /// The Wheel tab (RustDJModel+Wheel.swift): the instruments, the one loaded, its controls.
+  var wheel = WheelUI()
+  /// The wheel's meters, tempo and feed, ~30 times a second while its page shows.
+  var wheelState: WheelState?
+  /// No magnet will move until the next poll: the drawing's frame loop rests.
+  var wheelStill = true
+  /// Bumped when a poll moved the magnets while the drawing rests: it draws one frame.
+  var wheelMoved = 0
+  /// A finger on the wheel's drawing: the pager and the page's scroll hold still under it.
+  var wheelTouching = false
+  /// Re-winds and loads, one at a time and in order (djandroid's `wheelLane`).
+  @ObservationIgnored let wheelQueue = DispatchQueue(label: "djrust.wheel", qos: .userInitiated)
+  /// What the wheel's poll (off the main thread) and the page share.
+  @ObservationIgnored let wheelShared = WheelShared()
+  /// `DJ_AUTOPLAY=wheel:ID`: the load it asked for is on its way.
+  @ObservationIgnored var wheelAutoLoading = false
   @ObservationIgnored private var insertsSaveTask: Task<Void, Never>?
   /// The pads under a finger now (a gesture's state, not shown).
   @ObservationIgnored private var fingers: Set<Int> = []
@@ -153,11 +169,11 @@ public final class RustDJModel {
 
   @ObservationIgnored let clocks: [String: PlayClock] = Dictionary(
     uniqueKeysWithValues: deckNames.map { ($0, PlayClock()) })
-  @ObservationIgnored nonisolated(unsafe) private var player: Player?
+  @ObservationIgnored nonisolated(unsafe) var player: Player?
   /// Every call into the engine runs in order on one queue, so a fast slider never lands out of
   /// order and the main thread never waits on the engine's lock.
   @ObservationIgnored private let engineQueue = DispatchQueue(label: "djrust.engine", qos: .userInitiated)
-  @ObservationIgnored private let prefs: UserDefaults
+  @ObservationIgnored let prefs: UserDefaults
   @ObservationIgnored private var pollTask: Task<Void, Never>?
   #if os(macOS)
     @ObservationIgnored private var awake: NSObjectProtocol?
@@ -166,8 +182,9 @@ public final class RustDJModel {
   @ObservationIgnored private var media: MediaSession?
   /// `DJ_AUTOPLAY` (a launch environment, for screenshots and smoke runs): "1" plays deck A as
   /// soon as its first track is loaded; "td3:N" loads loop group N on both decks instead;
-  /// "vox:N" plays A and holds chord pad N (the vocoder comes on).
-  @ObservationIgnored private var autoplay = ProcessInfo.processInfo.environment["DJ_AUTOPLAY"]
+  /// "vox:N" plays A and holds chord pad N (the vocoder comes on); "wheel:ID" loads wheel
+  /// instrument ID (empty: the one restored) and plays it, "wheel:ID:A" then plays deck A too.
+  @ObservationIgnored var autoplay = ProcessInfo.processInfo.environment["DJ_AUTOPLAY"]
   #if os(iOS)
     /// Interruptions, route changes, the charger (AudioSessionHost.swift).
     @ObservationIgnored private(set) var session: AudioSessionHost?
@@ -246,6 +263,7 @@ public final class RustDJModel {
     if let json = prefs.string(forKey: "inserts.chains") { _ = try? p.insertsRestore(json: json, switches: false) }
     inserts.target = prefs.string(forKey: "inserts.target").flatMap { InsertsUI.targets.contains($0) ? $0 : nil } ?? "A"
     refreshInserts()
+    wheelAttach(p)
     info = p.info()
     #if os(iOS)
       session = AudioSessionHost(model: self)
@@ -305,7 +323,9 @@ public final class RustDJModel {
           if let fx, fx != self.fxActive { self.fxActive = fx }
           if let voc { self.updateVox(voc) }
           if self.playing { self.pausedBySession = [] }
-          if let a = self.autoplay, self.decks["A"]?.deck?.loaded == true {
+          if let a = self.autoplay, a.hasPrefix("wheel") {
+            self.wheelAutoplay(a)
+          } else if let a = self.autoplay, self.decks["A"]?.deck?.loaded == true {
             self.autoplay = nil
             if a.hasPrefix("td3:"), let g = UInt32(a.dropFirst(4)) {
               self.loadTd3Pair(g)
@@ -323,7 +343,7 @@ public final class RustDJModel {
   }
 
   /// Run `f` on the engine queue; a refusal becomes the error dialog.
-  private func act(_ f: @escaping @Sendable (Player) throws -> Void) {
+  func act(_ f: @escaping @Sendable (Player) throws -> Void) {
     guard let p = player else { return }
     engineQueue.async {
       do { try f(p) } catch {
@@ -342,7 +362,7 @@ public final class RustDJModel {
   }
 
   /// A deck is about to play: a session an interruption left inactive is taken back first.
-  private func willPlay() {
+  func willPlay() {
     #if os(iOS)
       session?.willPlay()
     #endif

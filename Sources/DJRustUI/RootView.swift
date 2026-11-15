@@ -20,6 +20,15 @@ public struct DJRustRoot: View {
 
   public init(model: RustDJModel) { _model = State(initialValue: model) }
 
+  /// `DJ_SCROLL=center|bottom` (a launch environment, for screenshots; the simulator can't
+  /// scroll): each page opens scrolled there instead of at its top.
+  private let scrollAnchor: UnitPoint =
+    switch ProcessInfo.processInfo.environment["DJ_SCROLL"] {
+    case "center": .center
+    case "bottom": .bottom
+    default: .top
+    }
+
   public var body: some View {
     ZStack {
       DJTheme.surface0.ignoresSafeArea()
@@ -60,6 +69,9 @@ public struct DJRustRoot: View {
             pageBody(p).padding(.horizontal, 16).padding(.vertical, 8)
               .frame(maxWidth: 720).frame(maxWidth: .infinity)
           }
+          .defaultScrollAnchor(scrollAnchor)
+          // a finger on the wheel's drawing keeps the gesture: neither scroll takes it
+          .scrollDisabled(model.wheelTouching)
           .containerRelativeFrame(.horizontal)
           .id(p)
         }
@@ -67,6 +79,7 @@ public struct DJRustRoot: View {
       .scrollTargetLayout()
     }
     .scrollTargetBehavior(.paging)
+    .scrollDisabled(model.wheelTouching)
     .scrollPosition(id: $page)
     .scrollIndicators(.hidden)
   }
@@ -78,7 +91,7 @@ public struct DJRustRoot: View {
     case .effects: FxPage(model: model)
     case .vox: VoxPage(model: model)
     case .inserts: InsertsPage(model: model)
-    default: NotPortedPage(page: p)
+    case .wheel: WheelPage(model: model)
     }
   }
 }
@@ -123,6 +136,7 @@ extension RustDJModel {
     case .effects: fxActive.values.contains { !$0.isEmpty }
     case .vox: vox.state?.on == true
     case .inserts: inserts.anyOn
+    case .wheel: wheel.moving
     default: false
     }
   }
