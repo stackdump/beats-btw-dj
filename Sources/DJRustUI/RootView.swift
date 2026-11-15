@@ -78,6 +78,7 @@ public struct DJRustRoot: View {
     case .effects: FxPage(model: model)
     case .vox: VoxPage(model: model)
     case .inserts: InsertsPage(model: model)
+    case .wheel: WheelPage(model: model)
     default: NotPortedPage(page: p)
     }
   }
@@ -123,6 +124,7 @@ extension RustDJModel {
     case .effects: fxActive.values.contains { !$0.isEmpty }
     case .vox: vox.state?.on == true
     case .inserts: inserts.anyOn
+    case .wheel: wheel.moving
     default: false
     }
   }

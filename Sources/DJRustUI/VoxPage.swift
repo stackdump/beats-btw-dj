@@ -32,12 +32,9 @@ struct VoxPage: View {
         HStack(spacing: 4) {
           ForEach(deckNames + [wheelModulator], id: \.self) { d in
             let deck = model.decks[d]?.deck
-            // the Wheel tab isn't ported: its instrument can't be loaded or played yet
             let wheel = d == wheelModulator
-            let what = wheel ? "not on the iPad yet" : deck?.td3.map { "Acid Bass \($0)" } ?? deck?.genre
-            Segment(
-              label: wheel ? "Wheel" : "Deck \(d)", sub: what, selected: d == mod, enabled: !wheel
-            ) { model.setVocoder(d) }
+            let what = wheel ? model.wheel.layout?.name : deck?.td3.map { "Acid Bass \($0)" } ?? deck?.genre
+            Segment(label: wheel ? "Wheel" : "Deck \(d)", sub: what, selected: d == mod) { model.setVocoder(d) }
           }
         }
         // always laid out (greyed while off): the card keeps its height when the vocoder comes on

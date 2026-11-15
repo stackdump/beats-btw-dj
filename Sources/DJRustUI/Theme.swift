@@ -118,6 +118,10 @@ struct FineSlider: View {
   let range: ClosedRange<Double>
   let caption: String
   var enabled = true
+  /// Points along it labelled (a position in `range`, its text): its detents.
+  var marks: [(Double, String)] = []
+  /// The thumb let go.
+  var onDone: (() -> Void)? = nil
   var onChange: (Double) -> Void
 
   var body: some View {
@@ -127,11 +131,22 @@ struct FineSlider: View {
         Text("fine").font(.system(size: 11)).foregroundStyle(DJTheme.dim).frame(width: 32, alignment: .leading)
         Slider(
           value: Binding(get: { min(max(value, range.lowerBound), range.upperBound) }, set: onChange),
-          in: range
+          in: range, onEditingChanged: { if !$0 { onDone?() } }
         )
         .tint(inside ? DJTheme.accent : DJTheme.dim)
         .disabled(!enabled)
         .accessibilityLabel("\(description), fine")
+      }
+      if !marks.isEmpty {
+        // each label centred under its point on the track, kept inside the row at the ends
+        GeometryReader { g in
+          ForEach(Array(marks.enumerated()), id: \.offset) { _, m in
+            let f = (m.0 - range.lowerBound) / (range.upperBound - range.lowerBound)
+            Text(m.1).font(.system(size: 11)).foregroundStyle(DJTheme.dim).fixedSize()
+              .position(x: min(max(10 + f * (g.size.width - 20), 8), g.size.width - 8), y: 7)
+          }
+        }
+        .frame(height: 14).padding(.leading, 32)
       }
       Text(caption).font(.system(size: 11)).foregroundStyle(DJTheme.dim).padding(.leading, 32)
     }
