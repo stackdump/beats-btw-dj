@@ -159,8 +159,16 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 8. 🟡 **Mac as the default**: ✅ hardware controllers (`Sources/DJRustMIDI`: DJCore's CoreMIDI
    input and device profiles → `ControllerAction` on the model: play, sync, next / back, role
    pads, effect pads (held for transitions), volume (square law), pitch (DJApp's 2 % dead zone),
-   filter, crossfader, the browser encoder stepping the lead deck's seed; the rest → Engine
-   changes 8; LEDs not driven yet; mapping tests in `Tests/DJRustMIDITests`); ✅ the wide layout;
+   filter, crossfader, the browser encoder stepping the lead deck's seed, PANIC, auto-advance,
+   DJApp's regenerate as ⏭, the APC's aim buttons (A / B: what its "*" pads act on, else the
+   lead deck); the rest → Engine changes 8; mapping tests in `Tests/DJRustMIDITests`); ✅ their
+   LEDs (`RustLEDs.swift`: DJCore's `ledFrame` / `lights` rules and the profiles' status bytes
+   over the model's `controllerLights` snapshot, ~20×/s to the output of the controller's name,
+   dark on quit: play blinks while playing, sync lit at the other deck's tempo, ⏭ blinks while
+   composing, role pads show the role (on / paused / locked out), effect pads the APC's group
+   colour full while on and blinking while waiting for the bar, dark where djrust has no such
+   effect; every control djmobile can't play is dark; `Tests/DJRustMIDITests/ControllerLEDTests`.
+   Not tried on hardware yet: no controller was plugged in); ✅ the wide layout;
    ⬜ retire the toggle and make DJRustApp the app `make install-app` installs — Matt's call: DJApp
    still does far more (Wander, auto-mix, the journal, the MCP server, sessions, loops).
 

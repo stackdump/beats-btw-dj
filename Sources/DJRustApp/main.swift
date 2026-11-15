@@ -22,6 +22,10 @@ struct DJRustApp: App {
     WindowGroup("djrust") {
       DJRustRoot(model: model).frame(minWidth: 420, minHeight: 640)
         .task { controllers.start() }
+        // the controllers' LEDs go dark with the app
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+          controllers.stop()
+        }
     }
     // wide enough for both decks and the mixer side by side (narrower: the seven tabs)
     .defaultSize(width: 1240, height: 900)
