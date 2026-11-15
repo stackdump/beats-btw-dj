@@ -41,7 +41,20 @@ then plays deck A too); `DJ_PAGE=<tab label>` ("Mix", "Wheel", "Effects", …) o
 `DJ_SCROLL=center|bottom` opens each page scrolled there (the simulator can't scroll);
 `DJ_MENU=<section>` ("HEOS speakers", "Library", …) opens the menu there; `DJ_WIDE_FROM=<points>`
 moves the wide layout's threshold (1100: both decks and the mixer side by side);
-`DJ_LOCAL_ONLY_PALETTES=1` shows the local-only palettes.
+`DJ_LOCAL_ONLY_PALETTES=1` shows the local-only palettes; `DJ_PICK=<id>` taps the Wheel's instrument
+picker on `<id>` two seconds in (with `DJ_PAGE=Wheel`: the picker anchor's check).
+
+The Wheel's field log (djandroid's `wheel.log`) is the unified log, subsystem
+`io.bitwrap.beats-btw-dj`, category `wheel`:
+
+```
+xcrun simctl spawn booted log show --last 10m --predicate 'category == "wheel"'   # simulator
+sudo log collect --device-udid <device id> --last 1h --output wheel.logarchive      # the iPad
+log show wheel.logarchive --predicate 'subsystem == "io.bitwrap.beats-btw-dj" && category == "wheel"'
+```
+
+(or Console.app with the iPad selected, `category:wheel`). The Mac's DJRustApp logs to the same
+subsystem: `log show --last 10m --predicate 'category == "wheel"'`.
 
 ## Background play and the lock screen
 

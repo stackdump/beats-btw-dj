@@ -163,6 +163,8 @@ public final class RustDJModel {
   @ObservationIgnored let knobsPending = Latest<WheelKnobs>()
   @ObservationIgnored let brightPending = Latest<Double>()
   @ObservationIgnored let rungPending = Latest<RungPick>()
+  /// The Wheel's field log (WheelLog.swift): switch numbers, timings, the queue's depth.
+  @ObservationIgnored nonisolated let wheelLog = WheelLogCounters()
   @ObservationIgnored private var insertsSaveTask: Task<Void, Never>?
   /// The pads under a finger now (a gesture's state, not shown).
   @ObservationIgnored private var fingers: Set<Int> = []
@@ -205,6 +207,10 @@ public final class RustDJModel {
   /// `soundFontDir`: .sf2 banks the engine loads at start (missing: synth voices only).
   public init(soundFontDir: String? = nil, defaults: UserDefaults = .standard) {
     prefs = defaults
+    let bundle = Bundle.main.infoDictionary
+    WheelLog.i(
+      "app.start",
+      ["version": bundle?["CFBundleShortVersionString"] as? String, "code": bundle?["CFBundleVersion"] as? String])
     keepScreenOnWhilePlaying = defaults.bool(forKey: "keep_screen_on_playing")
     chartsOn = defaults.bool(forKey: "charts_on")
     let dir = soundFontDir ?? RustEngine.defaultSoundFontDir
