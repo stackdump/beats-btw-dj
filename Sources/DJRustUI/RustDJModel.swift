@@ -99,6 +99,16 @@ struct VoxUI: Equatable {
   var onlyVocoder: Bool { deckMutedFrom != nil || wheelMuted }
 }
 
+/// The Inserts page (djandroid InsertFx.kt InsertUi): the target shown and each target's chain
+/// (filter, bitcrush, delay, reverb). `error`: the last thing the engine refused, shown in place.
+struct InsertsUI: Equatable {
+  static let targets = ["A", "B", "Wheel", "Master"]
+  var target = "A"
+  var chains: [String: InsertChainState] = [:]
+  var error: String?
+  var anyOn: Bool { chains.values.contains { $0.effects.contains(where: \.on) } }
+}
+
 /// The deck the crossfader favours: the one the lock screen follows.
 func leadDeck(_ crossfader: Double?) -> String { (crossfader ?? 0) > 0.5 ? "B" : "A" }
 
@@ -125,6 +135,8 @@ public final class RustDJModel {
   var td3Loops: [Td3Loop] = []
   var td3Drums = true
   var vox = VoxUI()
+  var inserts = InsertsUI()
+  @ObservationIgnored private var insertsSaveTask: Task<Void, Never>?
   /// The pads under a finger now (a gesture's state, not shown).
   @ObservationIgnored private var fingers: Set<Int> = []
   /// A latched chord stopped by a tap on it: the lift of that tap starts nothing.
@@ -230,6 +242,10 @@ public final class RustDJModel {
     try? p.setVocoderAutoLevel(on: prefs.object(forKey: "vocoder_auto_level") as? Bool ?? true)
     try? p.vocoderPreset(id: prefs.string(forKey: "vocoder_preset") ?? "talking-drums")
     vox.presets = DJRust.vocoderPresets()
+    // the inserts' knobs as last left (the switches are not kept: a fresh start has every one off)
+    if let json = prefs.string(forKey: "inserts.chains") { _ = try? p.insertsRestore(json: json, switches: false) }
+    inserts.target = prefs.string(forKey: "inserts.target").flatMap { InsertsUI.targets.contains($0) ? $0 : nil } ?? "A"
+    refreshInserts()
     info = p.info()
     #if os(iOS)
       session = AudioSessionHost(model: self)
@@ -685,6 +701,96 @@ public final class RustDJModel {
       vox.state = s
     }
     act { _ = try $0.vocoderSet(name: name, value: value) }
+  }
+
+  // MARK: insert effects (djandroid InsertFx.kt)
+
+  /// Read every chain (the page's poll, twice a second while it shows, and after each change):
+  /// the tempos the delays follow, and anything changed elsewhere.
+  func refreshInserts() {
+    guard let p = player else { return }
+    engineQueue.async {
+      guard let list = try? p.insertStates() else { return }
+      let m = Dictionary(list.map { ($0.target, $0) }, uniquingKeysWith: { a, _ in a })
+      Task { @MainActor in if m != self.inserts.chains { self.inserts.chains = m } }
+    }
+  }
+
+  func selectInsertTarget(_ t: String) {
+    inserts.target = t
+    prefs.set(t, forKey: "inserts.target")
+  }
+
+  /// An inserts call: a refusal shows on the page (not the dialog), then the chains are read
+  /// again and the knobs kept.
+  private func insertCall(_ f: @escaping @Sendable (Player) throws -> Void) {
+    guard let p = player else { return }
+    engineQueue.async {
+      var err: String?
+      do { try f(p) } catch { err = "\(error)" }
+      let e = err
+      Task { @MainActor in
+        self.inserts.error = e
+        self.refreshInserts()
+        self.saveInserts()
+      }
+    }
+  }
+
+  private func editInsert(_ target: String, _ f: (inout InsertEffect) -> Void) {
+    guard var c = inserts.chains[target] else { return }
+    c.effects = c.effects.map { e in
+      var e = e
+      f(&e)
+      return e
+    }
+    inserts.chains[target] = c
+  }
+
+  func setInsertOn(_ target: String, _ effect: String, _ on: Bool) {
+    editInsert(target) { if $0.id == effect { $0.on = on } }
+    insertCall { try $0.insertOn(target: target, effect: effect, on: on) }
+  }
+
+  /// A knob: the screen moves at once, the engine's reading ("LP 1.2 kHz") replaces the label.
+  func setInsertKnob(_ target: String, _ knob: String, _ value: Double) {
+    editInsert(target) { e in
+      e.knobs = e.knobs.map { k in
+        var k = k
+        if k.id == knob { k.value = value }
+        return k
+      }
+    }
+    guard let p = player else { return }
+    engineQueue.async {
+      guard let shown = try? p.insertParam(target: target, param: knob, value: value) else { return }
+      Task { @MainActor in
+        self.editInsert(target) { e in
+          e.knobs = e.knobs.map { k in
+            var k = k
+            if k.id == knob { k.display = shown }
+            return k
+          }
+        }
+        self.saveInserts()
+      }
+    }
+  }
+
+  /// Every effect off on every target (the tails ring out).
+  func insertsAllOff() { insertCall { try $0.insertsOff() } }
+
+  /// Kept a moment after the last move, not on every slider step.
+  private func saveInserts() {
+    insertsSaveTask?.cancel()
+    insertsSaveTask = Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(400))
+      guard !Task.isCancelled, let p = self.player else { return }
+      self.engineQueue.async {
+        guard let json = try? p.insertsSave() else { return }
+        Task { @MainActor in self.prefs.set(json, forKey: "inserts.chains") }
+      }
+    }
   }
 
   // MARK: the mixer

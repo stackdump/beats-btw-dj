@@ -117,10 +117,11 @@ struct FineSlider: View {
   let value: Double
   let range: ClosedRange<Double>
   let caption: String
+  var enabled = true
   var onChange: (Double) -> Void
 
   var body: some View {
-    let inside = range.contains(value)
+    let inside = enabled && range.contains(value)
     VStack(alignment: .leading, spacing: 2) {
       HStack(spacing: 0) {
         Text("fine").font(.system(size: 11)).foregroundStyle(DJTheme.dim).frame(width: 32, alignment: .leading)
@@ -129,6 +130,7 @@ struct FineSlider: View {
           in: range
         )
         .tint(inside ? DJTheme.accent : DJTheme.dim)
+        .disabled(!enabled)
         .accessibilityLabel("\(description), fine")
       }
       Text(caption).font(.system(size: 11)).foregroundStyle(DJTheme.dim).padding(.leading, 32)
