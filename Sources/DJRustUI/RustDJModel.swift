@@ -136,6 +136,15 @@ public final class RustDJModel {
   var td3Drums = true
   var vox = VoxUI()
   var inserts = InsertsUI()
+  /// Output › HEOS speakers (HeosModel.swift).
+  var heos = HeosUI()
+  @ObservationIgnored var heosPolling = false
+  /// Menu › Charts: count my plays toward the charts (nothing is sent in any build yet).
+  var chartsOn: Bool {
+    didSet { prefs.set(chartsOn, forKey: "charts_on") }
+  }
+  /// The folder the engine read .sf2 banks from at its start.
+  public let soundFontDir: String
   /// The Wheel tab (WheelModel.swift); its meters, tempo and stats ~30 times a second.
   var wheel = WheelUI()
   var wheelState: WheelState?
@@ -188,7 +197,9 @@ public final class RustDJModel {
   public init(soundFontDir: String? = nil, defaults: UserDefaults = .standard) {
     prefs = defaults
     keepScreenOnWhilePlaying = defaults.bool(forKey: "keep_screen_on_playing")
+    chartsOn = defaults.bool(forKey: "charts_on")
     let dir = soundFontDir ?? RustEngine.defaultSoundFontDir
+    self.soundFontDir = dir
     Task.detached(priority: .userInitiated) { [weak self] in await self?.start(soundFontDir: dir) }
   }
 

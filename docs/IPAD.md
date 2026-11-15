@@ -36,6 +36,7 @@ xcrun devicectl device install app --device <device id> .build/xcode-dev/Build/P
 Launch environment (debug aids, read by `DJRustUI`): `DJ_AUTOPLAY=1` plays deck A once its first
 track is loaded (`DJ_AUTOPLAY=td3:2` loads loop group 2 on both decks instead;
 `vox:0` also holds the first chord pad; `wheel` plays the wheel instead); `DJ_PAGE=<tab label>` ("Mix", "Effects", …) opens on that page;
+`DJ_MENU=<section>` ("HEOS speakers", "Library", …) opens the menu there;
 `DJ_LOCAL_ONLY_PALETTES=1` shows the local-only palettes.
 
 ## Background play and the lock screen
@@ -74,6 +75,14 @@ app is open.
 
 SoundFonts (optional; synth voices play without them): Files app › On My iPad › beats-btw-dj ›
 soundfonts — drop `.sf2` banks there and relaunch.
+
+## HEOS speakers
+
+Menu › Output › HEOS speakers. The first time, iOS asks to let the app find devices on the local
+network: allow it (Settings › Privacy & Security › Local Network to change it later). Finding the
+zones by themselves needs multicast, which an iPad app may only send with Apple's multicast
+entitlement (not requested yet): if no zones turn up, type one zone's address (the Denon app shows
+it) and Connect; the rest of the zones come from it.
 
 ## Simulator
 
