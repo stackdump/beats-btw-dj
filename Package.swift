@@ -33,6 +33,8 @@ let rustTargets: [Target] =
     .target(
       name: "DJRustMIDI", dependencies: ["DJCore", "DJRustUI"], swiftSettings: [.swiftLanguageMode(.v5)]),
     .testTarget(name: "DJRustMIDITests", dependencies: ["DJRustMIDI", "DJRustUI", "DJCore"]),
+    // CID sharing across the two engines (DJCore's BeatsCID vs the Rust engine's share CID).
+    .testTarget(name: "DJRustCIDTests", dependencies: ["DJRust", "DJCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
     // The port as a Mac app (`swift run DJRustApp`); the iPad app is apps/ipad (Xcode).
     .executableTarget(
       name: "DJRustApp", dependencies: ["DJRustUI", "DJRustMIDI"], swiftSettings: [.swiftLanguageMode(.v5)]),
