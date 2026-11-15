@@ -96,10 +96,25 @@ soundfonts — drop `.sf2` banks there and relaunch.
 ## HEOS speakers
 
 Menu › Output › HEOS speakers. The first time, iOS asks to let the app find devices on the local
-network: allow it (Settings › Privacy & Security › Local Network to change it later). Finding the
-zones by themselves needs multicast, which an iPad app may only send with Apple's multicast
-entitlement (not requested yet): if no zones turn up, type one zone's address (the Denon app shows
-it) and Connect; the rest of the zones come from it.
+network: allow it (Settings › Privacy & Security › Local Network to change it later; refused, the
+status reads "No route to host (os error 65)" and the page says where to turn it on). With the
+address blank the zones are found by Bonjour (`_heos-audio._tcp`): the engine's own SSDP / mDNS
+sends raw multicast, which an iPad app may only do with Apple's multicast entitlement (not
+requested). Typing one zone's address (Denon app › a speaker › About › IP address) works too; the
+rest of the zones come from it.
+
+Play serves the mix from the iPad (`http://<iPad>:8790/master.flac`, under the buttons) and the
+zones fetch it: "0 zones fetching" for more than 10 s means they can't reach the iPad (another
+network, a VPN on the iPad) or refused it. Keep the app open while it plays: in the background
+it lives only as long as its audio session does.
+
+To see what a zone is doing from the Mac (read-only; the CLI is plain text on port 1255):
+
+```
+dns-sd -B _heos-audio._tcp                  # the zones Bonjour sees (what the iPad browses)
+(printf 'heos://player/get_players\r\n'; sleep 2) | nc <zone ip> 1255
+(printf 'heos://player/get_now_playing_media?pid=<pid>\r\nheos://player/get_play_state?pid=<pid>\r\n'; sleep 2) | nc <zone ip> 1255
+```
 
 ## Simulator
 

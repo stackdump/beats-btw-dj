@@ -22,7 +22,12 @@ struct HeosPage: View {
             .buttonStyle(.plain).foregroundStyle(DJTheme.accent).frame(minHeight: 44)
         }
       ) {
-        Text(s?.status ?? "starting…").font(.system(size: 14)).foregroundStyle(s?.connected == true ? Color.white : DJTheme.dim)
+        Text(h.finding ? "looking for zones (Bonjour)…" : (s?.status ?? "starting…")).font(.system(size: 14))
+          .foregroundStyle(s?.connected == true ? Color.white : DJTheme.dim)
+        if let problem = h.problem {
+          Text(problem).font(.system(size: 13)).foregroundStyle(DJTheme.danger)
+            .fixedSize(horizontal: false, vertical: true)
+        }
         TextField("a zone's address (blank: find them)", text: Binding(get: { h.host }, set: { model.heosHost($0) }))
           .textFieldStyle(.roundedBorder)
           .autocorrectionDisabled()
@@ -33,7 +38,7 @@ struct HeosPage: View {
           .submitLabel(.go)
           .onSubmit { model.heosConnect() }
         #if os(iOS)
-          // finding zones by multicast needs Apple's multicast entitlement (docs/ANDROID-PORT.md)
+          // blank: found by Bonjour (the engine's multicast discovery needs Apple's entitlement)
           Caption("If no zones turn up, type one's address (Denon app › a speaker › About › IP address).")
         #endif
       }
@@ -90,6 +95,16 @@ struct HeosPage: View {
         if streaming, let s {
           Text("\(s.listeners) zone\(s.listeners == 1 ? "" : "s") fetching \(s.streamUrl ?? "")")
             .font(.system(size: 11, design: .monospaced)).foregroundStyle(DJTheme.dim).textSelection(.enabled)
+          // the state only changes when the engine's does: tick so a stalled start gets said
+          TimelineView(.periodic(from: .now, by: 2)) { t in
+            if h.unfetched(now: t.date) {
+              Text(
+                "No zone has fetched the mix yet. The zones must reach this iPad at the address above: "
+                  + "same Wi-Fi, no VPN on the iPad, and keep this app open. A zone that refused it says why in the Log."
+              )
+              .font(.system(size: 13)).foregroundStyle(DJTheme.danger).fixedSize(horizontal: false, vertical: true)
+            }
+          }
         }
         if h.ticked.count >= 2 {
           Button("Group the ticked zones") { model.heosGroupTicked() }.buttonStyle(.plain)
