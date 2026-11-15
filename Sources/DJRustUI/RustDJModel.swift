@@ -143,6 +143,8 @@ public final class RustDJModel {
   var chartsOn: Bool {
     didSet { prefs.set(chartsOn, forKey: "charts_on") }
   }
+  /// The hardware controllers connected now (the Mac's MIDI layer sets it; Settings shows it).
+  public var controllers: [String] = []
   /// The folder the engine read .sf2 banks from at its start.
   public let soundFontDir: String
   /// The Wheel tab (WheelModel.swift); its meters, tempo and stats ~30 times a second.

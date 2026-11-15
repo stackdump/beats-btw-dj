@@ -11,6 +11,15 @@ enum Page: String, CaseIterable, Identifiable {
   case effects = "Effects", inserts = "Inserts"
   var id: String { rawValue }
   var deck: String? { self == .deckA ? "A" : self == .deckB ? "B" : nil }
+
+  /// A wide window (`wideFrom` points and up: the Mac's window widened, an iPad Pro in landscape)
+  /// shows both decks with the mixer between them on one "Decks" page; narrower, the seven tabs.
+  /// (`DJ_WIDE_FROM=<points>`, a launch environment, moves it: screenshots of the wide layout.)
+  static let wideFrom: CGFloat = ProcessInfo.processInfo.environment["DJ_WIDE_FROM"].flatMap(Double.init).map { CGFloat($0) } ?? 1100
+  static func pages(wide: Bool) -> [Page] { wide ? [.deckA, .wheel, .vox, .effects, .inserts] : allCases }
+  func label(wide: Bool) -> String { wide && self == .deckA ? "Decks" : rawValue }
+  /// Where a page lives in the wide layout (Mix and Deck B are columns of Decks).
+  func wide(_ on: Bool) -> Page { on && (self == .mix || self == .deckB) ? .deckA : self }
 }
 
 public struct DJRustRoot: View {
@@ -29,13 +38,19 @@ public struct DJRustRoot: View {
           Text("starting the engine…").foregroundStyle(DJTheme.dim)
         }
       } else {
-        VStack(spacing: 0) {
-          VStack(spacing: 8) {
-            TopBar(model: model)
-            PageTabs(model: model, current: page ?? .deckA) { p in withAnimation { page = p } }
+        GeometryReader { g in
+          let wide = g.size.width >= Page.wideFrom
+          VStack(spacing: 0) {
+            VStack(spacing: 8) {
+              TopBar(model: model)
+              PageTabs(model: model, pages: Page.pages(wide: wide), wide: wide, current: (page ?? .deckA).wide(wide)) { p in
+                withAnimation { page = p }
+              }
+            }
+            .padding(.horizontal, 16).padding(.top, 8)
+            pager(wide: wide)
           }
-          .padding(.horizontal, 16).padding(.top, 8)
-          pager
+          .onChange(of: wide, initial: true) { _, w in if let p = page, p.wide(w) != p { page = p.wide(w) } }
         }
       }
     }
@@ -52,13 +67,19 @@ public struct DJRustRoot: View {
   }
 
   /// A horizontal pager: swipe (or tap a tab) between pages; each page scrolls on its own.
-  private var pager: some View {
+  private func pager(wide: Bool) -> some View {
     ScrollView(.horizontal) {
       LazyHStack(spacing: 0) {
-        ForEach(Page.allCases) { p in
-          ScrollView(.vertical) {
-            pageBody(p).padding(.horizontal, 16).padding(.vertical, 8)
-              .frame(maxWidth: 720).frame(maxWidth: .infinity)
+        ForEach(Page.pages(wide: wide)) { p in
+          Group {
+            if wide && p == .deckA {
+              decks
+            } else {
+              ScrollView(.vertical) {
+                pageBody(p).padding(.horizontal, 16).padding(.vertical, 8)
+                  .frame(maxWidth: 720).frame(maxWidth: .infinity)
+              }
+            }
           }
           .containerRelativeFrame(.horizontal)
           .id(p)
@@ -69,6 +90,21 @@ public struct DJRustRoot: View {
     .scrollTargetBehavior(.paging)
     .scrollPosition(id: $page)
     .scrollIndicators(.hidden)
+  }
+
+  /// Deck A, the mixer and Deck B side by side, each its own column of cards.
+  private var decks: some View {
+    HStack(alignment: .top, spacing: 16) {
+      column { DeckPage(model: model, deck: "A") }
+      column { MixPage(model: model) }.frame(maxWidth: 420)
+      column { DeckPage(model: model, deck: "B") }
+    }
+    .padding(.horizontal, 16)
+  }
+
+  private func column<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+    ScrollView(.vertical) { c().padding(.vertical, 8).frame(maxWidth: 620) }
+      .scrollIndicators(.hidden).frame(maxWidth: .infinity)
   }
 
   @ViewBuilder private func pageBody(_ p: Page) -> some View {
@@ -87,13 +123,16 @@ public struct DJRustRoot: View {
 /// The pages' names; a deck tab's dot lights while its deck plays. Tap one to go there.
 struct PageTabs: View {
   let model: RustDJModel
+  var pages = Page.allCases
+  var wide = false
   let current: Page
   let onPick: (Page) -> Void
 
   var body: some View {
     HStack(spacing: 4) {
-      ForEach(Page.allCases) { p in
-        let lit = model.isLit(p)
+      ForEach(pages) { p in
+        // the wide Decks tab lights for either deck
+        let lit = model.isLit(p) || (wide && p == .deckA && model.isLit(.deckB))
         let selected = p == current
         Button {
           onPick(p)
@@ -101,7 +140,7 @@ struct PageTabs: View {
           // the dot sits above the name, so a lit tab's name fits as well as an unlit one
           VStack(spacing: 4) {
             Circle().fill(lit ? DJTheme.accent : .clear).frame(width: 6, height: 6)
-            Text(p.rawValue).font(.system(size: 12, weight: selected ? .medium : .regular))
+            Text(p.label(wide: wide)).font(.system(size: 12, weight: selected ? .medium : .regular))
               .foregroundStyle(selected ? DJTheme.accent : DJTheme.dim).lineLimit(1).fixedSize()
           }
           .frame(maxWidth: .infinity, minHeight: 48)
@@ -110,7 +149,7 @@ struct PageTabs: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
-        .accessibilityLabel(p.rawValue + (lit ? ", playing" : ""))
+        .accessibilityLabel(p.label(wide: wide) + (lit ? ", playing" : ""))
       }
     }
   }

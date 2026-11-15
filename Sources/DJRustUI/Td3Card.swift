@@ -36,7 +36,7 @@ private struct LoopPad: View {
           Text(sub).font(.system(size: 11)).lineLimit(1).foregroundStyle(lit ? Color.black : DJTheme.dim)
         }
       }
-      .padding(.vertical, 10).padding(.horizontal, 6).frame(maxWidth: .infinity, minHeight: 48)
+      .padding(.vertical, 10).padding(.horizontal, 6).frame(minWidth: 52, maxWidth: .infinity, minHeight: 48)
       .background(lit ? DJTheme.accent : DJTheme.surface2, in: RoundedRectangle(cornerRadius: 12))
       .overlay(RoundedRectangle(cornerRadius: 12).stroke(DJTheme.accent.opacity(lit ? 1 : 0.35), lineWidth: 1))
       .contentShape(Rectangle())
@@ -66,7 +66,6 @@ struct Td3DeckCard: View {
               .foregroundStyle(DJTheme.dim)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
-          .layoutPriority(1.4)
           ForEach(g, id: \.id) { l in
             LoopPad(label: l.id, lit: on == l.id) { model.loadTd3(deck, l.id) }
               .accessibilityLabel("Loop \(l.id), \(l.name), on deck \(deck)")

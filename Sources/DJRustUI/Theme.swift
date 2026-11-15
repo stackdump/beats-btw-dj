@@ -82,7 +82,8 @@ struct Chip: View {
 
   var body: some View {
     Button(action: action) {
-      Text(label).font(.system(size: 14)).lineLimit(1)
+      // its own width: a narrow row wraps or scrolls rather than truncating "32" to "…"
+      Text(label).font(.system(size: 14)).lineLimit(1).fixedSize()
         .padding(.horizontal, 14).frame(minHeight: 36)
         .foregroundStyle(selected ? Color.black : (enabled ? Color.white : DJTheme.dim))
         .background(selected ? DJTheme.accent : DJTheme.surface2, in: RoundedRectangle(cornerRadius: 12))

@@ -47,7 +47,7 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 
 | djandroid | Apple port | Engine | Swift app (DJCore) | Missing / notes |
 |---|---|---|---|---|
-| Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (`RustDJModel.isLit`: decks, Wheel, Vox, Effects, Inserts) | — | Deck columns + `DeckSections` folds; no pager | |
+| Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (`RustDJModel.isLit`: decks, Wheel, Vox, Effects, Inserts). **Wide** (≥ 1100 pt: the Mac's window, which now opens 1240 wide; an iPad Pro in landscape): Deck A · Mix · Deck B fold into one "Decks" page of three columns, five tabs | — | Deck columns + `DeckSections` folds; no pager | djandroid has no wide layout (a phone) |
 | Top bar: "djrust" wordmark, indicators (HEOS live, update, identity), menu icon | 🟡 wordmark + menu icon; "HEOS live" (opens the HEOS page) and "output lost, reopening" (Danger, `audioStatus().live` false, opens About) indicators | `audioStatus`, `heosState` | — | Update and identity indicators come with those features (an iPad can't self-update). The output one is the port's own (djandroid has none) |
 | "starting the engine…" while `Player()` opens | ✅ | `Player(soundfontDir:)` | — | |
 | Error dialog ("Something went wrong", never stops playback) | ✅ `.alert` | `DjError` | — | |
@@ -132,6 +132,14 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
    note's envelope. Wanted: diff against the held set (note-offs for the gone, note-ons for the
    new), or `vocoder_note_on(n)` / `vocoder_note_off(n)`.
 
+8. **Controls the hardware binds that djmobile can't play** (milestone 8's controllers): the
+   Inpulse 200 MK3 / APC mini / MPK mini profiles bind EQ low / mid / high, gain (trim), cue and
+   PFL with the headphone level and mix (needs a cue output), hot cues and their clear, the jog
+   wheels (nudge / scratch / touch), stem mutes, clip launch and loop record, Wander and its pace,
+   master level. `Player` has none of them, so the Mac's djrust app leaves them unbound
+   (`RustControllers.action`). Wanted, most played first: `set_eq(deck, band, gain)`,
+   `nudge(deck, amount)` (+ a jog touch / scratch), `set_gain(deck, db)`, a cue bus.
+
 ## Order of work
 
 1. ✅ **Milestone 1** — XCFramework from djandroid's crate at pinned revs; the page shell (top
@@ -148,10 +156,13 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 7. 🟡 **Menu utilities**: HEOS ✅, Library (SoundFonts ✅, saved items with the wallet), Charts ✅,
    Update n.a.; Share / Identity wait on the wallet question (an Apple side for vevr-wallet:
    Secure Enclave key, LocalAuthentication).
-8. **Mac as the default**: hardware controllers (CoreMIDI → the same `Player` calls; djmobile is
-   built without djhost's `midi`, so MIDI stays Swift as in DJApp), window layout for wide
-   screens (two decks side by side), then retire the toggle and make DJRustApp the app
-   `make install-app` installs.
+8. 🟡 **Mac as the default**: ✅ hardware controllers (`Sources/DJRustMIDI`: DJCore's CoreMIDI
+   input and device profiles → `ControllerAction` on the model: play, sync, next / back, role
+   pads, effect pads (held for transitions), volume (square law), pitch (DJApp's 2 % dead zone),
+   filter, crossfader, the browser encoder stepping the lead deck's seed; the rest → Engine
+   changes 8; LEDs not driven yet; mapping tests in `Tests/DJRustMIDITests`); ✅ the wide layout;
+   ⬜ retire the toggle and make DJRustApp the app `make install-app` installs — Matt's call: DJApp
+   still does far more (Wander, auto-mix, the journal, the MCP server, sessions, loops).
 
 ## Build and run
 

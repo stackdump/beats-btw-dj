@@ -156,6 +156,15 @@ struct MenuSheet: View {
         Spacer()
         DJToggle(label: "Keep screen on while playing", isOn: $m.keepScreenOnWhilePlaying)
       }
+      #if os(macOS)
+        // the Mac's DJ controllers (DJRustMIDI): what is plugged in and driving the decks
+        Text(
+          model.controllers.isEmpty
+            ? "Controllers: none plugged in (Inpulse 200 MK3, APC mini mk2, MPK mini mk2 are known)"
+            : "Controllers: " + model.controllers.joined(separator: ", ")
+        )
+        .font(.system(size: 12)).foregroundStyle(DJTheme.dim)
+      #endif
       #if os(iOS)
         // djandroid's rule, not a setting: plugged in, djrust is a deck display
         Text(

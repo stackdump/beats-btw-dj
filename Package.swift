@@ -27,9 +27,14 @@ let rustTargets: [Target] =
     // iPadOS and macOS. No DJCore: it runs wherever the XCFramework has a slice.
     .target(
       name: "DJRustUI", dependencies: ["DJRust"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    // Hardware controllers for the Mac's djrust app: DJCore's CoreMIDI + device profiles → the
+    // model's ControllerAction (macOS only, as DJCore).
+    .target(
+      name: "DJRustMIDI", dependencies: ["DJCore", "DJRustUI"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    .testTarget(name: "DJRustMIDITests", dependencies: ["DJRustMIDI", "DJRustUI", "DJCore"]),
     // The port as a Mac app (`swift run DJRustApp`); the iPad app is apps/ipad (Xcode).
     .executableTarget(
-      name: "DJRustApp", dependencies: ["DJRustUI"], swiftSettings: [.swiftLanguageMode(.v5)]),
+      name: "DJRustApp", dependencies: ["DJRustUI", "DJRustMIDI"], swiftSettings: [.swiftLanguageMode(.v5)]),
   ] : []
 let rustDep: [Target.Dependency] = hasRust ? ["DJRust"] : []
 let rustFlag: [SwiftSetting] = hasRust ? [.define("DJ_RUST")] : []
