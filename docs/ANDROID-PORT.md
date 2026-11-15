@@ -47,14 +47,14 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 
 | djandroid | Apple port | Engine | Swift app (DJCore) | Missing / notes |
 |---|---|---|---|---|
-| Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (`RustDJModel.isLit`: decks, Effects so far) | — | Deck columns + `DeckSections` folds; no pager | Dots for Wheel/Vox/Inserts come with those pages |
+| Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (`RustDJModel.isLit`: decks, Vox, Effects so far) | — | Deck columns + `DeckSections` folds; no pager | Dots for Wheel/Inserts come with those pages |
 | Top bar: "djrust" wordmark, indicators (HEOS live, update, identity), menu icon | 🟡 wordmark + menu icon; an "output lost, reopening" indicator (Danger) while `audioStatus().live` is false, opening About | `audioStatus` | — | Indicators come with their features. The output one is the port's own (djandroid has none) |
 | "starting the engine…" while `Player()` opens | ✅ | `Player(soundfontDir:)` | — | |
 | Error dialog ("Something went wrong", never stops playback) | ✅ `.alert` | `DjError` | — | |
 | Engine is the process's (`DeckHost`), survives a rotated/recreated screen | ✅ model owned by the `App`, not the view | — | — | iPad: also survive scene disconnect (below) |
 | Background playback (`PlaybackService` + `DeckPlayer`: Media3 session, lock-screen + headset buttons follow the lead deck) | ✅ `MediaSession.swift` (`MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`: play / pause / toggle / stop / next / previous on the lead deck, pause = every playing deck, play = the decks pause stopped, else the lead; title, "djrust · deck X · genre", structure, duration, elapsed + rate) and `AudioSessionHost.swift` (iOS: interruptions, route changes, media-services reset, preferred rate pinned to the engine's) | `state`, `mix`, `setPlaying`, `nextTrack`, `previousTrack`/`restart`, `audioStatus`; stream reopen in `keep_output` | — | Previous = the deck's ⏮ rule (top past 2 bars), not Media3's 3 s. iPad pauses on a pulled headphone (`oldDeviceUnavailable`, Apple's rule; djandroid has no "becoming noisy" handling). An interruption that ends without "should resume" pauses the decks and leaves the session inactive until a deck is played. Recovery speed and idle background → Engine changes 3, 6 |
 | Keep screen on (charging, or Settings › while playing) | ✅ Settings toggle → `isIdleTimerDisabled` (iOS) / `beginActivity(.idleDisplaySleepDisabled)` (macOS); on iOS the charger rule (`UIDevice.batteryState` charging / full → screen on while in front), said in Settings | — | — | macOS has no charger rule (a Mac is not a deck display on a stand) |
-| Fine sliders (`FineSlider`), tapers (`Taper.kt`: Log, Pow, Fader) | 🟡 `FineSlider`, `Fader` | `wheel::sweep` informs tapers | — | `Log` / `Pow` tapers with the Wheel and Vox |
+| Fine sliders (`FineSlider`), tapers (`Taper.kt`: Log, Pow, Fader) | ✅ `FineSlider`, `Fader`; `Taper.swift` (`LogTaper` with its off stop, `PowTaper`, `LinearTaper`, `FaderTaper`) | `wheel::sweep` informs tapers | — | |
 
 ### Deck A / Deck B (the first milestone)
 
@@ -79,7 +79,7 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 | **Mix**: crossfader (all A / centre / all B, lead deck), deck strips (play, title, BPM · section · bar · auto dB, level meter, volume, Sync), auto level | ✅ `MixPage.swift` | `setCrossfader`, `mix`, `setAutoLevel` | |
 | Mix: Acid Bass pairs (`Td3PairCard`, drums switch, the playing group's description) | ✅ `Td3Card.swift` | `loadTd3Pair` | |
 | **Wheel** (windwheel tonewheel: 9 instruments on their drawings, Play/Pause, motor, drops, auto-drop, note sequence + Wind, key/transpose, brightness, level, trigger, tempo vs decks + Sync, gear, fine sliders, feed diagnostics line) | ⬜ | `wheelPresets`, `wheelLoad`, `wheelMotion` (magnets for the drawing), `wheelState`, `wheelKnobs`, `wheelHand`, `wheelPluck`, `wheelTrigger`, `wheelSync`, `wheelParseSequence`, … — all in the XCFramework already (windwheel is compiled in) | The biggest page (1 k lines of Kotlin: `WheelPage.kt`, `MagnetTracker.kt`). Touch on a Canvas maps cleanly to SwiftUI `DragGesture` |
-| **Vox** (vocoder): modulator A/B/Wheel, 7 chord pads in the deck's key (hold / latch), 10 sounds, knobs (5 + More), only-the-vocoder, meters, auto level | ⬜ | `setVocoder`, `vocoderNotes`, `chordPads`, `vocoderPresets`, `vocoderPreset`, `vocoderSet`, `vocoder`, `setVocoderAutoLevel` | Multi-touch pads: SwiftUI gestures per pad (iPad gets real chords with two hands) |
+| **Vox** (vocoder): modulator A/B/Wheel, 7 chord pads in the deck's key (hold / latch), 10 sounds, knobs (5 + More), only-the-vocoder, meters, auto level | ✅ `VoxPage.swift`, minus the Wheel as modulator (greyed: "not on the iPad yet", until the Wheel page). Multi-touch: each pad its own `DragGesture`; the held pads' notes sound as one chord (union, lowest first, the synth's 8 voices). Latched: pads pressed together latch together, a new touch replaces them, a tap on the one sounding stops it | `setVocoder`, `vocoderNotes`, `chordPads`, `vocoderPresets`, `vocoderPreset`, `vocoderSet`, `vocoder` (10×/s), `setVocoderAutoLevel`, `wheelInMix` | Each change of the held set calls `vocoderNotes` with the whole set, which the engine plays as all-off + note-ons: adding a second pad retriggers the first chord's notes (Engine changes 7). Not yet pressed by a finger here — the simulator can't touch; `DJ_AUTOPLAY=vox:0` checks the engine path |
 | **Effects**: aim A/B, PANIC, length 1–4 bars / Latch, every trick and macro by category, hold pads for transitions, sweeps, filter knob, Acid Bass tricks on an acid loop | ✅ `FxPage.swift` (pads lit / outlined while waiting / ringed when latched; hold pads are one `DragGesture` each, so two hands hold two; VoiceOver "fire" holds for 1 s, as TalkBack's) | `fxCategories`, `fxCatalogue`, `engage(mode:)`, `fxRelease`, `fxUnlatch`, `fxState` (polled 10×/s), `trickKnob`, `fxAcid`, `panic` | `FxInfo.needsNet` is unused, as in Kotlin: an effect a loop can't take is refused by `engage` with the reason (the error dialog) |
 | **Inserts**: target A/B/Wheel/Master, filter / bitcrush / delay / reverb chains, knobs persisted, switches not | ⬜ | `insertTargets`, `insertState(s)`, `insertOn`, `insertParam`, `insertsOff`, `insertsSave` / `insertsRestore` | |
 | Menu › **Share** (deck A, B, the whole mix: sign, QR, share sheet) | ⬜ | `trackShare`, `mixSnapshot` | Signing is the **vevr-wallet** (separate repo, Android Keystore + BiometricPrompt). Apple needs its Secure Enclave / LocalAuthentication counterpart — a wallet decision, not an engine one |
@@ -127,6 +127,11 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
    `audio_resume()` (stop/start the output without counting a loss), so the app can stop the
    unit and deactivate its session when it is in the background with nothing playing.
 
+7. **Vocoder note deltas.** `vocoder_notes(notes)` → `vocoder_set_notes` sends `AllOff` then a
+   note-on per note, so changing the held set (a second hand joining a chord) restarts every
+   note's envelope. Wanted: diff against the held set (note-offs for the gone, note-ons for the
+   new), or `vocoder_note_on(n)` / `vocoder_note_off(n)`.
+
 ## Order of work
 
 1. ✅ **Milestone 1** — XCFramework from djandroid's crate at pinned revs; the page shell (top
@@ -136,7 +141,7 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
    interruptions and route changes (engine items 3, 6 for what the app can't do), the charger
    rule for the screen.
 3. ✅ **Effects** page, then the **loop bank** (Td3 deck card + Mix pairs, Acid tricks).
-4. **Vox** (vocoder) — pads, sounds, knobs; multi-touch on iPad.
+4. ✅ **Vox** (vocoder) — pads, sounds, knobs; multi-touch on iPad.
 5. **Inserts**.
 6. **Wheel** — the largest; drawing + touch, magnets via `wheelMotion`, fine sliders/tapers.
 7. **Menu utilities**: Library (SoundFonts via Files, saved items), HEOS (typed address first;

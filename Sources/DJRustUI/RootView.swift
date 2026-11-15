@@ -76,6 +76,7 @@ public struct DJRustRoot: View {
     case .deckA, .deckB: DeckPage(model: model, deck: p.deck!)
     case .mix: MixPage(model: model)
     case .effects: FxPage(model: model)
+    case .vox: VoxPage(model: model)
     default: NotPortedPage(page: p)
     }
   }
@@ -119,6 +120,7 @@ extension RustDJModel {
     switch p {
     case .deckA, .deckB: decks[p.deck!]?.deck?.playing == true
     case .effects: fxActive.values.contains { !$0.isEmpty }
+    case .vox: vox.state?.on == true
     default: false
     }
   }
