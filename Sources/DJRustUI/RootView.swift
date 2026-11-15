@@ -75,6 +75,7 @@ public struct DJRustRoot: View {
     switch p {
     case .deckA, .deckB: DeckPage(model: model, deck: p.deck!)
     case .mix: MixPage(model: model)
+    case .effects: FxPage(model: model)
     default: NotPortedPage(page: p)
     }
   }
@@ -89,7 +90,7 @@ struct PageTabs: View {
   var body: some View {
     HStack(spacing: 4) {
       ForEach(Page.allCases) { p in
-        let lit = p.deck.map { model.decks[$0]?.deck?.playing == true } ?? false
+        let lit = model.isLit(p)
         let selected = p == current
         Button {
           onPick(p)
@@ -108,6 +109,17 @@ struct PageTabs: View {
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
         .accessibilityLabel(p.rawValue + (lit ? ", playing" : ""))
       }
+    }
+  }
+}
+
+extension RustDJModel {
+  /// A tab's dot: its deck plays, or its page has something on (djandroid PageTabs).
+  func isLit(_ p: Page) -> Bool {
+    switch p {
+    case .deckA, .deckB: decks[p.deck!]?.deck?.playing == true
+    case .effects: fxActive.values.contains { !$0.isEmpty }
+    default: false
     }
   }
 }

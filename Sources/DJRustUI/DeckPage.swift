@@ -21,6 +21,7 @@ struct DeckPage: View {
           .frame(maxWidth: .infinity, minHeight: 120)
       }
       NextTrackCard(model: model, deck: deck, u: u)
+      Td3DeckCard(model: model, deck: deck)
       SoundCard(model: model, deck: deck, u: u)
       KeepCard(model: model, deck: deck, u: u)
       if let d = u.deck { TempoVolumeCard(model: model, deck: deck, d: d, u: u) }

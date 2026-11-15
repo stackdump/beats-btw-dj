@@ -47,7 +47,7 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 
 | djandroid | Apple port | Engine | Swift app (DJCore) | Missing / notes |
 |---|---|---|---|---|
-| Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (decks only so far) | — | Deck columns + `DeckSections` folds; no pager | Dots for Wheel/Vox/Effects/Inserts come with those pages |
+| Pager of 7 tabs (`DeckScreen`, `PageTabs`): Deck A · Mix · Deck B · Wheel · Vox · Effects · Inserts; dot above the label when playing / on | ✅ `RootView.swift`: paging `ScrollView` (`.scrollTargetBehavior(.paging)`), tabs with dots (`RustDJModel.isLit`: decks, Effects so far) | — | Deck columns + `DeckSections` folds; no pager | Dots for Wheel/Vox/Inserts come with those pages |
 | Top bar: "djrust" wordmark, indicators (HEOS live, update, identity), menu icon | 🟡 wordmark + menu icon; an "output lost, reopening" indicator (Danger) while `audioStatus().live` is false, opening About | `audioStatus` | — | Indicators come with their features. The output one is the port's own (djandroid has none) |
 | "starting the engine…" while `Player()` opens | ✅ | `Player(soundfontDir:)` | — | |
 | Error dialog ("Something went wrong", never stops playback) | ✅ `.alert` | `DjError` | — | |
@@ -67,7 +67,7 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 | Next track: genres, dice seed + generated title, structure, Compose & load, Surprise me | ✅ | `compose`, `genres()`, `structures()`, `trackTitle()` |
 | Auto-next every N bars (4/8/16/32/64), "Next in n/N" | ✅ | `setAutoNext`, `autoNextLeft` |
 | At the end: the next seed | ✅ | `setAutoAdvance`, `nextVersionSeed` |
-| Acid Bass / loop bank on a deck (`Td3DeckCard`) | ⬜ | `td3Loops()`, `loadTd3` |
+| Acid Bass / loop bank on a deck (`Td3DeckCard`): groups 1–9, A/B pads, drums switch (`td3_drums`) | ✅ `Td3Card.swift` | `td3Loops()`, `loadTd3` |
 | Sound: palettes, lock; release build hides local-only ones (`ReleaseCatalogue`) | ✅ (`DJ_LOCAL_ONLY_PALETTES=1` shows them) | `palettes`, `setPalette`, `setSoundLock` |
 | Keep on every track: key, feel, genre locks | ✅ | `deckKey`, `keyLabel`, `setKeyLock`, `deckFeel`, `feelLabel`, `setFeelLock` |
 | Tempo & volume: tempo lock, pitch + fine (±1 %), range ±8/16/50, double-tap 0, Sync, square-law volume | ✅ | `setPitch`, `setPitchRange`, `setTempoLock`, `tempoLock`, `sync`, `setVolume` |
@@ -77,10 +77,10 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 | djandroid | Apple port | Engine | Missing / notes |
 |---|---|---|---|
 | **Mix**: crossfader (all A / centre / all B, lead deck), deck strips (play, title, BPM · section · bar · auto dB, level meter, volume, Sync), auto level | ✅ `MixPage.swift` | `setCrossfader`, `mix`, `setAutoLevel` | |
-| Mix: Acid Bass pairs (`Td3PairCard`, drums switch) | ⬜ | `loadTd3Pair` | |
+| Mix: Acid Bass pairs (`Td3PairCard`, drums switch, the playing group's description) | ✅ `Td3Card.swift` | `loadTd3Pair` | |
 | **Wheel** (windwheel tonewheel: 9 instruments on their drawings, Play/Pause, motor, drops, auto-drop, note sequence + Wind, key/transpose, brightness, level, trigger, tempo vs decks + Sync, gear, fine sliders, feed diagnostics line) | ⬜ | `wheelPresets`, `wheelLoad`, `wheelMotion` (magnets for the drawing), `wheelState`, `wheelKnobs`, `wheelHand`, `wheelPluck`, `wheelTrigger`, `wheelSync`, `wheelParseSequence`, … — all in the XCFramework already (windwheel is compiled in) | The biggest page (1 k lines of Kotlin: `WheelPage.kt`, `MagnetTracker.kt`). Touch on a Canvas maps cleanly to SwiftUI `DragGesture` |
 | **Vox** (vocoder): modulator A/B/Wheel, 7 chord pads in the deck's key (hold / latch), 10 sounds, knobs (5 + More), only-the-vocoder, meters, auto level | ⬜ | `setVocoder`, `vocoderNotes`, `chordPads`, `vocoderPresets`, `vocoderPreset`, `vocoderSet`, `vocoder`, `setVocoderAutoLevel` | Multi-touch pads: SwiftUI gestures per pad (iPad gets real chords with two hands) |
-| **Effects**: aim A/B, PANIC, length 1–4 bars / Latch, every trick and macro by category, hold pads for transitions, sweeps, filter knob, Acid Bass tricks on an acid loop | ⬜ | `fxCategories`, `fxCatalogue`, `engage(mode:)`, `fxRelease`, `fxUnlatch`, `fxState`, `trickKnob`, `fxAcid`, `panic` | |
+| **Effects**: aim A/B, PANIC, length 1–4 bars / Latch, every trick and macro by category, hold pads for transitions, sweeps, filter knob, Acid Bass tricks on an acid loop | ✅ `FxPage.swift` (pads lit / outlined while waiting / ringed when latched; hold pads are one `DragGesture` each, so two hands hold two; VoiceOver "fire" holds for 1 s, as TalkBack's) | `fxCategories`, `fxCatalogue`, `engage(mode:)`, `fxRelease`, `fxUnlatch`, `fxState` (polled 10×/s), `trickKnob`, `fxAcid`, `panic` | `FxInfo.needsNet` is unused, as in Kotlin: an effect a loop can't take is refused by `engage` with the reason (the error dialog) |
 | **Inserts**: target A/B/Wheel/Master, filter / bitcrush / delay / reverb chains, knobs persisted, switches not | ⬜ | `insertTargets`, `insertState(s)`, `insertOn`, `insertParam`, `insertsOff`, `insertsSave` / `insertsRestore` | |
 | Menu › **Share** (deck A, B, the whole mix: sign, QR, share sheet) | ⬜ | `trackShare`, `mixSnapshot` | Signing is the **vevr-wallet** (separate repo, Android Keystore + BiometricPrompt). Apple needs its Secure Enclave / LocalAuthentication counterpart — a wallet decision, not an engine one |
 | Menu › **Output › HEOS** (find zones, volume/mute/transport, group, Play the mix as FLAC) | ⬜ | `heosStart`, `heosState`, `heosDiscover`, `heosVolume`, `heosStream`, … | iOS needs `NSLocalNetworkUsageDescription` + the multicast entitlement (`com.apple.developer.networking.multicast`, a request to Apple) for SSDP/mDNS; typing an address works without it |
@@ -135,7 +135,7 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
 2. ✅ **Background audio & media controls** — Now Playing, remote commands on the lead deck,
    interruptions and route changes (engine items 3, 6 for what the app can't do), the charger
    rule for the screen.
-3. **Effects** page, then the **loop bank** (Td3 deck card + Mix pairs, Acid tricks).
+3. ✅ **Effects** page, then the **loop bank** (Td3 deck card + Mix pairs, Acid tricks).
 4. **Vox** (vocoder) — pads, sounds, knobs; multi-touch on iPad.
 5. **Inserts**.
 6. **Wheel** — the largest; drawing + touch, magnets via `wheelMotion`, fine sliders/tapers.

@@ -36,6 +36,7 @@ struct MixPage: View {
         Text(auto ? "A and B kept equally loud" : "Off: each deck at its own level")
           .font(.system(size: 12)).foregroundStyle(DJTheme.dim)
       }
+      Td3PairCard(model: model)
       Spacer(minLength: 24)
     }
   }

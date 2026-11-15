@@ -95,6 +95,14 @@ public final class RustDJModel {
   var pausedBySession: [String] = []
   var genres: [String] = []
   var structures: [String] = []
+  /// The effects page: the engine's categories and catalogue, and per deck what is on or
+  /// waiting for its bar (djandroid FxUi; polled ~10 times a second with the mixer).
+  var fxCategories: [FxCategory] = []
+  var fxCatalogue: [FxInfo] = []
+  var fxActive: [String: [FxActive]] = [:]
+  /// The loop bank (Acid Bass 1–8, Floor & Sub 9) and whether a loop loads with drums.
+  var td3Loops: [Td3Loop] = []
+  var td3Drums = true
   /// Settings › keep the screen awake while anything plays (djandroid's `keep_screen_on_playing`).
   var keepScreenOnWhilePlaying: Bool {
     didSet {
@@ -116,9 +124,9 @@ public final class RustDJModel {
   #endif
   /// The lock screen / Control Centre / media keys (MediaSession.swift), from the engine's start.
   @ObservationIgnored private var media: MediaSession?
-  /// `DJ_AUTOPLAY=1` (a launch environment, for screenshots and smoke runs): deck A plays as
-  /// soon as its first track is loaded.
-  @ObservationIgnored private var autoplay = ProcessInfo.processInfo.environment["DJ_AUTOPLAY"] == "1"
+  /// `DJ_AUTOPLAY` (a launch environment, for screenshots and smoke runs): "1" plays deck A as
+  /// soon as its first track is loaded; "td3:N" loads loop group N on both decks instead.
+  @ObservationIgnored private var autoplay = ProcessInfo.processInfo.environment["DJ_AUTOPLAY"]
   #if os(iOS)
     /// Interruptions, route changes, the charger (AudioSessionHost.swift).
     @ObservationIgnored private(set) var session: AudioSessionHost?
@@ -185,6 +193,10 @@ public final class RustDJModel {
         genreLock: prefs.bool(forKey: key(deck, "genre_lock")))
     }
     try? p.setAutoLevel(on: prefs.object(forKey: "auto_level") as? Bool ?? true)
+    fxCategories = p.fxCategories()
+    fxCatalogue = p.fxCatalogue()
+    td3Loops = DJRust.td3Loops()
+    td3Drums = prefs.object(forKey: "td3_drums") as? Bool ?? true
     info = p.info()
     #if os(iOS)
       session = AudioSessionHost(model: self)
@@ -226,9 +238,12 @@ public final class RustDJModel {
         changed[deck] = (slow, pals)
       }
       let mix = n % 3 == 0 ? try? p.mix() : nil
+      let fx: [String: [FxActive]]? =
+        n % 3 == 0
+        ? Dictionary(uniqueKeysWithValues: deckNames.map { d in (d, (try? p.fxState(deck: d)) ?? []) }) : nil
       let audio = n % 30 == 0 ? p.audioStatus() : nil
       n += 1
-      if !changed.isEmpty || mix != nil || audio != nil {
+      if !changed.isEmpty || mix != nil || audio != nil || fx != nil {
         let update = changed
         await MainActor.run {
           for (deck, (s, pals)) in update {
@@ -237,10 +252,11 @@ public final class RustDJModel {
           }
           if let mix, mix != self.mix { self.mix = mix }
           if let audio, audio != self.audio { self.audio = audio }
+          if let fx, fx != self.fxActive { self.fxActive = fx }
           if self.playing { self.pausedBySession = [] }
-          if self.autoplay, self.decks["A"]?.deck?.loaded == true {
-            self.autoplay = false
-            self.togglePlay("A")
+          if let a = self.autoplay, self.decks["A"]?.deck?.loaded == true {
+            self.autoplay = nil
+            if a.hasPrefix("td3:"), let g = UInt32(a.dropFirst(4)) { self.loadTd3Pair(g) } else if a == "1" { self.togglePlay("A") }
           }
           self.media?.update()
           self.applyScreenFlag()
@@ -455,6 +471,49 @@ public final class RustDJModel {
   /// Long-press: lock a role out of this deck (and the tracks it loads), or let it back in.
   func setRoleDisabled(_ deck: String, _ role: String, _ disabled: Bool) {
     act { try $0.setRoleDisabled(deck: deck, role: role, disabled: disabled) }
+  }
+
+  // MARK: tricks and macros (djandroid PlayerViewModel "tricks and macros")
+
+  /// Engage an effect on a deck's next bar: for 1–4 bars, latched, or (a transition) held.
+  func engage(_ deck: String, _ id: String, _ mode: FxMode) {
+    act { try $0.engage(deck: deck, id: id, mode: mode) }
+  }
+
+  /// A held pad lifted: off at once.
+  func fxRelease(_ deck: String, _ id: String) { act { try $0.fxRelease(deck: deck, id: id) } }
+
+  /// A latched (or running) pad pressed again: off on the next bar.
+  func fxUnlatch(_ deck: String, _ id: String) { act { try $0.fxUnlatch(deck: deck, id: id) } }
+
+  /// An Acid Bass trick on (held) or off, on this deck's Acid Bass loop.
+  func fxAcid(_ deck: String, _ id: String, _ on: Bool) { act { try $0.fxAcid(deck: deck, id: id, on: on) } }
+
+  /// The filter knob under a hand: answers at once, on no bar.
+  func trickKnob(_ deck: String, _ v: Double) { act { try $0.trickKnob(deck: deck, v: v) } }
+
+  /// PANIC: end the deck's macros, tricks and latches, at once.
+  func fxPanic(_ deck: String) { act { try $0.panic(deck: deck) } }
+
+  // MARK: the loop bank (Acid Bass)
+
+  func setTd3Drums(_ on: Bool) {
+    td3Drums = on
+    prefs.set(on, forKey: "td3_drums")
+  }
+
+  /// Loop `id` on `deck`, playing, on the bar with the other deck.
+  func loadTd3(_ deck: String, _ id: String) {
+    let drums = td3Drums
+    willPlay()
+    act { try $0.loadTd3(deck: deck, id: id, drums: drums) }
+  }
+
+  /// A group's A on deck A and its B on deck B: the crossfader swaps the answer in.
+  func loadTd3Pair(_ group: UInt32) {
+    let drums = td3Drums
+    willPlay()
+    act { try $0.loadTd3Pair(group: group, drums: drums) }
   }
 
   // MARK: the mixer
