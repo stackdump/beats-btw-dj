@@ -11,6 +11,12 @@
 	<!-- HEOS: a zone's TCP control port and the mix's stream server are on the local network -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>To find Denon HEOS speakers on your Wi-Fi and play the mix on them.</string>
+	<!-- HEOS: found by Bonjour on the iPad (the engine's raw multicast needs Apple's multicast
+	     entitlement); the zones advertise _heos-audio._tcp -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_heos-audio._tcp</string>
+	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
