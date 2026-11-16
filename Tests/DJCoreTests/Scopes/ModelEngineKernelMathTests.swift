@@ -86,7 +86,8 @@ struct ModelGridTests {
     // lo·(hi/lo)^((p + .5)/4): row 0 is 20...80, a ratio of 4
     for p in 0..<4 { #expect(close(f[p], 20 * pow(4.0, (Double(p) + 0.5) / 4), rel: 1e-12)) }
     // against node, at the first four, the first of the bins, and the last
-    let pick = [0, 1, 2, 3, 4 * 5, 4 * 5 + 3, 4 * 32 + 3].map { f[$0] }
+    let rows: [Int] = [0, 1, 2, 3, 20, 23, 131]  // 4·5, 4·5 + 3, 4·32 + 3 (spelt out: Swift 6.4 times out on the products)
+    let pick = rows.map { f[$0] }
     for (got, want) in zip(pick, ModelOracle.probeSubset) { #expect(close(got, want, rel: 1e-12)) }
     // strictly inside the row, ascending
     for j in 0..<33 {

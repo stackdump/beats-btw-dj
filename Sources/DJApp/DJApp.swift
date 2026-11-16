@@ -49,6 +49,14 @@ struct DJApp: App {
         Button("Soundboard") { model.toggleSoundboard() }
           .keyboardShortcut("b", modifiers: [.command, .shift])
         ConsoleMenuItem()
+        #if DJ_RUST
+          // Engine ▸ the Rust engine plays net tracks (docs/RUST-ENGINE.md); off = Swift only.
+          Toggle(
+            "Rust Engine",
+            isOn: Binding(get: { model.useRustEngine }, set: { model.setRustEngine($0) })
+          )
+          .keyboardShortcut("r", modifiers: [.command, .option])
+        #endif
       }
     }
     // The Stage (SPEC modes 7…21): a full-window visualization of the decks' nets, opened by the

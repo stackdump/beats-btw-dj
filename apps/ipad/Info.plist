@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- keep playing with the screen locked or another app in front (DESIGN §4.2.1) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<!-- Documents (and its soundfonts folder) shows in the Files app -->
+	<!-- HEOS: a zone's TCP control port and the mix's stream server are on the local network -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>To find Denon HEOS speakers on your Wi-Fi and play the mix on them.</string>
+	<!-- HEOS: found by Bonjour on the iPad (the engine's raw multicast needs Apple's multicast
+	     entitlement); the zones advertise _heos-audio._tcp -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_heos-audio._tcp</string>
+	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>

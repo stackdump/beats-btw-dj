@@ -827,6 +827,18 @@ its copy; the two are now independent. Rules inherited from that split:
   It shows in the app's footer, in `dj_state.build`, and as MCP `serverInfo.version`
   (`djctl` itself is unbundled, so that one says "dev").
 
+## The djandroid port (docs/ANDROID-PORT.md)
+
+- `Sources/DJRustUI` is djandroid-vevr-se's app (pages, `PlayerViewModel` → `RustDJModel`) in
+  SwiftUI over the djrust `Player` (UniFFI, `Sources/DJRust`); `DJRustApp` (Mac, `swift run
+  DJRustApp`) and `apps/ipad/BeatsBTWDJ.xcodeproj` (iPad, docs/IPAD.md) show it. No DJCore.
+- The XCFramework is built from djandroid's own crate at the revs in `rust/PINS`
+  (`scripts/build-rust-xcframework.sh`, `UPDATE=1` re-pins), from read-only `git archive`
+  snapshots in `rust/upstream/`. Never fork the crate here, never edit djrust / djandroid from
+  here: engine needs go in the doc's "Engine changes wanted".
+- djandroid's design rules hold (its docs/DESIGN.md): play controls only on the 7 pages, utilities
+  in the menu sheet, tokens only in `DJRustUI/Theme.swift`.
+
 ## The journal and notes (DJCore/Journal)
 
 - One append-only JSONL file per app run, `~/Library/Application Support/dj-vevr-se/journal/
