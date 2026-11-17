@@ -125,7 +125,10 @@ shell: above.
 
 - *"No such module DJRustUI"* / package won't resolve: `rust/dist/djmobileFFI.xcframework` is
   missing (Package.swift only declares the Rust targets when it exists): run the build script,
-  then File › Packages › Reset Package Caches.
+  then File › Packages › Reset Package Caches. From the shell (`xcodebuild` says *"Missing
+  package product 'DJRustUI'"* even after the XCFramework is back): SwiftPM caches the evaluated
+  manifest globally, keyed without the file check, so clear that cache, not just the project's:
+  `rm -rf ~/Library/Caches/org.swift.swiftpm/manifests .build/xcode-dev/SourcePackages`.
 - Link errors for `_AudioUnit…` / `_AudioComponent…`: the frameworks come from DJRust's
   `linkerSettings` (AudioToolbox, CoreAudio); report it, it means SwiftPM didn't carry them.
 - The project file is hand-written (no Xcode here when it was made, Xcode 16 format with a
