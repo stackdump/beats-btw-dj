@@ -836,7 +836,7 @@ its copy; the two are now independent. Rules inherited from that split:
   (`scripts/build-rust-xcframework.sh`, `UPDATE=1` re-pins), from read-only `git archive`
   snapshots in `rust/upstream/`. Never fork the crate here, never edit djrust / djandroid from
   here: engine needs go in the doc's "Engine changes wanted".
-- djandroid's design rules hold (its docs/DESIGN.md): play controls only on the 7 pages, utilities
+- djandroid's design rules hold (its docs/DESIGN.md): play controls only on the 8 pages, utilities
   in the menu sheet, tokens only in `DJRustUI/Theme.swift`.
 
 ## The journal and notes (DJCore/Journal)

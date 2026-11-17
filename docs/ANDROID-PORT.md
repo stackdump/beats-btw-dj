@@ -154,6 +154,13 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
      (`StreamStats.recent`, already kept) in `HeosState`, so "never fetched" and "fetched, then
      refused" can be told apart on the device.
 
+10. **The Loops A / B readout over the FFI.** djrust-vevr-se 2a192bf moved djandroid's "Loops A / B"
+   card into shared Rust (`djhost::loop_collections::{held_here, pair_readout, PairReadout}`), but
+   djmobile (djandroid 6cdb7e5) neither exports it nor uses `djhost::loop_collections` (its own
+   `loopsets.rs` has the per-genre collections), so the iPad keeps its Swift `Td3PairCard` (Acid Bass
+   only, as djandroid at 3abb5bb). Wanted: `loop_pair_readout(spec, held_a, held_b) -> PairReadout`
+   in djmobile; then the card reads it, with djandroid's collection picker.
+
 ## Order of work
 
 1. ✅ **Milestone 1** — XCFramework from djandroid's crate at pinned revs; the page shell (top
@@ -185,6 +192,19 @@ DJApp on the Swift engine (DJCore), for reference — the port does not use it.
    Not tried on hardware yet: no controller was plugged in); ✅ the wide layout;
    ⬜ retire the toggle and make DJRustApp the app `make install-app` installs — Matt's call: DJApp
    still does far more (Wander, auto-mix, the journal, the MCP server, sessions, loops).
+
+9. ✅ **Perform and the vocoder routing** (branch `ipad-perform`, pins djandroid 6cdb7e5 /
+   djrust-vevr-se 2a192bf / djrust b41da9d): the 8th tab **Perform** (djandroid's "Moves", being
+   renamed "Perform" there too) over djmobile's `moves_*` (`djhost::perform`): bass swap, phrase sync,
+   vocoder handoff, filter exit, echo out, loop roll, each a pad with deck and bars chips, its
+   armed / running light and one caption; Cancel all; the two decks' keys (read-only). The page's rules
+   are `PerformRules` (Perform.swift, djandroid's Perform.kt; `PerformRulesTests`); a wide iPad puts the
+   Transitions and Exits cards side by side. Vox: the Modulator / ⇄ Swap / Carrier row over
+   `vocoder_sources` / `vocoder_route` / `vocoder_swap` (`voc_routing.rs`), the switch on
+   `set_vocoder_on`; the list is a popover on the iPad. The re-pin renamed djmobile's effect calls'
+   `deck:` to `target:` (same names accepted). Not ported: the Loops A / B readout from the engine
+   (Engine changes 10), djandroid's per-genre loop collections, sound packs, the Desktop page and Menu ›
+   Output's device picker.
 
 ## Build and run
 

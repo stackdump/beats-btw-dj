@@ -16,6 +16,11 @@ public enum DJTheme {
   public static let dim = Color(rgb: 0x8A8A94)
   /// Locked roles, muted, failed.
   public static let danger = Color(rgb: 0xE5484D)
+  /// The Perform page's lights, as the desktop Perform window's: armed (waiting for its line),
+  /// running (fired, with more to do), off.
+  public static let armed = Color(rgb: 0xF0A830)
+  public static let running = Color(rgb: 0x4CD06A)
+  public static let lightOff = Color(rgb: 0x44444C)
 
   /// One colour per section kind, so the ring reads at a glance.
   public static func sectionColor(_ name: String) -> Color {
