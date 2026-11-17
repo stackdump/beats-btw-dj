@@ -1,9 +1,11 @@
 import DJRust
 import SwiftUI
 
-// The vocoder (djandroid ui/VocoderPage.kt): the three-oscillator synth is the carrier and a deck
-// (or the Wheel tab's instrument) the modulator, so its rhythm and sound shape the chord
-// ("talking drums", or a talking wheel).
+// The vocoder (djandroid ui/VocoderPage.kt): by default the three-oscillator synth is the
+// carrier and a deck (or the Wheel tab's instrument) the modulator, so its rhythm and sound shape
+// the chord ("talking drums", or a talking wheel). The routing row picks either side from the
+// desktop Vocoder window's list (inputs, decks, the synth, captures, row clips, library loops:
+// djmobile `vocoder_sources`, voc_routing.rs) and ⇄ swaps them.
 //
 // Made to be played without reading a manual: pick a sound, hold a pad (it switches the vocoder
 // on), and "Only the vocoder" pulls the deck out of the mix while it still shapes the synth. Auto
@@ -17,39 +19,38 @@ struct VoxPage: View {
     let v = model.vox
     let s = v.state
     let on = s?.on == true
-    let mod = s?.modulator ?? leadDeck(model.mix?.crossfader)
+    // the deck or the wheel that shapes, for "only the vocoder" (nil: something else shapes)
+    let mod = s?.modulator
+    let modName = s?.modulatorSource.id == "none" ? nil : s?.modulatorSource.label
+    let carName = s?.carrierSource.id == "none" ? nil : s?.carrierSource.label
+    let routed = modName != nil || carName != nil
     VStack(spacing: 16) {
-      ChordsCard(model: model)
+      ChordsCard(model: model, silent: routed && s?.usesSynth == false)
       Card("Vocoder", trailing: {
-        DJToggle(label: "Vocoder", isOn: Binding(get: { on }, set: { model.setVocoder($0 ? mod : nil) }))
+        DJToggle(label: "Vocoder", isOn: Binding(get: { on }, set: { model.setVocoderOn($0) }))
       }) {
         Caption(
-          on
-            ? "\(sourceName(mod, start: true))\(mod == wheelModulator ? "" : "'s beat") plays the chord you hold"
-            : "Hold a chord: it switches on by itself"
+          on && modName != nil && carName != nil ? "\(modName!) shapes \(inSentence(carName!))"
+            : on ? "Pick both sides to hear it"
+            : !routed || s?.usesSynth == true ? "Hold a chord: it switches on by itself"
+            : "Off: the switch above turns it on"
         ).lineLimit(1)
-        Caption("Shaped by")
-        HStack(spacing: 4) {
-          ForEach(deckNames + [wheelModulator], id: \.self) { d in
-            let deck = model.decks[d]?.deck
-            let wheel = d == wheelModulator
-            let what = wheel ? model.wheel.layout?.name : deck?.td3.map { "Acid Bass \($0)" } ?? deck?.genre
-            Segment(label: wheel ? "Wheel" : "Deck \(d)", sub: what, selected: d == mod) { model.setVocoder(d) }
-          }
-        }
+        RoutingRow(model: model, state: s)
         // always laid out (greyed while off): the card keeps its height when the vocoder comes on
         ToggleRow(
           title: "Only the vocoder",
-          sub: on ? "\(sourceName(mod, start: true)) leaves the mix but still shapes the chord" : "Turn the vocoder on first",
-          isOn: v.onlyVocoder, enabled: on
+          sub: !on ? "Turn the vocoder on first"
+            : mod == nil ? "Needs a deck or the Wheel as the modulator"
+            : "\(sourceName(mod!, start: true)) leaves the mix but still shapes the sound",
+          isOn: v.onlyVocoder, enabled: on && (mod != nil || v.onlyVocoder)
         ) { model.setOnlyVocoder($0) }
         ToggleRow(
           title: "Auto level",
           sub: s?.autoLevel == true ? "As loud as the decks, whatever the sound" : "Off: the Level knob alone sets it.",
           isOn: s?.autoLevel ?? true
         ) { model.setVocoderAutoLevel($0) }
-        Meter(label: "in (\(sourceName(mod, start: false)))", level: on ? s?.modulatorLevel ?? 0 : 0)
-        Meter(label: "synth", level: on ? s?.carrierLevel ?? 0 : 0)
+        Meter(label: "mod (\(modName.map(inSentence) ?? "none"))", level: on ? s?.modulatorLevel ?? 0 : 0)
+        Meter(label: "car (\(carName.map(inSentence) ?? "none"))", level: on ? s?.carrierLevel ?? 0 : 0)
         Meter(
           label: "out" + (on && s?.autoLevel == true ? String(format: " %+.1f dB", s?.autoGainDb ?? 0) : ""),
           level: on ? s?.outLevel ?? 0 : 0)
@@ -70,10 +71,133 @@ private func sourceName(_ mod: String, start: Bool) -> String {
   return start ? "Deck \(mod)" : "deck \(mod)"
 }
 
+/// A source's name mid-sentence: "deck A", "the synth", "the wheel"; others as they are.
+private func inSentence(_ label: String) -> String {
+  if label.hasPrefix("Deck ") { return "deck " + label.dropFirst(5) }
+  if label == "Synth" { return "the synth" }
+  if label == wheelModulator { return "the wheel" }
+  return label
+}
+
+/// The pickers' section titles, as the desktop menu separates them.
+private let groupTitles = ["capture": "Capture", "clip": "Loop row", "library": "Library"]
+
+/// What a live source plays now: a deck's track or genre, the Wheel's instrument.
+@MainActor private func sourceDetail(_ src: VocoderSource?, _ model: RustDJModel) -> String? {
+  guard let src else { return nil }
+  let id = src.id
+  if id.hasPrefix("deck:") {
+    guard let d = model.decks[String(id.dropFirst(5))]?.deck else { return nil }
+    return d.td3 != nil ? (d.title ?? d.td3) : d.genre
+  }
+  if id.hasPrefix("input:") && src.label == wheelModulator { return model.wheel.layout?.name }
+  if id.hasPrefix("clip:") || id.hasPrefix("library:") || id == "loop" { return "loop" }
+  if id.hasPrefix("input:") { return "live input" }
+  return nil
+}
+
+/// The vocoder's routing, as the desktop's Vocoder window has it: the modulator (what shapes),
+/// ⇄ swap, the carrier (what is shaped). Each picker opens the same list (a popover on an iPad);
+/// a deck or the synth already on the other side is greyed with the reason.
+private struct RoutingRow: View {
+  let model: RustDJModel
+  let state: VocoderState?
+
+  var body: some View {
+    HStack(spacing: 8) {
+      SourcePicker(
+        model: model, title: "Modulator", side: "modulator", now: state?.modulatorSource,
+        other: state?.carrierSource, otherSide: "carrier")
+      Button { model.vocoderSwap() } label: {
+        VStack(spacing: 0) {
+          Text("⇄").font(.system(size: 22)).foregroundStyle(DJTheme.accent)
+          Text("Swap").font(.system(size: 11)).foregroundStyle(DJTheme.dim)
+        }
+        .frame(width: 56, height: 64)
+        .background(DJTheme.surface2, in: RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain).disabled(state == nil)
+      .accessibilityLabel("Swap carrier and modulator")
+      SourcePicker(
+        model: model, title: "Carrier", side: "carrier", now: state?.carrierSource,
+        other: state?.modulatorSource, otherSide: "modulator")
+    }
+  }
+}
+
+/// One side's picker: its name, what it is now (and what that plays), and the list.
+private struct SourcePicker: View {
+  let model: RustDJModel
+  let title: String
+  let side: String
+  let now: VocoderSource?
+  let other: VocoderSource?
+  let otherSide: String
+  @State private var open = false
+  @State private var choices: [VocoderSource] = []
+
+  var body: some View {
+    Button { open = true } label: {
+      VStack(alignment: .leading, spacing: 1) {
+        Text(title.uppercased()).font(.system(size: 11)).tracking(1.2).foregroundStyle(DJTheme.dim)
+        Text((now?.label ?? "None") + " ▾").font(.system(size: 14, weight: .medium)).foregroundStyle(Color.white)
+        if let d = sourceDetail(now, model) { Text(d).font(.system(size: 11)).foregroundStyle(DJTheme.dim) }
+      }
+      .lineLimit(1)
+      .padding(.horizontal, 12).padding(.vertical, 6)
+      .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+      .background(DJTheme.surface2, in: RoundedRectangle(cornerRadius: 12))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("\(title): \(now?.label ?? "none")")
+    .popover(isPresented: $open) {
+      list.task { choices = await model.vocoderSources() }
+        .presentationCompactAdaptation(.popover)
+    }
+  }
+
+  private var list: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(Array(choices.enumerated()), id: \.element.id) { i, c in
+          let first = i == 0 || choices[i - 1].group != c.group
+          if first && i > 0 { Divider().overlay(DJTheme.surface2) }
+          if first && c.group != "live" {
+            Caption(groupTitles[c.group] ?? c.group).padding(.horizontal, 12).padding(.vertical, 4)
+          }
+          let taken = c.exclusive && c.id == other?.id
+          Button {
+            open = false
+            model.vocoderRoute(side, c.id)
+          } label: {
+            VStack(alignment: .leading, spacing: 1) {
+              Text(c.label).font(.system(size: 15))
+                .foregroundStyle(c.id == now?.id ? DJTheme.accent : taken ? DJTheme.dim : Color.white)
+              if let sub = taken ? "is the \(otherSide)" : sourceDetail(c, model) { Caption(sub) }
+            }
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain).disabled(taken)
+        }
+      }
+      .padding(.vertical, 8)
+    }
+    .frame(minWidth: 280, idealWidth: 320, maxHeight: 520)
+    .background(DJTheme.surface1)
+  }
+}
+
 /// The seven chord pads in the key of the deck that shapes the synth: i–iv on top, v–vii below,
 /// big pads for a thumb. Each pad is its own touch, so pads held together sound together.
 struct ChordsCard: View {
   let model: RustDJModel
+  /// Routed with no synth on either side: the pads play nothing.
+  var silent = false
 
   var body: some View {
     let v = model.vox
@@ -89,7 +213,8 @@ struct ChordsCard: View {
     ) {
       if let pads = v.pads, pads.pads.count >= 7 {
         Caption(
-          v.latch
+          silent ? "Silent: route the Synth below to play chords"
+          : v.latch
             ? "Tap: keeps sounding · tap again: stops · press several together for a bigger chord"
             : "Hold a chord to play it · hold two for both")
         // four columns: i–iv on top, v–vii below
@@ -151,32 +276,6 @@ struct ChordPadView: View {
         onDown()
       }
     }
-  }
-}
-
-/// One of a segmented row: a name and a Dim line under it.
-struct Segment: View {
-  let label: String
-  var sub: String?
-  let selected: Bool
-  var enabled = true
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      VStack(spacing: 1) {
-        Text(label).font(.system(size: 14)).lineLimit(1)
-          .foregroundStyle(selected ? Color.black : enabled ? Color.white : DJTheme.dim)
-        if let sub {
-          Text(sub).font(.system(size: 11)).lineLimit(1).foregroundStyle(selected ? Color.black.opacity(0.7) : DJTheme.dim)
-        }
-      }
-      .padding(.vertical, 6).padding(.horizontal, 4).frame(maxWidth: .infinity, minHeight: 48)
-      .background(selected ? DJTheme.accent : DJTheme.surface2, in: RoundedRectangle(cornerRadius: 12))
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain).disabled(!enabled)
-    .accessibilityAddTraits(selected ? .isSelected : [])
   }
 }
 

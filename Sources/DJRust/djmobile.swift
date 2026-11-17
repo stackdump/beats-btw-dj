@@ -708,10 +708,12 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func deckKey(deck: String)  -> String?
     
     /**
-     * Engage `id` on `deck`: on its next bar, for `mode` (1-4 bars, latched, or held; a
-     * transition is momentary only). Refused with the reason when the category does not allow it.
+     * Engage `id` on `target` ("A", "B", "Wheel" or "Master"): on its next bar (the Wheel's
+     * and the Master's: the lead deck's), for `mode` (1-4 bars, latched, or held; a transition
+     * is momentary only). Refused with the reason when the category does not allow it, or (on
+     * the Wheel or the Master) when the effect works a deck's track ([`fx::FxInfo::decks_only`]).
      */
-    func engage(deck: String, id: String, mode: FxMode) throws 
+    func engage(target: String, id: String, mode: FxMode) throws 
     
     /**
      * The groove family a feel names, for people (the genre that plays it by default).
@@ -737,17 +739,17 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     /**
      * A held pad lifted: off at once. A transition runs its own length.
      */
-    func fxRelease(deck: String, id: String) throws 
+    func fxRelease(target: String, id: String) throws 
     
     /**
-     * What is on, or waiting for its bar, on `deck`.
+     * What is on, or waiting for its bar, on `target`.
      */
-    func fxState(deck: String) throws  -> [FxActive]
+    func fxState(target: String) throws  -> [FxActive]
     
     /**
      * A latched pad pressed again: off on the next bar.
      */
-    func fxUnlatch(deck: String, id: String) throws 
+    func fxUnlatch(target: String, id: String) throws 
     
     /**
      * Find the zones again.
@@ -816,6 +818,19 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func keyLabel(key: String)  -> String
     
     /**
+     * Loop `id` of collection `spec` (see [`loop_bank`]) on `deck`, as [`load_td3`](Self::load_td3)
+     * does for the Acid Bass bank: in place of its track, playing, synced to the other deck on the
+     * bar when that one plays. The deck reports the loop's tempo, so the wheel's sync follows it.
+     */
+    func loadLoop(deck: String, spec: String, id: String, drums: Bool) throws 
+    
+    /**
+     * Group `group` of collection `spec` on both decks: its A on deck A, its B on deck B, locked on
+     * the bar ([`load_td3_pair`](Self::load_td3_pair) for any collection).
+     */
+    func loadLoopPair(spec: String, group: UInt32, drums: Bool) throws 
+    
+    /**
      * Load the tracks a saved whole-mix snapshot (the `DjSnapshot` document a snapshot share
      * names; the wallet checks the share and that the document hashes to its CID) holds on their
      * decks, A and B. Only the tracks: the knobs, the mixer and the vocoder setup are not
@@ -852,6 +867,37 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func mixSnapshot() throws  -> MixSnapshot?
     
     /**
+     * Arm a move on `deck` ("A" or "B") with its `bars` (see [`MoveInfo::bar_choices`]); it lands
+     * on the deck's bar / phrase grid. `action`: a phrase sync's "seed" or "cut" (empty: seed).
+     * Arming a kind again on the same deck replaces it. The move's id.
+     */
+    func movesArm(kind: String, deck: String, bars: UInt32, action: String) throws  -> UInt64
+    
+    /**
+     * Cancel a move by id: a waiting one is dropped (a bass swap gives the lows back), a running
+     * one lets go. False: no such move.
+     */
+    func movesCancel(id: UInt64) throws  -> Bool
+    
+    func movesCancelAll() throws 
+    
+    /**
+     * Cancel the move of `kind` on `deck` (any deck for a bass swap or a vocoder handoff).
+     */
+    func movesCancelKind(kind: String, deck: String) throws  -> Bool
+    
+    /**
+     * The Perform page's moves, in the desktop Perform window's order (docs/PERFORM.md in
+     * djrust-vevr-se): bass swap, phrase sync, filter exit, echo out, loop roll, vocoder handoff.
+     */
+    func movesCatalog()  -> [MoveInfo]
+    
+    /**
+     * What is armed and running, the last word on each move, and the harmonic hint.
+     */
+    func movesState() throws  -> PerformState
+    
+    /**
      * Skip to the next version now (the media controls' next): the composed one if the
      * engine has it ready, else composed now and loaded when ready. Keeps playing if it was.
      * False with nothing on the deck.
@@ -865,6 +911,7 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     
     /**
      * PANIC: end `deck`'s macros, tricks and latches, at once (the aux ones too).
+     * PANIC on `target`. On the Wheel or the Master: their effects only.
      */
     func panic(deck: String) throws 
     
@@ -919,6 +966,14 @@ public protocol PlayerProtocol: AnyObject, Sendable {
      * The track on the deck now is left as it is.
      */
     func setKeyLock(deck: String, key: String?) throws 
+    
+    /**
+     * Play through the output named `name` (from [`audio_outputs`]; a USB DAC once plugged in),
+     * or the default with None. The stream is reopened on it within a moment, the decks keep
+     * their place, and a device that is missing or will not open leaves the default playing
+     * ([`AudioStatus::fallback`]). Asking again retries it.
+     */
+    func setOutput(name: String?) 
     
     /**
      * None or "studio": the default sounds.
@@ -982,6 +1037,13 @@ public protocol PlayerProtocol: AnyObject, Sendable {
      */
     func setVocoderAutoLevel(on: Bool) throws 
     
+    /**
+     * The vocoder on or off with its routing as it is. On with nothing routed (neither side
+     * picked yet) is [`Player::set_vocoder`] with `default_modulator`: the synth shaped by it.
+     * Off lets the synth's notes go.
+     */
+    func setVocoderOn(on: Bool, defaultModulator: String) throws 
+    
     func setVolume(deck: String, volume: Double) throws 
     
     /**
@@ -1026,9 +1088,9 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     
     /**
      * The filter's knob under a hand: 0 low-pass all the way, 0.5 open, 1 high-pass all the way.
-     * A continuous control: it answers at once, on no bar.
+     * A continuous control: it answers at once, on no bar. On a deck, the Wheel or the Master.
      */
-    func trickKnob(deck: String, v: Double) throws 
+    func trickKnob(target: String, v: Double) throws 
     
     /**
      * TVs fetching the stream now (0 while it is off).
@@ -1061,9 +1123,29 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func vocoderPreset(id: String) throws 
     
     /**
+     * Pick one side of the vocoder (`side`: "carrier" or "modulator") by a
+     * [`VocoderSource::id`]. Only that side; on or off stays as it is. A deck or the synth on
+     * the other side is refused (swap instead).
+     */
+    func vocoderRoute(side: String, id: String) throws 
+    
+    /**
      * Set a vocoder knob by name ("cutoff", "mix", …) in its own units (clamped).
      */
     func vocoderSet(name: String, value: Double) throws  -> Double
+    
+    /**
+     * Every source the carrier and modulator pickers offer, as the desktop's Vocoder window
+     * lists them: none, the input strips (the Wheel), the decks, the synth; a capture of each
+     * input (last 1, 2, 4 or 8 beats); the loop row's clips; the loop library.
+     */
+    func vocoderSources() throws  -> [VocoderSource]
+    
+    /**
+     * Swap the vocoder's sides: the carrier becomes the modulator and the modulator the carrier
+     * (the desktop's ⇄; a loop keeps its audio).
+     */
+    func vocoderSwap() throws 
     
     /**
      * Brightness 0…1: a tighter coil and smaller magnet (brighter, quieter), then re-wind.
@@ -1177,6 +1259,70 @@ public protocol PlayerProtocol: AnyObject, Sendable {
     func wheelTrigger(pull: Double?) throws 
     
     func wheelVolume(db: Double) throws 
+    
+    /**
+     * Any control method on the desktop (`deck`, `mixer`, `transport`, `state`, `net`, …; the
+     * desktop's allowlist applies), `params` a JSON object. The result as JSON.
+     */
+    func desktopCall(method: String, paramsJson: String) throws  -> String
+    
+    /**
+     * Connect to `host` (`ip`, `ip:port` or a name), pairing with `code` when it is new. Returns
+     * at once; [`Player::desktop_state`] follows it.
+     */
+    func desktopConnect(host: String, code: String?) throws 
+    
+    func desktopDisconnect() throws 
+    
+    /**
+     * Search the Wi-Fi for desktops for `wait_ms` (blocks: call it off the main thread).
+     */
+    func desktopDiscover(waitMs: UInt32) throws  -> [DesktopHost]
+    
+    /**
+     * Follow the desktop: the phone's master deck keeps the desktop's tempo (checked 4 times a
+     * second); the phase is left to Sync.
+     */
+    func desktopFollow(on: Bool) throws 
+    
+    /**
+     * Forget a paired desktop (`id`, or "all"): it asks for its code again.
+     */
+    func desktopForget(id: String) throws  -> UInt32
+    
+    /**
+     * Send the track on the phone's `deck` to the desktop's `to_deck` by its CID (the share
+     * payload rides along; the desktop checks it hashes to the CID and composes it itself, so
+     * no audio crosses). `play`: start it there once composed; `sync`: onto the desktop's
+     * master as it starts. Returns its title.
+     */
+    func desktopSendTrack(deck: String, toDeck: String, play: Bool, sync: Bool) throws  -> String
+    
+    /**
+     * Start the desktop side (the Desktop page opened): `files_dir` keeps the pairing tokens,
+     * `name` is what the desktop lists (the phone's model), `app` "djandroid/0.3.23".
+     */
+    func desktopStart(filesDir: String, name: String, app: String) throws 
+    
+    func desktopState()  -> DesktopState
+    
+    /**
+     * Play the phone's mix into the desktop's aux strip (`Phone`): the phone serves its master
+     * with its beat clock (`/master.djl`) and the desktop fetches it, so it knows where the
+     * stream's beats are despite the delay. Returns the URL the desktop fetches.
+     */
+    func desktopStreamStart() throws  -> String
+    
+    /**
+     * Stop the stream (the desktop's strip goes quiet; the server closes).
+     */
+    func desktopStreamStop() throws 
+    
+    /**
+     * Sync to the desktop: the phone's master deck takes the desktop's tempo and moves onto its
+     * beat (as heard on the desktop). Returns the beats it moved.
+     */
+    func desktopSync() throws  -> Double
     
     /**
      * Switch `effect` ("filter", "crush", "delay", "reverb") on `target` on or off: it fades
@@ -1349,14 +1495,16 @@ open func deckKey(deck: String) -> String?  {
 }
     
     /**
-     * Engage `id` on `deck`: on its next bar, for `mode` (1-4 bars, latched, or held; a
-     * transition is momentary only). Refused with the reason when the category does not allow it.
+     * Engage `id` on `target` ("A", "B", "Wheel" or "Master"): on its next bar (the Wheel's
+     * and the Master's: the lead deck's), for `mode` (1-4 bars, latched, or held; a transition
+     * is momentary only). Refused with the reason when the category does not allow it, or (on
+     * the Wheel or the Master) when the effect works a deck's track ([`fx::FxInfo::decks_only`]).
      */
-open func engage(deck: String, id: String, mode: FxMode)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func engage(target: String, id: String, mode: FxMode)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
     uniffi_djmobile_fn_method_player_engage(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(deck),
+        FfiConverterString.lower(target),
         FfiConverterString.lower(id),
         FfiConverterTypeFxMode_lower(mode),uniffiCallStatus
     )
@@ -1418,25 +1566,25 @@ open func fxCategories() -> [FxCategory]  {
     /**
      * A held pad lifted: off at once. A transition runs its own length.
      */
-open func fxRelease(deck: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func fxRelease(target: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
     uniffi_djmobile_fn_method_player_fx_release(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(deck),
+        FfiConverterString.lower(target),
         FfiConverterString.lower(id),uniffiCallStatus
     )
 }
 }
     
     /**
-     * What is on, or waiting for its bar, on `deck`.
+     * What is on, or waiting for its bar, on `target`.
      */
-open func fxState(deck: String)throws  -> [FxActive]  {
+open func fxState(target: String)throws  -> [FxActive]  {
     return try  FfiConverterSequenceTypeFxActive.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
     uniffi_djmobile_fn_method_player_fx_state(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(deck),uniffiCallStatus
+        FfiConverterString.lower(target),uniffiCallStatus
     )
 })
 }
@@ -1444,11 +1592,11 @@ open func fxState(deck: String)throws  -> [FxActive]  {
     /**
      * A latched pad pressed again: off on the next bar.
      */
-open func fxUnlatch(deck: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func fxUnlatch(target: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
     uniffi_djmobile_fn_method_player_fx_unlatch(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(deck),
+        FfiConverterString.lower(target),
         FfiConverterString.lower(id),uniffiCallStatus
     )
 }
@@ -1622,6 +1770,38 @@ open func keyLabel(key: String) -> String  {
 }
     
     /**
+     * Loop `id` of collection `spec` (see [`loop_bank`]) on `deck`, as [`load_td3`](Self::load_td3)
+     * does for the Acid Bass bank: in place of its track, playing, synced to the other deck on the
+     * bar when that one plays. The deck reports the loop's tempo, so the wheel's sync follows it.
+     */
+open func loadLoop(deck: String, spec: String, id: String, drums: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_load_loop(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterString.lower(spec),
+        FfiConverterString.lower(id),
+        FfiConverterBool.lower(drums),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Group `group` of collection `spec` on both decks: its A on deck A, its B on deck B, locked on
+     * the bar ([`load_td3_pair`](Self::load_td3_pair) for any collection).
+     */
+open func loadLoopPair(spec: String, group: UInt32, drums: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_load_loop_pair(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(spec),
+        FfiConverterUInt32.lower(group),
+        FfiConverterBool.lower(drums),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Load the tracks a saved whole-mix snapshot (the `DjSnapshot` document a snapshot share
      * names; the wallet checks the share and that the document hashes to its CID) holds on their
      * decks, A and B. Only the tracks: the knobs, the mixer and the vocoder setup are not
@@ -1706,6 +1886,85 @@ open func mixSnapshot()throws  -> MixSnapshot?  {
 }
     
     /**
+     * Arm a move on `deck` ("A" or "B") with its `bars` (see [`MoveInfo::bar_choices`]); it lands
+     * on the deck's bar / phrase grid. `action`: a phrase sync's "seed" or "cut" (empty: seed).
+     * Arming a kind again on the same deck replaces it. The move's id.
+     */
+open func movesArm(kind: String, deck: String, bars: UInt32, action: String)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_moves_arm(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(deck),
+        FfiConverterUInt32.lower(bars),
+        FfiConverterString.lower(action),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cancel a move by id: a waiting one is dropped (a bass swap gives the lows back), a running
+     * one lets go. False: no such move.
+     */
+open func movesCancel(id: UInt64)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_moves_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+open func movesCancelAll()throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_moves_cancel_all(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Cancel the move of `kind` on `deck` (any deck for a bass swap or a vocoder handoff).
+     */
+open func movesCancelKind(kind: String, deck: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_moves_cancel_kind(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(deck),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The Perform page's moves, in the desktop Perform window's order (docs/PERFORM.md in
+     * djrust-vevr-se): bass swap, phrase sync, filter exit, echo out, loop roll, vocoder handoff.
+     */
+open func movesCatalog() -> [MoveInfo]  {
+    return try!  FfiConverterSequenceTypeMoveInfo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_moves_catalog(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What is armed and running, the last word on each move, and the harmonic hint.
+     */
+open func movesState()throws  -> PerformState  {
+    return try  FfiConverterTypePerformState_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_moves_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Skip to the next version now (the media controls' next): the composed one if the
      * engine has it ready, else composed now and loaded when ready. Keeps playing if it was.
      * False with nothing on the deck.
@@ -1735,6 +1994,7 @@ open func palettes(deck: String) -> [Palette]  {
     
     /**
      * PANIC: end `deck`'s macros, tricks and latches, at once (the aux ones too).
+     * PANIC on `target`. On the Wheel or the Master: their effects only.
      */
 open func panic(deck: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
@@ -1855,6 +2115,21 @@ open func setKeyLock(deck: String, key: String?)throws   {try rustCallWithError(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(deck),
         FfiConverterOptionString.lower(key),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Play through the output named `name` (from [`audio_outputs`]; a USB DAC once plugged in),
+     * or the default with None. The stream is reopened on it within a moment, the decks keep
+     * their place, and a device that is missing or will not open leaves the default playing
+     * ([`AudioStatus::fallback`]). Asking again retries it.
+     */
+open func setOutput(name: String?)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_set_output(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(name),uniffiCallStatus
     )
 }
 }
@@ -2001,6 +2276,21 @@ open func setVocoderAutoLevel(on: Bool)throws   {try rustCallWithError(FfiConver
 }
 }
     
+    /**
+     * The vocoder on or off with its routing as it is. On with nothing routed (neither side
+     * picked yet) is [`Player::set_vocoder`] with `default_modulator`: the synth shaped by it.
+     * Off lets the synth's notes go.
+     */
+open func setVocoderOn(on: Bool, defaultModulator: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_set_vocoder_on(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(on),
+        FfiConverterString.lower(defaultModulator),uniffiCallStatus
+    )
+}
+}
+    
 open func setVolume(deck: String, volume: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
     uniffi_djmobile_fn_method_player_set_volume(
@@ -2112,13 +2402,13 @@ open func trackShare(deck: String)throws  -> TrackShare?  {
     
     /**
      * The filter's knob under a hand: 0 low-pass all the way, 0.5 open, 1 high-pass all the way.
-     * A continuous control: it answers at once, on no bar.
+     * A continuous control: it answers at once, on no bar. On a deck, the Wheel or the Master.
      */
-open func trickKnob(deck: String, v: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+open func trickKnob(target: String, v: Double)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
         uniffiCallStatus in
     uniffi_djmobile_fn_method_player_trick_knob(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(deck),
+        FfiConverterString.lower(target),
         FfiConverterDouble.lower(v),uniffiCallStatus
     )
 }
@@ -2197,6 +2487,21 @@ open func vocoderPreset(id: String)throws   {try rustCallWithError(FfiConverterT
 }
     
     /**
+     * Pick one side of the vocoder (`side`: "carrier" or "modulator") by a
+     * [`VocoderSource::id`]. Only that side; on or off stays as it is. A deck or the synth on
+     * the other side is refused (swap instead).
+     */
+open func vocoderRoute(side: String, id: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_vocoder_route(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(side),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Set a vocoder knob by name ("cutoff", "mix", …) in its own units (clamped).
      */
 open func vocoderSet(name: String, value: Double)throws  -> Double  {
@@ -2208,6 +2513,32 @@ open func vocoderSet(name: String, value: Double)throws  -> Double  {
         FfiConverterDouble.lower(value),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Every source the carrier and modulator pickers offer, as the desktop's Vocoder window
+     * lists them: none, the input strips (the Wheel), the decks, the synth; a capture of each
+     * input (last 1, 2, 4 or 8 beats); the loop row's clips; the loop library.
+     */
+open func vocoderSources()throws  -> [VocoderSource]  {
+    return try  FfiConverterSequenceTypeVocoderSource.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_vocoder_sources(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Swap the vocoder's sides: the carrier becomes the modulator and the modulator the carrier
+     * (the desktop's ⇄; a loop keeps its audio).
+     */
+open func vocoderSwap()throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_vocoder_swap(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -2489,6 +2820,163 @@ open func wheelVolume(db: Double)throws   {try rustCallWithError(FfiConverterTyp
 }
     
     /**
+     * Any control method on the desktop (`deck`, `mixer`, `transport`, `state`, `net`, …; the
+     * desktop's allowlist applies), `params` a JSON object. The result as JSON.
+     */
+open func desktopCall(method: String, paramsJson: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_call(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(method),
+        FfiConverterString.lower(paramsJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Connect to `host` (`ip`, `ip:port` or a name), pairing with `code` when it is new. Returns
+     * at once; [`Player::desktop_state`] follows it.
+     */
+open func desktopConnect(host: String, code: String?)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_connect(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),
+        FfiConverterOptionString.lower(code),uniffiCallStatus
+    )
+}
+}
+    
+open func desktopDisconnect()throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_disconnect(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Search the Wi-Fi for desktops for `wait_ms` (blocks: call it off the main thread).
+     */
+open func desktopDiscover(waitMs: UInt32)throws  -> [DesktopHost]  {
+    return try  FfiConverterSequenceTypeDesktopHost.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_discover(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(waitMs),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Follow the desktop: the phone's master deck keeps the desktop's tempo (checked 4 times a
+     * second); the phase is left to Sync.
+     */
+open func desktopFollow(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_follow(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(on),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Forget a paired desktop (`id`, or "all"): it asks for its code again.
+     */
+open func desktopForget(id: String)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_forget(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Send the track on the phone's `deck` to the desktop's `to_deck` by its CID (the share
+     * payload rides along; the desktop checks it hashes to the CID and composes it itself, so
+     * no audio crosses). `play`: start it there once composed; `sync`: onto the desktop's
+     * master as it starts. Returns its title.
+     */
+open func desktopSendTrack(deck: String, toDeck: String, play: Bool, sync: Bool)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_send_track(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deck),
+        FfiConverterString.lower(toDeck),
+        FfiConverterBool.lower(play),
+        FfiConverterBool.lower(sync),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Start the desktop side (the Desktop page opened): `files_dir` keeps the pairing tokens,
+     * `name` is what the desktop lists (the phone's model), `app` "djandroid/0.3.23".
+     */
+open func desktopStart(filesDir: String, name: String, app: String)throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_start(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(filesDir),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(app),uniffiCallStatus
+    )
+}
+}
+    
+open func desktopState() -> DesktopState  {
+    return try!  FfiConverterTypeDesktopState_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Play the phone's mix into the desktop's aux strip (`Phone`): the phone serves its master
+     * with its beat clock (`/master.djl`) and the desktop fetches it, so it knows where the
+     * stream's beats are despite the delay. Returns the URL the desktop fetches.
+     */
+open func desktopStreamStart()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_stream_start(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Stop the stream (the desktop's strip goes quiet; the server closes).
+     */
+open func desktopStreamStop()throws   {try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_stream_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Sync to the desktop: the phone's master deck takes the desktop's tempo and moves onto its
+     * beat (as heard on the desktop). Returns the beats it moved.
+     */
+open func desktopSync()throws  -> Double  {
+    return try  FfiConverterDouble.lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_method_player_desktop_sync(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Switch `effect` ("filter", "crush", "delay", "reverb") on `target` on or off: it fades
      * in or out; a delay's or reverb's tail rings out.
      */
@@ -2644,6 +3132,63 @@ public func FfiConverterTypePlayer_lower(_ value: Player) -> UInt64 {
 
 
 /**
+ * One output device the platform reports (a speaker, headphones, a USB DAC), for the picker.
+ */
+public struct AudioOutput: Equatable, Hashable {
+    public var name: String
+    public var isDefault: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, isDefault: Bool) {
+        self.name = name
+        self.isDefault = isDefault
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AudioOutput: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioOutput {
+        return
+            try AudioOutput(
+                name: FfiConverterString.read(from: &buf), 
+                isDefault: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioOutput, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.isDefault, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioOutput_lift(_ buf: RustBuffer) throws -> AudioOutput {
+    return try FfiConverterTypeAudioOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioOutput_lower(_ value: AudioOutput) -> RustBuffer {
+    return FfiConverterTypeAudioOutput.lower(value)
+}
+
+
+/**
  * The output stream as the audio owner sees it. A stream AAudio ends (the device gone, the
  * route changed, the audio server restarted) is dropped and the default output reopened at
  * the engine's rate, with back-off; the decks keep their place meanwhile.
@@ -2662,6 +3207,15 @@ public struct AudioStatus: Equatable, Hashable {
      * Why the last one was lost, or why the last reopen failed.
      */
     public var why: String?
+    /**
+     * The device the stream is on (None before the first is up).
+     */
+    public var output: String?
+    /**
+     * The output asked for ([`Player::set_output`]) is not the one in use: it is missing or
+     * would not open, and the default plays meanwhile. It is tried again on every reopen.
+     */
+    public var fallback: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2674,11 +3228,20 @@ public struct AudioStatus: Equatable, Hashable {
          */losses: UInt32, restores: UInt32, 
         /**
          * Why the last one was lost, or why the last reopen failed.
-         */why: String?) {
+         */why: String?, 
+        /**
+         * The device the stream is on (None before the first is up).
+         */output: String?, 
+        /**
+         * The output asked for ([`Player::set_output`]) is not the one in use: it is missing or
+         * would not open, and the default plays meanwhile. It is tried again on every reopen.
+         */fallback: Bool) {
         self.live = live
         self.losses = losses
         self.restores = restores
         self.why = why
+        self.output = output
+        self.fallback = fallback
     }
 
     
@@ -2700,7 +3263,9 @@ public struct FfiConverterTypeAudioStatus: FfiConverterRustBuffer {
                 live: FfiConverterBool.read(from: &buf), 
                 losses: FfiConverterUInt32.read(from: &buf), 
                 restores: FfiConverterUInt32.read(from: &buf), 
-                why: FfiConverterOptionString.read(from: &buf)
+                why: FfiConverterOptionString.read(from: &buf), 
+                output: FfiConverterOptionString.read(from: &buf), 
+                fallback: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -2709,6 +3274,8 @@ public struct FfiConverterTypeAudioStatus: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.losses, into: &buf)
         FfiConverterUInt32.write(value.restores, into: &buf)
         FfiConverterOptionString.write(value.why, into: &buf)
+        FfiConverterOptionString.write(value.output, into: &buf)
+        FfiConverterBool.write(value.fallback, into: &buf)
     }
 }
 
@@ -3176,6 +3743,252 @@ public func FfiConverterTypeDeckState_lower(_ value: DeckState) -> RustBuffer {
 }
 
 
+/**
+ * A desktop that answered the search.
+ */
+public struct DesktopHost: Equatable, Hashable {
+    public var id: String
+    public var name: String
+    /**
+     * `ip:port`, what [`Player::desktop_connect`] takes.
+     */
+    public var addr: String
+    public var version: UInt32
+    /**
+     * Paired before: no code needed.
+     */
+    public var paired: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String, 
+        /**
+         * `ip:port`, what [`Player::desktop_connect`] takes.
+         */addr: String, version: UInt32, 
+        /**
+         * Paired before: no code needed.
+         */paired: Bool) {
+        self.id = id
+        self.name = name
+        self.addr = addr
+        self.version = version
+        self.paired = paired
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DesktopHost: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDesktopHost: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DesktopHost {
+        return
+            try DesktopHost(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                addr: FfiConverterString.read(from: &buf), 
+                version: FfiConverterUInt32.read(from: &buf), 
+                paired: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DesktopHost, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.addr, into: &buf)
+        FfiConverterUInt32.write(value.version, into: &buf)
+        FfiConverterBool.write(value.paired, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDesktopHost_lift(_ buf: RustBuffer) throws -> DesktopHost {
+    return try FfiConverterTypeDesktopHost.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDesktopHost_lower(_ value: DesktopHost) -> RustBuffer {
+    return FfiConverterTypeDesktopHost.lower(value)
+}
+
+
+/**
+ * The link to the desktop, for the page (read twice a second).
+ */
+public struct DesktopState: Equatable, Hashable {
+    /**
+     * Built with `network`.
+     */
+    public var built: Bool
+    /**
+     * idle, connecting, connected, reconnecting, unpaired (needs the code), refused.
+     */
+    public var state: String
+    public var name: String?
+    public var addr: String?
+    public var error: String?
+    /**
+     * What the desktop offers: clock, track, remote, stream.
+     */
+    public var caps: [String]
+    /**
+     * The desktop's input strip the phone's mix plays on.
+     */
+    public var strip: String?
+    /**
+     * The clock: the desktop's against the phone's (± half the round trip), and the round trip.
+     */
+    public var offsetMs: Double?
+    public var rttMs: Double?
+    public var desktopBpm: Double?
+    public var desktopPlaying: Bool
+    /**
+     * The desktop's bar (1-based) and beat in it (1-4) now.
+     */
+    public var desktopBar: Int64?
+    public var desktopBeatInBar: Int64?
+    public var phoneBpm: Double?
+    /**
+     * The phone's master against the desktop's, in beats (−0.5..0.5; + = the phone is ahead).
+     */
+    public var phase: Double?
+    /**
+     * The phone follows the desktop's tempo.
+     */
+    public var follow: Bool
+    public var log: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Built with `network`.
+         */built: Bool, 
+        /**
+         * idle, connecting, connected, reconnecting, unpaired (needs the code), refused.
+         */state: String, name: String?, addr: String?, error: String?, 
+        /**
+         * What the desktop offers: clock, track, remote, stream.
+         */caps: [String], 
+        /**
+         * The desktop's input strip the phone's mix plays on.
+         */strip: String?, 
+        /**
+         * The clock: the desktop's against the phone's (± half the round trip), and the round trip.
+         */offsetMs: Double?, rttMs: Double?, desktopBpm: Double?, desktopPlaying: Bool, 
+        /**
+         * The desktop's bar (1-based) and beat in it (1-4) now.
+         */desktopBar: Int64?, desktopBeatInBar: Int64?, phoneBpm: Double?, 
+        /**
+         * The phone's master against the desktop's, in beats (−0.5..0.5; + = the phone is ahead).
+         */phase: Double?, 
+        /**
+         * The phone follows the desktop's tempo.
+         */follow: Bool, log: [String]) {
+        self.built = built
+        self.state = state
+        self.name = name
+        self.addr = addr
+        self.error = error
+        self.caps = caps
+        self.strip = strip
+        self.offsetMs = offsetMs
+        self.rttMs = rttMs
+        self.desktopBpm = desktopBpm
+        self.desktopPlaying = desktopPlaying
+        self.desktopBar = desktopBar
+        self.desktopBeatInBar = desktopBeatInBar
+        self.phoneBpm = phoneBpm
+        self.phase = phase
+        self.follow = follow
+        self.log = log
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DesktopState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDesktopState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DesktopState {
+        return
+            try DesktopState(
+                built: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                name: FfiConverterOptionString.read(from: &buf), 
+                addr: FfiConverterOptionString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                caps: FfiConverterSequenceString.read(from: &buf), 
+                strip: FfiConverterOptionString.read(from: &buf), 
+                offsetMs: FfiConverterOptionDouble.read(from: &buf), 
+                rttMs: FfiConverterOptionDouble.read(from: &buf), 
+                desktopBpm: FfiConverterOptionDouble.read(from: &buf), 
+                desktopPlaying: FfiConverterBool.read(from: &buf), 
+                desktopBar: FfiConverterOptionInt64.read(from: &buf), 
+                desktopBeatInBar: FfiConverterOptionInt64.read(from: &buf), 
+                phoneBpm: FfiConverterOptionDouble.read(from: &buf), 
+                phase: FfiConverterOptionDouble.read(from: &buf), 
+                follow: FfiConverterBool.read(from: &buf), 
+                log: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DesktopState, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.built, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.name, into: &buf)
+        FfiConverterOptionString.write(value.addr, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterSequenceString.write(value.caps, into: &buf)
+        FfiConverterOptionString.write(value.strip, into: &buf)
+        FfiConverterOptionDouble.write(value.offsetMs, into: &buf)
+        FfiConverterOptionDouble.write(value.rttMs, into: &buf)
+        FfiConverterOptionDouble.write(value.desktopBpm, into: &buf)
+        FfiConverterBool.write(value.desktopPlaying, into: &buf)
+        FfiConverterOptionInt64.write(value.desktopBar, into: &buf)
+        FfiConverterOptionInt64.write(value.desktopBeatInBar, into: &buf)
+        FfiConverterOptionDouble.write(value.phoneBpm, into: &buf)
+        FfiConverterOptionDouble.write(value.phase, into: &buf)
+        FfiConverterBool.write(value.follow, into: &buf)
+        FfiConverterSequenceString.write(value.log, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDesktopState_lift(_ buf: RustBuffer) throws -> DesktopState {
+    return try FfiConverterTypeDesktopState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDesktopState_lower(_ value: DesktopState) -> RustBuffer {
+    return FfiConverterTypeDesktopState.lower(value)
+}
+
+
 public struct EngineInfo: Equatable, Hashable {
     public var sampleRate: UInt32
     public var soundFonts: UInt32
@@ -3400,6 +4213,12 @@ public struct FxInfo: Equatable, Hashable {
      * Needs a net deck (a song or pan/shape macro); the pad is dimmed on another.
      */
     public var needsNet: Bool
+    /**
+     * Plays on a deck only (it works the deck's track: its tempo, parts, own chain or sends):
+     * dimmed when the page aims at the Wheel or the Master. The rest are audio tricks, which
+     * play there too (djrust `host::deck::slot_fx`).
+     */
+    public var decksOnly: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3416,12 +4235,18 @@ public struct FxInfo: Equatable, Hashable {
          */family: String, 
         /**
          * Needs a net deck (a song or pan/shape macro); the pad is dimmed on another.
-         */needsNet: Bool) {
+         */needsNet: Bool, 
+        /**
+         * Plays on a deck only (it works the deck's track: its tempo, parts, own chain or sends):
+         * dimmed when the page aims at the Wheel or the Master. The rest are audio tricks, which
+         * play there too (djrust `host::deck::slot_fx`).
+         */decksOnly: Bool) {
         self.id = id
         self.label = label
         self.category = category
         self.family = family
         self.needsNet = needsNet
+        self.decksOnly = decksOnly
     }
 
     
@@ -3444,7 +4269,8 @@ public struct FfiConverterTypeFxInfo: FfiConverterRustBuffer {
                 label: FfiConverterString.read(from: &buf), 
                 category: FfiConverterString.read(from: &buf), 
                 family: FfiConverterString.read(from: &buf), 
-                needsNet: FfiConverterBool.read(from: &buf)
+                needsNet: FfiConverterBool.read(from: &buf), 
+                decksOnly: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -3454,6 +4280,7 @@ public struct FfiConverterTypeFxInfo: FfiConverterRustBuffer {
         FfiConverterString.write(value.category, into: &buf)
         FfiConverterString.write(value.family, into: &buf)
         FfiConverterBool.write(value.needsNet, into: &buf)
+        FfiConverterBool.write(value.decksOnly, into: &buf)
     }
 }
 
@@ -3470,6 +4297,83 @@ public func FfiConverterTypeFxInfo_lift(_ buf: RustBuffer) throws -> FxInfo {
 #endif
 public func FfiConverterTypeFxInfo_lower(_ value: FxInfo) -> RustBuffer {
     return FfiConverterTypeFxInfo.lower(value)
+}
+
+
+/**
+ * The two decks' keys and whether they mix (read-only).
+ */
+public struct HarmonicHint: Equatable, Hashable {
+    /**
+     * "Am", "C", … None: unknown (nothing loaded, or a sample with no key).
+     */
+    public var a: String?
+    public var b: String?
+    /**
+     * "same", "fifth", "relative", "clash"; None while a key is unknown.
+     */
+    public var compat: String?
+    public var mixes: Bool?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * "Am", "C", … None: unknown (nothing loaded, or a sample with no key).
+         */a: String?, b: String?, 
+        /**
+         * "same", "fifth", "relative", "clash"; None while a key is unknown.
+         */compat: String?, mixes: Bool?) {
+        self.a = a
+        self.b = b
+        self.compat = compat
+        self.mixes = mixes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HarmonicHint: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHarmonicHint: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HarmonicHint {
+        return
+            try HarmonicHint(
+                a: FfiConverterOptionString.read(from: &buf), 
+                b: FfiConverterOptionString.read(from: &buf), 
+                compat: FfiConverterOptionString.read(from: &buf), 
+                mixes: FfiConverterOptionBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HarmonicHint, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.a, into: &buf)
+        FfiConverterOptionString.write(value.b, into: &buf)
+        FfiConverterOptionString.write(value.compat, into: &buf)
+        FfiConverterOptionBool.write(value.mixes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarmonicHint_lift(_ buf: RustBuffer) throws -> HarmonicHint {
+    return try FfiConverterTypeHarmonicHint.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHarmonicHint_lower(_ value: HarmonicHint) -> RustBuffer {
+    return FfiConverterTypeHarmonicHint.lower(value)
 }
 
 
@@ -4047,6 +4951,194 @@ public func FfiConverterTypeInsertKnob_lower(_ value: InsertKnob) -> RustBuffer 
 
 
 /**
+ * A collection and its loops.
+ */
+public struct LoopBank: Equatable, Hashable {
+    public var spec: String
+    public var name: String
+    public var genre: String
+    /**
+     * A generated set's seed (None: curated, or the Acid Bass bank).
+     */
+    public var seed: UInt32?
+    /**
+     * "A minor".
+     */
+    public var key: String
+    /**
+     * The set's tempo (the Acid Bass bank's groups each have their own: its first).
+     */
+    public var bpm: Double
+    /**
+     * A djrust loop set's content ID (`z…`); None for the Acid Bass bank.
+     */
+    public var cid: String?
+    public var description: String
+    public var loops: [Td3Loop]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(spec: String, name: String, genre: String, 
+        /**
+         * A generated set's seed (None: curated, or the Acid Bass bank).
+         */seed: UInt32?, 
+        /**
+         * "A minor".
+         */key: String, 
+        /**
+         * The set's tempo (the Acid Bass bank's groups each have their own: its first).
+         */bpm: Double, 
+        /**
+         * A djrust loop set's content ID (`z…`); None for the Acid Bass bank.
+         */cid: String?, description: String, loops: [Td3Loop]) {
+        self.spec = spec
+        self.name = name
+        self.genre = genre
+        self.seed = seed
+        self.key = key
+        self.bpm = bpm
+        self.cid = cid
+        self.description = description
+        self.loops = loops
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LoopBank: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLoopBank: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LoopBank {
+        return
+            try LoopBank(
+                spec: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                genre: FfiConverterString.read(from: &buf), 
+                seed: FfiConverterOptionUInt32.read(from: &buf), 
+                key: FfiConverterString.read(from: &buf), 
+                bpm: FfiConverterDouble.read(from: &buf), 
+                cid: FfiConverterOptionString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                loops: FfiConverterSequenceTypeTd3Loop.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LoopBank, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.spec, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.genre, into: &buf)
+        FfiConverterOptionUInt32.write(value.seed, into: &buf)
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterDouble.write(value.bpm, into: &buf)
+        FfiConverterOptionString.write(value.cid, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterSequenceTypeTd3Loop.write(value.loops, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLoopBank_lift(_ buf: RustBuffer) throws -> LoopBank {
+    return try FfiConverterTypeLoopBank.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLoopBank_lower(_ value: LoopBank) -> RustBuffer {
+    return FfiConverterTypeLoopBank.lower(value)
+}
+
+
+/**
+ * A collection the picker lists.
+ */
+public struct LoopCollection: Equatable, Hashable {
+    /**
+     * What [`loop_bank`] takes: "acid-bass", "techno", "techno:4411".
+     */
+    public var spec: String
+    /**
+     * "Acid Bass", "Techno", "Techno #4411".
+     */
+    public var name: String
+    /**
+     * The generator genre it is cut from ("acid" for the Acid Bass bank).
+     */
+    public var genre: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What [`loop_bank`] takes: "acid-bass", "techno", "techno:4411".
+         */spec: String, 
+        /**
+         * "Acid Bass", "Techno", "Techno #4411".
+         */name: String, 
+        /**
+         * The generator genre it is cut from ("acid" for the Acid Bass bank).
+         */genre: String) {
+        self.spec = spec
+        self.name = name
+        self.genre = genre
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LoopCollection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLoopCollection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LoopCollection {
+        return
+            try LoopCollection(
+                spec: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                genre: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LoopCollection, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.spec, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.genre, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLoopCollection_lift(_ buf: RustBuffer) throws -> LoopCollection {
+    return try FfiConverterTypeLoopCollection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLoopCollection_lower(_ value: LoopCollection) -> RustBuffer {
+    return FfiConverterTypeLoopCollection.lower(value)
+}
+
+
+/**
  * The whole mix as one `DjSnapshot` v1 document (djhost `deck::snapshot`, the same capture djweb
  * makes): both decks (track, knobs, position, playing), the mixer and the vocoder setup. What
  * the wallet signs under `dj-snapshot.v1`.
@@ -4215,6 +5307,299 @@ public func FfiConverterTypeMixState_lower(_ value: MixState) -> RustBuffer {
 
 
 /**
+ * One move the page offers: its button, its parameter and its choices.
+ */
+public struct MoveInfo: Equatable, Hashable {
+    /**
+     * What [`crate::Player::moves_arm`] takes: "bass_swap", "phrase_sync", "filter_exit",
+     * "echo_out", "loop_roll", "vocoder_handoff".
+     */
+    public var kind: String
+    /**
+     * The button's words ("Bass swap").
+     */
+    public var label: String
+    /**
+     * What `bars` means for it: "phrase (bars)", "sweep (bars)", "tail (bars)", "bars per step".
+     */
+    public var barsMeaning: String
+    public var barChoices: [UInt32]
+    public var defaultBars: UInt32
+    /**
+     * What its deck is: "in" (a bass swap's incoming deck), "grid" (the deck a vocoder handoff
+     * waits on), else "deck".
+     */
+    public var deckWord: String
+    /**
+     * One at a time whatever the deck (a bass swap, a vocoder handoff).
+     */
+    public var oneAtATime: Bool
+    /**
+     * Takes an action (a phrase sync: "seed" or "cut").
+     */
+    public var hasAction: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What [`crate::Player::moves_arm`] takes: "bass_swap", "phrase_sync", "filter_exit",
+         * "echo_out", "loop_roll", "vocoder_handoff".
+         */kind: String, 
+        /**
+         * The button's words ("Bass swap").
+         */label: String, 
+        /**
+         * What `bars` means for it: "phrase (bars)", "sweep (bars)", "tail (bars)", "bars per step".
+         */barsMeaning: String, barChoices: [UInt32], defaultBars: UInt32, 
+        /**
+         * What its deck is: "in" (a bass swap's incoming deck), "grid" (the deck a vocoder handoff
+         * waits on), else "deck".
+         */deckWord: String, 
+        /**
+         * One at a time whatever the deck (a bass swap, a vocoder handoff).
+         */oneAtATime: Bool, 
+        /**
+         * Takes an action (a phrase sync: "seed" or "cut").
+         */hasAction: Bool) {
+        self.kind = kind
+        self.label = label
+        self.barsMeaning = barsMeaning
+        self.barChoices = barChoices
+        self.defaultBars = defaultBars
+        self.deckWord = deckWord
+        self.oneAtATime = oneAtATime
+        self.hasAction = hasAction
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MoveInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMoveInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MoveInfo {
+        return
+            try MoveInfo(
+                kind: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                barsMeaning: FfiConverterString.read(from: &buf), 
+                barChoices: FfiConverterSequenceUInt32.read(from: &buf), 
+                defaultBars: FfiConverterUInt32.read(from: &buf), 
+                deckWord: FfiConverterString.read(from: &buf), 
+                oneAtATime: FfiConverterBool.read(from: &buf), 
+                hasAction: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MoveInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.barsMeaning, into: &buf)
+        FfiConverterSequenceUInt32.write(value.barChoices, into: &buf)
+        FfiConverterUInt32.write(value.defaultBars, into: &buf)
+        FfiConverterString.write(value.deckWord, into: &buf)
+        FfiConverterBool.write(value.oneAtATime, into: &buf)
+        FfiConverterBool.write(value.hasAction, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoveInfo_lift(_ buf: RustBuffer) throws -> MoveInfo {
+    return try FfiConverterTypeMoveInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoveInfo_lower(_ value: MoveInfo) -> RustBuffer {
+    return FfiConverterTypeMoveInfo.lower(value)
+}
+
+
+/**
+ * A move armed or running.
+ */
+public struct MoveStatus: Equatable, Hashable {
+    public var id: UInt64
+    public var kind: String
+    public var deck: String
+    public var bars: UInt32
+    /**
+     * A phrase sync's "seed" or "cut"; empty for the others.
+     */
+    public var action: String
+    /**
+     * "armed" (waiting for its line) or "running" (fired, with more to do).
+     */
+    public var phase: String
+    /**
+     * Beats to its next action; None: a stopped grid, at once.
+     */
+    public var beatsLeft: Double?
+    /**
+     * In words: "armed: bar 33", "sweeping: cut on bar 37", …
+     */
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, kind: String, deck: String, bars: UInt32, 
+        /**
+         * A phrase sync's "seed" or "cut"; empty for the others.
+         */action: String, 
+        /**
+         * "armed" (waiting for its line) or "running" (fired, with more to do).
+         */phase: String, 
+        /**
+         * Beats to its next action; None: a stopped grid, at once.
+         */beatsLeft: Double?, 
+        /**
+         * In words: "armed: bar 33", "sweeping: cut on bar 37", …
+         */text: String) {
+        self.id = id
+        self.kind = kind
+        self.deck = deck
+        self.bars = bars
+        self.action = action
+        self.phase = phase
+        self.beatsLeft = beatsLeft
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MoveStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMoveStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MoveStatus {
+        return
+            try MoveStatus(
+                id: FfiConverterUInt64.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                deck: FfiConverterString.read(from: &buf), 
+                bars: FfiConverterUInt32.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf), 
+                phase: FfiConverterString.read(from: &buf), 
+                beatsLeft: FfiConverterOptionDouble.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MoveStatus, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.deck, into: &buf)
+        FfiConverterUInt32.write(value.bars, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+        FfiConverterString.write(value.phase, into: &buf)
+        FfiConverterOptionDouble.write(value.beatsLeft, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoveStatus_lift(_ buf: RustBuffer) throws -> MoveStatus {
+    return try FfiConverterTypeMoveStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoveStatus_lower(_ value: MoveStatus) -> RustBuffer {
+    return FfiConverterTypeMoveStatus.lower(value)
+}
+
+
+/**
+ * The last thing a move did on a deck, or why it could not.
+ */
+public struct MoveWord: Equatable, Hashable {
+    public var kind: String
+    /**
+     * "A" or "B"; "*" for a one-at-a-time move (a bass swap, a vocoder handoff).
+     */
+    public var deck: String
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: String, 
+        /**
+         * "A" or "B"; "*" for a one-at-a-time move (a bass swap, a vocoder handoff).
+         */deck: String, text: String) {
+        self.kind = kind
+        self.deck = deck
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MoveWord: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMoveWord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MoveWord {
+        return
+            try MoveWord(
+                kind: FfiConverterString.read(from: &buf), 
+                deck: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MoveWord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.deck, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoveWord_lift(_ buf: RustBuffer) throws -> MoveWord {
+    return try FfiConverterTypeMoveWord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMoveWord_lower(_ value: MoveWord) -> RustBuffer {
+    return FfiConverterTypeMoveWord.lower(value)
+}
+
+
+/**
  * A palette: the set of sounds a track plays with.
  */
 public struct Palette: Equatable, Hashable {
@@ -4286,6 +5671,67 @@ public func FfiConverterTypePalette_lift(_ buf: RustBuffer) throws -> Palette {
 #endif
 public func FfiConverterTypePalette_lower(_ value: Palette) -> RustBuffer {
     return FfiConverterTypePalette.lower(value)
+}
+
+
+/**
+ * The page's state: what is in flight, the last word on each move, the hint.
+ */
+public struct PerformState: Equatable, Hashable {
+    public var active: [MoveStatus]
+    public var last: [MoveWord]
+    public var harmonic: HarmonicHint
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(active: [MoveStatus], last: [MoveWord], harmonic: HarmonicHint) {
+        self.active = active
+        self.last = last
+        self.harmonic = harmonic
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PerformState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePerformState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PerformState {
+        return
+            try PerformState(
+                active: FfiConverterSequenceTypeMoveStatus.read(from: &buf), 
+                last: FfiConverterSequenceTypeMoveWord.read(from: &buf), 
+                harmonic: FfiConverterTypeHarmonicHint.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PerformState, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMoveStatus.write(value.active, into: &buf)
+        FfiConverterSequenceTypeMoveWord.write(value.last, into: &buf)
+        FfiConverterTypeHarmonicHint.write(value.harmonic, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePerformState_lift(_ buf: RustBuffer) throws -> PerformState {
+    return try FfiConverterTypePerformState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePerformState_lower(_ value: PerformState) -> RustBuffer {
+    return FfiConverterTypePerformState.lower(value)
 }
 
 
@@ -4698,6 +6144,10 @@ public struct Td3Loop: Equatable, Hashable {
     public var name: String
     public var description: String
     public var bpm: Double
+    /**
+     * "A minor".
+     */
+    public var key: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4713,13 +6163,17 @@ public struct Td3Loop: Equatable, Hashable {
          */side: String, 
         /**
          * The group's name ("Classic").
-         */name: String, description: String, bpm: Double) {
+         */name: String, description: String, bpm: Double, 
+        /**
+         * "A minor".
+         */key: String) {
         self.id = id
         self.group = group
         self.side = side
         self.name = name
         self.description = description
         self.bpm = bpm
+        self.key = key
     }
 
     
@@ -4743,7 +6197,8 @@ public struct FfiConverterTypeTd3Loop: FfiConverterRustBuffer {
                 side: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 description: FfiConverterString.read(from: &buf), 
-                bpm: FfiConverterDouble.read(from: &buf)
+                bpm: FfiConverterDouble.read(from: &buf), 
+                key: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -4754,6 +6209,7 @@ public struct FfiConverterTypeTd3Loop: FfiConverterRustBuffer {
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.description, into: &buf)
         FfiConverterDouble.write(value.bpm, into: &buf)
+        FfiConverterString.write(value.key, into: &buf)
     }
 }
 
@@ -4972,15 +6428,122 @@ public func FfiConverterTypeVocoderPreset_lower(_ value: VocoderPreset) -> RustB
 
 
 /**
- * The vocoder as the phone plays it: the internal synth (three oscillators a voice) is the
- * carrier, a deck the modulator (its rhythm and timbre shape the synth: "talking drums").
+ * One choice in a vocoder source picker, or the one picked.
+ */
+public struct VocoderSource: Equatable, Hashable {
+    /**
+     * What [`crate::Player::vocoder_route`] takes: "none", "synth", "deck:A", "input:LABEL",
+     * "capture:LABEL:BEATS", "clip:ID", "library:ID" ("loop": a loop no list names).
+     */
+    public var id: String
+    /**
+     * In words: "Deck A", "Wheel", "Synth", "Wheel · last 4 beats", a clip's title.
+     */
+    public var label: String
+    /**
+     * The desktop menu's sections: "live" (none, inputs, decks, the synth), "capture",
+     * "clip" (the loop row), "library".
+     */
+    public var group: String
+    /**
+     * One side at a time: a deck or the synth cannot be both carrier and modulator (the
+     * desktop greys it out on the other side's menu).
+     */
+    public var exclusive: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What [`crate::Player::vocoder_route`] takes: "none", "synth", "deck:A", "input:LABEL",
+         * "capture:LABEL:BEATS", "clip:ID", "library:ID" ("loop": a loop no list names).
+         */id: String, 
+        /**
+         * In words: "Deck A", "Wheel", "Synth", "Wheel · last 4 beats", a clip's title.
+         */label: String, 
+        /**
+         * The desktop menu's sections: "live" (none, inputs, decks, the synth), "capture",
+         * "clip" (the loop row), "library".
+         */group: String, 
+        /**
+         * One side at a time: a deck or the synth cannot be both carrier and modulator (the
+         * desktop greys it out on the other side's menu).
+         */exclusive: Bool) {
+        self.id = id
+        self.label = label
+        self.group = group
+        self.exclusive = exclusive
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension VocoderSource: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVocoderSource: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VocoderSource {
+        return
+            try VocoderSource(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                group: FfiConverterString.read(from: &buf), 
+                exclusive: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: VocoderSource, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.group, into: &buf)
+        FfiConverterBool.write(value.exclusive, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVocoderSource_lift(_ buf: RustBuffer) throws -> VocoderSource {
+    return try FfiConverterTypeVocoderSource.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVocoderSource_lower(_ value: VocoderSource) -> RustBuffer {
+    return FfiConverterTypeVocoderSource.lower(value)
+}
+
+
+/**
+ * The vocoder as the phone plays it: by default the internal synth (three oscillators a voice)
+ * is the carrier and a deck the modulator (its rhythm and timbre shape the synth: "talking
+ * drums"); either side can be anything the desktop's Vocoder window offers
+ * ([`Player::vocoder_route`], [`Player::vocoder_swap`]).
  */
 public struct VocoderState: Equatable, Hashable {
     public var on: Bool
     /**
-     * What shapes the synth: "A", "B" or [`WHEEL_MODULATOR`] (None: off).
+     * The modulator when it is a deck or the Wheel: "A", "B" or [`WHEEL_MODULATOR`] (None: off,
+     * or something else shapes: see `modulator_source`).
      */
     public var modulator: String?
+    /**
+     * What shapes (the modulator) and what is shaped (the carrier), on or off.
+     */
+    public var modulatorSource: VocoderSource
+    public var carrierSource: VocoderSource
+    /**
+     * The synth is one of the two: only then do the chord pads and the synth's knobs sound.
+     */
+    public var usesSynth: Bool
     /**
      * The notes the synth holds.
      */
@@ -5011,8 +6574,15 @@ public struct VocoderState: Equatable, Hashable {
     // declare one manually.
     public init(on: Bool, 
         /**
-         * What shapes the synth: "A", "B" or [`WHEEL_MODULATOR`] (None: off).
+         * The modulator when it is a deck or the Wheel: "A", "B" or [`WHEEL_MODULATOR`] (None: off,
+         * or something else shapes: see `modulator_source`).
          */modulator: String?, 
+        /**
+         * What shapes (the modulator) and what is shaped (the carrier), on or off.
+         */modulatorSource: VocoderSource, carrierSource: VocoderSource, 
+        /**
+         * The synth is one of the two: only then do the chord pads and the synth's knobs sound.
+         */usesSynth: Bool, 
         /**
          * The notes the synth holds.
          */notes: Data, 
@@ -5031,6 +6601,9 @@ public struct VocoderState: Equatable, Hashable {
          */autoLevel: Bool, autoGainDb: Double) {
         self.on = on
         self.modulator = modulator
+        self.modulatorSource = modulatorSource
+        self.carrierSource = carrierSource
+        self.usesSynth = usesSynth
         self.notes = notes
         self.modulatorLevel = modulatorLevel
         self.carrierLevel = carrierLevel
@@ -5060,6 +6633,9 @@ public struct FfiConverterTypeVocoderState: FfiConverterRustBuffer {
             try VocoderState(
                 on: FfiConverterBool.read(from: &buf), 
                 modulator: FfiConverterOptionString.read(from: &buf), 
+                modulatorSource: FfiConverterTypeVocoderSource.read(from: &buf), 
+                carrierSource: FfiConverterTypeVocoderSource.read(from: &buf), 
+                usesSynth: FfiConverterBool.read(from: &buf), 
                 notes: FfiConverterData.read(from: &buf), 
                 modulatorLevel: FfiConverterFloat.read(from: &buf), 
                 carrierLevel: FfiConverterFloat.read(from: &buf), 
@@ -5075,6 +6651,9 @@ public struct FfiConverterTypeVocoderState: FfiConverterRustBuffer {
     public static func write(_ value: VocoderState, into buf: inout [UInt8]) {
         FfiConverterBool.write(value.on, into: &buf)
         FfiConverterOptionString.write(value.modulator, into: &buf)
+        FfiConverterTypeVocoderSource.write(value.modulatorSource, into: &buf)
+        FfiConverterTypeVocoderSource.write(value.carrierSource, into: &buf)
+        FfiConverterBool.write(value.usesSynth, into: &buf)
         FfiConverterData.write(value.notes, into: &buf)
         FfiConverterFloat.write(value.modulatorLevel, into: &buf)
         FfiConverterFloat.write(value.carrierLevel, into: &buf)
@@ -5906,6 +7485,11 @@ public struct WheelState: Equatable, Hashable {
      * It has been played since the player started (before that: stopped, the button says Play).
      */
     public var started: Bool
+    /**
+     * What the mix hears of it: the strip's peak after its effects (the Effects page's tricks,
+     * then the Inserts) and its fader, the last block, 0…1. 0 without a strip.
+     */
+    public var stripPeak: Double
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5942,7 +7526,11 @@ public struct WheelState: Equatable, Hashable {
          */paused: Bool, 
         /**
          * It has been played since the player started (before that: stopped, the button says Play).
-         */started: Bool) {
+         */started: Bool, 
+        /**
+         * What the mix hears of it: the strip's peak after its effects (the Effects page's tricks,
+         * then the Inserts) and its fader, the last block, 0…1. 0 without a strip.
+         */stripPeak: Double) {
         self.magnets = magnets
         self.speedMps = speedMps
         self.outPeak = outPeak
@@ -5958,6 +7546,7 @@ public struct WheelState: Equatable, Hashable {
         self.tempo = tempo
         self.paused = paused
         self.started = started
+        self.stripPeak = stripPeak
     }
 
     
@@ -5990,7 +7579,8 @@ public struct FfiConverterTypeWheelState: FfiConverterRustBuffer {
                 bpm: FfiConverterOptionDouble.read(from: &buf), 
                 tempo: FfiConverterSequenceTypeWheelTempo.read(from: &buf), 
                 paused: FfiConverterBool.read(from: &buf), 
-                started: FfiConverterBool.read(from: &buf)
+                started: FfiConverterBool.read(from: &buf), 
+                stripPeak: FfiConverterDouble.read(from: &buf)
         )
     }
 
@@ -6010,6 +7600,7 @@ public struct FfiConverterTypeWheelState: FfiConverterRustBuffer {
         FfiConverterSequenceTypeWheelTempo.write(value.tempo, into: &buf)
         FfiConverterBool.write(value.paused, into: &buf)
         FfiConverterBool.write(value.started, into: &buf)
+        FfiConverterDouble.write(value.stripPeak, into: &buf)
     }
 }
 
@@ -6278,6 +7869,10 @@ enum DjError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case Fx(String
     )
+    case Desktop(String
+    )
+    case Perform(String
+    )
     case Closed
 
     
@@ -6329,7 +7924,13 @@ public struct FfiConverterTypeDjError: FfiConverterRustBuffer {
         case 7: return .Fx(
             try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Closed
+        case 8: return .Desktop(
+            try FfiConverterString.read(from: &buf)
+            )
+        case 9: return .Perform(
+            try FfiConverterString.read(from: &buf)
+            )
+        case 10: return .Closed
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6377,8 +7978,18 @@ public struct FfiConverterTypeDjError: FfiConverterRustBuffer {
             FfiConverterString.write(v1, into: &buf)
             
         
-        case .Closed:
+        case let .Desktop(v1):
             writeInt(&buf, Int32(8))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .Perform(v1):
+            writeInt(&buf, Int32(9))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case .Closed:
+            writeInt(&buf, Int32(10))
         
         }
     }
@@ -6826,6 +8437,31 @@ fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceInt32: FfiConverterRustBuffer {
     typealias SwiftType = [Int32]
 
@@ -6926,6 +8562,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeAudioOutput: FfiConverterRustBuffer {
+    typealias SwiftType = [AudioOutput]
+
+    public static func write(_ value: [AudioOutput], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAudioOutput.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AudioOutput] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AudioOutput]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAudioOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeChordPad: FfiConverterRustBuffer {
     typealias SwiftType = [ChordPad]
 
@@ -6943,6 +8604,31 @@ fileprivate struct FfiConverterSequenceTypeChordPad: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeChordPad.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDesktopHost: FfiConverterRustBuffer {
+    typealias SwiftType = [DesktopHost]
+
+    public static func write(_ value: [DesktopHost], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDesktopHost.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DesktopHost] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DesktopHost]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDesktopHost.read(from: &buf))
         }
         return seq
     }
@@ -7151,6 +8837,106 @@ fileprivate struct FfiConverterSequenceTypeInsertKnob: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLoopCollection: FfiConverterRustBuffer {
+    typealias SwiftType = [LoopCollection]
+
+    public static func write(_ value: [LoopCollection], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLoopCollection.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LoopCollection] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LoopCollection]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLoopCollection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMoveInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [MoveInfo]
+
+    public static func write(_ value: [MoveInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMoveInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MoveInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MoveInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMoveInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMoveStatus: FfiConverterRustBuffer {
+    typealias SwiftType = [MoveStatus]
+
+    public static func write(_ value: [MoveStatus], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMoveStatus.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MoveStatus] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MoveStatus]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMoveStatus.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMoveWord: FfiConverterRustBuffer {
+    typealias SwiftType = [MoveWord]
+
+    public static func write(_ value: [MoveWord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMoveWord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MoveWord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MoveWord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMoveWord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypePalette: FfiConverterRustBuffer {
     typealias SwiftType = [Palette]
 
@@ -7326,6 +9112,31 @@ fileprivate struct FfiConverterSequenceTypeVocoderPreset: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeVocoderSource: FfiConverterRustBuffer {
+    typealias SwiftType = [VocoderSource]
+
+    public static func write(_ value: [VocoderSource], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeVocoderSource.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [VocoderSource] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [VocoderSource]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeVocoderSource.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeWheelMagnet: FfiConverterRustBuffer {
     typealias SwiftType = [WheelMagnet]
 
@@ -7447,6 +9258,16 @@ fileprivate struct FfiConverterSequenceTypeWheelTempo: FfiConverterRustBuffer {
         return seq
     }
 }
+/**
+ * The output devices now present, the default first. A USB device appears here once plugged in.
+ */
+public func audioOutputs() -> [AudioOutput]  {
+    return try!  FfiConverterSequenceTypeAudioOutput.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_func_audio_outputs(uniffiCallStatus
+    )
+})
+}
 public func buildFeatures() -> BuildFeatures  {
     return try!  FfiConverterTypeBuildFeatures_lift(try! rustCall() {
         uniffiCallStatus in
@@ -7472,6 +9293,28 @@ public func genres() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_djmobile_fn_func_genres(uniffiCallStatus
+    )
+})
+}
+/**
+ * Collection `spec` ("acid-bass", "techno", or "techno:4411" for a set generated from a seed)
+ * and its loops. A generated set takes a moment the first time (call it off the main thread).
+ */
+public func loopBank(spec: String)throws  -> LoopBank  {
+    return try  FfiConverterTypeLoopBank_lift(try rustCallWithError(FfiConverterTypeDjError_lift) {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_func_loop_bank(
+        FfiConverterString.lower(spec),uniffiCallStatus
+    )
+})
+}
+/**
+ * The loop pads' collections: the Acid Bass bank, then every genre's curated loop set.
+ */
+public func loopCollections() -> [LoopCollection]  {
+    return try!  FfiConverterSequenceTypeLoopCollection.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_djmobile_fn_func_loop_collections(uniffiCallStatus
     )
 })
 }
@@ -7554,6 +9397,9 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_djmobile_checksum_func_audio_outputs() != 18737) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_djmobile_checksum_func_build_features() != 16734) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7561,6 +9407,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_func_genres() != 33851) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_func_loop_bank() != 12275) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_func_loop_collections() != 13414) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_func_structures() != 9853) {
@@ -7593,7 +9445,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_deck_key() != 51563) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_engage() != 9633) {
+    if (uniffi_djmobile_checksum_method_player_engage() != 2056) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_feel_label() != 38701) {
@@ -7608,13 +9460,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_fx_categories() != 38051) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_fx_release() != 62015) {
+    if (uniffi_djmobile_checksum_method_player_fx_release() != 65046) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_fx_state() != 10933) {
+    if (uniffi_djmobile_checksum_method_player_fx_state() != 18900) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_fx_unlatch() != 34321) {
+    if (uniffi_djmobile_checksum_method_player_fx_unlatch() != 37493) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_heos_discover() != 14547) {
@@ -7659,6 +9511,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_key_label() != 23981) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_djmobile_checksum_method_player_load_loop() != 4693) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_load_loop_pair() != 39697) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_djmobile_checksum_method_player_load_saved_mix() != 16212) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7677,13 +9535,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_mix_snapshot() != 62592) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_djmobile_checksum_method_player_moves_arm() != 59342) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_moves_cancel() != 50957) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_moves_cancel_all() != 57901) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_moves_cancel_kind() != 23692) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_moves_catalog() != 38011) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_moves_state() != 3925) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_djmobile_checksum_method_player_next_track() != 23416) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_palettes() != 25689) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_panic() != 42345) {
+    if (uniffi_djmobile_checksum_method_player_panic() != 28120) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_previous_track() != 21267) {
@@ -7708,6 +9584,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_set_key_lock() != 47380) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_set_output() != 47696) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_set_palette() != 44823) {
@@ -7740,6 +9619,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_set_vocoder_auto_level() != 43281) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_djmobile_checksum_method_player_set_vocoder_on() != 59646) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_djmobile_checksum_method_player_set_volume() != 36314) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7767,7 +9649,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_track_share() != 44069) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_djmobile_checksum_method_player_trick_knob() != 25727) {
+    if (uniffi_djmobile_checksum_method_player_trick_knob() != 59944) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_tv_stream_listeners() != 40394) {
@@ -7788,7 +9670,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_djmobile_checksum_method_player_vocoder_preset() != 27240) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_djmobile_checksum_method_player_vocoder_route() != 54469) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_djmobile_checksum_method_player_vocoder_set() != 3180) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_vocoder_sources() != 3865) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_vocoder_swap() != 31938) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_wheel_brightness() != 18626) {
@@ -7855,6 +9746,42 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_wheel_volume() != 35613) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_call() != 1966) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_connect() != 58917) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_disconnect() != 62490) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_discover() != 18600) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_follow() != 64556) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_forget() != 54143) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_send_track() != 65049) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_start() != 56920) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_state() != 6879) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_stream_start() != 5528) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_stream_stop() != 47645) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_djmobile_checksum_method_player_desktop_sync() != 5187) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_djmobile_checksum_method_player_insert_on() != 40605) {

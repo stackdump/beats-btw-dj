@@ -1,13 +1,14 @@
 import DJRust
 import SwiftUI
 
-// The shell of djandroid's DeckScreen.kt: the top bar, the seven tabs and a horizontal pager of
+// The shell of djandroid's DeckScreen.kt: the top bar, the eight tabs and a horizontal pager of
 // pages, each one vertical scroll of play cards (DESIGN §2). Utilities live behind the menu
 // (MenuSheet.swift), never on a page.
 
-/// The screens, in their order (DESIGN §2): five-to-seven-letter labels so seven fit a phone.
+/// The screens, in their order (DESIGN §2): labels of at most about seven letters so eight fit.
+/// djandroid's Moves tab is "Perform" here (Matt, 2026-11-16; djandroid is renaming it too).
 enum Page: String, CaseIterable, Identifiable {
-  case deckA = "Deck A", mix = "Mix", deckB = "Deck B", wheel = "Wheel", vox = "Vox"
+  case deckA = "Deck A", mix = "Mix", deckB = "Deck B", perform = "Perform", wheel = "Wheel", vox = "Vox"
   case effects = "Effects", inserts = "Inserts"
   var id: String { rawValue }
   var deck: String? { self == .deckA ? "A" : self == .deckB ? "B" : nil }
@@ -16,7 +17,7 @@ enum Page: String, CaseIterable, Identifiable {
   /// shows both decks with the mixer between them on one "Decks" page; narrower, the seven tabs.
   /// (`DJ_WIDE_FROM=<points>`, a launch environment, moves it: screenshots of the wide layout.)
   static let wideFrom: CGFloat = ProcessInfo.processInfo.environment["DJ_WIDE_FROM"].flatMap(Double.init).map { CGFloat($0) } ?? 1100
-  static func pages(wide: Bool) -> [Page] { wide ? [.deckA, .wheel, .vox, .effects, .inserts] : allCases }
+  static func pages(wide: Bool) -> [Page] { wide ? [.deckA, .perform, .wheel, .vox, .effects, .inserts] : allCases }
   func label(wide: Bool) -> String { wide && self == .deckA ? "Decks" : rawValue }
   /// Where a page lives in the wide layout (Mix and Deck B are columns of Decks).
   func wide(_ on: Bool) -> Page { on && (self == .mix || self == .deckB) ? .deckA : self }
@@ -113,8 +114,9 @@ public struct DJRustRoot: View {
 
   private func pageScroll(_ p: Page) -> some View {
     ScrollView(.vertical) {
+      // the Perform page's two cards go side by side on a wide iPad (PerformPage.swift)
       pageBody(p).padding(.horizontal, 16).padding(.vertical, 8)
-        .frame(maxWidth: 720).frame(maxWidth: .infinity)
+        .frame(maxWidth: p == .perform ? 1200 : 720).frame(maxWidth: .infinity)
     }
     .defaultScrollAnchor(scrollAnchor)
     // a finger on the wheel's drawing keeps the gesture: neither scroll takes it
@@ -144,6 +146,7 @@ public struct DJRustRoot: View {
     case .vox: VoxPage(model: model)
     case .inserts: InsertsPage(model: model)
     case .wheel: WheelPage(model: model, picker: picker)
+    case .perform: PerformPage(model: model)
     default: NotPortedPage(page: p)
     }
   }
@@ -193,6 +196,7 @@ extension RustDJModel {
     case .vox: vox.state?.on == true
     case .inserts: inserts.anyOn
     case .wheel: wheel.moving
+    case .perform: perform.busy
     default: false
     }
   }

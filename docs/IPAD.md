@@ -37,7 +37,7 @@ Launch environment (debug aids, read by `DJRustUI`): `DJ_AUTOPLAY=1` plays deck 
 track is loaded (`DJ_AUTOPLAY=td3:2` loads loop group 2 on both decks instead;
 `vox:0` also holds the first chord pad; `wheel` plays the wheel instead, `wheel:<id>` loads Wheel
 instrument `<id>` first — `hoop-looper`, `drop-chimes`, `pendulum`, `slide`, … — and `wheel:<id>:A`
-then plays deck A too); `DJ_PAGE=<tab label>` ("Mix", "Wheel", "Effects", …) opens on that page;
+then plays deck A too); `DJ_PAGE=<tab label>` ("Mix", "Perform", "Wheel", "Effects", …) opens on that page;
 `DJ_SCROLL=center|bottom` opens each page scrolled there (the simulator can't scroll);
 `DJ_MENU=<section>` ("HEOS speakers", "Library", …) opens the menu there; `DJ_WIDE_FROM=<points>`
 moves the wide layout's threshold (1100: both decks and the mixer side by side);

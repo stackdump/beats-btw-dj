@@ -135,6 +135,8 @@ public final class RustDJModel {
   var td3Loops: [Td3Loop] = []
   var td3Drums = true
   var vox = VoxUI()
+  /// The Perform page (Perform.swift): djhost::perform's moves, polled with the mixer.
+  var perform = PerformUI()
   var inserts = InsertsUI()
   /// Output › HEOS speakers (HeosModel.swift).
   var heos = HeosUI()
@@ -285,6 +287,7 @@ public final class RustDJModel {
     try? p.setVocoderAutoLevel(on: prefs.object(forKey: "vocoder_auto_level") as? Bool ?? true)
     try? p.vocoderPreset(id: prefs.string(forKey: "vocoder_preset") ?? "talking-drums")
     vox.presets = DJRust.vocoderPresets()
+    startPerform(p)
     // the inserts' knobs as last left (the switches are not kept: a fresh start has every one off)
     if let json = prefs.string(forKey: "inserts.chains") { _ = try? p.insertsRestore(json: json, switches: false) }
     inserts.target = prefs.string(forKey: "inserts.target").flatMap { InsertsUI.targets.contains($0) ? $0 : nil } ?? "A"
@@ -339,11 +342,12 @@ public final class RustDJModel {
       if let mix { crossfader = mix.crossfader }
       let fx: [String: [FxActive]]? =
         n % 3 == 0
-        ? Dictionary(uniqueKeysWithValues: deckNames.map { d in (d, (try? p.fxState(deck: d)) ?? []) }) : nil
+        ? Dictionary(uniqueKeysWithValues: deckNames.map { d in (d, (try? p.fxState(target: d)) ?? []) }) : nil
       let audio = n % 30 == 0 ? p.audioStatus() : nil
       let voc = n % 3 == 0 ? try? p.vocoder() : nil
+      let moves = n % 3 == 0 ? try? p.movesState() : nil
       n += 1
-      if !changed.isEmpty || mix != nil || audio != nil || fx != nil || voc != nil {
+      if !changed.isEmpty || mix != nil || audio != nil || fx != nil || voc != nil || moves != nil {
         let update = changed
         await MainActor.run {
           for (deck, (s, pals)) in update {
@@ -354,6 +358,7 @@ public final class RustDJModel {
           if let audio, audio != self.audio { self.audio = audio }
           if let fx, fx != self.fxActive { self.fxActive = fx }
           if let voc { self.updateVox(voc) }
+          if let moves, moves != self.perform.state { self.perform.state = moves }
           if self.playing { self.pausedBySession = [] }
           if let a = self.autoplay, a == "wheel" || a.hasPrefix("wheel:") {
             self.wheelAutoplay(a)
@@ -588,20 +593,20 @@ public final class RustDJModel {
 
   /// Engage an effect on a deck's next bar: for 1–4 bars, latched, or (a transition) held.
   func engage(_ deck: String, _ id: String, _ mode: FxMode) {
-    act { try $0.engage(deck: deck, id: id, mode: mode) }
+    act { try $0.engage(target: deck, id: id, mode: mode) }
   }
 
   /// A held pad lifted: off at once.
-  func fxRelease(_ deck: String, _ id: String) { act { try $0.fxRelease(deck: deck, id: id) } }
+  func fxRelease(_ deck: String, _ id: String) { act { try $0.fxRelease(target: deck, id: id) } }
 
   /// A latched (or running) pad pressed again: off on the next bar.
-  func fxUnlatch(_ deck: String, _ id: String) { act { try $0.fxUnlatch(deck: deck, id: id) } }
+  func fxUnlatch(_ deck: String, _ id: String) { act { try $0.fxUnlatch(target: deck, id: id) } }
 
   /// An Acid Bass trick on (held) or off, on this deck's Acid Bass loop.
   func fxAcid(_ deck: String, _ id: String, _ on: Bool) { act { try $0.fxAcid(deck: deck, id: id, on: on) } }
 
   /// The filter knob under a hand: answers at once, on no bar.
-  func trickKnob(_ deck: String, _ v: Double) { act { try $0.trickKnob(deck: deck, v: v) } }
+  func trickKnob(_ deck: String, _ v: Double) { act { try $0.trickKnob(target: deck, v: v) } }
 
   /// PANIC: end the deck's macros, tricks and latches, at once.
   func fxPanic(_ deck: String) { act { try $0.panic(deck: deck) } }
@@ -644,13 +649,37 @@ public final class RustDJModel {
     }
   }
 
-  /// The vocoder on with `modulator` shaping the synth, or off (nil).
-  func setVocoder(_ modulator: String?) {
-    // a deck pulled down (or the wheel muted) for "only the vocoder" comes back when the
-    // vocoder lets go of it
-    if vox.onlyVocoder && modulator != vox.state?.modulator { setOnlyVocoder(false) }
-    if modulator == nil { vox.sounding = [] }
-    act { try $0.setVocoder(modulator: modulator) }
+  /// The vocoder's switch: on or off with its routing as it is (on with nothing routed yet: the
+  /// synth shaped by the lead deck). Off brings back what "only the vocoder" pulled out.
+  func setVocoderOn(_ on: Bool) {
+    if !on {
+      if vox.onlyVocoder { setOnlyVocoder(false) }
+      vox.sounding = []
+    }
+    let lead = leadDeck(mix?.crossfader)
+    act { try $0.setVocoderOn(on: on, defaultModulator: lead) }
+  }
+
+  /// What the carrier and modulator pickers offer (the desktop Vocoder window's list), read on
+  /// the engine queue when a picker opens.
+  func vocoderSources() async -> [VocoderSource] {
+    guard let p = player else { return [] }
+    return await withCheckedContinuation { c in
+      engineQueue.async { c.resume(returning: (try? p.vocoderSources()) ?? []) }
+    }
+  }
+
+  /// One side of the vocoder ("carrier" or "modulator") to a source by its id. A new modulator
+  /// first brings back what "only the vocoder" pulled out of the mix.
+  func vocoderRoute(_ side: String, _ id: String) {
+    if side == "modulator" && vox.onlyVocoder { setOnlyVocoder(false) }
+    act { try $0.vocoderRoute(side: side, id: id) }
+  }
+
+  /// The desktop's ⇄: the carrier becomes the modulator and the modulator the carrier.
+  func vocoderSwap() {
+    if vox.onlyVocoder { setOnlyVocoder(false) }
+    act { try $0.vocoderSwap() }
   }
 
   func setLatch(_ on: Bool) {
@@ -660,7 +689,7 @@ public final class RustDJModel {
 
   /// A finger on pad `i`. A new touch (no finger down) starts a new chord — or, latched, a tap
   /// on the one pad sounding stops it; a finger joining held ones adds its chord to theirs. With
-  /// the vocoder off a pad turns it on, shaped by the lead deck.
+  /// the vocoder off a pad turns it on, as routed (nothing routed yet: shaped by the lead deck).
   func padDown(_ i: Int) {
     if vox.pads == nil { refreshPads() }  // a press before the vocoder's first poll
     guard let pads = vox.pads?.pads, pads.indices.contains(i) else { return }
@@ -698,9 +727,9 @@ public final class RustDJModel {
     let notes = vox.sounding.filter { pads.indices.contains($0) }.flatMap { [UInt8](pads[$0].notes) }
       .filter { seen.insert($0).inserted }.sorted()
     let turnOn = vox.state?.on == true ? nil : leadDeck(mix?.crossfader)
-    if let turnOn { vox.state?.on = true; vox.state?.modulator = turnOn }
+    if let turnOn { vox.state?.on = true }
     act { p in
-      if let turnOn { try p.setVocoder(modulator: turnOn) }
+      if let turnOn { try p.setVocoderOn(on: true, defaultModulator: turnOn) }
       try p.vocoderNotes(notes: Data(notes))
     }
   }
