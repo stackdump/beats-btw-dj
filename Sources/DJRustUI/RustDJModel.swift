@@ -842,6 +842,12 @@ public final class RustDJModel {
     inserts.chains[target] = c
   }
 
+  /// ALL OFF: every held effect on every target off (the tails ring out); the knobs stay.
+  func insertsAllOff() {
+    for t in inserts.chains.keys { editInsert(t) { $0.on = false } }
+    insertCall { try $0.insertsOff() }
+  }
+
   func setInsertOn(_ target: String, _ effect: String, _ on: Bool) {
     editInsert(target) { if $0.id == effect { $0.on = on } }
     insertCall { try $0.insertOn(target: target, effect: effect, on: on) }

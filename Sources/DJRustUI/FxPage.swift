@@ -14,7 +14,7 @@ import SwiftUI
 // they answer at once and glide, and a delay or reverb switched off lets its tail ring out. The
 // delay follows the tempo shown (its own deck's; the lead deck's on the Wheel and the Master).
 // Their knobs are kept across launches; the switches are not. PANIC ends this target's throws
-// and switches its inserts off.
+// and switches its inserts off; ALL OFF switches every target's inserts off.
 
 private func targetLabel(_ t: String) -> String { t.count == 1 ? "Deck \(t)" : t }
 
@@ -104,7 +104,16 @@ struct FxPage: View {
         }
       }
       // the held effects, after the Vox tap (djandroid InsertFx.kt)
-      Caption("After the Vox tap: held effects")
+      HStack {
+        Caption("After the Vox tap: held effects")
+        Spacer()
+        // every target's held effects off, the knobs kept; PANIC is this target's
+        Button("ALL OFF") { model.insertsAllOff() }
+          .buttonStyle(.plain).font(.system(size: 14, weight: .medium)).foregroundStyle(DJTheme.danger)
+          .padding(.horizontal, 14).frame(minHeight: 40)
+          .overlay(RoundedRectangle(cornerRadius: 20).stroke(DJTheme.danger.opacity(0.6)))
+          .accessibilityLabel("All off: switch every target's held effects off")
+      }
       if let chain {
         TempoLine(chain: chain)
         if let e = model.inserts.error { Text(e).font(.system(size: 12)).foregroundStyle(DJTheme.danger) }
