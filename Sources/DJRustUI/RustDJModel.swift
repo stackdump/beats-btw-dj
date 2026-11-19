@@ -842,8 +842,10 @@ public final class RustDJModel {
     inserts.chains[target] = c
   }
 
-  /// ALL OFF: every held effect on every target off (the tails ring out); the knobs stay.
-  func insertsAllOff() {
+  /// ALL OFF stops everything everywhere: PANIC on every target, so every throw ends and every
+  /// held effect switches off (the tails ring out); the knobs stay.
+  func allOff() {
+    for t in ["A", "B", "Wheel", "Master"] { act { try $0.panic(deck: t) } }
     for t in inserts.chains.keys { editInsert(t) { $0.on = false } }
     insertCall { try $0.insertsOff() }
   }
