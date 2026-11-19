@@ -99,11 +99,11 @@ struct VoxUI: Equatable {
   var onlyVocoder: Bool { deckMutedFrom != nil || wheelMuted }
 }
 
-/// The Inserts page (djandroid InsertFx.kt InsertUi): the target shown and each target's chain
-/// (filter, bitcrush, delay, reverb). `error`: the last thing the engine refused, shown in place.
+/// The held insert effects on the Effects page (djandroid InsertFx.kt InsertUi): each target's
+/// chain (filter, bitcrush, delay, reverb). `error`: the last thing the engine refused, shown in
+/// place. The target is the Effects page's own (`RustDJModel.fxTarget`), shared with the pads.
 struct InsertsUI: Equatable {
   static let targets = ["A", "B", "Wheel", "Master"]
-  var target = "A"
   var chains: [String: InsertChainState] = [:]
   var error: String?
   var anyOn: Bool { chains.values.contains { $0.effects.contains(where: \.on) } }
@@ -131,6 +131,9 @@ public final class RustDJModel {
   var fxCategories: [FxCategory] = []
   var fxCatalogue: [FxInfo] = []
   var fxActive: [String: [FxActive]] = [:]
+  /// The Effects page's target, shared by its pads and its inserts ("A", "B", "Wheel",
+  /// "Master"); nil follows the lead deck until one is picked. Kept as `fx.target`.
+  var fxTarget: String?
   /// The loop bank (Acid Bass 1–8, Floor & Sub 9) and whether a loop loads with drums.
   var td3Loops: [Td3Loop] = []
   var td3Drums = true
@@ -290,7 +293,10 @@ public final class RustDJModel {
     startPerform(p)
     // the inserts' knobs as last left (the switches are not kept: a fresh start has every one off)
     if let json = prefs.string(forKey: "inserts.chains") { _ = try? p.insertsRestore(json: json, switches: false) }
-    inserts.target = prefs.string(forKey: "inserts.target").flatMap { InsertsUI.targets.contains($0) ? $0 : nil } ?? "A"
+    // the Effects page's target as last picked (before the Inserts tab folded into Effects, the
+    // inserts kept their own as `inserts.target`: that one carries over once)
+    fxTarget = (prefs.string(forKey: "fx.target") ?? prefs.string(forKey: "inserts.target"))
+      .flatMap { InsertsUI.targets.contains($0) ? $0 : nil }
     refreshInserts()
     attachWheel(p)
     info = p.info()
@@ -342,7 +348,7 @@ public final class RustDJModel {
       if let mix { crossfader = mix.crossfader }
       let fx: [String: [FxActive]]? =
         n % 3 == 0
-        ? Dictionary(uniqueKeysWithValues: deckNames.map { d in (d, (try? p.fxState(target: d)) ?? []) }) : nil
+        ? Dictionary(uniqueKeysWithValues: InsertsUI.targets.map { d in (d, (try? p.fxState(target: d)) ?? []) }) : nil
       let audio = n % 30 == 0 ? p.audioStatus() : nil
       let voc = n % 3 == 0 ? try? p.vocoder() : nil
       let moves = n % 3 == 0 ? try? p.movesState() : nil
@@ -608,8 +614,18 @@ public final class RustDJModel {
   /// The filter knob under a hand: answers at once, on no bar.
   func trickKnob(_ deck: String, _ v: Double) { act { try $0.trickKnob(target: deck, v: v) } }
 
-  /// PANIC: end the deck's macros, tricks and latches, at once.
-  func fxPanic(_ deck: String) { act { try $0.panic(deck: deck) } }
+  /// The Effects page's target: its pads and its inserts act there.
+  func selectFxTarget(_ t: String) {
+    fxTarget = t
+    prefs.set(t, forKey: "fx.target")
+  }
+
+  /// PANIC on a target: end its macros, tricks and latches at once, and switch its four inserts
+  /// off (their tails ring out). The other targets keep theirs.
+  func fxPanic(_ target: String) {
+    act { try $0.panic(deck: target) }
+    for e in inserts.chains[target]?.effects ?? [] where e.on { setInsertOn(target, e.id, false) }
+  }
 
   // MARK: the loop bank (Acid Bass)
 
@@ -789,7 +805,7 @@ public final class RustDJModel {
 
   // MARK: insert effects (djandroid InsertFx.kt)
 
-  /// Read every chain (the page's poll, twice a second while it shows, and after each change):
+  /// Read every chain (the Effects page's poll, twice a second while it shows, and after each change):
   /// the tempos the delays follow, and anything changed elsewhere.
   func refreshInserts() {
     guard let p = player else { return }
@@ -798,11 +814,6 @@ public final class RustDJModel {
       let m = Dictionary(list.map { ($0.target, $0) }, uniquingKeysWith: { a, _ in a })
       Task { @MainActor in if m != self.inserts.chains { self.inserts.chains = m } }
     }
-  }
-
-  func selectInsertTarget(_ t: String) {
-    inserts.target = t
-    prefs.set(t, forKey: "inserts.target")
   }
 
   /// An inserts call: a refusal shows on the page (not the dialog), then the chains are read
@@ -860,9 +871,6 @@ public final class RustDJModel {
       }
     }
   }
-
-  /// Every effect off on every target (the tails ring out).
-  func insertsAllOff() { insertCall { try $0.insertsOff() } }
 
   /// Kept a moment after the last move, not on every slider step.
   private func saveInserts() {

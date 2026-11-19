@@ -1,12 +1,22 @@
 import DJRust
 import SwiftUI
 
-// The effects (djandroid ui/FxPage.kt): every trick and macro in the one category the engine puts
-// it in (a Transition card of one-shots, then Filter & tone, Space, Rhythm, Arrange, Pitch,
-// Stereo & shape, Feel, and the Sweeps). Nothing fires at once: a pad lands on the deck's next
-// bar and runs for the length picked (1–4 bars, or latched until pressed again). A transition is
-// held; a sweep has bars and no latch. The filter knob is a hand, not a trigger, and answers at
-// once. On an Acid Bass loop the deck's own Acid Bass tricks show too.
+// The effects (djandroid ui/FxPage.kt), aimed at Deck A, Deck B, the Wheel or the Master by one
+// switch that the pads and the inserts share. First the throws: every trick and macro in the one
+// category the engine puts it in (a Transition card of one-shots, then Filter & tone, Space,
+// Rhythm, Arrange, Pitch, Stereo & shape, Feel, and the Sweeps). Nothing fires at once: a pad
+// lands on the target's next bar (the Wheel's and the Master's: the lead deck's) and runs for the
+// length picked (1–4 bars, or latched until pressed again). A transition is held; a sweep has
+// bars and no latch. The filter knob is a hand, not a trigger, and answers at once. On the Wheel
+// and the Master the pads that work a deck's track are dimmed. On an Acid Bass loop the deck's
+// own Acid Bass tricks show too. Then the held effects after the Vox tap (the Inserts tab before
+// it folded in here): filter, bitcrush, delay and reverb, each switched on in its card's header;
+// they answer at once and glide, and a delay or reverb switched off lets its tail ring out. The
+// delay follows the tempo shown (its own deck's; the lead deck's on the Wheel and the Master).
+// Their knobs are kept across launches; the switches are not. PANIC ends this target's throws
+// and switches its inserts off.
+
+private func targetLabel(_ t: String) -> String { t.count == 1 ? "Deck \(t)" : t }
 
 /// An Acid Bass loop (groups 1–8, "1A" … "8B"), the ones the Acid Bass tricks reshape; 9 is
 /// Floor & Sub.
@@ -17,13 +27,14 @@ func isAcidLoop(_ id: String?) -> Bool {
 
 struct FxPage: View {
   let model: RustDJModel
-  /// The deck the pads act on; nil follows the lead deck.
-  @State private var aimed: String?
   @State private var length: FxMode = .bars(bars: 1)
   @State private var sweepBars: UInt8 = 2
 
   var body: some View {
-    let d = aimed ?? leadDeck(model.mix?.crossfader)
+    // the target the pads and the inserts act on; until one is picked, the lead deck
+    let d = model.fxTarget ?? leadDeck(model.mix?.crossfader)
+    let onDeck = d.count == 1
+    let chain = model.inserts.chains[d]
     let active = Dictionary((model.fxActive[d] ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     VStack(spacing: 16) {
       Card(
@@ -33,14 +44,14 @@ struct FxPage: View {
             .buttonStyle(.plain).font(.system(size: 14, weight: .medium)).foregroundStyle(DJTheme.danger)
             .padding(.horizontal, 14).frame(minHeight: 40)
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(DJTheme.danger.opacity(0.6)))
-            .accessibilityLabel("Panic: end deck \(d)'s effects now")
+            .accessibilityLabel("Panic: end \(targetLabel(d))'s effects now and switch its inserts off")
         }
       ) {
-        HStack(spacing: 8) {
-          ForEach(deckNames, id: \.self) { n in Chip(label: "Deck \(n)", selected: d == n) { aimed = n } }
-        }
+        TargetSwitch(selected: d, model: model) { model.selectFxTarget($0) }
+        // the dimmed pads' reason, once for the page
+        if !onDeck { Caption("Dimmed: they work a deck's track") }
       }
-      Card("Length", trailing: { Caption("lands on the next bar") }) {
+      Card("Length", trailing: { Caption(onDeck ? "lands on the next bar" : "lands on the lead deck's bar") }) {
         LengthChips(selected: length, latch: true) { length = $0 }
       }
       ForEach(model.fxCategories, id: \.id) { cat in
@@ -60,7 +71,9 @@ struct FxPage: View {
           ) {
             FlowLayout(spacing: 8) {
               ForEach(pads, id: \.id) { p in
-                if cat.transition {
+                if !onDeck && p.decksOnly {
+                  DimPad(label: p.label)
+                } else if cat.transition {
                   HoldPad(
                     label: p.label, active: active[p.id],
                     onPress: { model.engage(d, p.id, .momentary) }, onRelease: { model.fxRelease(d, p.id) })
@@ -78,7 +91,7 @@ struct FxPage: View {
       }
       // the engine's own Acid Bass tricks (djmobile `fx::ACID_TRICKS`): held pads, on this deck's loop
       let acid = model.fxCatalogue.filter { $0.family == "acid" }
-      if !acid.isEmpty && isAcidLoop(model.decks[d]?.deck?.td3) {
+      if onDeck && !acid.isEmpty && isAcidLoop(model.decks[d]?.deck?.td3) {
         Card("Acid Bass", trailing: { Caption("on this deck's loop") }) {
           FlowLayout(spacing: 8) {
             ForEach(acid, id: \.id) { p in
@@ -87,15 +100,124 @@ struct FxPage: View {
                 onPress: { model.fxAcid(d, p.id, true) }, onRelease: { model.fxAcid(d, p.id, false) })
             }
           }
-          Caption(
-            "Accents hit every note hard, slides hold every note into the next (both land on the next bar). "
-              + "Cutoff closes the bass and rides it open over two bars.")
+          Caption("Accents, slides on the bar; cutoff opens over 2 bars")
         }
+      }
+      // the held effects, after the Vox tap (djandroid InsertFx.kt)
+      Caption("After the Vox tap: held effects")
+      if let chain {
+        TempoLine(chain: chain)
+        if let e = model.inserts.error { Text(e).font(.system(size: 12)).foregroundStyle(DJTheme.danger) }
+        ForEach(chain.effects, id: \.id) { e in InsertCard(model: model, target: d, effect: e) }
+      } else {
+        Caption("starting…")
       }
       Spacer(minLength: 24)
     }
+    // the page's poll while it shows (the tempos the delays follow, inserts changed elsewhere)
+    .task {
+      while !Task.isCancelled {
+        model.refreshInserts()
+        try? await Task.sleep(for: .milliseconds(500))
+      }
+    }
   }
 }
+
+/// A, B, Wheel, Master: big segments, a dot on any target with a throw or an insert on.
+private struct TargetSwitch: View {
+  let selected: String
+  let model: RustDJModel
+  let onPick: (String) -> Void
+
+  var body: some View {
+    HStack(spacing: 4) {
+      ForEach(InsertsUI.targets, id: \.self) { t in
+        let on =
+          model.fxActive[t]?.isEmpty == false || model.inserts.chains[t]?.effects.contains(where: \.on) == true
+        let sel = t == selected
+        Button {
+          onPick(t)
+        } label: {
+          HStack(spacing: 4) {
+            if on { Circle().fill(sel ? Color.black : DJTheme.accent).frame(width: 6, height: 6) }
+            Text(targetLabel(t)).font(.system(size: 14, weight: sel ? .semibold : .regular)).lineLimit(1).fixedSize()
+              .foregroundStyle(sel ? Color.black : Color.white)
+          }
+          .frame(maxWidth: .infinity, minHeight: 48)
+          .background(sel ? DJTheme.accent : .clear, in: RoundedRectangle(cornerRadius: 10))
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Effects on \(targetLabel(t))" + (on ? ", on" : ""))
+        .accessibilityAddTraits(sel ? [.isSelected, .isButton] : .isButton)
+      }
+    }
+    .padding(4)
+    .background(DJTheme.surface0, in: RoundedRectangle(cornerRadius: 14))
+  }
+}
+
+/// A pad the target can't take (it works a deck's track): dimmed, no tap, the reason read out.
+struct DimPad: View {
+  let label: String
+  var body: some View {
+    Text(label).font(.system(size: 14)).foregroundStyle(DJTheme.dim)
+      .padding(12).frame(minWidth: 96, minHeight: 56)
+      .overlay(RoundedRectangle(cornerRadius: 12).stroke(DJTheme.surface2, lineWidth: 1))
+      .accessibilityElement()
+      .accessibilityLabel("\(label), unavailable here: it works a deck's track")
+  }
+}
+
+/// The delay's tempo: whose it follows, the BPM and the division in ms.
+private struct TempoLine: View {
+  let chain: InsertChainState
+  var body: some View {
+    let div = chain.effects.first { $0.id == "delay" }?.knobs.first { $0.id == "delay.time" }?.display ?? ""
+    let text: String
+    if chain.bpm > 0 {
+      let from = chain.target == chain.tempoFrom ? "its tempo" : "Deck \(chain.tempoFrom)"
+      text = String(format: "Delay follows \(from) · %.1f BPM · \(div) = %.0f ms", chain.bpm, chain.delayMs)
+    } else {
+      text = "Delay follows \(chain.target.count == 1 ? "this deck" : "the lead deck") once it plays · \(div)"
+    }
+    return Caption(text)
+  }
+}
+
+/// An insert: its switch in the header; its first knob (filter sweep, bits, delay time, reverb
+/// size) and its Mix always shown, the rest under More.
+private struct InsertCard: View {
+  let model: RustDJModel
+  let target: String
+  let effect: InsertEffect
+  @State private var more = false
+
+  var body: some View {
+    let first = effect.knobs.first { insertLeadKnobs.contains($0.id) }?.id ?? effect.knobs.first?.id
+    let shown: (InsertKnob) -> Bool = { $0.id == first || $0.id.hasSuffix(".mix") }
+    let main = effect.knobs.filter(shown)
+    let rest = effect.knobs.filter { !shown($0) }
+    Card(
+      effect.label,
+      trailing: {
+        HStack(spacing: 12) {
+          if !rest.isEmpty { MoreButton(more: $more) }
+          DJToggle(
+            label: "\(effect.label) on \(targetLabel(target))",
+            isOn: Binding(get: { effect.on }, set: { model.setInsertOn(target, effect.id, $0) }))
+        }
+      }
+    ) {
+      ForEach(main, id: \.id) { k in KnobRow(model: model, target: target, knob: k, live: effect.on) }
+      if more { ForEach(rest, id: \.id) { k in KnobRow(model: model, target: target, knob: k, live: effect.on) } }
+    }
+  }
+}
+
+/// Each insert's first knob, shown with its Mix without More (any other effect: its first knob).
+private let insertLeadKnobs: Set<String> = ["filter.sweep", "crush.bits", "delay.time", "reverb.size"]
 
 /// A Dim caption (12 pt).
 struct Caption: View {
@@ -225,6 +347,41 @@ struct FilterKnob: View {
       )
       .accessibilityLabel("Filter, low-pass to high-pass, springs back open")
       Text("high").font(.system(size: 11)).foregroundStyle(DJTheme.dim)
+    }
+  }
+}
+
+/// An insert knob: its label and the engine's reading, a slider (stepped for the delay's
+/// divisions) and, for the bitcrush's bits, the fine slider.
+private struct KnobRow: View {
+  let model: RustDJModel
+  let target: String
+  let knob: InsertKnob
+  let live: Bool
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack {
+        Text(knob.label).font(.system(size: 14)).foregroundStyle(live ? Color.white : DJTheme.dim)
+        Spacer()
+        Text(knob.display).font(.system(size: 13, design: .monospaced)).foregroundStyle(live ? DJTheme.accent : DJTheme.dim)
+      }
+      let set: (Double) -> Void = { model.setInsertKnob(target, knob.id, $0) }
+      let binding = Binding(get: { min(max(knob.value, 0), 1) }, set: set)
+      Group {
+        // a discrete knob (the delay's divisions) snaps to its steps
+        if knob.steps > 1 {
+          Slider(value: binding, in: 0...1, step: 1 / Double(knob.steps - 1))
+        } else {
+          Slider(value: binding, in: 0...1)
+        }
+      }
+      .tint(live ? DJTheme.accent : DJTheme.dim)
+      .accessibilityLabel(knob.label).accessibilityValue(knob.display)
+      // 16 to 9 bits barely crunch: the fine slider spans the crushed half
+      if knob.id == "crush.bits" {
+        FineSlider(description: knob.label, value: knob.value, range: 0.5...1, caption: "9 … 2 bit", enabled: live, onChange: set)
+      }
     }
   }
 }

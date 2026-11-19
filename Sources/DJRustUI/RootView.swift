@@ -1,15 +1,15 @@
 import DJRust
 import SwiftUI
 
-// The shell of djandroid's DeckScreen.kt: the top bar, the eight tabs and a horizontal pager of
+// The shell of djandroid's DeckScreen.kt: the top bar, the seven tabs and a horizontal pager of
 // pages, each one vertical scroll of play cards (DESIGN §2). Utilities live behind the menu
 // (MenuSheet.swift), never on a page.
 
-/// The screens, in their order (DESIGN §2): labels of at most about seven letters so eight fit.
+/// The screens, in their order (DESIGN §2): labels of at most about seven letters so they all fit.
 /// djandroid's Moves tab is "Perform" here (Matt, 2026-11-16; djandroid is renaming it too).
 enum Page: String, CaseIterable, Identifiable {
   case deckA = "Deck A", mix = "Mix", deckB = "Deck B", perform = "Perform", wheel = "Wheel", vox = "Vox"
-  case effects = "Effects", inserts = "Inserts"
+  case effects = "Effects"
   var id: String { rawValue }
   var deck: String? { self == .deckA ? "A" : self == .deckB ? "B" : nil }
 
@@ -17,8 +17,10 @@ enum Page: String, CaseIterable, Identifiable {
   /// shows both decks with the mixer between them on one "Decks" page; narrower, the seven tabs.
   /// (`DJ_WIDE_FROM=<points>`, a launch environment, moves it: screenshots of the wide layout.)
   static let wideFrom: CGFloat = ProcessInfo.processInfo.environment["DJ_WIDE_FROM"].flatMap(Double.init).map { CGFloat($0) } ?? 1100
-  static func pages(wide: Bool) -> [Page] { wide ? [.deckA, .perform, .wheel, .vox, .effects, .inserts] : allCases }
+  static func pages(wide: Bool) -> [Page] { wide ? [.deckA, .perform, .wheel, .vox, .effects] : allCases }
   func label(wide: Bool) -> String { wide && self == .deckA ? "Decks" : rawValue }
+  /// A page by its name; the Inserts tab folded into Effects, so "Inserts" opens Effects.
+  static func named(_ name: String) -> Page? { name == "Inserts" ? .effects : Page(rawValue: name) }
   /// Where a page lives in the wide layout (Mix and Deck B are columns of Decks).
   func wide(_ on: Bool) -> Page { on && (self == .mix || self == .deckB) ? .deckA : self }
 }
@@ -26,7 +28,7 @@ enum Page: String, CaseIterable, Identifiable {
 public struct DJRustRoot: View {
   @State private var model: RustDJModel
   /// `DJ_PAGE="Effects"` (a launch environment, for screenshots): open on that page.
-  @State private var page: Page? = ProcessInfo.processInfo.environment["DJ_PAGE"].flatMap(Page.init(rawValue:)) ?? .deckA
+  @State private var page: Page? = ProcessInfo.processInfo.environment["DJ_PAGE"].flatMap(Page.named) ?? .deckA
 
   /// The Wheel page's scroll, which the instrument picker's anchor moves on a switch.
   @State private var wheelScroll = ScrollPosition()
@@ -144,10 +146,8 @@ public struct DJRustRoot: View {
     case .mix: MixPage(model: model)
     case .effects: FxPage(model: model)
     case .vox: VoxPage(model: model)
-    case .inserts: InsertsPage(model: model)
     case .wheel: WheelPage(model: model, picker: picker)
     case .perform: PerformPage(model: model)
-    default: NotPortedPage(page: p)
     }
   }
 }
@@ -192,22 +192,12 @@ extension RustDJModel {
   func isLit(_ p: Page) -> Bool {
     switch p {
     case .deckA, .deckB: decks[p.deck!]?.deck?.playing == true
-    case .effects: fxActive.values.contains { !$0.isEmpty }
+    // a throw on any target, or any insert on
+    case .effects: fxActive.values.contains { !$0.isEmpty } || inserts.anyOn
     case .vox: vox.state?.on == true
-    case .inserts: inserts.anyOn
     case .wheel: wheel.moving
     case .perform: perform.busy
     default: false
     }
-  }
-}
-
-/// A page whose port hasn't landed: says so in place, in Dim (state, not an info card).
-struct NotPortedPage: View {
-  let page: Page
-  var body: some View {
-    Text("\(page.rawValue): not ported yet (docs/ANDROID-PORT.md)")
-      .font(.system(size: 14)).foregroundStyle(DJTheme.dim)
-      .frame(maxWidth: .infinity, minHeight: 120)
   }
 }
